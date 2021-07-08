@@ -35,7 +35,7 @@ To insert data in a batch, prepared statements with the bind values are added to
 
 ### Java Example
 
-In order to perform a batch insert operation in Java, first create a `BatchStatement` object. Next add the desired number of [prepared and bound insert statements](#) to it. Finally, execute the batch object. This is shown below.
+In order to perform a batch insert operation in Java, first create a `BatchStatement` object. Next add the desired number of prepared and bound insert statements to it. Finally, execute the batch object. This is shown below.
 
 ```java
 // Create a batch statement object.
@@ -67,28 +67,26 @@ Consider a table which has a hash column `h` and two clustering columns `r1` and
 - Query a range of values for `r1` given `h`.
 
 ```sql
-> SELECT * FROM table WHERE h = '...' AND r1 < '<upper-bound>' AND r1 > '<lower-bound>';
+SELECT * FROM table WHERE h = '...' AND r1 < '<upper-bound>' AND r1 > '<lower-bound>';
 ```
 
 - Query a range of values for `r2` given `h` and `r1`.
 
 ```sql
-> SELECT * FROM table WHERE h = '...' AND r1 = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
+SELECT * FROM table WHERE h = '...' AND r1 = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
 ```
 
 - Query a range of values for `r2` given `h` - **may not be efficient**. This query will need to iterate through all the unique values of `r1` in order to fetch the result and would be less efficient if a key has a lot of values for the `r1` column.
 
 ```sql
-> SELECT * FROM table WHERE h = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
+SELECT * FROM table WHERE h = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
 ```
 
 - Query a range of values for `r1` without `h` being specified - **may not be efficient**. This query will perform a full scan of the table and would be less efficient if the table is large.
 
 ```sql
-> SELECT * FROM table WHERE r1 < '<upper-bound>' AND r1 > '<lower-bound>';
+SELECT * FROM table WHERE r1 < '<upper-bound>' AND r1 > '<lower-bound>';
 ```
-
-
 
 ### IN clause
 
@@ -99,29 +97,28 @@ Consider a table which has a hash column `h` and a clustering column `r`.
 - Query a set of values of `h` - this operation will perform the lookups for the various hash keys and return the response. The read queries are batched at a tablet level and executed in parallel. This query will be more efficient than performing each lookup from the application.
 
 ```sql
-> SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
+SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
 ```
 
 - Query a set of values for `r` given one value of `h` - this query is efficient and will seek to the various values of `r` for the given value of `h`.
 
 ```sql
-> SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
+SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 ```
 
 - Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have up to 6 rows. 
 
 ```sql
-> SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
+SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
 ```
-
 
 ## Sample Java Application
 
-You can find a working example of using transactions with YugabyteDB in our [sample applications](../../../quick-start/run-sample-apps/). This application writes batched key-value pairs with a configurable number of keys per batch. There are multiple readers and writers running in parallel performing these batch writes.
+You can find a working example of using transactions with YugabyteDB in our [sample applications](../../../develop/explore-sample-apps/). This application writes batched key-value pairs with a configurable number of keys per batch. There are multiple readers and writers running in parallel performing these batch writes.
 
 Here is how you can try out this sample application.
 
-```
+```output
 Usage:
   java -jar yb-sample-apps.jar \
     --workload CassandraBatchKeyValue \

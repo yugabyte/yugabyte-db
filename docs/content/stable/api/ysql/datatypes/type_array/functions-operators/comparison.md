@@ -24,6 +24,7 @@ These operators all have the same signature, thus:
 input value:       anyarray, anyarray
 return value:      boolean
 ```
+
 **Note:** These operators require that the LHS and RHS arrays have the same data type. (It's the same rule for the comparison of scalars.) However, they do _not_ require that the arrays have identical geometric properties. Rules are defined so that a difference between one or more of these properties does not mean that comparison is disallowed. Rather, the LHS array might be deemed to be less than, or greater than, the RHS array. It's essential, therefore, to understand the comparison algorithm.
 
 ### Comparison criteria
@@ -41,10 +42,9 @@ The other geometric properties (the length and upper bound along each dimension)
 
 There is, of course, a well-defined priority among the comparisons. Briefly, value comparison is done first. Then, but only if no difference is detected, are the geometric properties compared.
 
-
 ### Pairwise comparison of values
 
-The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [Joint semantics](../functions-operators/properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `IS NOT DISTINCT FROM` semantics. Moreover, when a `not null` array value is pairwise compared with a `NULL` value, the `not null` value is deemed to be _less than_ the `NULL` value.
+The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [Joint semantics](../properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `IS NOT DISTINCT FROM` semantics. Moreover, when a `not null` array value is pairwise compared with a `NULL` value, the `not null` value is deemed to be _less than_ the `NULL` value.
 
 Notice the contrast with the `=` operator comparison rule for free-standing scalar values. This comparison uses `NULL` semantics but, of course, lets you use `IS NOT DISTINCT FROM` comparison if this better suits your purpose. 
 

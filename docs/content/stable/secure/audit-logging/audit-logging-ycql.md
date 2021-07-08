@@ -48,7 +48,7 @@ $ yb-tserver <options> --ycql_enable_audit_log=true
 ## Configure Audit Logging
 
 *   Statements or events are recorded if they match _all_ auditing filters described by the flags above. i.e. only the configured categories in the configured keyspaces by the configured users will be recorded.
-*   For the `included` flags the default value (empty) means everything is included, while for the `excluded` flags the default value (empty) means nothing is excluded. So by default everything will be logged.
+*   For the `included` flags the default value (empty) means everything is included, while for the `excluded` flags the default value (empty) means nothing is excluded. By default everything will be logged except events in system keyspaces.
 *   If both the inclusion and exclusion flags are set for the same dimension (e.g. users) then statements or events will be recorded only if both match: if they are in the set-difference between included entries and excluded entries. So that is allowed although it is redundant: the same semantics can be achieved by setting only the inclusion flag to the resulting set-difference. 
 *   The `ycql_audit_log_level` determines the log file where the audit records will be written (i.e. `yb-tserver.INFO`, `yb-tserver.WARNING`, or `yb-tserver.ERROR`). \
 Note that only `ERROR`-level logs are immediately flushed to disk, lower levels might be buffered.

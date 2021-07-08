@@ -26,4 +26,16 @@ weight: 647
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="slow-queries-dashboard/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Slow queries dashboard</div>
+      </div>
+      <div class="body">
+        Use the Slow Queries dashboard to analyze statistics and execution times of past queries on your YugabyteDB universes.
+      </div>
+    </a>
+  </div>
+
 </div>

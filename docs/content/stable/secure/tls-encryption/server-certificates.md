@@ -20,7 +20,7 @@ Before you can enable server-to-server and client-to-server encryptions using Tr
 
 ### Create a secure data directory
 
-To generate and store the secure information, such as the root certificate, create a directory, `secure-data`, in your root directory. After completing the preparation, you will copy this data inti a secure location and then delete this directory.
+To generate and store the secure information, such as the root certificate, create a directory, `secure-data`, in your root directory. After completing the preparation, you will copy this data into a secure location and then delete this directory.
 
 ```sh
 $ mkdir secure-data

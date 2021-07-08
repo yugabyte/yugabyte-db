@@ -12,58 +12,52 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The Yugabyte Platform first needs to be installed on a host machine. Then you need to configure the Yugabyte Platform to work in your on-premises, private cloud, or public cloud environment. In public clouds, Yugabyte Platform spawns the machines to orchestrate starting the YugabyteDB universe. In private clouds, you need to use the Yugabyte Platform to add nodes that you want to be in a YugabyteDB universe. To manage the nodes, Yugabyte Platform requires SSH access to each of the nodes.
+Yugabyte Platform first needs to be installed on a host computer, and then you configure Yugabyte Platform to work in your on-premises private cloud or in a public cloud environment. In a public cloud environment, Yugabyte Platform spawns instances for starting a YugabyteDB universe. In a private cloud environment, you use Yugabyte Platform to add nodes in which you want to be in the YugabyteDB universe. To manage these nodes, Yugabyte Platform requires SSH access to each of the nodes.
 
-To install Yugabyte Platform, you must meet the following requirements.
+## Supported Linux Distributions
 
-## Supported Linux distributions
+You can install Yugabyte Platform on the following Linux distributions:
 
-Yugabyte Platform can be installed on the following Linux distributions:
-
-- Ubuntu: 16.04 or 18.04 LTS.
-- Red Hat Enterprise Linux (RHEL): 7 or later.
-- CentOS: 7 or later.
-- Amazon Linux (AMI): 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, 2.0
+- Ubuntu 16.04 or 18.04 LTS.
+- Red Hat Enterprise Linux (RHEL) 7 or later.
+- CentOS 7 or later.
+- Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, 2.0
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
 
-## Hardware requirements
+## Hardware Requirements
 
-The node running Yugabyte Platform should be meet the following requirements:
+The node running Yugabyte Platform should meet the following requirements:
 
 - 4 cores or more
 - 8 GB RAM or more
 - 100 GB SSD disk or more
 - 64-bit CPU architecture
-- Docker Engine installed
-  - Recommended version: 17.06.2-ce
-  - Supported versions: 1.7.1 to 17.06.2-ce
 
-## Prepare the host
+## Preparing the Host
 
-Perform the following steps:
+You prepare the host as follows:
 
-- Install and configure [Docker Engine](https://docs.docker.com/engine/).
-- Install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
-- Verify that the host can pull container images from the [Quay.io](https://quay.io/) container registry.
+- For a Docker-based installation, Yugabyte Platform uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
-### Airgapped hosts
+  Replicated installs a compatible Docker version if its not pre-installed on the host. The current supported Docker version is 19.03.n.
 
-To install Yugabyte Platform on Airgapped hosts, without access to any Internet traffic (inbound or outbound), perform the following additional steps:
+- For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry.
 
-- Whitelist endpoints
-  - In order to install Replicated and the Yugabyte Platform on a host with no Internet connectivity at all, you have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
+### Airgapped Hosts
 
-    ```sh
-    https://downloads.yugabyte.com
-    https://download.docker.com
-    ```
+Installing Yugabyte Platform on Airgapped hosts, without access to any Internet traffic (inbound or outbound) requires the following:
 
-- Docker Engine: supported versions `1.7.1` to `17.03.1-ce`. If not installed, see [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
-- The following ports should be open on the Yugabyte Platform host:
+- Whitelisting endpoints: to install Replicated and Yugabyte Platform on a host with no Internet connectivity, you have to first download the binaries on a computer that has Internet connectivity, and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation:
+  `https://downloads.yugabyte.com`
+  `https://download.docker.com`
+
+- Ensuring that Docker Engine version 19.03.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+- Ensuring that the following ports are open on the Yugabyte Platform host:
   - `8800` – HTTP access to the Replicated UI
-  - `80` – HTTP access to the Yugabyte Platform console)
+  - `80` – HTTP access to the Yugabyte Platform console
   - `22` – SSH
-- Attached disk storage (such as persistent EBS volumes on AWS): 100 GB minimum
-- The Yugabyte Platform airgapped install package (contact Yugabyte support)
-- A Yugabyte Platform license file from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form)
-- Ability to connect from the Yugabyte Platform host to all YugabyteDB data nodes. If this is not set up, set up passwordless SSH.
+- Ensuring that attached disk storage (such as persistent EBS volumes on AWS) is 100 GB minimum
+- Having Yugabyte Platform airgapped install package. Contact Yugabyte Support for more information.
+- Signing the Yugabyte Enterprise Platform license agreement. Contact Yugabyte Support for more information.
+
+  

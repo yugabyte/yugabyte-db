@@ -38,7 +38,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/">
+    <a class="section-link icon-offset" href="fault-tolerance/macos">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>
@@ -110,7 +110,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads/">
+    <a class="section-link icon-offset" href="follower-reads/fr-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Follower reads</div>
@@ -122,7 +122,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="colocated-tables/">
+    <a class="section-link icon-offset" href="colocated-tables/macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Colocated tables</div>
@@ -170,7 +170,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="security/">
+    <a class="section-link icon-offset" href="security/security/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
         <div class="title">Security</div>

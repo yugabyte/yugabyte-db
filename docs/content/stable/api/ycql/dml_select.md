@@ -68,8 +68,8 @@ Where
 - The `where_expression` can specify conditions on any columns including partition, clustering, and regular columns.
 - The `where_expression` has a restricted list of operators.
 
-  - Only `=`, `IN` and `NOT IN` operators can be used for conditions on partition columns. 
-  - Only operators `=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering and regular columns.
+  - Only `=`, `!=`, `IN` and `NOT IN` operators can be used for conditions on partition columns. 
+  - Only operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering and regular columns.
 
 ### `IF` clause
 

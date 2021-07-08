@@ -275,7 +275,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-- Follow the test instructions as noted in [Quick Start](../../../quick-start/explore-ysql/).
+- Follow the test instructions as noted in [Quick Start](../../../quick-start/explore/ysql/).
 
 ### YCQL API
 

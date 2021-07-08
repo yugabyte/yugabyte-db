@@ -16,7 +16,7 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fab fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
@@ -37,14 +37,21 @@ showAsideToc: true
 
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link active">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
+<li>
+    <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      OpenShift
+    </a>
+ </li>
+
   <li>
     <a href="/latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
-      <i class="icon-aws" aria-hidden="true"></i>
+      <i class="fas fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>

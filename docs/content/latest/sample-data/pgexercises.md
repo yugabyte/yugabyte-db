@@ -126,6 +126,6 @@ You are now ready to start working through the [PostgreSQL Exercises](https://pg
 YugabyteDB returns the same results as expected based on the solutions on the PostgreSQL Exercises website, with the following exceptions.
 
 - ["Find telephone numbers with parentheses"](https://pgexercises.com/questions/string/reg.html)
-  - YugabyteDB returns results with a sort order of strings different than in PostgreSQL due to [hash partitioning in YugabyteDB](../../architecture/docdb/sharding/).
+  - YugabyteDB returns results with a sort order of strings different than in PostgreSQL due to [hash partitioning in YugabyteDB](../../architecture/docdb-sharding/).
 - ["Update a row based on the contents of another row"](https://pgexercises.com/questions/updates/updatecalculated.html)
   - YugabyteDB returns an error because using the `FROM` clause in `UPDATE` is not yet supported. See [GitHub issue #738](https://github.com/yugabyte/yugabyte-db/issues/738).

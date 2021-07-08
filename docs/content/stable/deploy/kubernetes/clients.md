@@ -1,7 +1,7 @@
 ---
-title: Connect remote clients to Kubernetes clusters
-headerTitle: Connect clients to Kubernetes clusters
-linkTitle: Connect clients
+title: Connect Remote Clients to Kubernetes Clusters
+headerTitle: Connect Clients to Kubernetes Clusters
+linkTitle: Connect Clients
 description: Connect remote clients to YugabyteDB clusters deployed within Kubernetes.
 menu:
   stable:

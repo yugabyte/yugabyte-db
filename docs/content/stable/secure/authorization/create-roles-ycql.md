@@ -48,7 +48,7 @@ Roles that have `LOGIN` permissions are users. As an example, you can create a u
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
-Read about [how to create users in YugabyteDB](../../authentication/) in the authentication section.
+Read about [how to create users in YugabyteDB](../../enable-authentication/ycql/) in the authentication section.
 
 ## 2. Grant roles
 

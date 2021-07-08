@@ -40,7 +40,7 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../authentication/ysql-authentication/) in YugabyteDB clusters for YSQL. For this tutorial, you are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
+Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ysql/) in YugabyteDB clusters for YSQL. For this tutorial, you are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
 
 ```sh
 $ ysqlsh
@@ -226,7 +226,7 @@ We should see that owner has changed from `yugabyte` to `qa` and `qa` has all ac
 
 DB admins should be able to perform all operations on any database. There are two ways to achieve this:
 
-1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../../authentication/ysql-authentication). Note that doing this will give the DB admin all the privileges over all the roles as well.
+1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../../enable-authentication/ysql/). Note that doing this will give the DB admin all the privileges over all the roles as well.
 
 2. Grant `ALL` privileges to the `db_admin` role. This can be achieved as follows.
 

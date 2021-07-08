@@ -57,7 +57,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="best-practices/">
+    <a class="section-link icon-offset" href="best-practices-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
         <div class="articles">3 articles</div>

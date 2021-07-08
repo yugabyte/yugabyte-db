@@ -551,7 +551,7 @@ Default: `false`
 
 ### Change data capture (CDC) flags
 
-To learn more about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
+To learn more about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
 For other CDC configuration flags, see [YB-TServer's CDC flags](../yb-tserver/#change-data-capture-cdc-flags).
 

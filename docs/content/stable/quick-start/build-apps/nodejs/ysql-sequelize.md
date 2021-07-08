@@ -41,7 +41,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
 
 ## Clone the orm-examples repo
 

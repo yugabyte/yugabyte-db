@@ -74,7 +74,7 @@ The assumptions behind tables that are colocated is that their data need not be 
 
 ## Usage
 
-To learn more about using this feature, see [Explore colocated tables](../../../explore/colocated-tables/).
+To learn more about using this feature, see [Explore colocated tables](../../../explore/colocated-tables/macos/).
 
 ## What's next?
 

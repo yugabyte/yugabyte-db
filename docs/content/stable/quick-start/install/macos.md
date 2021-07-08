@@ -50,30 +50,30 @@ showAsideToc: true
 
 1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-2. Verify that you have Python 2 or 3 installed. 
+1. Verify that you have Python 2 or 3 installed. 
 
     ```sh
-    python --version
+    $ python --version
     ```
 
-    ```
+    ```output
     Python 3.7.3
     ```
 
-3. `wget` or `curl` is available.
+1. `wget` or `curl` is available.
 
     The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
 
     To install `wget` on your Mac, you can run the following command if you use Homebrew:
 
     ```sh
-    brew install wget
+    $ brew install wget
     ```
 
-4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
 
     ```sh
-    launchctl limit maxfiles
+    $ launchctl limit maxfiles
     ```
 
     We recommend setting the soft and hard limits to 1048576.
@@ -115,24 +115,24 @@ showAsideToc: true
     Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
 
     ```sh
-    sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+    $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
     ```
 
     You might have to `unload` the service before loading it.
 
 ## Download YugabyteDB
 
-Download the YugabyteDB `tar.gz` file using the following `wget` command.
+1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
-```sh
-wget https://downloads.yugabyte.com/yugabyte-2.4.4.0-darwin.tar.gz
-```
+    ```sh
+    $ wget https://downloads.yugabyte.com/yugabyte-2.7.1.1-darwin.tar.gz
+    ```
 
-To unpack the archive file and change to the YugabyteDB home directory, run the following command.
+1. Extract the package and then change directories to the YugabyteDB home.
 
-```sh
-tar xvfz yugabyte-2.4.4.0-darwin.tar.gz && cd yugabyte-2.4.4.0/
-```
+    ```sh
+    $ tar xvfz yugabyte-2.7.1.1-darwin.tar.gz && cd yugabyte-2.7.1.1/
+    ```
 
 ## Configure
 
@@ -154,12 +154,12 @@ sudo ifconfig lo0 alias 127.0.0.7
 To verify that the extra loopback addresses exist, run the following command.
 
 ```sh
-ifconfig lo0
+$ ifconfig lo0
 ```
 
 You should see some output like the following:
 
-```
+```output
 lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
   options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
   inet 127.0.0.1 netmask 0xff000000

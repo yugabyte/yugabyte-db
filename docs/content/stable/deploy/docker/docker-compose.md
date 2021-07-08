@@ -208,7 +208,7 @@ services:
       - yb-tserver
 ```
 
-For more examples, follow the instructions in the [Quick Start](../../../quick-start/explore-ysql/#docker) section with Docker.
+For more examples, follow the instructions in the [Quick Start](../../../quick-start/explore/ysql/#docker) section with Docker.
 
 ## 4. Stop the cluster
 

@@ -31,7 +31,7 @@ In the current release, you can enable and disable TLS encryption during univers
 
 Yugabyte Platform can create self-signed certificates for each universe. These certificates may be shared between universes within a single instance of Yugabyte Platform. The certificate name has the following format: 
 
-`yb-environment-universe_name`, where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe-name* is the provided universe name. The platform generates the root certificate, root private key, and node-level certificates, (assuming node-to-node encryption is enabled), and then provisions those artifact to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node: 
+`yb-environment-universe_name`, where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe-name* is the provided universe name. The platform generates the root certificate, root private key, and node-level certificates, (assuming node-to-node encryption is enabled), and then provisions those artifacts to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node: 
 
 1. The root certificate (`ca.cert`).
 2. The node certificate (`node.ip_address.crt`). 
@@ -150,8 +150,6 @@ The following procedure describes how to rotate the existing custom certificates
 
 ![edit-tls](/images/yp/encryption-in-transit/edit-tls.png)    
 
-
-
 ### How to Expand the Universe
 
 You can expand universes configured with custom CA-signed certificates.
@@ -255,3 +253,14 @@ X509v3 Basic Constraints:
 3. Verify that certificates and keys are in PEM format (as opposed to the DER or other format). If these artifacts are not in the PEM format and you require assistance with converting them or identifying the format, consult [Converting Certificates](https://support.globalsign.com/ssl/ssl-certificates-installation/converting-certificates-openssl).
 
 4. Ensure that the private key does not have a passphrase associated with it. For information on how to identify this condition, see [How to Decrypt an Enrypted SSL RSA Private Key](https://techjourney.net/how-to-decrypt-an-enrypted-ssl-rsa-private-key-pem-key/).
+
+## Enforcing TLS Versions
+
+As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 (default).
+
+You can set the TLS version for node-to-node and client-node communication. To enforce the minimum TLS version of 1.2, add the following flag for T-Server: 
+
+```
+ssl_protocols = tls12
+```
+

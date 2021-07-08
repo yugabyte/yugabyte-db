@@ -1,16 +1,16 @@
 ---
 title: JSON Support
 headerTitle: JSON Support
-linkTitle: JSON Support
+linkTitle: JSON support
 description: JSON Support in YugabyteDB.
 headcontent: JSON Support in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice"></i></div>
 menu:
   stable:
-    name: JSON Support
+    name: JSON support
     identifier: explore-json-support-1-ysql
     parent: explore
-    weight: 232
+    weight: 260
 isTocNested: true
 showAsideToc: true
 ---
@@ -64,7 +64,7 @@ This section will focus on only the `jsonb` type.
 You need a YugabyteDB cluster to run through the steps below. If do not have a YugabyteDB cluster, you can create one on your local machine as shown below.
 
 ```sh
-$ ./bin/yb-ctl create
+$ ./bin/yugabyted start
 ```
 
 Connect to the cluster using `ysqlsh` to run through the examples below.
@@ -491,8 +491,8 @@ ERROR:  23505: duplicate key value violates unique constraint "books_isbn_unq"
 
 ## 7. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
-$ ./bin/yb-ctl destroy
+$ ./bin/yugabyted destroy
 ```

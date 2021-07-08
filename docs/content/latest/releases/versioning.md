@@ -9,7 +9,7 @@ menu:
     identifier: versioning
     weight: 2586
 isTocNested: true
-showAsideToc: false
+showAsideToc: true
 ---
 
 Starting with v2.2.0, Yugabyte follows a new release versioning convention for stable and development releases. The following sections cover the new release versioning convention and includes descriptions of stable and latest releases.
@@ -28,7 +28,7 @@ Examples are included in the relevant sections below.
 
 ## Stable releases
 
-Releases within stable release series, denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added since the last stable release. A stable release series is based on the previous latest release series. For example, the upcoming v2.4 stable release series will be based on the v2.3 latest release series.
+Releases within stable release series, denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added since the last stable release. A stable release series is based on the previous latest release series. For example, the upcoming v2.6 stable release series will be based on the v2.5 latest release series.
 
 Patch releases in a stable release series (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility.
 
@@ -41,7 +41,7 @@ Patch releases in a stable release series (`MAJOR.EVEN.PATCH`) include bug fixes
 
 ## Latest releases
 
-Releases within the latest release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally introduces new features and changes and are intended for development, testing, and proof-of-concept projects. The v2.3 latest release series became the basis for the next v2.4 stable release series. The v2.6 stable release comes from the v2.5 series. And the v2.7 latest release series is the current actively developed series.
+Releases within the latest release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally introduces new features and changes and are intended for development, testing, and proof-of-concept projects. The v2.3 latest release series became the basis for the next v2.4 stable release series. The v2.6 stable release came from the v2.5 series. And the v2.7 latest release series is the current actively developed series.
 
 Patch releases in the latest release series (`MAJOR.ODD.PATCH`) introduce new features, enhancements, and fixes.
 
