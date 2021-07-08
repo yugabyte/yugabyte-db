@@ -17,10 +17,6 @@ import com.yugabyte.yw.models.CustomerConfig;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.ValidationError;
-
-import play.mvc.Result;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 import javax.inject.Inject;
