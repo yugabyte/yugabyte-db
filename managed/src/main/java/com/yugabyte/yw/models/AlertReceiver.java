@@ -5,14 +5,19 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.FetchType;
 import javax.persistence.Id;
+import javax.persistence.ManyToMany;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -29,6 +34,7 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import play.data.validation.Constraints;
 import play.data.validation.Constraints.Required;
 
@@ -76,6 +82,11 @@ public class AlertReceiver extends Model {
   })
   private AlertReceiverParams params;
 
+  @ToString.Exclude
+  @EqualsAndHashCode.Exclude
+  @ManyToMany(mappedBy = "receivers", fetch = FetchType.LAZY)
+  private Set<AlertRoute> routes;
+
   private static final Finder<UUID, AlertReceiver> find =
       new Finder<UUID, AlertReceiver>(AlertReceiver.class) {};
 
@@ -92,6 +103,11 @@ public class AlertReceiver extends Model {
     receiver.params = params;
     receiver.save();
     return receiver;
+  }
+
+  @JsonIgnore
+  public List<AlertRoute> getRoutesList() {
+    return new ArrayList<>(routes);
   }
 
   public static AlertReceiver get(UUID customerUUID, UUID receiverUUID) {
