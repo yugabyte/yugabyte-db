@@ -81,7 +81,7 @@ In the preceding command, the value of `num_unique_keys` is set to `1`, which me
 $ ./bin/ycqlsh 127.0.0.1
 ```
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -93,7 +93,7 @@ Run a query as follows:
 ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 ```
 
-```
+```output
  k
 -------
  key:0
