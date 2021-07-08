@@ -1159,7 +1159,6 @@ class YBBackup:
         :param server_ip: IP address or host name of the server to SSH into.
         :return: the standard output of the SSH command
         """
-        time.sleep(10)
         if upload_cloud_cfg and self.has_cfg_file():
             self.upload_cloud_config(server_ip)
 
