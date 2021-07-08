@@ -47,7 +47,8 @@ const AlertDestinationConfiguration = (props) => {
   const handleOnSubmit = (values) => {
     let payload = {
       name: '',
-      receivers: []
+      receivers: [],
+      defaultRoute: true
     };
     payload.name = values['ALERT_DESTINATION_NAME'];
     values['DESTINATION_CHANNEL_LIST'].forEach((channel) => payload.receivers.push(channel.value));

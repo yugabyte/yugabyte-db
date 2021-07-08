@@ -57,6 +57,9 @@ export const CREATE_ALERT_RECEIVER_RESPONSE = 'CREATE_ALERT_RECEIVER_RESPONSE';
 export const CREATE_ALERT_DESTINATION = 'CREATE_ALERT_DESTINATION';
 export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPONSE';
 
+export const CREATE_ALERT_CONFIG = 'CREATE_ALERT_CONFIG';
+export const CREATE_ALERT_CONFIG_RESPONSE = 'CREATE_ALERT_CONFIG_RESPONSE';
+
 export const UPDATE_ALERT_DESTINATION = 'UPDATE_ALERT_DESTINATION';
 export const UPDATE_ALERT_DESTINATION_RESPONSE = 'UPDATE_ALERT_DESTINATION_RESPONSE';
 
@@ -69,6 +72,7 @@ export const GET_ALERT_RECEIVERS_FAILURE = 'GET_ALERT_RECEIVERS_FAILURE';
 
 export const GET_ALERT_CONFIGS = 'GET_ALERT_CONFIGS';
 export const GET_ALERT_DESTIONATIONS = 'GET_ALERT_DESTIONATIONS';
+export const GET_ALERT_DEFINATION_TEMPLATES = 'GET_ALERT_DEFINATION_TEMPLATES';
 
 export const FETCH_YUGAWARE_VERSION = 'FETCH_YUGAWARE_VERSION';
 export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE';
@@ -471,7 +475,7 @@ export function createAlertDestination(payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_routes`, payload);
   return {
-    type:   CREATE_ALERT_DESTINATION,
+    type: CREATE_ALERT_DESTINATION,
     payload: request
   };
 }
@@ -483,11 +487,27 @@ export function createAlertDestinationResponse(response) {
   };
 }
 
+export function createAlertConfig(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups`, payload);
+  return {
+    type: CREATE_ALERT_CONFIG,
+    payload: request
+  };
+}
+
+export function createAlertConfigResponse(response) {
+  return {
+    type: CREATE_ALERT_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
 export function updateAlertDestination(payload, uuid) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_routes/${uuid}`, payload);
   return {
-    type:   UPDATE_ALERT_DESTINATION,
+    type: UPDATE_ALERT_DESTINATION,
     payload: request
   };
 }
@@ -503,7 +523,7 @@ export function deleteAlertDestination(uuid) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_routes/${uuid}`);
   return {
-    type:   DELETE_ALERT_DESTINATION,
+    type: DELETE_ALERT_DESTINATION,
     payload: request
   };
 }
@@ -512,7 +532,7 @@ export function deleteAlertConfig(uuid) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups/${uuid}`);
   return {
-    type:   DELETE_ALERT_CONFIG,
+    type: DELETE_ALERT_CONFIG,
     payload: request
   };
 }
@@ -546,16 +566,30 @@ export function alertDestionations() {
   return {
     type: GET_ALERT_DESTIONATIONS,
     payload: request
-  }
+  };
 }
 
-export function alertConfigs() {
+export function getTargetMetrics(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups`);
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_definition_templates`, {
+    targetType: payload
+  });
+  return {
+    type: GET_ALERT_DEFINATION_TEMPLATES,
+    payload: request
+  };
+}
+
+export function alertConfigs(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(
+    `${ROOT_URL}/customers/${cUUID}/alert_definition_groups/list`,
+    payload
+  );
   return {
     type: GET_ALERT_CONFIGS,
     payload: request
-  }
+  };
 }
 
 export function getAlertsSuccess(response) {
