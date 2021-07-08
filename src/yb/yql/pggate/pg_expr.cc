@@ -60,19 +60,9 @@ const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
   { "eval_expr_call", PgExpr::Opcode::PG_EXPR_EVAL_EXPR_CALL }
 };
 
-PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity)
-    : opcode_(opcode), type_entity_(type_entity) , type_attrs_({0}) {
-  DCHECK(type_entity_) << "Datatype of result must be specified for expression";
-  DCHECK(type_entity_->yb_type != YB_YQL_DATA_TYPE_NOT_SUPPORTED &&
-         type_entity_->yb_type != YB_YQL_DATA_TYPE_UNKNOWN_DATA &&
-         type_entity_->yb_type != YB_YQL_DATA_TYPE_NULL_VALUE_TYPE)
-    << "Invalid datatype for YSQL expressions";
-  DCHECK(type_entity_->datum_to_yb) << "Conversion from datum to YB format not defined";
-  DCHECK(type_entity_->yb_to_datum) << "Conversion from YB to datum format not defined";
-}
-
 PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs)
-    : opcode_(opcode), type_entity_(type_entity), type_attrs_(*type_attrs) {
+    : opcode_(opcode), type_entity_(type_entity),
+      type_attrs_(type_attrs ? *type_attrs : PgTypeAttrs({0})) {
   DCHECK(type_entity_) << "Datatype of result must be specified for expression";
   DCHECK(type_entity_->yb_type != YB_YQL_DATA_TYPE_NOT_SUPPORTED &&
          type_entity_->yb_type != YB_YQL_DATA_TYPE_UNKNOWN_DATA &&
@@ -80,13 +70,6 @@ PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAt
     << "Invalid datatype for YSQL expressions";
   DCHECK(type_entity_->datum_to_yb) << "Conversion from datum to YB format not defined";
   DCHECK(type_entity_->yb_to_datum) << "Conversion from YB to datum format not defined";
-}
-
-PgExpr::PgExpr(const char *opname, const YBCPgTypeEntity *type_entity)
-    : PgExpr(NameToOpcode(opname), type_entity) {
-}
-
-PgExpr::~PgExpr() {
 }
 
 Status PgExpr::CheckOperatorName(const char *name) {
@@ -551,9 +534,6 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
   InitializeTranslateData();
 }
 
-PgConstant::~PgConstant() {
-}
-
 void PgConstant::UpdateConstant(int8_t value, bool is_null) {
   if (is_null) {
     ql_value_.Clear();
@@ -674,9 +654,6 @@ PgColumnRef::PgColumnRef(int attr_num,
   }
 }
 
-PgColumnRef::~PgColumnRef() {
-}
-
 bool PgColumnRef::is_ybbasetid() const {
   return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
 }
@@ -690,11 +667,8 @@ Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 //--------------------------------------------------------------------------------------------------
 
 PgOperator::PgOperator(const char *opname, const YBCPgTypeEntity *type_entity)
-  : PgExpr(opname, type_entity), opname_(opname) {
+  : PgExpr(NameToOpcode(opname), type_entity), opname_(opname) {
   InitializeTranslateData();
-}
-
-PgOperator::~PgOperator() {
 }
 
 void PgOperator::AppendArg(PgExpr *arg) {

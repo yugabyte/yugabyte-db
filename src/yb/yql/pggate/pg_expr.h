@@ -60,12 +60,6 @@ class PgExpr {
   typedef std::unique_ptr<PgExpr> UniPtr;
   typedef std::unique_ptr<const PgExpr> UniPtrConst;
 
-  // Constructor.
-  explicit PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity);
-  explicit PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs);
-  explicit PgExpr(const char *opname, const YBCPgTypeEntity *type_entity);
-  virtual ~PgExpr();
-
   // Prepare expression when constructing a statement.
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
@@ -196,6 +190,10 @@ class PgExpr {
   static bfpg::TSOpcode OperandTypeToSumTSOpcode(InternalType type);
 
  protected:
+  PgExpr(
+      Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs = nullptr);
+  virtual ~PgExpr() = default;
+
   void InitializeTranslateData();
 
   // Data members.
@@ -215,14 +213,10 @@ class PgConstant : public PgExpr {
   typedef std::unique_ptr<PgConstant> UniPtr;
   typedef std::unique_ptr<const PgConstant> UniPtrConst;
 
-  // Constructor.
-  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
+  PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
       PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
-  explicit PgConstant(const YBCPgTypeEntity *type_entity, PgDatumKind datum_kind,
+  PgConstant(const YBCPgTypeEntity *type_entity, PgDatumKind datum_kind,
       PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
-
-  // Destructor.
-  virtual ~PgConstant();
 
   // Update numeric.
   void UpdateConstant(int8_t value, bool is_null);
@@ -258,11 +252,9 @@ class PgColumnRef : public PgExpr {
   typedef std::unique_ptr<PgColumnRef> UniPtr;
   typedef std::unique_ptr<const PgColumnRef> UniPtrConst;
 
-  explicit PgColumnRef(int attr_num,
-                       const PgTypeEntity *type_entity,
-                       const PgTypeAttrs *type_attrs);
-  virtual ~PgColumnRef();
-
+  PgColumnRef(int attr_num,
+              const PgTypeEntity *type_entity,
+              const PgTypeAttrs *type_attrs);
   // Setup ColumnRef expression when constructing statement.
   CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
 
@@ -285,9 +277,7 @@ class PgOperator : public PgExpr {
   typedef std::unique_ptr<PgOperator> UniPtr;
   typedef std::unique_ptr<const PgOperator> UniPtrConst;
 
-  // Constructor.
-  explicit PgOperator(const char *name, const YBCPgTypeEntity *type_entity);
-  virtual ~PgOperator();
+  PgOperator(const char *name, const YBCPgTypeEntity *type_entity);
 
   // Append arguments.
   void AppendArg(PgExpr *arg);
