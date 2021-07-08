@@ -89,6 +89,9 @@ class CAPABILITY("mutex") SpinLock {
       SlowLock();
     }
     ANNOTATE_RWLOCK_ACQUIRED(this, 1);
+#ifdef __aarch64__
+    __asm__ __volatile__ ("dmb ish" ::: "memory");
+#endif
   }
 
   // Try to acquire this SpinLock without blocking and return true if the
@@ -102,6 +105,9 @@ class CAPABILITY("mutex") SpinLock {
     if (res) {
       ANNOTATE_RWLOCK_ACQUIRED(this, 1);
     }
+#ifdef __aarch64__
+    __asm__ __volatile__ ("dmb ish" ::: "memory");
+#endif
     return res;
   }
 
@@ -118,6 +124,9 @@ class CAPABILITY("mutex") SpinLock {
       // for the lock.
       SlowUnlock(wait_cycles);
     }
+#ifdef __aarch64__
+    __asm__ __volatile__ ("dmb ish" ::: "memory");
+#endif
   }
 
   // Determine if the lock is held.  When the lock is held by the invoking

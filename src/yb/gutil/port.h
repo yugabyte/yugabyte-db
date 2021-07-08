@@ -36,14 +36,16 @@
 #define YB_GUTIL_PORT_H
 
 #include <limits.h>         // So we can set the bounds of our types
-#include <string.h>         // for memcpy()
 #include <stdlib.h>         // for free()
+#include <string.h>         // for memcpy()
 
 #if defined(__APPLE__)
 #include <unistd.h>         // for getpagesize() on mac
 #elif defined(OS_CYGWIN)
 #include <malloc.h>         // for memalign()
 #endif
+
+#include <type_traits>
 
 #include "yb/gutil/integral_types.h"
 
@@ -351,6 +353,10 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
 // TODO(user) This is the L1 D-cache line size of our Power7 machines.
 // Need to check if this is appropriate for other PowerPC64 systems.
 #define CACHELINE_SIZE 128
+#elif defined(__aarch64__)
+// TODO: confirm whether this is always correct and how exactly we are using this.
+// https://github.com/yugabyte/yugabyte-db/issues/9218
+#define CACHELINE_SIZE 64
 #elif defined(__arm__)
 // Cache line sizes for ARM: These values are not strictly correct since
 // cache line sizes depend on implementations, not architectures.  There
@@ -399,6 +405,17 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
 #undef ATTRIBUTE_WEAK
 #define ATTRIBUTE_WEAK __attribute__ ((weak))
 #define HAVE_ATTRIBUTE_WEAK 1
+
+// For deprecated functions or variables, generate a warning at usage sites.
+// Verified to work as early as GCC 3.1.1 and clang 3.2 (so we'll assume any
+// clang is new enough).
+#if defined(__clang__) || \
+  (defined(COMPILER_GCC) && \
+   (__GNUC__ * 10000 + __GNUC_MINOR__ * 100) >= 30200)
+#define ATTRIBUTE_DEPRECATED(msg) __attribute__ ((deprecated (msg) ))
+#else
+#define ATTRIBUTE_DEPRECATED(msg)
+#endif
 
 // Tell the compiler to use "initial-exec" mode for a thread-local variable.
 // See http://people.redhat.com/drepper/tls.pdf for the gory details.
@@ -1143,23 +1160,62 @@ inline void UNALIGNED_STORE64(void *p, uint64 v) {
 
 #if defined(__cplusplus)
 
-inline void UnalignedCopy16(const void *src, void *dst) {
-  UNALIGNED_STORE16(dst, UNALIGNED_LOAD16(src));
+namespace port_internal {
+
+template<class T>
+constexpr bool LoadByReinterpretCast() {
+#ifndef NEED_ALIGNED_LOADS
+  // Per above, it's safe to use reinterpret_cast on x86 for types int64 and smaller.
+  return sizeof(T) <= 8;
+#else
+  return false;
+#endif
 }
 
-inline void UnalignedCopy32(const void *src, void *dst) {
-  UNALIGNED_STORE32(dst, UNALIGNED_LOAD32(src));
+// Enable UnalignedLoad and UnalignedStore for numeric types (floats and ints) including int128.
+// We don't allow these functions for other types, even if they are POD and <= 16 bits.
+template<class T>
+using enable_if_numeric = std::enable_if<
+  std::is_arithmetic<T>::value || std::is_same<T, __int128>::value, T>;
+
+} // namespace port_internal
+
+
+// Load an integer from pointer 'src'.
+//
+// This is a safer equivalent of *reinterpret_cast<const T*>(src) that properly handles
+// the case of larger types such as int128 which require alignment.
+//
+// Usage:
+//   int32_t x = UnalignedLoad<int32_t>(void_ptr);
+//
+template<typename T,
+         typename port_internal::enable_if_numeric<T>::type* = nullptr>
+inline T UnalignedLoad(const void* src) {
+  if (port_internal::LoadByReinterpretCast<T>()) {
+    return *reinterpret_cast<const T*>(src);
+  }
+  T ret;
+  memcpy(&ret, src, sizeof(T));
+  return ret;
 }
 
-inline void UnalignedCopy64(const void *src, void *dst) {
-  if (sizeof(void *) == 8) {
-    UNALIGNED_STORE64(dst, UNALIGNED_LOAD64(src));
+
+// Store the integer 'src' in the pointer 'dst'.
+//
+// Usage:
+//   int32_t foo = 123;
+//   UnalignedStore(my_void_ptr, foo);
+//
+// NOTE: this reverses the usual style-guide-suggested order of arguments
+// to match the more natural "*p = v;" ordering of a normal store.
+template<typename T,
+         typename port_internal::enable_if_numeric<T>::type* = nullptr>
+inline void UnalignedStore(void* dst, const T& src) {
+  if (port_internal::LoadByReinterpretCast<T>()) {
+    *reinterpret_cast<T*>(dst) = src;
   } else {
-    const char *src_char = reinterpret_cast<const char *>(src);
-    char *dst_char = reinterpret_cast<char *>(dst);
-
-    UNALIGNED_STORE32(dst_char, UNALIGNED_LOAD32(src_char));
-    UNALIGNED_STORE32(dst_char + 4, UNALIGNED_LOAD32(src_char + 4));
+    memcpy(dst, &src, sizeof(T));
   }
 }
 
@@ -1191,10 +1247,12 @@ inline void UnalignedCopy64(const void *src, void *dst) {
 #define PRINTABLE_PTHREAD(pthreadt) pthreadt
 #endif
 
-#define SIZEOF_MEMBER(t, f) sizeof(reinterpret_cast<t*>(4096)->f)
+#define SIZEOF_MEMBER(t, f)   sizeof(((t*) 4096)->f)
 
-#define OFFSETOF_MEMBER(t, f)          \
-  (reinterpret_cast<char*>(&(reinterpret_cast<t*>(16)->f)) - reinterpret_cast<char*>(16))
+#define OFFSETOF_MEMBER(t, f)         \
+  (reinterpret_cast<char*>(           \
+     &reinterpret_cast<t*>(16)->f) -  \
+   reinterpret_cast<char*>(16))
 
 #define OBJECT_FROM_MEMBER(T, f, p) \
     (reinterpret_cast<T*>(reinterpret_cast<char*>(p) - OFFSETOF_MEMBER(T, f)))

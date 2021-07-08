@@ -20,8 +20,8 @@
 //
 // LinuxKernelCmpxchg and Barrier_AtomicIncrement are from Google Gears.
 
-#ifndef BASE_AUXILIARY_ATOMICOPS_INTERNALS_ARM_GENERIC_H_
-#define BASE_AUXILIARY_ATOMICOPS_INTERNALS_ARM_GENERIC_H_
+#ifndef YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_ARM_GENERIC_H
+#define YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_ARM_GENERIC_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -238,7 +238,7 @@ inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
   return 0;
 }
 
-}  // namespace base::subtle
+}  // namespace subtle
 }  // namespace base
 
-#endif  // BASE_AUXILIARY_ATOMICOPS_INTERNALS_ARM_GENERIC_H_
+#endif  // YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_ARM_GENERIC_H

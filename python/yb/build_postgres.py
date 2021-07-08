@@ -296,7 +296,6 @@ class PostgresBuilder(YbBuildToolBase):
             '-Wimplicit-function-declaration',
             '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
-            '-DUSE_SSE42_CRC32C=1',
             '-std=c11',
             '-Werror=implicit-function-declaration',
             '-Werror=int-conversion',

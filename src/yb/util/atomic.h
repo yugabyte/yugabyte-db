@@ -38,6 +38,7 @@
 #include <thread>
 
 #include <boost/type_traits/make_signed.hpp>
+#include <boost/atomic.hpp>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"
@@ -440,6 +441,34 @@ class AtomicTryMutex {
 template <class T, class D>
 T AddFetch(std::atomic<T>* atomic, const D& delta, std::memory_order memory_order) {
   return atomic->fetch_add(delta, memory_order) + delta;
+}
+
+// ------------------------------------------------------------------------------------------------
+// A utility for testing if an atomic is lock-free.
+
+namespace atomic_internal {
+
+template <class T>
+bool IsAcceptableAtomicImpl(const T& atomic_variable) {
+#ifdef __aarch64__
+  // TODO: ensure we are using proper 16-byte atomics on aarch64.
+  // https://github.com/yugabyte/yugabyte-db/issues/9196
+  return true;
+#else
+  return atomic_variable.is_lock_free();
+#endif
+}
+
+}  // namespace atomic_internal
+
+template <class T>
+bool IsAcceptableAtomicImpl(const boost::atomics::atomic<T>& atomic_variable) {
+  return atomic_internal::IsAcceptableAtomicImpl(atomic_variable);
+}
+
+template <class T>
+bool IsAcceptableAtomicImpl(const std::atomic<T>& atomic_variable) {
+  return atomic_internal::IsAcceptableAtomicImpl(atomic_variable);
 }
 
 } // namespace yb

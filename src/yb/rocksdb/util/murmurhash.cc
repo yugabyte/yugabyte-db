@@ -183,10 +183,12 @@ unsigned int MurmurHashNeutral2 ( const void * key, int len, unsigned int seed )
 
     switch(len)
     {
-    case 3: h ^= data[2] << 16;
-    case 2: h ^= data[1] << 8;
+    case 3: h ^= data[2] << 16; FALLTHROUGH_INTENDED;
+    case 2: h ^= data[1] << 8; FALLTHROUGH_INTENDED;
     case 1: h ^= data[0];
         h *= m;
+        FALLTHROUGH_INTENDED;
+    case 0:;
     };
 
     h ^= h >> 13;

@@ -34,7 +34,11 @@
 #define YB_COMMON_KEY_ENCODER_H
 
 #include <arpa/inet.h>
+
+#ifndef __aarch64__
 #include <nmmintrin.h>
+#endif
+
 #include <string.h>
 
 #include <climits>
@@ -306,6 +310,9 @@ struct KeyEncoderTraits<BINARY, Buffer> {
   // REQUIRES: len == 16 or 8
   template<int LEN>
   static bool SSEEncodeChunk(const uint8_t** srcp, uint8_t** dstp) {
+#ifdef __aarch64__
+    return false;
+#else
     COMPILE_ASSERT(LEN == 16 || LEN == 8, invalid_length);
     __m128i data;
     if (LEN == 16) {
@@ -342,6 +349,7 @@ struct KeyEncoderTraits<BINARY, Buffer> {
     *dstp += LEN;
     *srcp += LEN;
     return true;
+#endif
   }
 
   // Non-SSE loop which encodes 'len' bytes from 'srcp' into 'dst'.
