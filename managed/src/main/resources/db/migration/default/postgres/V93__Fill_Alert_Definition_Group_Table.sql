@@ -1,4 +1,17 @@
 -- Copyright (c) YugaByte, Inc.
+
+DO $$
+declare
+  value_type text;
+begin
+  select data_type into value_type from information_schema.columns
+    where table_schema = 'public' and table_name= 'runtime_config_entry' and column_name = 'value';
+  if value_type = 'text' then
+    alter table runtime_config_entry alter column value type bytea using convert_to(value::text, 'utf8');
+  end if;
+end;
+$$ language plpgsql;
+
 CREATE OR REPLACE FUNCTION get_default_threshold(customer_uuid uuid, name text, default_value double precision)
  RETURNS double precision
  language plpgsql
