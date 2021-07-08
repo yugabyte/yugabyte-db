@@ -42,12 +42,39 @@ export const AlertDestionations = (props) => {
     onAddAlertDestination,
     setInitialValues,
     showDeleteModal,
-    showDetailsModal
+    showDetailsModal,
+    getAlertReceivers
   } = props;
 
   useEffect(() => {
-    alertDestionations().then((res) => {
-      setAlertDesionation(res);
+    // Map the destinations with receivers targetType
+    let result = new Map();
+
+    // API call to get destinations and receivers
+    alertDestionations().then((destinations) => {
+      getAlertReceivers().then((receivers) => {
+        // Each destination['receiver'] is mapped to contain targetType metadata
+        destinations.forEach((dest) => {
+          result.set(dest.uuid, {
+            name: dest.name,
+            uuid: dest.uuid,
+            channels: []
+          });
+          dest['receivers'].forEach((rx) => {
+            const matchedRx = receivers.find((receiver) => receiver.uuid === rx);
+            const destination = result.get(dest.uuid);
+
+            // change the signature of map here.
+            destination.channels.push({
+              uuid: rx,
+              targetType: matchedRx.params.targetType,
+              targetName: matchedRx.name
+            });
+            result.set(dest.uuid, destination);
+          });
+        });
+        setAlertDesionation(Array.from(result.values()));
+      });
     });
   }, []);
 
@@ -70,10 +97,10 @@ export const AlertDestionations = (props) => {
    * @param {object} row Respective row data.
    */
   const onEditDestination = (row) => {
-    const channels = row.receivers.map((channel) => {
+    const channels = row.channels.map((channel) => {
       return {
-        value: channel,
-        label: 'Email' // This needs to be changed as per the API object.
+        value: channel.uuid,
+        label: channel.targetName // This needs to be changed as per the API object.
       };
     });
 
@@ -86,6 +113,15 @@ export const AlertDestionations = (props) => {
 
     setInitialValues(initialVal);
     onAddAlertDestination(true);
+  };
+
+  /**
+   *
+   * @param {destination} row
+   * @returns Comma seperated cannel targetType.
+   */
+  const getChannelType = (row) => {
+    return row.map((channel) => channel.targetType).join();
   };
 
   // This method will handle all the required actions for the particular row.
@@ -152,7 +188,7 @@ export const AlertDestionations = (props) => {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="channels"
-                // dataFormat={}
+                dataFormat={getChannelType}
                 columnClassName="no-border name-column"
                 className="no-border"
               >

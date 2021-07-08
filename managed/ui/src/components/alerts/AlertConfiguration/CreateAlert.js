@@ -20,6 +20,7 @@ import {
 import { Formik } from 'formik';
 import '../CreateAlerts.scss';
 import AlertsPolicy from './AlertsPolicy';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
@@ -37,16 +38,29 @@ const CreateAlert = (props) => {
 
   useEffect(() => {
     alertDestionations().then((res) => {
-      res = res.map((destination) => (
-        <option key={1} value={destination.uuid}>
+      res = res.map((destination, index) => (
+        <option key={index} value={destination.uuid}>
           {destination.name}
         </option>
       ));
       setAlertDesionation(res);
     });
 
+    if (!getPromiseState(universes).isSuccess()) {
+      props.fetchUniverseList().then((data) => {
+        setAlertUniverseList([
+          ...data.map((universe) => ({
+            label: universe.name,
+            value: universe.universeUUID
+          }))
+        ]);
+      });
+    }
     setAlertUniverseList([
-      ...universes.data.map((universe) => ({ label: universe.name, value: universe.universeUUID }))
+      ...props.universes.data.map((universe) => ({
+        label: universe.name,
+        value: universe.universeUUID
+      }))
     ]);
   }, []);
 

@@ -64,7 +64,6 @@ export const AlertsList = (props) => {
 
   useEffect(() => {
     alertConfigs().then((res) => {
-      console.log(res, '******** response');
       setAlertList(res);
     });
   }, []);

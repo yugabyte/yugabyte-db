@@ -1,7 +1,7 @@
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field } from 'redux-form';
-import { YBFormInput, YBInputField, YBSelect } from '../../common/forms/fields';
+import { YBInputField, YBSelect } from '../../common/forms/fields';
 import '../CreateAlerts.scss';
 
 export default class AlertsPolicy extends Component {
