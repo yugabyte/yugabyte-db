@@ -175,7 +175,18 @@ public class BackupsController extends AuthenticatedController {
         if (backup.state != Backup.BackupState.Completed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
-          UUID taskUUID = deleteBackup(customer, backup);
+          DeleteBackup.Params taskParams = new DeleteBackup.Params();
+          taskParams.customerUUID = customerUUID;
+          taskParams.backupUUID = uuid;
+          UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
+          LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, uuid);
+          CustomerTask.create(
+              customer,
+              backup.getBackupInfo().universeUUID,
+              taskUUID,
+              CustomerTask.TargetType.Backup,
+              CustomerTask.TaskType.Delete,
+              "Backup");
           taskUUIDList.add(taskUUID);
           auditService().createAuditEntry(ctx(), request(), taskUUID);
         }
@@ -184,24 +195,8 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTasks(taskUUIDList).asResult();
   }
 
-  public UUID deleteBackup(Customer customer, Backup backup) {
-    DeleteBackup.Params taskParams = new DeleteBackup.Params();
-    taskParams.customerUUID = customer.getUuid();
-    taskParams.backupUUID = backup.backupUUID;
-    UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backup.backupUUID);
-    CustomerTask.create(
-        customer,
-        backup.getBackupInfo().universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Backup,
-        CustomerTask.TaskType.Delete,
-        "Backup");
-    return taskUUID;
-  }
-
   public Result stop(UUID customerUUID, UUID backupUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);
     Backup backup = Backup.get(customerUUID, backupUUID);
     if (backup.state != Backup.BackupState.InProgress) {
@@ -215,29 +210,7 @@ public class BackupsController extends AuthenticatedController {
     } finally {
       Util.removeProcessOrBadRequest(backupUUID);
     }
-    try {
-      UUID taskUUID = deleteBackup(customer, backup);
-      waitForTask(taskUUID);
-    } catch (InterruptedException e) {
-      LOG.info("Error while waiting for the task.");
-    } finally {
-      backup.transitionState(BackupState.Stopped);
-    }
+    backup.transitionState(BackupState.Stopped);
     return YWResults.withData("Successfully stopped the backup process.");
-  }
-
-  public TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
-    int numRetries = 0;
-    while (numRetries < maxRetryCount) {
-      TaskInfo taskInfo = TaskInfo.get(taskUUID);
-      if (taskInfo.getTaskState() == TaskInfo.State.Success
-          || taskInfo.getTaskState() == TaskInfo.State.Failure) {
-        return taskInfo;
-      }
-      Thread.sleep(1000);
-      numRetries++;
-    }
-    throw new RuntimeException(
-        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 }
