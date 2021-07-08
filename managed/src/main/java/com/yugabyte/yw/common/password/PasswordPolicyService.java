@@ -34,8 +34,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class PasswordPolicyService {
-   public static final Logger LOG = LoggerFactory.getLogger(PasswordPolicyService.class);
-
   private static final char[] SPECIAL_CHARACTERS =
       "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".toCharArray();
   private static final String DEFAULT_MIN_LENGTH_PARAM = "yb.pwdpolicy.default_min_length";
