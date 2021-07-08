@@ -18,17 +18,16 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.HealthCheck.Details;
-
+import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
+import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -41,8 +40,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFormDataToTaskParams;
-
 @Api(
     value = "UniverseInfo",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
@@ -51,6 +48,7 @@ public class UniverseInfoController extends AuthenticatedController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private UniverseInfoHandler universeInfoHandler;
+  @Inject private HttpExecutionContext ec;
 
   /**
    * API that checks the status of the the tservers and masters in the universe.
@@ -189,6 +187,7 @@ public class UniverseInfoController extends AuthenticatedController {
           } catch (IOException e) {
             throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
           }
-        });
+        },
+        ec.current());
   }
 }
