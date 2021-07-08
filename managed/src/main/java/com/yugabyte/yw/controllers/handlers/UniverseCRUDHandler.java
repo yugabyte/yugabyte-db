@@ -25,9 +25,9 @@ import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,7 +75,7 @@ public class UniverseCRUDHandler {
     }
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
     //  uuid.
-    UniverseDefinitionTaskParams.Cluster c =
+    Cluster c =
         taskParams.getCurrentClusterType().equals(UniverseDefinitionTaskParams.ClusterType.PRIMARY)
             ? taskParams.getPrimaryCluster()
             : taskParams.getReadOnlyClusters().get(0);
@@ -111,7 +111,7 @@ public class UniverseCRUDHandler {
           BAD_REQUEST, "root and clientRootCA cannot be different for Kubernetes env.");
     }
 
-    for (UniverseDefinitionTaskParams.Cluster c : taskParams.clusters) {
+    for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
@@ -182,7 +182,7 @@ public class UniverseCRUDHandler {
         customer.getCustomerId());
 
     TaskType taskType = TaskType.CreateUniverse;
-    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
 
     if (primaryCluster != null) {
       UniverseDefinitionTaskParams.UserIntent primaryIntent = primaryCluster.userIntent;
@@ -220,14 +220,7 @@ public class UniverseCRUDHandler {
             throw new YWServiceException(
                 BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
           }
-          if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-            String errMsg =
-                String.format(
-                    "The certificate %s needs info. Update the cert" + " and retry.",
-                    CertificateInfo.get(taskParams.rootCA).label);
-            LOG.error(errMsg);
-            throw new YWServiceException(BAD_REQUEST, errMsg);
-          }
+          checkValidRootCA(taskParams.rootCA);
         }
       }
       if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
@@ -274,14 +267,7 @@ public class UniverseCRUDHandler {
                 BAD_REQUEST,
                 "CustomCertHostPath certificates are only supported for onprem providers.");
           }
-          if (!CertificateInfo.isCertificateValid(taskParams.clientRootCA)) {
-            String errMsg =
-                String.format(
-                    "The certificate %s needs info. Update the cert" + " and retry.",
-                    CertificateInfo.get(taskParams.clientRootCA).label);
-            LOG.error(errMsg);
-            throw new YWServiceException(BAD_REQUEST, errMsg);
-          }
+          checkValidRootCA(taskParams.clientRootCA);
           LOG.info(
               "Skipping client certificate creation for universe {} ({}) "
                   + "because cert {} (type {})is not a self-signed cert.",
@@ -345,122 +331,130 @@ public class UniverseCRUDHandler {
     return UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
   }
 
-  public UUID update(
-      Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
+  /**
+   * Update Universe with given params. Updates only one cluster at a time (PRIMARY or Read Replica)
+   *
+   * @return task UUID of customer task that will actually do the update in the background
+   */
+  public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
+    checkCanEdit(customer, u);
+    if (taskParams.getPrimaryCluster() == null) {
+      // Update of a read only cluster.
+      return updateCluster(customer, u, taskParams);
+    } else {
+      return updatePrimaryCluster(customer, u, taskParams);
+    }
+  }
 
+  private UUID updatePrimaryCluster(
+      Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
+    // Update Primary cluster
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    TaskType taskType = TaskType.EditUniverse;
+    if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      taskType = TaskType.EditKubernetesUniverse;
+      notHelm2LegacyOrBadRequest(u);
+    } else {
+      mergeNodeExporterInfo(u, taskParams);
+    }
+    PlacementInfoUtil.updatePlacementInfo(
+        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster.placementInfo);
+    return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Universe);
+  }
+
+  private UUID updateCluster(
+      Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
+    Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
+    PlacementInfoUtil.updatePlacementInfo(
+        taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
+    return submitEditUniverse(
+        customer, u, taskParams, TaskType.EditUniverse, CustomerTask.TargetType.Cluster);
+  }
+
+  /** Merge node exporter related information from current universe details to the task params */
+  private void mergeNodeExporterInfo(Universe u, UniverseDefinitionTaskParams taskParams) {
+    // Set the node exporter config based on the provider
+    UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+    boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
+    int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
+    String nodeExporterUser = universeDetails.nodeExporterUser;
+    taskParams.extraDependencies.installNodeExporter = installNodeExporter;
+    taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
+
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.nodeExporterPort = nodeExporterPort;
+    }
+
+    if (installNodeExporter) {
+      taskParams.nodeExporterUser = nodeExporterUser;
+    }
+  }
+
+  private UUID submitEditUniverse(
+      Customer customer,
+      Universe u,
+      UniverseDefinitionTaskParams taskParams,
+      TaskType taskType,
+      CustomerTask.TargetType targetType) {
+    taskParams.rootCA = checkValidRootCA(u.getUniverseDetails().rootCA);
+    LOG.info("Found universe {} : name={} at version={}.", u.universeUUID, u.name, u.version);
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
-        "Update universe {} [ {} ] customer {}.",
-        universe.name,
-        universe.universeUUID,
-        customer.uuid);
-    if (!universe.getUniverseDetails().isUniverseEditable()) {
-      String errMsg = "Universe UUID " + universe.universeUUID + " cannot be edited.";
+        "Submitted {} for {} : {}, task uuid = {}.", taskType, u.universeUUID, u.name, taskUUID);
+    // Add this task uuid to the user universe.
+    CustomerTask.create(
+        customer, u.universeUUID, taskUUID, targetType, CustomerTask.TaskType.Update, u.name);
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        u.universeUUID,
+        u.name);
+    return taskUUID;
+  }
+
+  private void notHelm2LegacyOrBadRequest(Universe u) {
+    Map<String, String> universeConfig = u.getConfig();
+    if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Cannot perform an edit operation on universe "
+              + u.universeUUID
+              + " as it is not helm 3 compatible. "
+              + "Manually migrate the deployment to helm3 "
+              + "and then mark the universe as helm 3 compatible.");
+    }
+  }
+
+  private UUID checkValidRootCA(UUID rootCA) {
+    if (!CertificateInfo.isCertificateValid(rootCA)) {
+      String errMsg =
+          String.format(
+              "The certificate %s needs info. Update the cert and retry.",
+              CertificateInfo.get(rootCA).label);
+      LOG.error(errMsg);
+      throw new YWServiceException(BAD_REQUEST, errMsg);
+    }
+    return rootCA;
+  }
+
+  private void checkCanEdit(Customer customer, Universe u) {
+    LOG.info("Update universe {} [ {} ] customer {}.", u.name, u.universeUUID, customer.uuid);
+    if (!u.getUniverseDetails().isUniverseEditable()) {
+      String errMsg = "Universe UUID " + u.universeUUID + " cannot be edited.";
       LOG.error(errMsg);
       throw new YWServiceException(BAD_REQUEST, errMsg);
     }
 
-    if (universe.nodesInTransit()) {
+    if (u.nodesInTransit()) {
       // TODO 503 - Service Unavailable
       throw new YWServiceException(
           BAD_REQUEST,
           "Cannot perform an edit operation on universe "
-              + universe.universeUUID
+              + u.universeUUID
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
     }
-
-    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
-    UUID uuid;
-    PlacementInfo placementInfo;
-    TaskType taskType = TaskType.EditUniverse;
-    if (primaryCluster == null) {
-      // Update of a read only cluster.
-      List<UniverseDefinitionTaskParams.Cluster> readReplicaClusters =
-          taskParams.getReadOnlyClusters();
-      if (readReplicaClusters.size() != 1) {
-        String errMsg =
-            "Can only have one read-only cluster per edit/update for now, found "
-                + readReplicaClusters.size();
-        LOG.error(errMsg);
-        throw new YWServiceException(BAD_REQUEST, errMsg);
-      }
-      UniverseDefinitionTaskParams.Cluster cluster = readReplicaClusters.get(0);
-      uuid = cluster.uuid;
-      placementInfo = cluster.placementInfo;
-    } else {
-      uuid = primaryCluster.uuid;
-      placementInfo = primaryCluster.placementInfo;
-
-      Map<String, String> universeConfig = universe.getConfig();
-      if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-        taskType = TaskType.EditKubernetesUniverse;
-        if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
-          throw new YWServiceException(
-              BAD_REQUEST,
-              "Cannot perform an edit operation on universe "
-                  + universe.universeUUID
-                  + " as it is not helm 3 compatible. "
-                  + "Manually migrate the deployment to helm3 "
-                  + "and then mark the universe as helm 3 compatible.");
-        }
-      } else {
-        // Set the node exporter config based on the provider
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        boolean installNodeExporter = universeDetails.extraDependencies.installNodeExporter;
-        int nodeExporterPort = universeDetails.communicationPorts.nodeExporterPort;
-        String nodeExporterUser = universeDetails.nodeExporterUser;
-        taskParams.extraDependencies.installNodeExporter = installNodeExporter;
-        taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
-
-        for (NodeDetails node : taskParams.nodeDetailsSet) {
-          node.nodeExporterPort = nodeExporterPort;
-        }
-
-        if (installNodeExporter) {
-          taskParams.nodeExporterUser = nodeExporterUser;
-        }
-      }
-    }
-
-    PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(uuid), placementInfo);
-
-    taskParams.rootCA = universe.getUniverseDetails().rootCA;
-    if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-      String errMsg =
-          String.format(
-              "The certificate %s needs info. Update the cert and retry.",
-              CertificateInfo.get(taskParams.rootCA).label);
-      LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
-    }
-    LOG.info(
-        "Found universe {} : name={} at version={}.",
-        universe.universeUUID,
-        universe.name,
-        universe.version);
-
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info(
-        "Submitted edit universe for {} : {}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
-        taskUUID);
-
-    // Add this task uuid to the user universe.
-    CustomerTask.create(
-        customer,
-        universe.universeUUID,
-        taskUUID,
-        primaryCluster == null ? CustomerTask.TargetType.Cluster : CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.Update,
-        universe.name);
-    LOG.info(
-        "Saved task uuid {} in customer tasks table for universe {} : {}.",
-        taskUUID,
-        universe.universeUUID,
-        universe.name);
-    return taskUUID;
   }
 
   public List<UniverseResp> list(Customer customer) {
@@ -502,7 +496,7 @@ public class UniverseCRUDHandler {
     // Submit the task to destroy the universe.
     TaskType taskType = TaskType.DestroyUniverse;
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.DestroyKubernetesUniverse;
     }
@@ -535,37 +529,27 @@ public class UniverseCRUDHandler {
     LOG.info("Create cluster for {} in {}.", customer.uuid, universe.universeUUID);
     // Get the user submitted form data.
 
-    if (taskParams.clusters == null || taskParams.clusters.size() != 1) {
+    if (taskParams.clusters == null || taskParams.clusters.size() != 1)
       throw new YWServiceException(
           BAD_REQUEST,
           "Invalid 'clusters' field/size: "
               + taskParams.clusters
               + " for "
               + universe.universeUUID);
-    }
 
-    List<UniverseDefinitionTaskParams.Cluster> newReadOnlyClusters = taskParams.clusters;
-    List<UniverseDefinitionTaskParams.Cluster> existingReadOnlyClusters =
-        universe.getUniverseDetails().getReadOnlyClusters();
+    List<Cluster> newReadOnlyClusters = taskParams.clusters;
+    List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
     LOG.info(
         "newReadOnly={}, existingRO={}.",
         newReadOnlyClusters.size(),
         existingReadOnlyClusters.size());
 
     if (existingReadOnlyClusters.size() > 0 && newReadOnlyClusters.size() > 0) {
-      String errMsg = "Can only have one read-only cluster per universe for now.";
-      LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new YWServiceException(
+          BAD_REQUEST, "Can only have one read-only cluster per universe for now.");
     }
 
-    if (newReadOnlyClusters.size() != 1) {
-      String errMsg =
-          "Only one read-only cluster expected, but we got " + newReadOnlyClusters.size();
-      LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
-    }
-
-    UniverseDefinitionTaskParams.Cluster cluster = newReadOnlyClusters.get(0);
+    Cluster cluster = getOnlyReadReplicaOrBadRequest(newReadOnlyClusters);
     if (cluster.uuid == null) {
       String errMsg = "UUID of read-only cluster should be non-null.";
       LOG.error(errMsg);
@@ -583,7 +567,7 @@ public class UniverseCRUDHandler {
     }
 
     // Set the provider code.
-    UniverseDefinitionTaskParams.Cluster c = taskParams.clusters.get(0);
+    Cluster c = taskParams.clusters.get(0);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
     c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
     c.validate();
@@ -624,16 +608,9 @@ public class UniverseCRUDHandler {
 
   public UUID clusterDelete(
       Customer customer, Universe universe, UUID clusterUUID, Boolean isForceDelete) {
-    List<UniverseDefinitionTaskParams.Cluster> existingReadOnlyClusters =
-        universe.getUniverseDetails().getReadOnlyClusters();
-    if (existingReadOnlyClusters.size() != 1) {
-      String errMsg =
-          "Expected just one read only cluster, but found " + existingReadOnlyClusters.size();
-      LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
-    }
+    List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
 
-    UniverseDefinitionTaskParams.Cluster cluster = existingReadOnlyClusters.get(0);
+    Cluster cluster = getOnlyReadReplicaOrBadRequest(existingReadOnlyClusters);
     UUID uuid = cluster.uuid;
     if (!uuid.equals(clusterUUID)) {
       String errMsg =
@@ -673,6 +650,16 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
+  private Cluster getOnlyReadReplicaOrBadRequest(List<Cluster> readReplicaClusters) {
+    if (readReplicaClusters.size() != 1) {
+      String errMsg =
+          "Only one read-only cluster expected, but we got " + readReplicaClusters.size();
+      LOG.error(errMsg);
+      throw new YWServiceException(BAD_REQUEST, errMsg);
+    }
+    return readReplicaClusters.get(0);
+  }
+
   /**
    * Throw an exception if the given provider has an AZ with KUBENAMESPACE in the config and the
    * provdier has a cluster associated with it. Providers with namespace setting don't support
@@ -693,10 +680,9 @@ public class UniverseCRUDHandler {
     if (isNamespaceSet) {
       for (UUID universeUUID : Universe.getAllUUIDs(customer)) {
         Universe u = Universe.getOrBadRequest(universeUUID);
-        List<UniverseDefinitionTaskParams.Cluster> clusters =
-            u.getUniverseDetails().getReadOnlyClusters();
+        List<Cluster> clusters = u.getUniverseDetails().getReadOnlyClusters();
         clusters.add(u.getUniverseDetails().getPrimaryCluster());
-        for (UniverseDefinitionTaskParams.Cluster c : clusters) {
+        for (Cluster c : clusters) {
           UUID providerUUID = UUID.fromString(c.userIntent.provider);
           if (providerUUID.equals(providerToCheck.uuid)) {
             String msg =
@@ -900,15 +886,7 @@ public class UniverseCRUDHandler {
       }
     }
 
-    taskParams.rootCA = universe.getUniverseDetails().rootCA;
-    if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
-      String errMsg =
-          String.format(
-              "The certificate %s needs info. Update the cert and retry.",
-              CertificateInfo.get(taskParams.rootCA).label);
-      LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
-    }
+    taskParams.rootCA = checkValidRootCA(universe.getUniverseDetails().rootCA);
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(

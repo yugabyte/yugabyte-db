@@ -808,7 +808,7 @@ FuncExpr
 FuncInfo
 Function
 FunctionCallInfo
-FunctionCallInfoBaseData
+FunctionCallInfoData
 FunctionParameter
 FunctionParameterMode
 FunctionScan
@@ -1354,7 +1354,6 @@ NonEmptyRange
 Notification
 NotifyStmt
 Nsrt
-NullableDatum
 NullIfExpr
 NullTest
 NullTestType
