@@ -259,6 +259,7 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  zlib.cc
   async_util.cc
   )
 
