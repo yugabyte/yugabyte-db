@@ -26,6 +26,7 @@
 
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals; // NOLINT
 
@@ -33,6 +34,7 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
+DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 
 namespace yb {
 
@@ -117,11 +119,11 @@ class CompactionTest : public YBTest {
     // Start cluster.
     MiniClusterOptions opts;
     opts.num_tablet_servers = 1;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     // These flags should be set after minicluster start, so it wouldn't override them.
-    FLAGS_db_write_buffer_size = kMemStoreSize;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = 3;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kMemStoreSize;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 3;
     // Patch tablet options inside tablet manager, will be applied to newly created tablets.
     cluster_->GetTabletManager(0)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
 
@@ -164,19 +166,20 @@ class CompactionTest : public YBTest {
     return workload_->rows_inserted() * kPayloadBytes;
   }
 
-  void WriteAtLeast(size_t size_bytes) {
+  CHECKED_STATUS WriteAtLeast(size_t size_bytes) {
     workload_->Start();
-    AssertLoggedWaitFor(
+    RETURN_NOT_OK(LoggedWaitFor(
         [this, size_bytes] { return BytesWritten() >= size_bytes; }, 60s,
-        Format("Waiting until we've written at least $0 bytes ...", size_bytes), kWaitDelay);
+        Format("Waiting until we've written at least $0 bytes ...", size_bytes), kWaitDelay));
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
+    return Status::OK();
   }
 
-  void WriteAtLeastFilesPerDb(int num_files) {
+  CHECKED_STATUS WriteAtLeastFilesPerDb(int num_files) {
     auto dbs = GetAllRocksDbs(cluster_.get());
     workload_->Start();
-    AssertLoggedWaitFor(
+    RETURN_NOT_OK(LoggedWaitFor(
         [this, &dbs, num_files] {
             for (auto* db : dbs) {
               if (rocksdb_listener_->GetNumFlushesCompleted(db
@@ -187,9 +190,10 @@ class CompactionTest : public YBTest {
             return true;
           }, 60s,
         Format("Waiting until we've written at least $0 files per rocksdb ...", num_files),
-        kWaitDelay);
+        kWaitDelay * kTimeMultiplier));
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
+    return Status::OK();
   }
 
   void TestCompactionAfterTruncate();
@@ -206,17 +210,17 @@ class CompactionTest : public YBTest {
 
 void CompactionTest::TestCompactionAfterTruncate() {
   // Write some data before truncate to make sure truncate wouldn't be noop.
-  WriteAtLeast(kMemStoreSize * kNumTablets * 1.2);
+  ASSERT_OK(WriteAtLeast(kMemStoreSize * kNumTablets * 1.2));
 
   const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
   ASSERT_OK(workload_->client().TruncateTable(table_info->id(), true /* wait */));
 
   rocksdb_listener_->Reset();
   // Write enough to trigger compactions.
-  WriteAtLeastFilesPerDb(FLAGS_rocksdb_level0_file_num_compaction_trigger + 1);
+  ASSERT_OK(WriteAtLeastFilesPerDb(FLAGS_rocksdb_level0_file_num_compaction_trigger + 1));
 
   auto dbs = GetAllRocksDbs(cluster_.get());
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >
@@ -226,24 +230,25 @@ void CompactionTest::TestCompactionAfterTruncate() {
         }
         return true;
       },
-      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay);
+      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay));
 }
 
 void CompactionTest::TestCompactionWithoutFrontiers(const int num_without_frontiers) {
   // Write a number of files without frontiers
-  FLAGS_TEST_disable_adding_user_frontier_to_sst = true;
-  WriteAtLeastFilesPerDb(num_without_frontiers);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_getting_user_frontier_from_mem_table) = true;
+  ASSERT_OK(WriteAtLeastFilesPerDb(num_without_frontiers));
   // If the number of files to write without frontiers is less than the number to
   // trigger compaction, then write the rest with frontiers.
   if (num_without_frontiers < FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) {
-    FLAGS_TEST_disable_adding_user_frontier_to_sst = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = false;
     const int num_with_frontiers =
         (FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) - num_without_frontiers;
-    WriteAtLeastFilesPerDb(num_with_frontiers);
+    ASSERT_OK(WriteAtLeastFilesPerDb(num_with_frontiers));
   }
 
   auto dbs = GetAllRocksDbs(cluster_.get());
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >
@@ -253,9 +258,12 @@ void CompactionTest::TestCompactionWithoutFrontiers(const int num_without_fronti
         }
         return true;
       },
-      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay);
+      60s,
+      "Waiting until we have number of SST files not higher than threshold ...",
+      kWaitDelay * kTimeMultiplier));
   // reset FLAGS_TEST_disable_adding_user_frontier_to_sst
-  FLAGS_TEST_disable_adding_user_frontier_to_sst = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_getting_user_frontier_from_mem_table) = false;
 }
 
 TEST_F(CompactionTest, CompactionAfterTruncate) {
@@ -289,15 +297,15 @@ class CompactionTestWithTTL : public CompactionTest {
 };
 
 TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_rocksdb_level0_file_num_compaction_trigger = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 10;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
   rocksdb_listener_->Reset();
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
 
   // Write enough to be short of triggering compactions.
-  WriteAtLeastFilesPerDb(0.8 * FLAGS_rocksdb_level0_file_num_compaction_trigger);
+  ASSERT_OK(WriteAtLeastFilesPerDb(0.8 * FLAGS_rocksdb_level0_file_num_compaction_trigger));
   size_t size_before_compaction = 0;
   for (auto* db : dbs) {
     size_before_compaction += db->GetCurrentVersionSstFilesUncompressedSize();
@@ -308,9 +316,9 @@ TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
   SleepFor(MonoDelta::FromSeconds(2 * kTTLSec));
 
   // Write enough to trigger compactions.
-  WriteAtLeastFilesPerDb(FLAGS_rocksdb_level0_file_num_compaction_trigger);
+  ASSERT_OK(WriteAtLeastFilesPerDb(FLAGS_rocksdb_level0_file_num_compaction_trigger));
 
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >
@@ -320,7 +328,7 @@ TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
         }
         return true;
       },
-      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay);
+      60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay));
 
   // Assert that the data size is smaller now.
   size_t size_after_compaction = 0;

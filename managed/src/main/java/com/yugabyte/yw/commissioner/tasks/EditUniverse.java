@@ -10,39 +10,41 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
+import java.util.*;
+import java.util.stream.Collectors;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
+@Slf4j
 public class EditUniverse extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(EditUniverse.class);
-
   // Get the new masters from the node list.
   Set<NodeDetails> newMasters = new HashSet<NodeDetails>();
 
   // Masters that need to be removed, if any.
   Set<NodeDetails> removeMasters = new HashSet<NodeDetails>();
 
+  @Inject
+  protected EditUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
+
   @Override
   public void run() {
-    LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
     String errorString = null;
 
     try {
@@ -88,21 +90,21 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate(errorString);
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   private void editCluster(Universe universe, Cluster cluster) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
-    LOG.info(
+    log.info(
         "Configure numNodes={}, Replication factor={}",
         userIntent.numNodes,
         userIntent.replicationFactor);
@@ -120,7 +122,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Update any tags on nodes that are not going to be removed and not being added.
     Cluster existingCluster = universe.getCluster(cluster.uuid);
     if (!cluster.areTagsSame(existingCluster)) {
-      LOG.info(
+      log.info(
           "Tags changed from '{}' to '{}'.",
           existingCluster.userIntent.instanceTags,
           cluster.userIntent.instanceTags);
@@ -131,6 +133,40 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
 
     if (!nodesToProvision.isEmpty()) {
+      Map<UUID, List<NodeDetails>> nodesPerAZ =
+          nodes
+              .stream()
+              .filter(
+                  n ->
+                      n.state != NodeDetails.NodeState.ToBeAdded
+                          && n.state != NodeDetails.NodeState.ToBeRemoved)
+              .collect(Collectors.groupingBy(n -> n.azUuid));
+
+      nodesToProvision.forEach(
+          node -> {
+            Set<String> machineImages =
+                nodesPerAZ
+                    .getOrDefault(node.azUuid, Collections.emptyList())
+                    .stream()
+                    .map(n -> n.machineImage)
+                    .collect(Collectors.toSet());
+            Iterator<String> iterator = machineImages.iterator();
+
+            if (iterator.hasNext()) {
+              String imageToUse = iterator.next();
+
+              if (iterator.hasNext()) {
+                log.warn(
+                    "Nodes in AZ {} are based on different machine images: {},"
+                        + " falling back to default",
+                    node.cloudInfo.az,
+                    String.join(", ", machineImages));
+              } else {
+                node.machineImage = imageToUse;
+              }
+            }
+          });
+
       // Create the required number of nodes in the appropriate locations.
       createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
@@ -156,12 +192,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (!removeMasters.isEmpty()) {
       if (nodesToBeRemoved.isEmpty()) {
         String errMsg = "If masters are being removed, corresponding nodes need removal too.";
-        LOG.error(errMsg + " masters: " + nodeNames(removeMasters));
+        log.error(errMsg + " masters: " + nodeNames(removeMasters));
         throw new IllegalStateException(errMsg);
       }
       if (!nodesToBeRemoved.containsAll(removeMasters)) {
         String errMsg = "If masters are being removed, all those nodes need removal too.";
-        LOG.error(
+        log.error(
             errMsg
                 + " masters: "
                 + nodeNames(removeMasters)
@@ -179,7 +215,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (!newMasters.isEmpty()) {
       if (cluster.clusterType == ClusterType.ASYNC) {
         String errMsg = "Read-only cluster " + cluster.uuid + " should not have masters.";
-        LOG.error(errMsg);
+        log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
 
@@ -234,7 +270,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     } else {
       if (!tserversToBeRemoved.isEmpty()) {
         String errMsg = "Universe shrink should have been handled using node decommision.";
-        LOG.error(errMsg);
+        log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
       // If only tservers are added, wait for load to balance across all tservers.

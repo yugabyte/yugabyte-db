@@ -28,6 +28,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
@@ -35,6 +36,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
@@ -84,8 +86,6 @@ namespace {
 //--------------------------------------------------------------------------------------------------
 static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
 static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
-
-static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 // Columns names and ids.
 static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
@@ -1221,6 +1221,36 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
 
 Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
   return client_->TabletServerCount(tserver_count, primary_only, use_cache);
+}
+
+Status PgSession::ListTabletServers(YBCServerDescriptor **servers, int *numofservers) {
+  std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>> tablet_servers;
+  Status ret = client_->ListLiveTabletServers(&tablet_servers, false);
+  *numofservers = tablet_servers.size();
+  int cnt = *numofservers;
+  if (cnt > 0) {
+    for (int i = 0; i < cnt; i++) {
+      std::string host = tablet_servers.at(i)->hostname();
+      std::string cloud = tablet_servers.at(i)->cloud();
+      std::string region = tablet_servers.at(i)->region();
+      std::string zone = tablet_servers.at(i)->zone();
+      std::string publicIp = tablet_servers.at(i)->publicIp();
+      bool isPrimary = tablet_servers.at(i)->isPrimary();
+      const char *hostC = YBCPAllocStdString(host);
+      const char *cloudC = YBCPAllocStdString(cloud);
+      const char *regionC = YBCPAllocStdString(region);
+      const char *zoneC = YBCPAllocStdString(zone);
+      const char *publicIpC = YBCPAllocStdString(publicIp);
+      servers[i] = reinterpret_cast<YBCServerDescriptor *>(YBCPAlloc(sizeof(YBCServerDescriptor)));
+      servers[i]->host = hostC;
+      servers[i]->cloud = cloudC;
+      servers[i]->region = regionC;
+      servers[i]->zone = zoneC;
+      servers[i]->publicIp = publicIpC;
+      servers[i]->isPrimary = isPrimary;
+    }
+  }
+  return ret;
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {

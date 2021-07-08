@@ -10,29 +10,32 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.lang.reflect.Field;
-import java.util.Iterator;
-import java.util.Map.Entry;
-
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
+import javax.inject.Inject;
+import java.lang.reflect.Field;
+import java.util.Iterator;
+import java.util.Map.Entry;
+
+@Slf4j
 public class AnsibleUpdateNodeInfo extends NodeTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AnsibleUpdateNodeInfo.class);
+  @Inject
+  protected AnsibleUpdateNodeInfo(
+      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   @Override
   public void run() {
@@ -44,7 +47,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
     // TODO: log output stream somewhere.
 
     NodeTaskParams taskParams = taskParams();
-    LOG.info(
+    log.info(
         "Updating node details for univ uuid={}, node name={}.",
         taskParams.universeUUID,
         taskParams.nodeName);
@@ -74,7 +77,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
               }
               Field field;
               try {
-                LOG.debug(
+                log.debug(
                     "Node {}: setting univ node details field {} to value {}.",
                     taskParams.nodeName,
                     entry.getKey(),
@@ -94,13 +97,13 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
                   field.set(node.cloudInfo, entry.getValue().asText());
                 }
               } catch (NoSuchFieldException | SecurityException e) {
-                LOG.warn(
+                log.warn(
                     "Skipping field {} with value {} due to error {}.",
                     entry.getKey(),
                     entry.getValue(),
                     e.getMessage());
               } catch (IllegalArgumentException | IllegalAccessException e) {
-                LOG.error(
+                log.error(
                     "Field {} could not be updated to value {} due to error {}.",
                     entry.getKey(),
                     entry.getValue(),

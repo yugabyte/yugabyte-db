@@ -5,11 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,8 +20,6 @@ import java.util.UUID;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudCleanupTestTest extends CommissionerBaseTest {
@@ -75,7 +69,7 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
     AvailabilityZone.createOrThrow(region, "az-1", "az 1", "subnet-1");
     AvailabilityZone.createOrThrow(region, "az-2", "az 2", "subnet-2");
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
-    when(mockNetworkManager.cleanup(region.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region.uuid)).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(mockAccessManager, times(1)).deleteKey(region.uuid, "yb-amazon-key");
@@ -94,7 +88,7 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
     AvailabilityZone.createOrThrow(region2, "az-4", "az 4", "subnet-4");
     AccessKey.create(defaultProvider.uuid, "access-key", new AccessKey.KeyInfo());
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
-    when(mockNetworkManager.cleanup(region1.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region1.uuid)).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(mockAccessManager, times(1)).deleteKey(region1.uuid, "yb-amazon-key");
@@ -115,7 +109,7 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   public void testCloudCleanupError() throws InterruptedException {
     Region region = Region.create(defaultProvider, "us-west-1", "us west 1", "yb-image");
     JsonNode vpcInfo = Json.parse("{\"error\": \"Something failed\"}");
-    when(mockNetworkManager.cleanup(region.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region.uuid)).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of(region.code));
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertValue(Json.toJson(taskInfo), "taskState", "Failure");

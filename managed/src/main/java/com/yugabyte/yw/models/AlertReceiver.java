@@ -2,30 +2,44 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.FetchType;
 import javax.persistence.Id;
+import javax.persistence.ManyToMany;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
-import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import play.data.validation.Constraints;
 import play.data.validation.Constraints.Required;
-import play.libs.Json;
 
+@Data
+@EqualsAndHashCode(callSuper = false)
 @Entity
 public class AlertReceiver extends Model {
 
@@ -50,69 +64,50 @@ public class AlertReceiver extends Model {
   private UUID uuid;
 
   @Constraints.Required
+  @Column(columnDefinition = "Text", length = 255, nullable = false)
+  private String name;
+
+  @Constraints.Required
   @Column(nullable = false)
   @JsonProperty("customer_uuid")
   private UUID customerUUID;
 
   @Constraints.Required
-  @Column(nullable = false)
-  @JsonProperty("target_type")
-  private TargetType targetType;
-
-  @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
-  private JsonNode params;
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = As.PROPERTY, property = "targetType")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = AlertReceiverEmailParams.class, name = "Email"),
+    @JsonSubTypes.Type(value = AlertReceiverSlackParams.class, name = "Slack")
+  })
+  private AlertReceiverParams params;
+
+  @ToString.Exclude
+  @EqualsAndHashCode.Exclude
+  @ManyToMany(mappedBy = "receivers", fetch = FetchType.LAZY)
+  private Set<AlertRoute> routes;
 
   private static final Finder<UUID, AlertReceiver> find =
       new Finder<UUID, AlertReceiver>(AlertReceiver.class) {};
 
-  public static AlertReceiver create(
-      UUID customerUUID, TargetType targetType, AlertReceiverParams params) {
-    return create(UUID.randomUUID(), customerUUID, targetType, params);
+  public static AlertReceiver create(UUID customerUUID, String name, AlertReceiverParams params) {
+    return create(UUID.randomUUID(), customerUUID, name, params);
   }
 
   public static AlertReceiver create(
-      UUID uuid, UUID customerUUID, TargetType targetType, AlertReceiverParams params) {
+      UUID uuid, UUID customerUUID, String name, AlertReceiverParams params) {
     AlertReceiver receiver = new AlertReceiver();
     receiver.uuid = uuid;
     receiver.customerUUID = customerUUID;
-    receiver.targetType = targetType;
-    receiver.setParams(params);
+    receiver.name = name;
+    receiver.params = params;
     receiver.save();
     return receiver;
   }
 
-  public UUID getUuid() {
-    return uuid;
-  }
-
-  public void setUuid(UUID uuid) {
-    this.uuid = uuid;
-  }
-
-  public TargetType getTargetType() {
-    return targetType;
-  }
-
-  public void setTargetType(TargetType targetType) {
-    this.targetType = targetType;
-  }
-
-  public AlertReceiverParams getParams() {
-    return AlertUtils.fromJson(targetType, params);
-  }
-
-  public void setParams(AlertReceiverParams params) {
-    this.params = Json.toJson(params);
-  }
-
-  public UUID getCustomerUUID() {
-    return customerUUID;
-  }
-
-  public void setCustomerUuid(UUID customerUUID) {
-    this.customerUUID = customerUUID;
+  @JsonIgnore
+  public List<AlertRoute> getRoutesList() {
+    return new ArrayList<>(routes);
   }
 
   public static AlertReceiver get(UUID customerUUID, UUID receiverUUID) {
@@ -127,40 +122,22 @@ public class AlertReceiver extends Model {
     return alertReceiver;
   }
 
+  public static List<AlertReceiver> getOrBadRequest(UUID customerUUID, @Required List<UUID> uuids) {
+    ExpressionList<AlertReceiver> query = find.query().where().eq("customer_uuid", customerUUID);
+    appendInClause(query, "uuid", uuids);
+    List<AlertReceiver> result = query.findList();
+    if (result.size() != uuids.size()) {
+      // We have incorrect receiver id(s).
+      result.forEach(receiver -> uuids.remove(receiver.uuid));
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Invalid Alert Receiver UUID: "
+              + uuids.stream().map(uuid -> uuid.toString()).collect(Collectors.joining(", ")));
+    }
+    return result;
+  }
+
   public static List<AlertReceiver> list(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(customerUUID, params, targetType, uuid);
-  }
-
-  @Override
-  public boolean equals(Object obj) {
-    if (this == obj) {
-      return true;
-    }
-    if (!(obj instanceof AlertReceiver)) {
-      return false;
-    }
-    AlertReceiver other = (AlertReceiver) obj;
-    return Objects.equals(customerUUID, other.customerUUID)
-        && Objects.equals(params, other.params)
-        && targetType == other.targetType
-        && Objects.equals(uuid, other.uuid);
-  }
-
-  @Override
-  public String toString() {
-    return "AlertReceiver [uuid="
-        + uuid
-        + ", customerUUID="
-        + customerUUID
-        + ", targetType="
-        + targetType
-        + ", params="
-        + params
-        + "]";
   }
 }

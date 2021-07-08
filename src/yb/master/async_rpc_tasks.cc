@@ -108,12 +108,12 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
 
 RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
                                      ThreadPool* callback_pool,
-                                     gscoped_ptr<TSPicker> replica_picker,
+                                     std::unique_ptr<TSPicker> replica_picker,
                                      const scoped_refptr<TableInfo>& table)
   : master_(master),
     callback_pool_(callback_pool),
-    replica_picker_(replica_picker.Pass()),
-    table_(DCHECK_NOTNULL(table)),
+    replica_picker_(std::move(replica_picker)),
+    table_(table),
     start_ts_(MonoTime::Now()),
     deadline_(start_ts_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {
 }
@@ -129,14 +129,22 @@ RetryingTSRpcTask::~RetryingTSRpcTask() {
 Status RetryingTSRpcTask::Run() {
   ++attempt_;
   VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;
-  auto task_state = state();
-  if (task_state == MonitoredTaskState::kAborted) {
-    return STATUS(IllegalState, "Unable to run task because it has been aborted");
+  for (;;) {
+    auto task_state = state();
+    if (task_state == MonitoredTaskState::kAborted) {
+      return STATUS(IllegalState, "Unable to run task because it has been aborted");
+    }
+    if (task_state == MonitoredTaskState::kWaiting) {
+      break;
+    }
+
+    LOG_IF_WITH_PREFIX(DFATAL, task_state != MonitoredTaskState::kScheduling)
+        << "Expected task to be in kScheduling state but found: " << AsString(task_state);
+
+    // We expect this case to be very rare, since we switching to waiting state right after
+    // scheduling task on messenger. So just busy wait.
+    std::this_thread::yield();
   }
-  // TODO(bogdan): There is a race between scheduling and running and can cause this to fail.
-  // Should look into removing the kScheduling state, if not needed, and simplifying the state
-  // transitions!
-  DCHECK(task_state == MonitoredTaskState::kWaiting) << "State: " << AsString(task_state);
 
   Status s = ResetTSProxy();
   if (!s.ok()) {
@@ -466,7 +474,7 @@ bool RetryingTSRpcTask::TransitionToWaitingState(MonitoredTaskState expected) {
 AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
           tablet->table().get()),
       tablet_(tablet) {
 }
@@ -475,7 +483,7 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
       tablet_(tablet) {
 }
 
@@ -786,7 +794,7 @@ AsyncCopartitionTable::AsyncCopartitionTable(Master *master,
                                              const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(master,
                         callback_pool,
-                        gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+                        std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
                         table.get()),
       tablet_(tablet), table_(table) {
 }
@@ -860,7 +868,7 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
           tablet->table()),
       tablet_(tablet),
       cstate_(cstate),
@@ -1123,7 +1131,7 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
       tablet_(tablet),
       table_(table),
       tablet_id_(tablet->tablet_id()) {
@@ -1185,7 +1193,7 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
       table_(table),
       tablet_(tablet),
       tablet_id_(tablet->tablet_id()) {

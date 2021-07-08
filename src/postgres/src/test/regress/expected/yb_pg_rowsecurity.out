@@ -1582,14 +1582,17 @@ AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
                               QUERY PLAN
 -----------------------------------------------------------------------
  Update on t1 t1_1
-   ->  Hash Join
-         Hash Cond: (t1_1.b = t1_2.b)
-         ->  Seq Scan on t1 t1_1
-               Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-         ->  Hash
+   ->  Merge Join
+         Merge Cond: (t1_1.b = t1_2.b)
+         ->  Sort
+               Sort Key: t1_1.b
+               ->  Seq Scan on t1 t1_1
+                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
+         ->  Sort
+               Sort Key: t1_2.b
                ->  Seq Scan on t1 t1_2
                      Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-(8 rows)
+(11 rows)
 
 UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
 WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
@@ -2449,16 +2452,19 @@ NOTICE:  f_leak => def
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(abc);
-                            QUERY PLAN
--------------------------------------------------------------------
- Hash Join
-   Hash Cond: (y2.b = test_qual_pushdown.abc)
-   ->  Seq Scan on y2
-         Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
-   ->  Hash
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (y2.b = test_qual_pushdown.abc)
+   ->  Sort
+         Sort Key: y2.b
+         ->  Seq Scan on y2
+               Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
+   ->  Sort
+         Sort Key: test_qual_pushdown.abc
          ->  Seq Scan on test_qual_pushdown
                Filter: f_leak(abc)
-(7 rows)
+(10 rows)
 
 SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b);
 NOTICE:  f_leak => cfcd208495d565ef66e7dff9f98764da
@@ -2480,15 +2486,18 @@ NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b);
-                                    QUERY PLAN
------------------------------------------------------------------------------------
- Hash Join
-   Hash Cond: (y2.b = test_qual_pushdown.abc)
-   ->  Seq Scan on y2
-         Filter: ((((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0)) AND f_leak(b))
-   ->  Hash
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (y2.b = test_qual_pushdown.abc)
+   ->  Sort
+         Sort Key: y2.b
+         ->  Seq Scan on y2
+               Filter: ((((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0)) AND f_leak(b))
+   ->  Sort
+         Sort Key: test_qual_pushdown.abc
          ->  Seq Scan on test_qual_pushdown
-(6 rows)
+(9 rows)
 
 DROP TABLE test_qual_pushdown;
 --
@@ -3672,6 +3681,15 @@ ERROR:  policy "p1" for table "dob_t1" does not exist
 CREATE POLICY p1 ON dob_t1 TO regress_rls_dob_role1,regress_rls_dob_role2 USING (true);
 DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t1; -- should succeed
+-- same cases with duplicate polroles entries
+CREATE POLICY p1 ON dob_t1 TO regress_rls_dob_role1,regress_rls_dob_role1 USING (true);
+DROP OWNED BY regress_rls_dob_role1;
+DROP POLICY p1 ON dob_t1; -- should fail, already gone
+ERROR:  policy "p1" for table "dob_t1" does not exist
+CREATE POLICY p1 ON dob_t1 TO regress_rls_dob_role1,regress_rls_dob_role1,regress_rls_dob_role2 USING (true);
+DROP OWNED BY regress_rls_dob_role1;
+DROP POLICY p1 ON dob_t1; -- should succeed
+-- partitioned target
 CREATE POLICY p1 ON dob_t2 TO regress_rls_dob_role1,regress_rls_dob_role2 USING (true);
 DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t2; -- should succeed
@@ -3687,7 +3705,7 @@ INSERT INTO rls_tbl SELECT 10, 20, 30;
 EXPLAIN (VERBOSE, COSTS OFF)
 INSERT INTO rls_tbl
   SELECT * FROM (SELECT b, c FROM rls_tbl ORDER BY a) ss;
-                             QUERY PLAN                             
+                             QUERY PLAN
 --------------------------------------------------------------------
  Insert on regress_rls_schema.rls_tbl
    ->  Subquery Scan on ss
@@ -3703,10 +3721,10 @@ INSERT INTO rls_tbl
 INSERT INTO rls_tbl
   SELECT * FROM (SELECT b, c FROM rls_tbl ORDER BY a) ss;
 SELECT * FROM rls_tbl order by a;
- a  | b  | c  
+ a  | b  | c
 ----+----+----
  10 | 20 | 30
- 20 | 30 |   
+ 20 | 30 |
 (2 rows)
 
 DROP TABLE rls_tbl;

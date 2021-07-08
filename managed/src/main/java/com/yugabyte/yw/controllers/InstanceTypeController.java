@@ -2,16 +2,16 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -29,15 +29,12 @@ public class InstanceTypeController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTypeController.class);
   private final Config config;
-  private final ValidatingFormFactory formFactory;
   private final CloudAPI.Factory cloudAPIFactory;
 
   // TODO: Remove this when we have HelperMethod in place to get Config details
   @Inject
-  public InstanceTypeController(
-      Config config, ValidatingFormFactory formFactory, CloudAPI.Factory cloudAPIFactory) {
+  public InstanceTypeController(Config config, CloudAPI.Factory cloudAPIFactory) {
     this.config = config;
-    this.formFactory = formFactory;
     this.cloudAPIFactory = cloudAPIFactory;
   }
 
@@ -100,7 +97,7 @@ public class InstanceTypeController extends AuthenticatedController {
               "Num instanceTypes excluded {} because they were not offered in selected AZs.",
               instanceTypesMap.size() - filteredInstanceTypes.size());
 
-          return ApiResponse.success(filteredInstanceTypes);
+          return YWResults.withData(filteredInstanceTypes);
         } catch (Exception exception) {
           LOG.warn(
               "There was an error {} talking to {} cloud API or filtering instance types "
@@ -113,7 +110,7 @@ public class InstanceTypeController extends AuthenticatedController {
         LOG.info("No Cloud API defined for {}. Skipping filtering by zone.", provider.code);
       }
     }
-    return ApiResponse.success(instanceTypesMap.values());
+    return YWResults.withData(instanceTypesMap.values());
   }
 
   /**
@@ -135,7 +132,7 @@ public class InstanceTypeController extends AuthenticatedController {
             formData.get().memSizeGB,
             formData.get().instanceTypeDetails);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
-    return ApiResponse.success(it);
+    return YWResults.withData(it);
   }
 
   /**
@@ -151,10 +148,8 @@ public class InstanceTypeController extends AuthenticatedController {
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
     instanceType.setActive(false);
     instanceType.save();
-    ObjectNode responseJson = Json.newObject();
     auditService().createAuditEntry(ctx(), request());
-    responseJson.put("success", true);
-    return ApiResponse.success(responseJson);
+    return YWResults.YWSuccess.empty();
   }
 
   /**
@@ -173,7 +168,7 @@ public class InstanceTypeController extends AuthenticatedController {
     if (!provider.code.equals(onprem.toString())) {
       instanceType.instanceTypeDetails.setDefaultMountPaths();
     }
-    return ApiResponse.success(instanceType);
+    return YWResults.withData(instanceType);
   }
 
   /**

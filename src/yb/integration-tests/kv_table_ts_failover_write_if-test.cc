@@ -262,9 +262,9 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   });
 
   // Make sure we read initial value.
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&last_read_value]{ return last_read_value == initial_value; }, 60s,
-      "Waiting to read initial value...", small_delay);
+      "Waiting to read initial value...", small_delay));
 
   // Prevent follower_replica_ts_idx from being elected as a new leader.
   SetBoolFlag(follower_replica_ts_idx, "TEST_follower_reject_update_consensus_requests", true);

@@ -2,24 +2,17 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-
-import play.libs.Json;
-
-import java.lang.reflect.InvocationTargetException;
-
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.InvocationTargetException;
 
 public class AlertUtils {
   public static final Logger LOG = LoggerFactory.getLogger(AlertUtils.class);
@@ -29,21 +22,21 @@ public class AlertUtils {
 
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE =
-      "{{ $labels.definition_name }} for {{ $labels.universe_name }} is {{ $labels.alert_state }}.";
+      "{{ $labels.definition_name }} Alert for {{ $labels.target_name }} "
+          + "is {{ $labels.alert_state }}.";
 
   /**
    * Returns the alert notification title according to the template stored in the alert receiver or
    * default one. Also does all the necessary substitutions using labels from the alert.
    *
-   * @param alert
-   * @param receiver
+   * @param alert Alert
+   * @param receiver Alert Receiver
    * @return the notification title
-   * @throws YWServiceException if a customer with such UUID is not found
    */
   public static String getNotificationTitle(Alert alert, AlertReceiver receiver) {
     String template = receiver.getParams().titleTemplate;
     if (StringUtils.isEmpty(template)) {
-      Customer customer = Customer.getOrBadRequest(alert.customerUUID);
+      Customer customer = Customer.getOrBadRequest(alert.getCustomerUUID());
       return String.format(DEFAULT_ALERT_NOTIFICATION_TITLE, customer.getTag());
     }
     return alertSubstitutions(alert, template);
@@ -75,16 +68,11 @@ public class AlertUtils {
 
   @VisibleForTesting
   static String getDefaultNotificationText(Alert alert) {
-    String universeName = alert.getLabelValue(KnownAlertLabels.UNIVERSE_NAME);
-    if (StringUtils.isNotEmpty(universeName)) {
-      return String.format(
-          "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
-          universeName, alert.getState().getAction(), alert.message);
-    }
-    Customer customer = Customer.getOrBadRequest(alert.customerUUID);
+    String targetType = alert.getLabelValue(KnownAlertLabels.TARGET_TYPE);
+    String targetName = alert.getLabelValue(KnownAlertLabels.TARGET_NAME);
     return String.format(
-        "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
-        customer.name, alert.getState().getAction(), alert.message);
+        "Common failure for %s '%s', state: %s\nFailure details:\n\n%s",
+        targetType, targetName, alert.getState().getAction(), alert.getMessage());
   }
 
   public static Class<?> getAlertParamsClass(AlertReceiver.TargetType targetType) {
@@ -119,31 +107,15 @@ public class AlertUtils {
     }
   }
 
-  /**
-   * Restores object of the AlertReceiverParams type (or one of its descendant types) from JSON.
-   *
-   * @param targetType
-   * @param json
-   * @return created object or null if some of parameters are incorrect.
-   */
-  public static AlertReceiverParams fromJson(TargetType targetType, JsonNode json) {
-    if (targetType == null) {
-      return null;
-    }
-
-    ObjectMapper mapper = Json.mapper();
-    try {
-      Class<?> paramsClass = getAlertParamsClass(targetType);
-      return ((AlertReceiverParams) mapper.treeToValue(json, paramsClass));
-    } catch (JsonProcessingException e) {
-      LOG.debug("Unable to deserialize AlertReceiverParams", e);
-      return null;
-    }
+  public static String getJsonTypeName(AlertReceiverParams params) {
+    Class<?> clz = params.getClass();
+    JsonTypeName an = clz.getDeclaredAnnotation(JsonTypeName.class);
+    return an.value();
   }
 
   public static void validate(AlertReceiver receiver) throws YWValidateException {
-    if (receiver.getTargetType() == null) {
-      throw new YWValidateException("Undefined target type.");
+    if (receiver.getParams() == null) {
+      throw new YWValidateException("Incorrect parameters in AlertReceiver.");
     }
     receiver.getParams().validate();
   }

@@ -40,6 +40,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -48,7 +49,6 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/callback.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
@@ -125,7 +125,7 @@ struct LeaderElectionData {
   //    If this is specified, we would wait until this entry is committed. If not specified
   //    (i.e. if this has the default OpId value) it is taken from the last call to StartElection
   //    with pending_commit = true.
-  OpIdPB must_be_committed_opid = OpIdPB::default_instance();
+  OpId must_be_committed_opid;
 
   // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
   //    this would contain the uuid of the old leader.
@@ -278,6 +278,8 @@ class Consensus {
 
   // Returns the id of the tablet whose updates this consensus instance helps coordinate.
   virtual std::string tablet_id() const = 0;
+
+  virtual const TabletId& split_parent_tablet_id() const = 0;
 
   // Returns a copy of the committed state of the Consensus system. Also allows returning the
   // leader lease status captured under the same lock.

@@ -16,7 +16,6 @@
 
 #include <string>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/yql/redis/redisserver/redis_server_options.h"
 #include "yb/server/server_base.h"

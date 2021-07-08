@@ -43,7 +43,6 @@
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/transaction.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -128,6 +127,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
   CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op);
+
+  bool Has(std::shared_ptr<YBOperation> yb_op) const;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending

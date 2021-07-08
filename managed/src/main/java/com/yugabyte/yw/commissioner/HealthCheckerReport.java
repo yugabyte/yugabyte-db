@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.base.Objects;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 
 import org.slf4j.Logger;
@@ -49,9 +50,81 @@ public class HealthCheckerReport {
   public String asHtml(Universe u, JsonNode report, boolean reportOnlyErrors) {
     StringBuilder content = new StringBuilder();
 
-    List<String> nodeNames =
-        u.getNodes().stream().map(node -> node.nodeName).sorted().collect(Collectors.toList());
+    htmlReportNodesPart(
+        u,
+        report,
+        reportOnlyErrors,
+        content,
+        u.getUniverseDetails().getPrimaryCluster(),
+        "Primary Cluster");
+    int readOnlyIndex = 0;
+    for (Cluster cluster : u.getUniverseDetails().getReadOnlyClusters()) {
+      String clusterName = "Read Replica" + (readOnlyIndex == 0 ? "" : " " + readOnlyIndex++);
+      htmlReportNodesPart(u, report, reportOnlyErrors, content, cluster, clusterName);
+    }
 
+    if (content.length() == 0) {
+      content.append("<b>No errors to report.</b>");
+    }
+
+    String style =
+        String.format(
+            "%s font-size: 14px;background-color:#f7f7f7;padding:25px 30px 5px;", STYLE_FONT);
+    // add timestamp to avoid gmail collapsing
+    String timestamp =
+        String.format(
+            "<span style=\"color:black;font-size:10px;\">%s</span>",
+            report.path("timestamp").asText());
+    String hostname = "";
+    String ip = "";
+    try {
+      hostname = InetAddress.getLocalHost().getHostName();
+      ip = InetAddress.getLocalHost().getHostAddress().toString();
+    } catch (UnknownHostException e) {
+      LOG.error("Could not determine the hostname", e);
+    }
+
+    String header =
+        String.format(
+            "<table width=\"100%%\">\n"
+                + "    <tr>\n"
+                + "        <td style=\"text-align:left\">%s</td>\n"
+                + "        <td style=\"text-align:left\">%s</td>\n"
+                + "        <td style=\"text-align:right\">%s</td>\n"
+                + "    </tr>\n"
+                + "    <tr>\n"
+                + "        <td style=\"text-align:left\">%s</td>\n"
+                + "        <td style=\"text-align:left\">%s</td>\n"
+                + "    </tr>\n"
+                + "</table>\n",
+            makeHeaderLeft("Universe name", u.name),
+            makeHeaderLeft("Universe version", report.path("yb_version").asText()),
+            timestamp,
+            makeHeaderLeft("YW host name", hostname),
+            makeHeaderLeft("YW host IP", ip));
+
+    return String.format(
+        "<html><body><pre style=\"%s\">%s\n%s %s</pre></body></html>",
+        style, header, content.toString(), timestamp);
+  }
+  // @formatter:on
+
+  private void htmlReportNodesPart(
+      Universe u,
+      JsonNode report,
+      boolean reportOnlyErrors,
+      StringBuilder content,
+      Cluster cluster,
+      String clusterName) {
+
+    List<String> nodeNames =
+        u.getNodesInCluster(cluster.uuid)
+            .stream()
+            .map(node -> node.nodeName)
+            .sorted()
+            .collect(Collectors.toList());
+
+    boolean clusterNameAdded = false;
     for (String nodeName : nodeNames) {
       boolean nodeHasError = false;
       boolean isFirstCheck = true;
@@ -108,9 +181,15 @@ public class HealthCheckerReport {
               "font-weight:700;line-height:1em;color:#202951;font-size:2.5em;margin:0;\n%s",
               STYLE_FONT);
 
+      if (!clusterNameAdded) {
+        content.append(
+            String.format("<h2 style=\"%s\">%s</h2>", badgeStyle, makeSubtitle(clusterName)));
+        clusterNameAdded = true;
+      }
+
       String nodeHeader =
           String.format(
-              "%s<h2 style=\"%s\">%s</h2>\n", makeSubtitle("Cluster"), h2Style, nodeHeaderTitle);
+              "%s<h2 style=\"%s\">%s</h2>\n", makeSubtitle("Node"), h2Style, nodeHeaderTitle);
 
       String tableContainerStyle =
           "background-color:#ffffff;padding:15px 20px 7px;\n"
@@ -121,52 +200,7 @@ public class HealthCheckerReport {
               "%s<div style=\"%s\">%s</div>",
               nodeHeader, tableContainerStyle, tableContainer(nodeContentData.toString())));
     }
-
-    if (content.length() == 0) {
-      content.append("<b>No errors to report.</b>");
-    }
-
-    String style =
-        String.format(
-            "%s font-size: 14px;background-color:#f7f7f7;padding:25px 30px 5px;", STYLE_FONT);
-    // add timestamp to avoid gmail collapsing
-    String timestamp =
-        String.format(
-            "<span style=\"color:black;font-size:10px;\">%s</span>",
-            report.path("timestamp").asText());
-    String hostname = "";
-    String ip = "";
-    try {
-      hostname = InetAddress.getLocalHost().getHostName();
-      ip = InetAddress.getLocalHost().getHostAddress().toString();
-    } catch (UnknownHostException e) {
-      LOG.error("Could not determine the hostname", e);
-    }
-
-    String header =
-        String.format(
-            "<table width=\"100%%\">\n"
-                + "    <tr>\n"
-                + "        <td style=\"text-align:left\">%s</td>\n"
-                + "        <td style=\"text-align:left\">%s</td>\n"
-                + "        <td style=\"text-align:right\">%s</td>\n"
-                + "    </tr>\n"
-                + "    <tr>\n"
-                + "        <td style=\"text-align:left\">%s</td>\n"
-                + "        <td style=\"text-align:left\">%s</td>\n"
-                + "    </tr>\n"
-                + "</table>\n",
-            makeHeaderLeft("Universe name", u.name),
-            makeHeaderLeft("Universe version", report.path("yb_version").asText()),
-            timestamp,
-            makeHeaderLeft("YW host name", hostname),
-            makeHeaderLeft("YW host IP", ip));
-
-    return String.format(
-        "<html><body><pre style=\"%s\">%s\n%s %s</pre></body></html>",
-        style, header, content.toString(), timestamp);
   }
-  // @formatter:on
 
   private static String makeSubtitle(String content) {
     return String.format("<span style=\"color:#8D8F9D;font-weight:400;\">%s:</span>\n", content);

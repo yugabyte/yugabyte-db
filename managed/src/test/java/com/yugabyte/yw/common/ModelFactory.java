@@ -4,23 +4,30 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import play.libs.Json;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.Users.Role;
 
@@ -248,18 +255,104 @@ public class ModelFactory {
     return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
-  public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
-    AlertDefinition alertDefinition = new AlertDefinition();
-    alertDefinition.generateUUID();
-    alertDefinition.setCustomerUUID(customer.getUuid());
-    alertDefinition.setTargetType(AlertDefinition.TargetType.Universe);
-    alertDefinition.setName("alertDefinition");
-    alertDefinition.setQuery("query < {{ query_threshold }}");
-    alertDefinition.setQueryThreshold(1);
-    alertDefinition.setLabels(AlertDefinitionLabelsBuilder.create().appendUniverse(universe).get());
+  public static AlertDefinitionGroup createAlertDefinitionGroup(
+      Customer customer, Universe universe, Consumer<AlertDefinitionGroup> modifier) {
+    AlertDefinitionGroup group =
+        new AlertDefinitionGroup()
+            .setName("alertDefinitionGroup")
+            .setDescription("alertDefinitionGroup description")
+            .setCustomerUUID(customer.getUuid())
+            .setTargetType(AlertDefinitionGroup.TargetType.UNIVERSE)
+            .setTarget(
+                new AlertDefinitionGroupTarget()
+                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+            .setTemplate(AlertDefinitionTemplate.MEMORY_CONSUMPTION)
+            .setThresholds(
+                ImmutableMap.of(
+                    AlertDefinitionGroup.Severity.SEVERE,
+                    new AlertDefinitionGroupThreshold()
+                        .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
+                        .setThreshold(1)))
+            .generateUUID();
+    modifier.accept(group);
+    group.save();
+    return group;
+  }
 
+  public static AlertDefinitionGroup createAlertDefinitionGroup(
+      Customer customer, Universe universe) {
+    return createAlertDefinitionGroup(customer, universe, c -> {});
+  }
+
+  public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
+    AlertDefinitionGroup group = createAlertDefinitionGroup(customer, universe);
+    return createAlertDefinition(customer, universe, group);
+  }
+
+  public static AlertDefinition createAlertDefinition(
+      Customer customer, Universe universe, AlertDefinitionGroup group) {
+    AlertDefinition alertDefinition =
+        new AlertDefinition()
+            .setGroupUUID(group.getUuid())
+            .setCustomerUUID(customer.getUuid())
+            .setQuery("query {{ query_condition }} {{ query_threshold }}")
+            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get())
+            .generateUUID();
     alertDefinition.save();
     return alertDefinition;
+  }
+
+  public static Alert createAlert(Customer customer) {
+    return createAlert(customer, null, null, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(Customer customer, Universe universe) {
+    return createAlert(customer, universe, null, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(Customer customer, AlertDefinition definition) {
+    return createAlert(customer, null, definition, KnownAlertCodes.CUSTOMER_ALERT);
+  }
+
+  public static Alert createAlert(
+      Customer customer, Universe universe, AlertDefinition definition, KnownAlertCodes code) {
+    Alert alert =
+        new Alert()
+            .setCustomerUUID(customer.getUuid())
+            .setErrCode(code)
+            .setType(KnownAlertTypes.Error)
+            .setMessage("Universe on fire!")
+            .setSendEmail(true)
+            .generateUUID();
+    if (definition != null) {
+      AlertDefinitionGroup group =
+          AlertDefinitionGroup.db().find(AlertDefinitionGroup.class, definition.getGroupUUID());
+      alert.setDefinitionUUID(definition.getUuid());
+      List<AlertLabel> labels =
+          definition
+              .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
+              .stream()
+              .map(l -> new AlertLabel(l.getName(), l.getValue()))
+              .collect(Collectors.toList());
+      alert.setLabels(labels);
+    } else {
+      AlertDefinitionLabelsBuilder labelsBuilder = AlertDefinitionLabelsBuilder.create();
+      if (universe != null) {
+        labelsBuilder.appendTarget(universe);
+      } else {
+        labelsBuilder.appendTarget(customer);
+      }
+      alert.setLabels(labelsBuilder.getAlertLabels());
+    }
+    alert.save();
+    return alert;
+  }
+
+  public static AlertReceiver createEmailReceiver(Customer customer, String name) {
+    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+    params.recipients = Collections.singletonList("test@test.com");
+    params.smtpData = EmailFixtures.createSmtpData();
+    return AlertReceiver.create(customer.uuid, name, params);
   }
 
   /*

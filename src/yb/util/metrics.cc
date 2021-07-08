@@ -167,6 +167,8 @@ const char* MetricLevelName(MetricLevel level) {
   }
 }
 
+const std::regex prometheus_name_regex("[a-zA-Z_:][a-zA-Z0-9_:]*");
+
 } // anonymous namespace
 
 //
@@ -204,8 +206,7 @@ MetricEntity::~MetricEntity() {
 }
 
 const std::regex& PrometheusNameRegex() {
-  static const std::regex result("[a-zA-Z_:][a-zA-Z0-9_:]*");
-  return result;
+  return prometheus_name_regex;
 }
 
 void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {

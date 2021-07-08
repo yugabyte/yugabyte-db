@@ -27,6 +27,62 @@ This bug does not affect version 2.4.0.0.
 
 {{< /warning >}}
 
+## v2.4.5.0 - June 21, 2021
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.5.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.4.5.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.4.5.0-b20
+```
+
+### Improvements
+
+#### Core database
+
+N/A
+
+#### Yugabyte Platform
+
+* [[7706](https://github.com/yugabyte/yugabyte-db/issues/7706)] Allow editing of backup config credentials. (#8535)
+
+### Bug fixes
+
+#### Core database
+
+* [[4437](https://github.com/yugabyte/yugabyte-db/issues/4437)] [[8731](https://github.com/yugabyte/yugabyte-db/issues/8731)] [DocDB] disabled bloom filters for master tablet and fixed DocDbAwareV2FilterPolicy compatibility for range-partitioned co-located tables
+* [[6096](https://github.com/yugabyte/yugabyte-db/issues/6096)] [YSQL] Fix crash during bootstrap when replaying WAL of deleted colocated table
+* [[6482](https://github.com/yugabyte/yugabyte-db/issues/6482)] Fix timeout handling when getting safe time in a RF1 cluster
+* [[7641](https://github.com/yugabyte/yugabyte-db/issues/7641)] [[8834](https://github.com/yugabyte/yugabyte-db/issues/8834)] [YCQL] Remove incorrect CHECK condition added in D10931 (in [2.4.2.0](#v2-4-2-0-may-3-2021) release)
+* [[8204](https://github.com/yugabyte/yugabyte-db/issues/8204)] [Ybase] GetLoadMoveCompletionPercent returns an incorrect 100% if tservers haven't heartbeated their tablet reports
+* [[8390](https://github.com/yugabyte/yugabyte-db/issues/8390)] Fix NPE Handling for indexed_table_id
+* [[8591](https://github.com/yugabyte/yugabyte-db/issues/8591)] [DocDB] Add protection against missing UserFrontiers in older SST files during intents cleanup
+
+#### Yugabyte Platform
+
+* [[6945](https://github.com/yugabyte/yugabyte-db/issues/6945)] Add limit to customer task API. (#8700)
+* [[7859](https://github.com/yugabyte/yugabyte-db/issues/7859)] Fix '< 1 min' uptime shown intermittently
+* [[8503](https://github.com/yugabyte/yugabyte-db/issues/8503)] Fix Add instance modal form to allow for adding instances in isolated region case.
+* [[8345](https://github.com/yugabyte/yugabyte-db/issues/8345)] Remove hard coded cert filepath, and add Python module to use the system temporary directory
+* [[8611](https://github.com/yugabyte/yugabyte-db/issues/8611)] Enable edit backup configuration for the active tab only. (#8674)
+* [[8620](https://github.com/yugabyte/yugabyte-db/issues/8620)] Reset the values on cancel. (#8627)
+* [[8809](https://github.com/yugabyte/yugabyte-db/issues/8809)] Edit Configuration button was only working intermittently. (#8975)
+* [[8921](https://github.com/yugabyte/yugabyte-db/issues/8921)] Allow ReadOnly and BackupAdmin roles to change their password.
+
 ## v2.4.4.0 - May 20, 2021
 
 ### Downloads

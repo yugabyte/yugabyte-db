@@ -32,7 +32,8 @@ function mapStateToProps(state) {
   return {
     customer: state.customer,
     validateFields: state.validateFields,
-    initialValues: { code: 'dev' }
+    initialValues: { code: 'dev' },
+    passwordValidationInfo: state.customer.passwordValidationInfo
   };
 }
 

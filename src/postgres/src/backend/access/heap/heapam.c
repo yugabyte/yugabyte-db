@@ -6443,9 +6443,15 @@ heap_abort_speculative(Relation relation, HeapTuple tuple)
  *
  * tuple is an in-memory tuple structure containing the data to be written
  * over the target tuple.  Also, tuple->t_self identifies the target tuple.
+ *
+ * if yb_shared_update is specified, this update will be done in every
+ * database (including template0 and template1). Such operation will assume
+ * the tuple is exactly the same in all databases.
+ * This is needed when creating shared relations.
+ * This flag should not be used during initdb bootstrap.
  */
 void
-heap_inplace_update(Relation relation, HeapTuple tuple)
+heap_inplace_update(Relation relation, HeapTuple tuple, bool yb_shared_update)
 {
 	Buffer		buffer;
 	Page		page;
@@ -6457,7 +6463,23 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 
 	if (IsYBRelation(relation))
 	{
-		YBCUpdateSysCatalogTuple(relation, NULL /* oldtuple */, tuple);
+		if (yb_shared_update)
+		{
+			if (!IsYsqlUpgrade)
+				elog(ERROR, "shared update cannot be done outside of YSQL upgrade");
+
+			YB_FOR_EACH_DB(pg_db_tuple)
+			{
+				Oid dboid = HeapTupleGetOid(pg_db_tuple);
+				/* YB doesn't use PG locks so it's okay not to take them. */
+				YBCUpdateSysCatalogTupleForDb(dboid, relation, NULL /* oldtuple */, tuple);
+			}
+			YB_FOR_EACH_DB_END;
+		}
+		else
+		{
+			YBCUpdateSysCatalogTuple(relation, NULL /* oldtuple */, tuple);
+		}
 		return;
 	}
 

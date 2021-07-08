@@ -127,9 +127,9 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'authToken', action);
 
     case VALIDATE:
-      return setLoadingState(state, 'authToken', {});
+      return { ...state, passwordValidationInfo: {} };
     case VALIDATE_RESPONSE:
-      return setPromiseResponse(state, 'authToken', action);
+      return { ...state, passwordValidationInfo: action.payload.data };
 
     case LOGIN:
       return setLoadingState(state, 'authToken', {});

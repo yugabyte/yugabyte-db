@@ -121,6 +121,8 @@ using master::ListMasterRaftPeersRequestPB;
 using master::ListMasterRaftPeersResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
+using master::ListLiveTabletServersRequestPB;
+using master::ListLiveTabletServersResponsePB;
 using master::MasterServiceProxy;
 using master::TabletLocationsPB;
 using master::TSInfoPB;

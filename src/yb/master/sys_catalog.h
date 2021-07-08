@@ -251,16 +251,16 @@ class SysCatalogTable {
 
   scoped_refptr<MetricEntity> metric_entity_;
 
-  gscoped_ptr<ThreadPool> inform_removed_master_pool_;
+  std::unique_ptr<ThreadPool> inform_removed_master_pool_;
 
   // Thread pool for Raft-related operations
-  gscoped_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
 
   // Thread pool for preparing transactions, shared between all tablets.
-  gscoped_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> tablet_prepare_pool_;
 
   // Thread pool for appender tasks
-  gscoped_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> append_pool_;
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 

@@ -789,6 +789,7 @@ errcode_for_socket_access(void)
 		pfree(fmtbuf); \
 		/* In YB debug mode, add stack trace info (to first msg only) */ \
 		if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace && !appendval) { \
+			appendStringInfoString(&buf, "\n"); \
 			appendStringInfoString(&buf, YBCGetStackTrace()); \
 		} \
 		/* Save the completed message into the stack item */ \

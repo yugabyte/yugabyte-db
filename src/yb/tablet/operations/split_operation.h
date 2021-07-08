@@ -29,22 +29,17 @@ class TabletSplitter;
 
 // Operation Context for the SplitTablet operation.
 // Keeps track of the Operation states (request, result, ...).
-class SplitOperationState : public OperationState, public OperationFilter {
+// Executes the SplitTablet operation.
+class SplitOperation
+    : public OperationBase<OperationType::kSplit, tserver::SplitTabletRequestPB>,
+      public OperationFilter {
  public:
-  // Creates SplitOperationState for SplitTablet operation for `tablet`. Remembers
-  // `tablet_splitter` in order to use it for actual execution of tablet splitting.
-  // `consensus_for_abort` is only used when aborting operation.
-  SplitOperationState(
+  SplitOperation(
       Tablet* tablet, TabletSplitter* tablet_splitter,
-      const tserver::SplitTabletRequestPB* request = nullptr);
+      const tserver::SplitTabletRequestPB* request = nullptr)
+      : OperationBase(tablet, request), tablet_splitter_(*CHECK_NOTNULL(tablet_splitter)) {}
 
-  const tserver::SplitTabletRequestPB* request() const override { return request_; }
-
-  TabletSplitter& tablet_splitter() const { return *tablet_splitter_; }
-
-  void UpdateRequestFromConsensusRound() override;
-
-  std::string ToString() const override;
+  TabletSplitter& tablet_splitter() const { return tablet_splitter_; }
 
   static bool ShouldAllowOpAfterSplitTablet(consensus::OperationType op_type);
 
@@ -53,36 +48,16 @@ class SplitOperationState : public OperationState, public OperationFilter {
       const TabletId& child1, const TabletId& child2);
 
  private:
+  CHECKED_STATUS Prepare() override;
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  CHECKED_STATUS DoAborted(const Status& status) override;
   void AddedAsPending() override;
   void RemovedFromPending() override;
 
   CHECKED_STATUS CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const override;
 
-  TabletSplitter* const tablet_splitter_;
-  const tserver::SplitTabletRequestPB* request_;
-};
-
-// Executes the SplitTablet operation.
-class SplitOperation : public Operation {
- public:
-  explicit SplitOperation(std::unique_ptr<SplitOperationState> state)
-      : Operation(std::move(state), OperationType::kSplit) {}
-
-  SplitOperationState* state() override {
-    return pointer_cast<SplitOperationState*>(Operation::state());
-  }
-
-  const SplitOperationState* state() const override {
-    return pointer_cast<const SplitOperationState*>(Operation::state());
-  }
-
- private:
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
-  CHECKED_STATUS Prepare() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
-  std::string ToString() const override;
+  TabletSplitter& tablet_splitter_;
 };
 
 }  // namespace tablet

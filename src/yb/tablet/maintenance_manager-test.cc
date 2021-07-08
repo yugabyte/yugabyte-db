@@ -30,11 +30,11 @@
 // under the License.
 //
 
-#include <gflags/gflags.h>
-#include <gtest/gtest.h>
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/maintenance_manager.h"
@@ -55,9 +55,9 @@ METRIC_DEFINE_gauge_uint32(test, maintenance_ops_running,
                            "Number of Maintenance Operations Running",
                            yb::MetricUnit::kMaintenanceOperations,
                            "The number of background maintenance operations currently running.");
-METRIC_DEFINE_histogram(test, maintenance_op_duration,
+METRIC_DEFINE_coarse_histogram(test, maintenance_op_duration,
                         "Maintenance Operation Duration",
-                        yb::MetricUnit::kSeconds, "", 60000000LU, 2);
+                        yb::MetricUnit::kSeconds, "");
 
 namespace yb {
 

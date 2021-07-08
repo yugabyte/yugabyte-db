@@ -892,15 +892,45 @@ yb-admin restore_snapshot_schedule <schedule-id> <restore-target>
 ```
 
 * _schedule-id_: The identifier (ID) of the schedule to be restored.
-* _restore-target_: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix time, or a relative time such as `minus 5m` (to restore to 5 minutes ago). Optional; omit to restore to each snapshot's creation time.
+* _restore-target_: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to restore to 5 minutes ago).
 
-**Example**
+You can also use a [YSQL timestamp](../../api/ysql/datatypes/type_datetime/) or [YCQL timestamp](../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
+
+In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago".
+
+When you specify a relative time, you can specify any or all of _days_, _hours_, _minutes_, and _seconds_. For example:
+
+* `minus 5m` to restore from five minutes ago
+* `minus 1h` to restore from one hour ago
+* `minus 3d` to restore from three days ago
+* `minus 1h 5m` to restore from one hour and five minutes ago
+
+Relative times can be in any of the following formats (again, note that you can specify any or all of days, hours, minutes, and seconds):
+
+* ISO 8601: `3d 4h 5m 6s`
+* Abbreviated PostgreSQL: `3 d 4 hrs 5 mins 6 secs`
+* Traditional PostgreSQL: `3 days 4 hours 5 minutes 6 seconds`
+* SQL standard: `D H:M:S`
+
+**Examples**
+
+Restore from an absolute timestamp:
+
+```sh
+$ ./bin/yb-admin \
+    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+    1617670679185100
+```
+
+Restore from a relative time:
 
 ```sh
 $ ./bin/yb-admin \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     minus 60s
 ```
+
+In both cases, the output is similar to the following:
 
 ```output
 {
@@ -1073,6 +1103,10 @@ replication_info {
 
 #### setup_universe_replication
 
+Sets up the universe replication for the specified producer universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+
+To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
+
 **Syntax**
 
 ```sh
@@ -1111,6 +1145,10 @@ Changes the universe replication for the specified producer universe. Use this c
 
 * Add or remove tables in an existing replication UUID.
 * Modify the master addresses.
+
+If no tables have been configured for replication, use [`setup_universe_replication`](#setup-universe-replication).
+
+To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
 
 **Syntax**
 
@@ -1341,6 +1379,34 @@ yb-admin \
 To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
 
 {{< /note >}}
+
+#### list_cdc_streams
+
+Lists the CDC streams for the specified YB-Master servers.
+
+{{< note title="Tip" >}}
+
+Use this command when setting up universe replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+
+{{< /note >}}
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_cdc_streams
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    list_cdc_streams
+```
 
 ---
 

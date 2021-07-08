@@ -1123,6 +1123,10 @@ public class TestPartialIndex extends BaseCQLTest {
    * Internal method to test access method selection policy.
    *
    * @param whereClause WHERE clause to test.
+   * @param whereClauseWithoutIndexes WHERE clause which gives the same rows but can be used with
+   *   the primary index. This is needed in cases where the where clause with partial index isn't
+   *   allowed with a normal primary index scan. E.g: the = and != operator aren't allowed on the
+   *   same column.
    * @param selectCols expressions to be selected in SELECT statement.
    * @param predicate1 predicate of 1st index.
    * @param indexedHashCols1 hash index cols of 1st index.
@@ -1139,12 +1143,12 @@ public class TestPartialIndex extends BaseCQLTest {
    * @param expectedFilterConditions filter conditions expected in query plan.
    * @param rowToInsert list of rows to insert before testing for SELECT statement.
    */
-  public void testPartialIndexSelectInternal(String whereClause, List<Object> bindValues,
-      List<String> selectCols, String predicate1, List<String> indexedHashCols1,
-      List<String> indexedRangeCols1, List<String> coveringCols1, boolean addExtraIndex,
-      String predicate2, List<String> indexedHashCols2, List<String> indexedRangeCols2,
-      List<String> coveringCols2, boolean strongConsistency, String expectedAccessMethod,
-      String expectedKeyConditions, String expectedFilterConditions,
+  public void testPartialIndexSelectInternal(String whereClause, String whereClauseWithoutIndexes,
+      List<Object> bindValues, List<String> selectCols, String predicate1,
+      List<String> indexedHashCols1, List<String> indexedRangeCols1, List<String> coveringCols1,
+      boolean addExtraIndex, String predicate2, List<String> indexedHashCols2,
+      List<String> indexedRangeCols2, List<String> coveringCols2, boolean strongConsistency,
+      String expectedAccessMethod, String expectedKeyConditions, String expectedFilterConditions,
       List<String> rowToInsert) throws Exception {
 
     // Inserting rows before index creation to test index backfill as well.
@@ -1188,6 +1192,8 @@ public class TestPartialIndex extends BaseCQLTest {
 
     String query = String.format("select %s from %s where %s",
       String.join(",", selectCols), testTableName, whereClause);
+    String queryWithoutIndexes = String.format("select %s from %s where %s",
+      String.join(",", selectCols), testTableName, whereClauseWithoutIndexes);
 
     while (true) {
       boolean all_indexes_have_read_perms = true;
@@ -1216,6 +1222,7 @@ public class TestPartialIndex extends BaseCQLTest {
     for (Object bind_value : bindValues) {
       flat_query = flat_query.replaceFirst("\\?", bind_value.toString());
     }
+
     session.execute(flat_query);
     session.execute(flat_query);
     session.execute(flat_query);
@@ -1250,7 +1257,13 @@ public class TestPartialIndex extends BaseCQLTest {
       session.execute("drop index idx2");
 
     // Query output with expected access method should match that of the main table scan/lookup.
-    assertTrue(queryOutputToStringSet(stmt).equals(queryOutputWithIndexes));
+    String flat_query_without_indexes = queryWithoutIndexes;
+    for (Object bind_value : bindValues) {
+      flat_query_without_indexes =
+        flat_query_without_indexes.replaceFirst("\\?", bind_value.toString());
+    }
+    assertTrue(queryOutputToStringSet(new SimpleStatement(flat_query_without_indexes)).equals(
+      queryOutputWithIndexes));
 
     resetTableAndIndex();
   }
@@ -1295,6 +1308,9 @@ public class TestPartialIndex extends BaseCQLTest {
     //        - (non-full, full scan): Choose main table.
     //
     //    3. Test PREPAREd statement.
+    //    4. Test predicate of the form: v1 = ? and v1 != NULL. This is allowed if a partial
+    //       index that subsumes (v1 != NULL) exists and is chosen. Without the partial index
+    //       both = and != operators on the same column are not allowed.
 
     // 1. Main table scan: full scan
     // 2. Partial Index: WHERE clause doesn't imply Idx predicate && requires non-full scan && is
@@ -1302,6 +1318,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Main table is chosen]
     testPartialIndexSelectInternal(
       "v1 = 1 and r1 = 1", /* whereClause */
+      "v1 = 1 and r1 = 1", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v2 = NULL", /* predicate1 */
@@ -1325,6 +1342,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1353,6 +1371,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "v1 = NULL and r1 = 1 and h1 = 1 and h2 = 1", /* whereClause */
+      "v1 = NULL and r1 = 1 and h1 = 1 and h2 = 1", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1380,6 +1399,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Main table is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and h2 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and h2 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1409,6 +1429,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = ? and v1 = NULL", /* whereClause */
+      "h1 = ? and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(Integer.valueOf(1)), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1428,6 +1449,36 @@ public class TestPartialIndex extends BaseCQLTest {
         "1, 1, 1, 1, NULL, 1", // pred=true row and where clause satisfied
         "2, 1, 1, 1, NULL, 1", // pred=true row but where clause not satisfied
         "2, 2, 1, 1, 1, 1" // pred=false
+      )
+    );
+
+    // Test = and != operator on the same column in a query.
+    //
+    // 1. Main table scan: full scan
+    // 2. Partial Index: WHERE clause => Idx predicate && full scan
+    // [Partial Index is chosen]
+    testPartialIndexSelectInternal(
+      "v1 = ? and v1 != NULL", /* whereClause */
+      "v1 = ?", /* whereClauseWithoutIndexes */ // Assuming that we don't bind with NULL
+      Arrays.asList(Integer.valueOf(1)), /* bindValues */
+      Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
+      "v1 != NULL", /* predicate1 */
+      Arrays.asList("v1", "r1"), /* indexedHashCols1 */
+      Arrays.asList(), /* indexedRangeCols1 */
+      Arrays.asList(), /* coveringCols1 */
+      false,  /* addExtraIndex */
+      "", /* predicate2 */
+      Arrays.asList(), /* indexedHashCols2 */
+      Arrays.asList(), /* indexedRangeCols2 */
+      Arrays.asList(), /* coveringCols2 */
+      true, /* strongConsistency */
+      String.format("Index Scan using %s.idx", DEFAULT_TEST_KEYSPACE), /* expectedAccessMethod */
+      "", /* expectedKeyConditions */
+      "Filter: (v1 = :v1)", /* expectedFilterConditions */
+      Arrays.asList( /* rowsToInsert */
+        "1, 1, 1, 1, 1, 1", // pred=true row and where clause satisfied
+        "2, 1, 1, 1, 2, 1", // pred=true row but where clause not satisfied
+        "2, 2, 1, 1, NULL, 1" // pred=false
       )
     );
 
@@ -1458,6 +1509,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Idx2 is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1486,6 +1538,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Idx2 is chosen]
     testPartialIndexSelectInternal(
       "r1 = 1 and v1 = NULL", /* whereClause */
+      "r1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1514,6 +1567,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Idx2 is chosen]
     testPartialIndexSelectInternal(
       "r2 = 2 and v1 = NULL", /* whereClause */
+      "r2 = 2 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "r2 = 2 and v1 = NULL", /* predicate1 */
@@ -1616,6 +1670,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1700,6 +1755,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 != NULL", /* whereClause */
+      "h1 = 1 and v1 != NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 != NULL", /* predicate1 */
@@ -1785,6 +1841,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 > 5", /* whereClause */
+      "h1 = 1 and v1 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 > 5", /* predicate1 */
@@ -1863,6 +1920,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 != false", /* whereClause */
+      "h1 = 1 and v1 != false", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 != false", /* predicate1 */
@@ -1942,6 +2000,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL and v2 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL and v2 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL and v2 = NULL", /* predicate1 */
@@ -2020,6 +2079,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = 'dummy'", /* whereClause */
+      "h1 = 1 and v1 = 'dummy'", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = 'dummy'", /* predicate1 */
@@ -2114,6 +2174,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v2 > 5", /* whereClause */
+      "h1 = 1 and v2 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2", "v3"), /* selectCols */
       "v2 > 5", /* predicate1 */
@@ -2193,6 +2254,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 > 5 and v2 > 5", /* whereClause */
+      "h1 = 1 and v1 > 5 and v2 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2", "v3"), /* selectCols */
       "v1 > 5 and v2 > 5", /* predicate1 */
@@ -2271,6 +2333,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v3 > 5", /* whereClause */
+      "h1 = 1 and v3 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2", "v3"), /* selectCols */
       "v3 > 5", /* predicate1 */
@@ -2297,6 +2360,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // but still selectCols are such that the Index scan is covered i.e., an Index Only Scan.
     testPartialIndexSelectInternal(
       "h1 = 1 and v3 > 5", /* whereClause */
+      "h1 = 1 and v3 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v3 > 5", /* predicate1 */

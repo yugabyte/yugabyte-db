@@ -395,7 +395,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
 }
 
 void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
-  operation->state()->SetTablet(tablet_peer()->tablet());
+  operation->SetTablet(tablet_peer()->tablet());
   tablet_peer()->Submit(std::move(operation), leader_term);
 }
 
@@ -1441,32 +1441,28 @@ Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData
   return tablet_peer()->tablet()->snapshots().Create(data);
 }
 
-Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoration) {
+Status CatalogManager::RestoreSysCatalog(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
   // Restore master snapshot and load it to RocksDB.
-  auto& tablet = *tablet_peer()->tablet();
-  auto dir = VERIFY_RESULT(tablet.snapshots().RestoreToTemporary(
+  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
       restoration->snapshot_id, restoration->restore_at));
   rocksdb::Options rocksdb_options;
   std::string log_prefix = LogPrefix();
   // Remove ": " to patch suffix.
   log_prefix.erase(log_prefix.size() - 2);
-  tablet.InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
   auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
 
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
   RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadObjects(schema(), doc_db));
-  {
-    SharedLock lock(mutex_);
-    RETURN_NOT_OK(state.PatchVersions(*table_ids_map_));
-  }
-  RETURN_NOT_OK(state.DetermineEntries());
-  {
-    auto existing = VERIFY_RESULT(CollectEntriesForSnapshot(restoration->filter.tables().tables()));
-    RETURN_NOT_OK(state.DetermineObsoleteObjects(existing));
-  }
+  RETURN_NOT_OK(state.LoadRestoringObjects(schema(), doc_db));
+  // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
+  // catalog state.
+  RETURN_NOT_OK(state.LoadExistingObjects(schema(), tablet->doc_db()));
+  RETURN_NOT_OK(state.Process());
 
   // Generate write batch.
   docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);
@@ -1499,7 +1495,7 @@ Status CatalogManager::RestoreSysCatalog(SnapshotScheduleRestoration* restoratio
   set_op_id(restoration->op_id, &frontiers);
   set_hybrid_time(restoration->write_time, &frontiers);
 
-  tablet.WriteToRocksDB(
+  tablet->WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 
   // TODO(pitr) Handle master leader failover.
@@ -1910,6 +1906,15 @@ Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestP
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
   return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
+}
+
+Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
+                                              DeleteSnapshotScheduleResponsePB* resp,
+                                              rpc::RpcContext* rpc) {
+  auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+
+  return snapshot_coordinator_.DeleteSnapshotSchedule(
+      snapshot_schedule_id, leader_ready_term(), rpc->GetClientDeadline());
 }
 
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
@@ -2502,6 +2507,43 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
       req->producer_bootstrap_ids().size() != req->producer_table_ids().size()) {
     return STATUS(InvalidArgument, "Number of bootstrap ids must be equal to number of tables",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  {
+    auto l = cluster_config_->LockForRead();
+    if (l->pb.cluster_uuid() == req->producer_id()) {
+      return STATUS(InvalidArgument, "The request UUID and cluster UUID are identical.",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+  }
+
+  {
+    auto request_master_addresses = req->producer_master_addresses();
+    std::vector<ServerEntryPB> cluster_master_addresses;
+    RETURN_NOT_OK(master_->ListMasters(&cluster_master_addresses));
+    for (const auto &req_elem : request_master_addresses) {
+      for (const auto &cluster_elem : cluster_master_addresses) {
+        if (cluster_elem.has_registration()) {
+          auto p_rpc_addresses = cluster_elem.registration().private_rpc_addresses();
+          for (const auto &p_rpc_elem : p_rpc_addresses) {
+            if (req_elem.host() == p_rpc_elem.host() && req_elem.port() == p_rpc_elem.port()) {
+              return STATUS(InvalidArgument,
+                "Duplicate between request master addresses and private RPC addresses",
+                req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+            }
+          }
+
+          auto broadcast_addresses = cluster_elem.registration().broadcast_addresses();
+          for (const auto &bc_elem : broadcast_addresses) {
+            if (req_elem.host() == bc_elem.host() && req_elem.port() == bc_elem.port()) {
+              return STATUS(InvalidArgument,
+                "Duplicate between request master addresses and broadcast addresses",
+                req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+            }
+          }
+        }
+      }
+    }
   }
 
   std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;

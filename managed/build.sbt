@@ -90,7 +90,8 @@ def clean_venv(baseDirectory: File): Int = {
 
 def build_venv(baseDirectory: File): Int = {
   ybLog("Building virtual env...")
-  Process("./bin/install_python_requirements.sh", baseDirectory / "devops")!
+  Process("./bin/install_python_requirements.sh", baseDirectory / "devops").!
+  Process("./bin/install_ansible_requirements.sh --force", baseDirectory / "devops").!
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -139,7 +140,7 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
-  "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19",
+  "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "1.17",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
@@ -170,7 +171,8 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
-  "org.apache.commons" % "commons-collections4" % "4.4"
+  "com.google.cloud" % "google-cloud-storage" % "1.115.0",
+  "org.projectlombok" % "lombok" % "1.18.20"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -217,6 +219,18 @@ lazy val ybClientSnapshotResolver = {
   }
 }
 
+lazy val ybPublicSnapshotResolverDescription =
+    "Public snapshot resolver for yb-client jar"
+
+lazy val ybPublicSnapshotResolver = {
+  if (mavenLocal) {
+    Seq()
+  } else {
+    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
+  }
+}
+
 // Custom remote maven repository to retrieve library dependencies from.
 lazy val ybMvnCacheUrlEnvVarName = "YB_MVN_CACHE_URL"
 lazy val ybMvnCacheUrl = getEnvVar(ybMvnCacheUrlEnvVarName)
@@ -243,7 +257,8 @@ externalResolvers := {
   validateResolver(mavenCacheServerResolver, mavenCacheServerResolverDescription) ++
   validateResolver(ybLocalResolver, ybLocalResolverDescription) ++
   validateResolver(externalResolvers.value, "Default resolver") ++
-  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription)
+  validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription) ++
+  validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
 (Compile / compilePlatform) := {
@@ -289,7 +304,8 @@ runPlatform := {
 libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  "org.webjars" % "swagger-ui" % "3.43.0",
+  // We wont use swagger-ui jar since we want to change some of the assets:
+  //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
   "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.8"
@@ -298,7 +314,6 @@ libraryDependencies ++= Seq(
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
 
 
-dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 

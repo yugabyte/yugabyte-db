@@ -8,6 +8,7 @@
 
 - name: Validate server type
   hosts: localhost
+  gather_facts: no
   tasks:
     - assert:
         that:
@@ -16,7 +17,7 @@
 
 - name: Install Python on Ubuntu
   hosts: "{{ instance_search_pattern }}"
-  gather_facts: false
+  gather_facts: no
   pre_tasks:
     - name: Verify and Install Python
       raw: bash -c "test -e /usr/bin/python || (apt -qqy update && apt install -qqy python-minimal)"
