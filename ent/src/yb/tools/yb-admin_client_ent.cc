@@ -1170,6 +1170,27 @@ Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(const string& producer_uuid) {
+  master::IsSetupUniverseReplicationDoneRequestPB req;
+  req.set_producer_id(producer_uuid);
+  for (;;) {
+    master::IsSetupUniverseReplicationDoneResponsePB resp;
+    RpcController rpc;
+    rpc.set_timeout(timeout_);
+    Status s = master_proxy_->IsSetupUniverseReplicationDone(req, &resp, &rpc);
+
+    if (!s.ok() || resp.has_error()) {
+        LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete"
+                     << " : " << (!s.ok() ? s.ToString() : resp.error().status().message());
+    } else if (resp.has_done() && resp.done()) {
+      return StatusFromPB(resp.replication_error());
+    }
+
+    // Still processing, wait and then loop again.
+    std::this_thread::sleep_for(100ms);
+  }
+}
+
 Status ClusterAdminClient::SetupUniverseReplication(
     const string& producer_uuid, const vector<string>& producer_addresses,
     const vector<TableId>& tables,
@@ -1202,6 +1223,8 @@ Status ClusterAdminClient::SetupUniverseReplication(
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
     return StatusFromPB(resp.error().status());
   }
+
+  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid));
 
   cout << "Replication setup successfully" << endl;
   return Status::OK();
@@ -1264,6 +1287,9 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     cout << "Error altering universe replication: " << resp.error().status().message() << endl;
     return StatusFromPB(resp.error().status());
   }
+
+  // Wait for the altered producer to be deleted (this happens once it is merged with the original).
+  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid + ".ALTER"));
 
   cout << "Replication altered successfully" << endl;
   return Status::OK();

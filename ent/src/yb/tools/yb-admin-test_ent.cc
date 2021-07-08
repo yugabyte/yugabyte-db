@@ -67,14 +67,30 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   }
 
   template <class... Args>
-  Result<std::string> RunAdminToolCommand(Args&&... args) {
+  Result<std::string> RunAdminToolCommandWithMasterAddresses(const string& masterAddresses,
+                                                             Args&&... args) {
     auto command = ToStringVector(
-            GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
+            GetToolPath("yb-admin"), "-master_addresses", masterAddresses,
             std::forward<Args>(args)...);
     std::string result;
     LOG(INFO) << "Run tool: " << AsString(command);
     RETURN_NOT_OK(Subprocess::Call(command, &result));
     return result;
+  }
+
+  template <class... Args>
+  Result<std::string> RunAdminToolCommand(Args&&... args) {
+    return RunAdminToolCommandWithMasterAddresses(cluster_->GetMasterAddresses(),
+                                                  std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  Status RunAdminToolCommandAndGetErrorOutput(string* error_msg, Args&&... args) {
+    auto command = ToStringVector(
+            GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
+            std::forward<Args>(args)...);
+    LOG(INFO) << "Run tool: " << AsString(command);
+    return Subprocess::Call(command, error_msg, /* read_stderr */ true);
   }
 
   template <class... Args>
@@ -596,6 +612,133 @@ TEST_F(AdminCliTest, TestFailedRestoration) {
   ASSERT_EQ(state, SysSnapshotEntryPB::FAILED);
 
   LOG(INFO) << "Test TestFailedRestoration finished.";
+}
+
+TEST_F(AdminCliTest, TestSetupUniverseReplication) {
+  // Default cluster is the consumer cluster.
+  CreateTable(Transactional::kTrue);
+
+  const string kProducerClusterId = "producer";
+
+  // Create the producer cluster.
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = 3;
+  opts.cluster_id = kProducerClusterId;
+  MiniCluster producer_cluster(opts);
+  ASSERT_OK(producer_cluster.Start());
+  ASSERT_OK(producer_cluster.WaitForTabletServerCount(3));
+  auto producer_cluster_client = ASSERT_RESULT(producer_cluster.CreateClient());
+  client::TableHandle producer_cluster_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client.get(), &producer_cluster_table);
+
+  // Setup universe replication, this should only return once complete.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster.GetMasterAddresses(),
+                                producer_cluster_table->id()));
+
+  // Check that the stream was properly created for this table.
+  string output = ASSERT_RESULT(RunAdminToolCommandWithMasterAddresses(
+      producer_cluster.GetMasterAddresses(), "list_cdc_streams"));
+
+  // Ensure that the stream for the table exists.
+  ASSERT_TRUE(output.find(producer_cluster_table->id()) != string::npos);
+
+  // Delete this universe so shutdown can proceed.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+
+  producer_cluster.Shutdown();
+}
+
+TEST_F(AdminCliTest, TestSetupUniverseReplicationFailsWithInvalidSchema) {
+  // Default cluster is the consumer cluster.
+  CreateTable(Transactional::kTrue);
+
+  const string kProducerClusterId = "producer";
+
+  // Create the producer cluster.
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = 3;
+  opts.cluster_id = kProducerClusterId;
+  MiniCluster producer_cluster(opts);
+  ASSERT_OK(producer_cluster.Start());
+  ASSERT_OK(producer_cluster.WaitForTabletServerCount(3));
+  auto producer_cluster_client = ASSERT_RESULT(producer_cluster.CreateClient());
+  client::TableHandle producer_cluster_table;
+
+  // Create a table with a different schema on the producer.
+  client::kv_table_test::CreateTable(Transactional::kFalse, // Results in different schema!
+                                     NumTablets(),
+                                     producer_cluster_client.get(),
+                                     &producer_cluster_table);
+
+  // Try to setup universe replication, should return with a useful error.
+  string error_msg;
+  // First provide a non-existant table id.
+  // ASSERT_NOK since this should fail.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster.GetMasterAddresses(),
+                                                  producer_cluster_table->id() + "-BAD"));
+
+  // Verify that error message has relevant information.
+  ASSERT_TRUE(error_msg.find(producer_cluster_table->id() + "-BAD not found") != string::npos);
+
+  // Delete this universe info so we can try again.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+
+  // Now try with the correct table id.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster.GetMasterAddresses(),
+                                                  producer_cluster_table->id()));
+
+  // Verify that error message has relevant information.
+  ASSERT_TRUE(error_msg.find("Source and target schemas don't match") != string::npos);
+
+  producer_cluster.Shutdown();
+}
+
+TEST_F(AdminCliTest, TestSetupUniverseReplicationFailsWithInvalidBootstrapId) {
+  // Default cluster is the consumer cluster.
+  CreateTable(Transactional::kTrue);
+
+  const string kProducerClusterId = "producer";
+
+  // Create the producer cluster.
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = 3;
+  opts.cluster_id = kProducerClusterId;
+  MiniCluster producer_cluster(opts);
+  ASSERT_OK(producer_cluster.Start());
+  ASSERT_OK(producer_cluster.WaitForTabletServerCount(3));
+  auto producer_cluster_client = ASSERT_RESULT(producer_cluster.CreateClient());
+  client::TableHandle producer_cluster_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client.get(), &producer_cluster_table);
+
+  // Try to setup universe replication with a fake bootstrap id, should return with a useful error.
+  string error_msg;
+  // ASSERT_NOK since this should fail.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster.GetMasterAddresses(),
+                                                  producer_cluster_table->id(),
+                                                  "fake-bootstrap-id"));
+
+  // Verify that error message has relevant information.
+  ASSERT_TRUE(error_msg.find(
+      "Could not find CDC stream: stream_id: \"fake-bootstrap-id\"") != string::npos);
+
+  producer_cluster.Shutdown();
 }
 
 }  // namespace tools

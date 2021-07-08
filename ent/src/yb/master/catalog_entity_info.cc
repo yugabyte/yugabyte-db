@@ -66,6 +66,16 @@ std::string UniverseReplicationInfo::ToString() const {
   return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
 }
 
+void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  setup_universe_replication_error_ = status;
+}
+
+Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return setup_universe_replication_error_;
+}
+
 ////////////////////////////////////////////////////////////
 // SnapshotInfo
 ////////////////////////////////////////////////////////////

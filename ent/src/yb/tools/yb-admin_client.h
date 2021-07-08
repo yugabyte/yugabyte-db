@@ -101,6 +101,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                           const std::vector<TableId>& add_tables,
                                           const std::vector<TableId>& remove_tables);
 
+  CHECKED_STATUS WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
+
   CHECKED_STATUS SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
 

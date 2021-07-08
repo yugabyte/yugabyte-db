@@ -700,6 +700,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (AlterUniverseReplication)
     (SetUniverseReplicationEnabled)
     (GetUniverseReplication)
+    (IsSetupUniverseReplicationDone)
     (ChangeEncryptionInfo)
     (IsEncryptionEnabled));
 
