@@ -210,7 +210,7 @@ This is the result:
 
 ### Example where a CTE defined in the WITH clause itself has a WITH clause
 
-The following SQL statement uses _two_ `WITH` clauses. Each defines its own scope for the names of the CTEs that they define. Notice that the name _"a2"_ is defined in three different scopes: schema scope; the scope of the outer `WITH` clause; and the scope of the inner `WITH` clause that the outer one begins with.
+The following SQL statement uses _two_ `WITH` clauses. Each defines its own scope for the names of the CTEs that they define. Notice that the name _"colliding"_, as the name of a relation, is defined in three different scopes: schema scope; the scope of the outer `WITH` clause; and the scope of the inner `WITH` clause that the outer one begins with. For good measure, it's also used in a different namespace: as the name of a column, or column alias.
 
 The outer `WITH` clause simply cannot see the names that are defined in the inner `WITH` clause. But each of these `WITH` clauses can see a schema-level relation with a name that collides with a name defined in that `WITH` clause by qualifying it with the schema name. Column names are always defined within the scope of the relation that contains them.
 

@@ -205,4 +205,4 @@ When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RA
 
 ### Additional Examples
 
-For additional examples, refer to [Example Using a YCSB Workload with Automatic Tablet Splitting](https://docs.yugabyte.com/latest/architecture/docdb-sharding/tablet-splitting/#example-using-a-ycsb-workload-with-automatic-tablet-splitting).
+For additional examples, refer to [Example Using a YCSB Workload with Automatic Tablet Splitting](/latest/architecture/docdb-sharding/tablet-splitting/#example-using-a-ycsb-workload-with-automatic-tablet-splitting).

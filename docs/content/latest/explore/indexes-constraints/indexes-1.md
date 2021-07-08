@@ -82,7 +82,7 @@ Index Scan using index_employees_department on employees (cost=0.00..5.22 rows=1
 Index Cond: (department = 'Operations'::text)
 ```
 
-For additional information, see [Create index API](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique).
+For additional information, see [Create index API](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique).
 
 ## List indexes
 
@@ -107,7 +107,7 @@ CREATE UNIQUE INDEX index_employees_no
 
 After the preceding statement is executed, any attempt to insert a new employee with the same `employee_no` as one of the existing employees will result in an error.
 
-For additional information and examples, see [Unique index with HASH column ordering](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering).
+For additional information and examples, see [Unique index with HASH column ordering](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering).
 
 ## Use indexes on expressions
 
@@ -152,7 +152,7 @@ You can define a partial index using the following syntax:
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
-For examples, see [Partial Indexes](https://docs.yugabyte.com/latest/api/ysql/the-sql-language/statements/ddl_create_index/#partial-indexes).
+For examples, see [Partial Indexes](/latest/api/ysql/the-sql-language/statements/ddl_create_index/#partial-indexes).
 
 ## Remove indexes
 
