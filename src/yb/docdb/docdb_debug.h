@@ -27,7 +27,10 @@
 namespace yb {
 namespace docdb {
 
-std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type);
+std::string EntryToString(
+    const rocksdb::Iterator& iterator, StorageDbType db_type = StorageDbType::kRegular);
+std::string EntryToString(
+    const Slice& key, const Slice& value, StorageDbType db_type = StorageDbType::kRegular);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

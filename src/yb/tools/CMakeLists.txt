@@ -92,6 +92,11 @@ target_link_libraries(rocksdb_dump
   rocksdb_tools
   yb_docdb)
 
+add_executable(sst_dump sst_dump.cc)
+target_link_libraries(sst_dump
+  rocksdb_tools
+  yb_docdb)
+
 add_executable(yb-fs_list fs_list-tool.cc)
 target_link_libraries(yb-fs_list
   ${LINK_LIBS}
