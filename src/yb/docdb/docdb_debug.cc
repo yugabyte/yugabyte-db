@@ -46,12 +46,15 @@ void ProcessDumpEntry(
   }
 }
 
-std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type) {
+std::string EntryToString(const Slice& key, const Slice& value, StorageDbType db_type) {
   std::ostringstream out;
   ProcessDumpEntry(
-      iterator.key(), iterator.value(), IncludeBinary::kFalse, db_type,
-      std::bind(&AppendLineToStream, _1, &out));
+      key, value, IncludeBinary::kFalse, db_type, std::bind(&AppendLineToStream, _1, &out));
   return out.str();
+}
+
+std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type) {
+  return EntryToString(iterator.key(), iterator.value(), db_type);
 }
 
 template <class DumpStringFunc>
