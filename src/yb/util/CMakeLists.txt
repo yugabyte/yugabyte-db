@@ -266,6 +266,7 @@ set(UTIL_SRCS
 set(UTIL_LIBS
   boost_system
   boost_thread
+  boost_atomic
   cds
   icui18n
   icuuc
