@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
-import { change, Field, reduxForm } from 'redux-form';
+import { Field, reduxForm } from 'redux-form';
 import { YBButton, YBMultiSelectWithLabel, YBTextInputWithLabel } from '../../common/forms/fields';
 import { AddDestinationChannelFrom } from './AddDestinationChannelFrom';
 
@@ -25,7 +25,6 @@ const styles = {
 };
 
 const AlertDestinationConfiguration = (props) => {
-
   const [destinationChannelList, setDestinationChannelList] = useState([]);
 
   useEffect(() => {
@@ -49,13 +48,13 @@ const AlertDestinationConfiguration = (props) => {
     let payload = {
       name: '',
       receivers: []
-    }
+    };
     payload.name = values['ALERT_DESTINATION_NAME'];
-    values['DESTINATION_CHANNEL_LIST'].forEach(channel => payload.receivers.push(channel.value));
+    values['DESTINATION_CHANNEL_LIST'].forEach((channel) => payload.receivers.push(channel.value));
     props.setInitialValues();
-    values.type === "update" ? props.updateAlertDestination(payload, values.uuid).then(() => props.onAddCancel()) :
-    props.createAlertDestination(payload).then(() => props.onAddCancel())
-
+    values.type === 'update'
+      ? props.updateAlertDestination(payload, values.uuid).then(() => props.onAddCancel())
+      : props.createAlertDestination(payload).then(() => props.onAddCancel());
   };
 
   const {
@@ -63,7 +62,7 @@ const AlertDestinationConfiguration = (props) => {
     onAddCancel,
     setInitialValues,
     initialValues,
-    modal: { showModal, visibleModal },
+    modal: { showModal, visibleModal }
   } = props;
 
   return (

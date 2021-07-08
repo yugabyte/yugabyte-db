@@ -7,11 +7,9 @@
  *
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
+package com.yugabyte.yw.models.common;
 
-package com.yugabyte.yw.models.helpers;
-
-// TODO - probably need to be removed and replaced with severity
-public enum KnownAlertTypes {
-  Warning,
-  Error
+public enum Measure {
+  PERCENTAGE,
+  TIME
 }

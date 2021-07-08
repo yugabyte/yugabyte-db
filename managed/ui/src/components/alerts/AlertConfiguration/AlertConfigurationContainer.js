@@ -25,7 +25,6 @@ import {
 } from '../../../actions/customers';
 import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
-import { UniverseTaskList } from '../../universes/UniverseDetail/compounds/UniverseTaskList';
 import { AlertConfiguration } from './AlertConfiguration';
 
 const mapStateToProps = (state) => {
@@ -138,8 +137,11 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     fetchUniverseList: () => {
-      dispatch(fetchUniverseList()).then((response) => {
-        dispatch(fetchUniverseListResponse(response.payload));
+      return new Promise((resolve) => {
+        dispatch(fetchUniverseList()).then((response) => {
+          dispatch(fetchUniverseListResponse(response.payload));
+          resolve(response.payload.data);
+        });
       });
     },
     closeModal: () => {

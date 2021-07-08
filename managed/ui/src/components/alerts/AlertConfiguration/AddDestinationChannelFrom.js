@@ -2,12 +2,7 @@ import { Field } from 'formik';
 import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
-import {
-  YBFormInput,
-  YBRadioButtonGroup,
-  YBSelectWithLabel,
-  YBToggle
-} from '../../common/forms/fields';
+import { YBFormInput, YBSelectWithLabel, YBToggle } from '../../common/forms/fields';
 
 export const AddDestinationChannelFrom = (props) => {
   const { visible, onHide, defaultChannel } = props;
@@ -44,18 +39,20 @@ export const AddDestinationChannelFrom = (props) => {
 
     switch (values.ALERT_TARGET_TYPE) {
       case 'slack':
-        payload['name'] = values.name;
+        payload['name'] = values['slack_name'];
         payload['params']['targetType'] = 'Slack';
         payload['params']['webhookUrl'] = values.webhookURL;
         payload['params']['channel'] = values.name;
         break;
       case 'email':
         // values.smtpData.smtpPort = parseInt(values.smtpData.smtpPort);
-        payload['name'] = values.name;
+        payload['name'] = values['email_name'];
         payload['params']['targetType'] = 'Email';
         payload['params']['recipients'] = values.emailIds.split(',');
-        if (customSMTP) {
+        if (!customSMTP) {
           payload['params']['smtpData'] = values.smtpData;
+        } else {
+          payload['params']['defaultSmtpSettings'] = true;
         }
         break;
       default:
