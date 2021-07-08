@@ -67,7 +67,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docker/">
+    <a class="section-link icon-offset" href="docker/docker-swarm/">
       <div class="head">
         <div class="icon">
           <i class="fab fa-docker"></i>

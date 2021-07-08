@@ -17,7 +17,7 @@ showAsideToc: true
 
 You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
 
-For information on two data-center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments).
+For information on two data-center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
 
 ## Setting Up Universes
 

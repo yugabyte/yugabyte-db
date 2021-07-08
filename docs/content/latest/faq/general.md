@@ -71,7 +71,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Built-in enterprise features
 
-- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/cdc-architecture/) and [2 Data Center Deployments](../../architecture/2dc-deployments/) are also included in open source.
+- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/docdb-replication/change-data-capture//) and [2 Data Center Deployments](../../architecture/docdb-replication/async-replication/) are also included in open source.
 
 ## What client APIs are supported by YugabyteDB?
 

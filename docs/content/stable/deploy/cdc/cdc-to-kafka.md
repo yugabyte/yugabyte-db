@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
+Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
 ## Prerequisites
 
