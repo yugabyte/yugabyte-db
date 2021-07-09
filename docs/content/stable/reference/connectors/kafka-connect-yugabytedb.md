@@ -21,7 +21,7 @@ There are two approaches of integrating [YugabyteDB](https://github.com/yugabyte
 
 The Kafka Connect YugabyteDB source connector streams table updates in YugabyteDB to Kafka topics. It is based on YugabyteDB's Change Data Capture (CDC) feature. CDC allows the connector to simply subscribe to these table changes and then publish the changes to selected Kafka topics.
 
-For an example of the source connector in action, see [CDC to Kafka](../../../deploy/cdc/cdc-to-kafka/) page.
+For an example of the source connector in action, see [CDC to Kafka](../../../integrations/change-data-capture/cdc-kafka/) page.
 
 ## Kafka Connect YugabyteDB Sink Connector
 
@@ -39,7 +39,7 @@ For building and using this project, the following tools must be installed on yo
 
 1. Set up and start Kafka.
 
-Download the Apache Kafka `tar` file.
+    Download the Apache Kafka `tar` file.
 
     ```sh
     mkdir -p ~/yb-kafka
@@ -47,16 +47,17 @@ Download the Apache Kafka `tar` file.
     wget http://apache.cs.utah.edu/kafka/2.5.0/kafka_2.12-2.5.0.tgz
     tar -xzf kafka_2.12-2.5.0.tgz
     ```
-Any latest version can be used — this is an example.
 
-2. Start Zookeeper and Kafka server.
+    Any latest version can be used — this is an example.
+
+1. Start Zookeeper and Kafka server.
 
     ```sh
     ~/yb-kafka/kafka_2.12-2.5.0/bin/zookeeper-server-start.sh config/zookeeper.properties &
     ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-server-start.sh config/server.properties &
     ```
 
-3. Create a Kafka topic.
+1. Create a Kafka topic.
 
     ```sh
     $ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-topics.sh --create --zookeeper localhost:2181--replication-factor 1 --partitions 1 --topic test
@@ -64,15 +65,15 @@ Any latest version can be used — this is an example.
 
     This needs to be done only once.
 
-4. Run the following to produce data in that topic:
+1. Run the following to produce data in that topic:
 
     ```sh
     $ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-console-producer.sh --broker-list localhost:9092--topic test_topic
     ```
 
-5. Just cut-and-paste the following lines at the prompt:
+1. Just cut-and-paste the following lines at the prompt:
 
-     ```
+     ```json
      {"key" : "A", "value" : 1, "ts" : 1541559411000}
      {"key" : "B", "value" : 2, "ts" : 1541559412000}
      {"key" : "C", "value" : 3, "ts" : 1541559413000}
@@ -80,24 +81,24 @@ Any latest version can be used — this is an example.
 
      Feel free to `Ctrl-C` this process or switch to a different shell as more values can be added later as well to the same topic.
 
-2. Install YugabyteDB and create the database table.
+1. Install YugabyteDB and create the database table.
 
     [Install YugabyteDB and start a local cluster](../../../quick-start/install/).
     Create a database and table by running the following command. You can find `ycqlsh` in the `bin`  subdirectory located inside the YugabyteDB installation folder.
 
-    ```plpgsql
+    ```sql
     yugabyte=# CREATE DATABASE IF NOT EXISTS demo;
     yugabyte=# \c demo
     demo=# CREATE TABLE demo.test_table (key text, value bigint, ts timestamp, PRIMARY KEY (key));
     ```
 
-3. Set up and run the Kafka Connect Sink.
+1. Set up and run the Kafka Connect Sink.
 
     Set up the JAR files required by Kafka Connect.
 
     ```sh
     $ cd ~/yb-kafka/yb-kafka-connector/
-    mvn clean install -DskipTests
+    $ mvn clean install -DskipTests
     $ cp  
     $ cd ~/yb-kafka/kafka_2.12-2.5.0/libs/
     $ wget https://repo1.maven.org/maven2/io/netty/netty-all/4.1.51.Final/netty-all-4.1.51.Final.jar
@@ -117,11 +118,11 @@ Any latest version can be used — this is an example.
     - The `database` and `tablename` values in the `yugabyte.sink.properties` file should match the values in the ysqlsh commands in step 5.
     - The `topics` value should match the topic name from producer in step 6.
     - Setting the `yugabyte.cql.contact.points` to a non-local list of host and ports will help connect to any remote-accessible existing YugabyteDB cluster.
-   - Check the console output (optional).
+    - Check the console output (optional).
 
      You should see something like this (relevant lines from `YBSinkTask.java`) on the console:
 
-    ```
+    ```output
     [2018-10-28 16:24:16,037] INFO Start with keyspace=demo, table=test_table(com.yb.connect.sink.YBSinkTask:79)
     [2018-10-28 16:24:16,054] INFO Connecting to nodes: /127.0.0.1:9042,/127.0.0.2:9042,127.0.0.3:9042 (com.yb.connect.sink.YBSinkTask:189)
     [2018-10-28 16:24:16,517] INFO Connected to cluster: cluster1(com.yb.connect.sink.YBSinkTask:155)
@@ -132,13 +133,13 @@ Any latest version can be used — this is an example.
     ...
     ```
 
-4. Confirm that the rows are in the target table in the YugabyteDB cluster, using `ysqlsh`.
+1. Confirm that the rows are in the target table in the YugabyteDB cluster, using `ysqlsh`.
 
-   ```plpgsql
+   ```sql
    demo=# select * from demo.test_table;
    ```
 
-   ```
+   ```output
    key | value | ts
    ----+-------+---------------------------------
      A |     1 | 2018-11-07 02:56:51.000000+0000

@@ -73,7 +73,7 @@ Simply start it in `ysqlsh`. You can run it time and again. It always finishes s
 
 ## Conclusion
 
-The function [`regr_r2()`](../../../function-syntax-semantics/linear-regression/regr/#regr-r2) implements a measure that the literature refers to as "R-squared". When the "R-squared" value is _0.6_, it means that _60%_ of the relationship of the putative _dependent_ variable (incidence of COVID-like symptoms) to the putative _independent_ variable (mask-wearing) is explained by a simple _"y = m*x + c"_ linear dependence—and that the remaining _40%_ is unexplained. A value greater than about _60%_ is generally taken to indicate that the putative _dependent_ variable really does depend upon the putative _independent_ variable.
+The function [`regr_r2()`](../function-syntax-semantics/linear-regression/regr/#regr-r2) implements a measure that the literature refers to as "R-squared". When the "R-squared" value is _0.6_, it means that _60%_ of the relationship of the putative _dependent_ variable (incidence of COVID-like symptoms) to the putative _independent_ variable (mask-wearing) is explained by a simple _"y = m*x + c"_ linear dependence—and that the remaining _40%_ is unexplained. A value greater than about _60%_ is generally taken to indicate that the putative _dependent_ variable really does depend upon the putative _independent_ variable.
 
 The downloaded COVIDcast data spanned a fifty day period (from 13-Sep-2020 through 1-Nov-2020). The value of "R-squared" was computed, in turn, for each of these days. It was greater than or equal to _60%_ on about _80%_ of these days.
 

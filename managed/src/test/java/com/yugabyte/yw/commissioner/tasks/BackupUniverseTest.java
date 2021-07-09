@@ -42,6 +42,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
+    super.setUp();
     mockClient = mock(YBClient.class);
     Master.SysClusterConfigEntryPB.Builder configBuilder =
         Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
@@ -99,7 +100,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE, false);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Completed, backup.state);
   }
@@ -113,7 +114,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE, true);
     verify(mockTableManager, times(1)).createBackup(any());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Failed, backup.state);
   }
@@ -126,7 +127,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE, true);
     verify(mockTableManager, times(1)).createBackup(any());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Failed, backup.state);
   }
@@ -141,7 +142,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.RESTORE, false);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Completed, backup.state);
   }
@@ -156,7 +157,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.RESTORE, true);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Completed, backup.state);
   }

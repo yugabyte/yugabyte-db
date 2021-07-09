@@ -9,38 +9,37 @@
  */
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
+import org.yb.util.Pair;
+
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
-import play.api.Play;
-import org.yb.util.Pair;
 
+@Slf4j
 public class EnableEncryptionAtRest extends AbstractTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(EnableEncryptionAtRest.class);
+  private static final int KEY_IN_MEMORY_TIMEOUT = 500;
 
-  public static final int KEY_IN_MEMORY_TIMEOUT = 500;
+  private final EncryptionAtRestManager keyManager;
 
-  // The YB client.
-  public YBClientService ybService = null;
-
-  public EncryptionAtRestManager keyManager = null;
-
-  // Timeout for failing to respond to pings.
-  private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
+  @Inject
+  protected EnableEncryptionAtRest(
+      BaseTaskDependencies baseTaskDependencies, EncryptionAtRestManager keyManager) {
+    super(baseTaskDependencies);
+    this.keyManager = keyManager;
+  }
 
   public static class Params extends UniverseDefinitionTaskParams {}
 
@@ -50,20 +49,13 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
   }
 
   @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
-    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
-  }
-
-  @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
-      LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
+      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
       final byte[] universeKeyRef =
           keyManager.generateUniverseKey(
@@ -115,7 +107,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
           taskParams().encryptionAtRestConfig.kmsConfigUUID,
           universeKeyRef);
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage(), e);
+      log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, hostPorts);

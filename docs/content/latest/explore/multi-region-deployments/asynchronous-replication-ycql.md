@@ -35,7 +35,7 @@ showAsideToc: true
 
 </ul>
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments/) in the Architecture section.
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/) in the Architecture section.
 
 This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yugabyted](../../../reference/configuration/yugabyted) and [yb-admin](../../../admin/yb-admin) utilities.
 
@@ -310,5 +310,5 @@ $ ./bin/yugabyted destroy \
 
 For more information, see the following in the Architecture section:
 
-- [Two data center (2DC) deployments](../../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../../architecture/cdc-architecture)
+- [Asynchronous replication](../../../architecture/docdb-replication/async-replication/)
+- [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)

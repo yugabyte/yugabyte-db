@@ -21,17 +21,17 @@ Yugabyte recommends that you create two user-defined function overload sets, thu
 
 "Safe, approved arguments" means:
 
-- When a timezone is specified using its name, this is checked against a list of approved names.
-- When a timezone is specified using an _interval_ value, this is checked to ensure that it lies in the range defined by the overall maximum and minimum values of _utc_offset_ columns in the _pg_timezone_names_ and _pg_timezone_abbrevs_ catalog views.
+- When a timezone is specified using its name, this is checked against a list of approved names—a subset of the rows in _pg_timezone_names.name_
+- When a timezone is specified using an _interval_ value, this is checked to ensure that it lies in the range defined by the overall maximum and minimum values of _utc_offset_ columns in the _pg_timezone_names_ and _pg_timezone_abbrevs_ catalog views. It's also checked to ensure that it's an integral multiple of fifteen minutes, respecting the convention followed by every timezone shown by _pg_timezone_names_.
 
 Following these recommendations protects you from the many opportunities to go wrong brought by using the native functionality with no constraints; and yet doing so still allows you all the functionality that you could need.
 
-The code that this page presents is included in a larger set of useful re-useable _date-time_ code. See [Download the '.zip' file to create the reusable code that this overall major section describes](../../#download). The code on this page depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
+The code that this page presents is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../intro/#download). The code on this page depends on the [custom _interval_ domains](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) code. And this, in turn, depends on the [user-defined _interval_ utilities](../../date-time-data-types-semantics/type-interval/interval-utilities/).
 {{< /tip >}}
 
 ## The approved_timezone_names view
 
-This is the union of the [Real timezones that observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-with-dst/), the [Real timezones that do not observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-no-dst/) view, and the single row that specifies that facts about the _UTC Time Standard_.
+This is the union of the [Real timezones that observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-with-dst/) view, the [Real timezones that do not observe Daylight Savings Time](../extended-timezone-names/canonical-real-country-no-dst/) view, and the single row that specifies the facts about the _UTC Time Standard_.
 
 ```plpgslq
 drop view if exists approved_timezone_names cascade;
@@ -74,7 +74,7 @@ where
 
 ## Common procedures to assert the approval of a timezone name and an interval value
 
-These two _"assert"_ procedures are used by both the _[set_timezone()](#the-set-timezone-procedure-overloads)_ and the _[at_timezone()](#the-at-timezone-function-overloads)_ user-defined function overloads. The depend upon some code described in the section [Defining and using custom domain types to specialize the native interval functionality](../../date-time-data-types-semantics/type-interval/custom-interval-domains/). And these, in turn, depend on some code described in the [User-defined interval utility functions](../../date-time-data-types-semantics/type-interval/interval-utilities/) section.
+These two _"assert"_ procedures are used by both the _[set_timezone()](#the-set-timezone-procedure-overloads)_ and the _[at_timezone()](#the-at-timezone-function-overloads)_ user-defined function overloads. They depend upon some code described in the section [Defining and using custom domain types to specialize the native interval functionality](../../date-time-data-types-semantics/type-interval/custom-interval-domains/). And these, in turn, depend on some code described in the [User-defined interval utility functions](../../date-time-data-types-semantics/type-interval/interval-utilities/) section.
 
 ### assert_approved_timezone_name()
 
@@ -154,6 +154,8 @@ end;
 $body$;
 ```
 
+Should you be concerned about the performance of this check, you can rely on the fact that the limits for acceptable _interval_ values that it discovers on every invocation can simply be declared as _constants_ in the functions source code. The safest way to do this is to write a generator procedure to create [or replace] the _assert_acceptable_timezone_interval()_ procedure and to document the practice that requires that this generator be run whenever the YugabyteDB version (or the PostgreSQL version) is created or changed. (Your practice rule would need to be stated more carefully if you allow changes to the configuration files that determine the contents that the _pg_timezone_names_ view and the _pg_timezone_abbrevs_ view expose.)
+
 ## The set_timezone() procedure overloads
 
 ```plpgsql
@@ -212,7 +214,7 @@ This is the result:
 
 (The output also lists overloads for the _timetz_ data type. This has been elided because, following the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE), Yugabyte recommends that you don't use this data type.)
 
-Create wrapper functions for the four listed built-in functions.
+Create wrapper functions for the four listed built-in functions:
 
 ```plpgsql
 -- plain timestamp in, timestamptz out.
@@ -325,7 +327,7 @@ end;
 $body$;
 ```
 
-The block finishes silently, showing that all of the assertions hold. Uncomment the _raise info_ statements and repeat the test. You'll see thus information:
+The block finishes silently, showing that all of the assertions hold. Uncomment the _raise info_ statements and repeat the test. You'll see this information:
 
 ```output
 INFO:  Invalid value for parameter TimeZone "Bad"
@@ -371,7 +373,7 @@ end;
 $body$;
 ```
 
-The block finishes silently, showing that all of the assertions hold. Uncomment the _raise info_ statements and repeat the test. You'll see thus information:
+The block finishes silently, showing that all of the assertions hold. Uncomment the _raise info_ statements and repeat the test. You'll see this information:
 
 ```output
 INFO:  Invalid value for interval "19:00:00"

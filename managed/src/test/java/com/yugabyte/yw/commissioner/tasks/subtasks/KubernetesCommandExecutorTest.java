@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -63,17 +64,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  protected AlertConfigurationWriter mockAlertConfigurationWriter;
 
   @Override
   protected Application provideApplication() {
     kubernetesManager = mock(KubernetesManager.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
 

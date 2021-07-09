@@ -12,7 +12,7 @@
 //
 package org.yb.pgsql;
 
-import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.*;
 import static org.yb.AssertionWrappers.*;
 import static org.yb.util.SanitizerUtil.isASAN;
 import static org.yb.util.SanitizerUtil.isTSAN;
@@ -842,17 +842,37 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static class Row implements Comparable<Row>, Cloneable {
     static Row fromResultSet(ResultSet rs) throws SQLException {
-      Object[] elems = new Object[rs.getMetaData().getColumnCount()];
-      for (int i = 0; i < elems.length; i++) {
-        elems[i] = rs.getObject(i + 1); // Column index starts from 1.
+      List<Object> elems = new ArrayList<>();
+      List<String> columnNames = new ArrayList<>();
+      for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
+        elems.add(rs.getObject(i));
+        columnNames.add(rs.getMetaData().getColumnLabel(i));
       }
-      return new Row(elems);
+      return new Row(elems, columnNames);
     }
 
-    ArrayList<Object> elems = new ArrayList<>();
+    List<Object> elems = new ArrayList<>();
+
+    /**
+     * List of column names, should have the same size as {@link #elems}.
+     * <p>
+     * Not used for equality, hash code and comparison.
+     */
+    List<String> columnNames = new ArrayList<>();
 
     Row(Object... elems) {
       Collections.addAll(this.elems, elems);
+    }
+
+    Row(List<Object> elems, List<String> columnNames) {
+      checkArgument(elems.size() == columnNames.size());
+      this.elems = elems;
+      this.columnNames = columnNames;
+    }
+
+    /** Returns a column name if available, or {@code null} otherwise. */
+    String getColumnName(int index) {
+      return columnNames.size() > 0 ? columnNames.get(index) : null;
     }
 
     Object get(int index) {
@@ -911,10 +931,18 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     @Override
     public String toString() {
+      return toString(false /* printColumnNames */);
+    }
+
+    public String toString(boolean printColumnNames) {
       StringBuilder sb = new StringBuilder();
       sb.append("Row[");
       for (int i = 0; i < elems.size(); i++) {
         if (i > 0) sb.append(',');
+        if (printColumnNames) {
+          String columnNameOrNull = getColumnName(i);
+          sb.append((columnNameOrNull != null ? columnNameOrNull : i) + "=");
+        }
         if (elems.get(i) == null) {
           sb.append("null");
         } else {
@@ -928,11 +956,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     @Override
     public Row clone() throws CloneNotSupportedException {
-      Row clone = (Row)super.clone();
-      clone.elems = new ArrayList<>(elems.size());
-      for (Object e : elems) {
-        clone.elems.add(e);
-      }
+      Row clone = (Row) super.clone();
+      clone.elems = new ArrayList<>(this.elems);
+      clone.columnNames = new ArrayList<>(this.columnNames);
       return clone;
     }
 
@@ -1126,12 +1152,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
-  /** Better alternative to assertEquals, which provides more mismatch details. */
+  /** Better alternative to assertEquals that provides more mismatch details. */
   protected void assertRows(List<Row> expected, List<Row> actual) {
-    assertEquals("Collection length mismatch: expected " + expected.size()
-        + ", but was ", expected.size(), actual.size());
+    assertRows(null, expected, actual);
+  }
+
+  /** Better alternative to assertEquals that provides more mismatch details. */
+  protected void assertRows(String messagePrefix, List<Row> expected, List<Row> actual) {
+    String fullPrefix = StringUtils.isEmpty(messagePrefix) ? "" : (messagePrefix + ": ");
+    assertEquals(fullPrefix + "Collection length mismatch:", expected.size(), actual.size());
     for (int i = 0; i < expected.size(); ++i) {
-      assertRow("Mismatch at row " + (i + 1) + ": ", expected.get(i), actual.get(i));
+      assertRow(fullPrefix + "Mismatch at row " + (i + 1) + ": ", expected.get(i), actual.get(i));
     }
   }
 
@@ -1144,11 +1175,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         + "\nActual row:   " + actual,
         expected.elems.size(), actual.elems.size());
     for (int i = 0; i < expected.elems.size(); ++i) {
+      String columnNameOrNull = expected.getColumnName(i);
       assertTrue(messagePrefix
-          + "Column " + (i + 1) + " mismatch: expected:<" + expected.elems.get(i)
+          + "Column #" + (i + 1)
+          + (columnNameOrNull != null ? " (" + columnNameOrNull + ") " : " ")
+          + "mismatch: expected:<" + expected.elems.get(i)
           + "> but was:<" + actual.elems.get(i) + ">"
-          + "\nExpected row: " + expected
-          + "\nActual row:   " + actual,
+          + "\nExpected row: " + expected.toString(true /* printColumnNames */)
+          + "\nActual row:   " + actual.toString(true /* printColumnNames */),
           expected.elementEquals(i, actual.elems.get(i)));
     }
   }

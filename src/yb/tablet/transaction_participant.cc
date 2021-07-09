@@ -381,7 +381,7 @@ class TransactionParticipant::Impl
       }
       const auto& id = front.transaction_id;
       auto it = transactions_.find(id);
-      if (it != transactions_.end()) {
+      if (it != transactions_.end() && !(**it).ProcessingApply()) {
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }

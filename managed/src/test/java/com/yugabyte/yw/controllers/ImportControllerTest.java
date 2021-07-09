@@ -15,6 +15,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
@@ -38,6 +40,7 @@ import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
 
+@RunWith(MockitoJUnitRunner.class)
 public class ImportControllerTest extends CommissionerBaseTest {
   private static final String MASTER_ADDRS = "127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100";
   private Customer customer;
@@ -48,12 +51,12 @@ public class ImportControllerTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
+    super.setUp();
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
     mockClient = mock(YBClient.class);
     mockResponse = mock(ListTabletServersResponse.class);
-    when(mockApiHelper.getRequest(any(String.class))).thenReturn(Json.newObject());
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -264,7 +267,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
         Json.newObject()
             .put("universeName", "importUniv")
             .put("masterAddresses", "incorrect_format");
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Could not parse host:port from masterAddresseses: incorrect_format");
     assertAuditEntry(1, customer.uuid);
   }
@@ -277,7 +281,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
             .put("universeName", "importUniv")
             .put("masterAddresses", MASTER_ADDRS)
             .put("currentState", ImportUniverseFormData.State.IMPORTED_TSERVERS.name());
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Valid universe uuid needs to be set.");
     assertAuditEntry(1, customer.uuid);
   }
@@ -289,7 +294,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
     ObjectNode bodyJson =
         Json.newObject().put("universeName", "importUniv").put("masterAddresses", MASTER_ADDRS);
     // Master phase
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Result result =
+        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertInternalServerError(result, "java.lang.RuntimeException: WaitForServer");
     JsonNode resultJson = Json.parse(contentAsString(result));
     String univUUID = resultJson.get("error").get("universeUUID").asText();

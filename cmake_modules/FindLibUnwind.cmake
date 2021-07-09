@@ -38,7 +38,9 @@
 
 # For some reason, we have to link to two libunwind shared object files:
 # one arch-specific and one not.
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  SET(LIBUNWIND_ARCH "aarch64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
   SET(LIBUNWIND_ARCH "arm")
 elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "amd64")
   SET(LIBUNWIND_ARCH "x86_64")

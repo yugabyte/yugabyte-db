@@ -66,7 +66,7 @@ The operation acts separately on the three individual fields of the [internal re
 
 - _[mm1, dd1, ss1] ± [mm2, dd2, ss2] = [(mm1 ± mm2), (dd1 ± dd2), (ss1 ± ss2)]_
 
-The section [Adding or subtracting one interval value to/from another](./interval-interval-addition/) simulates and tests the model for how this works in PL/pgSQL code.
+The section [Adding or subtracting a pair of _interval_ values](./interval-interval-addition/) simulates and tests the model for how this works in PL/pgSQL code.
 
 Try this simple test:
 
@@ -132,9 +132,9 @@ Compare the apparently different results using the forgiving native _interval-in
 select ('1 mon 30 days 03:21:36'::interval = '1 mon 29 days 27:21:36'::interval)::text;
 ```
 
-The result is _true_. The section [Multiplying or dividing an _interval_ value by a real or integral number](./interval-multiplication/) simulates and tests the model for how this works in PL/pgSQL code and examines this unexpected outcome closely.
+The result is _true_. The section [Multiplying or dividing an _interval_ value by a real or integral number](./interval-number-multiplication/) simulates and tests the model for how this works in PL/pgSQL code and examines this unexpected outcome closely.
 
-One thing, at least, is clear: a practice that the user might adopt to use only interval values that have just a single non-zero internal representation field can easily be thwarted by _interval-number_ multiplication or division. Moreover, the semantics of these operations is not documented and cannot be reliably determined by empirical investigation. The outcomes must, therefore, be considered to be unpredictable.
+One thing, at least, is clear: a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-number_ multiplication or division. Moreover, the semantics of these operations is not documented and cannot be reliably determined by empirical investigation. The outcomes must, therefore, be considered to be unpredictable.
 
 ## Recommendation
 

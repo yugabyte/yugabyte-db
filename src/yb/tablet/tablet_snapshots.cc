@@ -166,16 +166,6 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
   }
 
-  // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
-  // the flushed frontier to have this exact value, although in practice it will, since this is the
-  // latest operation we've ever executed in this Raft group. This way we keep the current value
-  // of history cutoff.
-  docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(data.op_id);
-  frontier.set_hybrid_time(data.hybrid_time);
-  RETURN_NOT_OK(tablet().ModifyFlushedFrontier(
-      frontier, rocksdb::FrontierModificationMode::kUpdate));
-
   LOG_WITH_PREFIX(INFO) << "Complete snapshot creation in folder: " << snapshot_dir
                         << ", snapshot hybrid time: " << snapshot_hybrid_time;
 
@@ -242,10 +232,11 @@ Status TabletSnapshots::RestoreCheckpoint(
     const docdb::ConsensusFrontier& frontier) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
+  const auto destroy = !dir.empty();
+
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pause = PauseReadWriteOperations();
-  RETURN_NOT_OK(op_pause);
+  auto op_pauses = VERIFY_RESULT(StartShutdownRocksDBs(DisableFlushOnShutdown(destroy)));
 
   // Check if tablet is in shutdown mode.
   if (tablet().IsShutdownRequested()) {
@@ -260,11 +251,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
-    RETURN_NOT_OK(ShutdownRocksDBs(Destroy::kFalse, DisableFlushOnShutdown::kFalse));
+    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(ShutdownRocksDBs(Destroy::kTrue, DisableFlushOnShutdown::kTrue));
+    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
 
     auto s = CopyDirectory(
         &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
@@ -306,13 +297,16 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = tablet().EnableCompactions(&op_pause);
+  s = tablet().EnableCompactions(&op_pauses.non_abortable);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;
   }
 
-  DCHECK(op_pause.status().ok());  // Ensure that op_pause stays in scope throughout this function.
+  // Ensure that op_pauses stays in scope throughout this function.
+  for (auto* op_pause : op_pauses.AsArray()) {
+    DFATAL_OR_RETURN_NOT_OK(op_pause->status());
+  }
 
   return Status::OK();
 }

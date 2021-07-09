@@ -11,6 +11,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -30,7 +31,13 @@ public class UniverseResp {
 
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResp.class);
 
-  public final String universeUUID;
+  public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
+    UniverseResourceDetails resourceDetails =
+        UniverseResourceDetails.create(universe.getUniverseDetails(), config);
+    return new UniverseResp(universe, taskUUID, resourceDetails);
+  }
+
+  public final UUID universeUUID;
   public final String name;
   public final String creationDate;
   public final int version;
@@ -52,7 +59,7 @@ public class UniverseResp {
   }
 
   public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
-    universeUUID = entity.universeUUID.toString();
+    universeUUID = entity.universeUUID;
     name = entity.name;
     creationDate = entity.creationDate.toString();
     version = entity.version;

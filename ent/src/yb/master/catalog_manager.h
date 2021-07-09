@@ -270,7 +270,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) override;
 
-  CHECKED_STATUS RestoreSysCatalog(SnapshotScheduleRestoration* restoration) override;
+  CHECKED_STATUS RestoreSysCatalog(
+      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) override;
   CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
 
   void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
@@ -283,6 +284,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   rpc::Scheduler& Scheduler() override;
 
   int64_t LeaderTerm() override;
+
+  Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override;
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type) override;
