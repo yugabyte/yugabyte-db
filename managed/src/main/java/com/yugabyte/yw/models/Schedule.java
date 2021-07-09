@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
@@ -59,51 +60,51 @@ public class Schedule extends Model {
     return scheduleUUID;
   }
 
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   @Column(nullable = false)
-  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   public UUID getCustomerUUID() {
     return customerUUID;
   }
 
-  @Column(nullable = false, columnDefinition = "integer default 0")
   @ApiModelProperty(value = "Number of failed schedule", accessMode = READ_ONLY)
+  @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
   public int getFailureCount() {
     return failureCount;
   }
 
+  @ApiModelProperty(value = "Frequency of the schedule", accessMode = READ_WRITE)
   @Column(nullable = false)
-  @ApiModelProperty(value = "Frequency of schedule")
   private long frequency;
 
   public long getFrequency() {
     return frequency;
   }
 
+  @ApiModelProperty(value = "Schedule task params", accessMode = READ_WRITE)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
-  @ApiModelProperty(value = "Schedule params")
   private JsonNode taskParams;
 
   public JsonNode getTaskParams() {
     return taskParams;
   }
 
+  @ApiModelProperty(value = "Type of the task to be schedules", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Schedule Type")
   private TaskType taskType;
 
   public TaskType getTaskType() {
     return taskType;
   }
 
+  @ApiModelProperty(value = "Status of the task", accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Status of schedule")
   private State status = State.Active;
 
   public State getStatus() {

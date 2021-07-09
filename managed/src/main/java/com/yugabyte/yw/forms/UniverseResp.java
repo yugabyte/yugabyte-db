@@ -56,7 +56,6 @@ public class UniverseResp {
   @ApiModelProperty(value = "DNS name")
   public final String dnsName;
 
-  @JsonIgnore
   @ApiModelProperty(value = "Universe Resources", dataType = "java.util.Map")
   public final UniverseResourceDetails resources;
 

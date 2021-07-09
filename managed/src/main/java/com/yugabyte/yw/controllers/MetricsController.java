@@ -12,14 +12,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.prometheus.client.exporter.common.TextFormat;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import io.prometheus.client.CollectorRegistry;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStreamWriter;
 
+@Api(value = "Metrics", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class MetricsController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetricsController.class);
 
+  @ApiOperation(value = "index", response = String.class)
   public Result index() {
     final ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
     try {
