@@ -10,14 +10,11 @@ export default class AlertsPolicy extends Component {
    * TODO: Source and values of actual list may differ.
    */
   severityTypes = [
-    <option key={1} value={'Severe'}>
-      {'Severe'}
+    <option key={1} value="SEVERE">
+      Severe
     </option>,
-    <option key={2} value={'High'}>
-      {'High'}
-    </option>,
-    <option key={3} value={'Critical'}>
-      {'Critical'}
+    <option key={2} value="WARNING">
+      Warning
     </option>
   ];
 
@@ -26,14 +23,11 @@ export default class AlertsPolicy extends Component {
    * TODO: Source and values of actual list may differ.
    */
   conditionTypes = [
-    <option key={1} value={'gt'}>
-      {'Greater Than'}
+    <option key={1} value="GREATER_THAN">
+      Greater Than
     </option>,
-    <option key={2} value={'lt'}>
-      {'Less than'}
-    </option>,
-    <option key={3} value={'eq'}>
-      {'Equal'}
+    <option key={2} value="LESS_THAN">
+      Less than
     </option>
   ];
 
@@ -42,11 +36,11 @@ export default class AlertsPolicy extends Component {
    * TODO: Check if seconds are required.
    */
   frequencyUnitOptions = [
-    <option key={1} value={'Hours'}>
-      {'Hours'}
+    <option key={1} value="Hours">
+      Hours
     </option>,
-    <option key={2} value={'Minutes'}>
-      {'Minutes'}
+    <option key={2} value="Minutes">
+      Minutes
     </option>
   ];
 
@@ -62,7 +56,7 @@ export default class AlertsPolicy extends Component {
 
   /**
    * Add a new row in field array.
-   * @param {Event} e 
+   * @param {Event} e
    */
   addRow = (e) => {
     this.props.fields.push({});
@@ -71,7 +65,7 @@ export default class AlertsPolicy extends Component {
 
   /**
    * Remove the element from array based on index.
-   * @param {Number} instanceTypeIdx 
+   * @param {Number} instanceTypeIdx
    */
   removeRow = (instanceTypeIdx) => {
     this.props.fields.remove(instanceTypeIdx);

@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
@@ -46,29 +47,28 @@ export const AlertDestionations = (props) => {
     getAlertReceivers
   } = props;
 
-  useEffect(() => {
-    // Map the destinations with receivers targetType
+  const setRsponseObject = () => {
     let result = new Map();
 
-    // API call to get destinations and receivers
     alertDestionations().then((destinations) => {
       getAlertReceivers().then((receivers) => {
-        // Each destination['receiver'] is mapped to contain targetType metadata
         destinations.forEach((dest) => {
           result.set(dest.uuid, {
             name: dest.name,
             uuid: dest.uuid,
             channels: []
           });
+
           dest['receivers'].forEach((rx) => {
             const matchedRx = receivers.find((receiver) => receiver.uuid === rx);
             const destination = result.get(dest.uuid);
 
-            // change the signature of map here.
             destination.channels.push({
               uuid: rx,
               targetType: matchedRx.params.targetType,
-              targetName: matchedRx.name
+              targetName: matchedRx.name,
+              webHookURL: matchedRx.params?.webhookUrl,
+              recipients: matchedRx.params?.recipients
             });
             result.set(dest.uuid, destination);
           });
@@ -76,7 +76,30 @@ export const AlertDestionations = (props) => {
         setAlertDesionation(Array.from(result.values()));
       });
     });
+  };
+
+  useEffect(() => {
+    setRsponseObject();
   }, []);
+
+  /**
+   * This method is used to set and pass the destination details to
+   * the alert destination modal.
+   *
+   * @param {object} row Respective row
+   */
+  const setModalDetails = (row) => {
+    const data = row.channels.map((channel) => {
+      return {
+        targetType: channel.targetType,
+        targetName: channel.targetName,
+        webHookURL: channel?.webHookURL,
+        recipients: channel?.recipients
+      };
+    });
+
+    setAlertDesionationDetails(data);
+  };
 
   /**
    * This method will help us to delete the respective row record.
@@ -85,9 +108,7 @@ export const AlertDestionations = (props) => {
    */
   const onDeleteDestination = (row) => {
     deleteAlertDestination(row.uuid).then(() => {
-      alertDestionations().then((res) => {
-        setAlertDesionation(res);
-      });
+      setRsponseObject();
     });
   };
 
@@ -100,7 +121,7 @@ export const AlertDestionations = (props) => {
     const channels = row.channels.map((channel) => {
       return {
         value: channel.uuid,
-        label: channel.targetName // This needs to be changed as per the API object.
+        label: channel.targetName
       };
     });
 
@@ -121,7 +142,7 @@ export const AlertDestionations = (props) => {
    * @returns Comma seperated cannel targetType.
    */
   const getChannelType = (row) => {
-    return row.map((channel) => channel.targetType).join();
+    return row.map((channel) => channel.targetName).join();
   };
 
   // This method will handle all the required actions for the particular row.
@@ -136,7 +157,7 @@ export const AlertDestionations = (props) => {
         >
           <MenuItem
             onClick={() => {
-              setAlertDesionationDetails(row);
+              setModalDetails(row);
               showDetailsModal();
             }}
           >

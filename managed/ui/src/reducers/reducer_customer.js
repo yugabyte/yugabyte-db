@@ -72,9 +72,12 @@ import {
   CREATE_ALERT_RECEIVER_RESPONSE,
   GET_ALERT_RECEIVERS,
   GET_ALERT_DESTIONATIONS,
+  GET_ALERT_DEFINATION_TEMPLATES,
   GET_ALERT_CONFIGS,
   CREATE_ALERT_DESTINATION,
   CREATE_ALERT_DESTINATION_RESPONSE,
+  CREATE_ALERT_CONFIG,
+  CREATE_ALERT_CONFIG_RESPONSE,
   UPDATE_ALERT_DESTINATION,
   UPDATE_ALERT_DESTINATION_RESPONSE,
   DELETE_ALERT_DESTINATION,
@@ -105,6 +108,7 @@ const INITIAL_STATE = {
   },
   alertReceivers: getInitialState([]),
   alertDestinations: getInitialState([]),
+  alertTemplates: getInitialState([]),
   alertConfigs: getInitialState([]),
   deleteDestination: getInitialState([]),
   deleteAlertConfig: getInitialState([]),
@@ -129,6 +133,7 @@ const INITIAL_STATE = {
   createUser: getInitialState({}),
   createAlertReceiver: getInitialState({}),
   createAlertDestination: getInitialState({}),
+  createAlertConfig: getInitialState({}),
   updateAlertDestination: getInitialState({})
 };
 
@@ -243,6 +248,8 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'alertReceivers', []);
     case GET_ALERT_DESTIONATIONS:
       return setLoadingState(state, 'alertDestinations', []);
+    case GET_ALERT_DEFINATION_TEMPLATES:
+      return setLoadingState(state, 'alertTemplates', []);
     case GET_ALERT_CONFIGS:
       return setLoadingState(state, 'alertConfigs', []);
     case DELETE_ALERT_DESTINATION:
@@ -263,6 +270,17 @@ export default function (state = INITIAL_STATE, action) {
     case CREATE_ALERT_DESTINATION:
       return setLoadingState(state, 'createAlertDestination', {});
     case CREATE_ALERT_DESTINATION_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertReceiver', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertReceiver', action);
+    case CREATE_ALERT_CONFIG:
+      return setLoadingState(state, 'createAlertConfig', {});
+    case CREATE_ALERT_CONFIG_RESPONSE:
       if (action.payload.status !== 200) {
         if (isDefinedNotNull(action.payload.data)) {
           return setFailureState(state, 'createAlertReceiver', action.payload.response.data.error);

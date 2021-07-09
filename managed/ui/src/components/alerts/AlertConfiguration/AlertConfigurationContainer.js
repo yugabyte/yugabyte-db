@@ -9,6 +9,8 @@ import { change } from 'redux-form';
 import {
   alertConfigs,
   alertDestionations,
+  createAlertConfig,
+  createAlertConfigResponse,
   createAlertDestination,
   createAlertDestinationResponse,
   createAlertReceiver,
@@ -16,6 +18,7 @@ import {
   deleteAlertConfig,
   deleteAlertDestination,
   getAlertReceivers,
+  getTargetMetrics,
   setInitialValues,
   updateAlertDestination,
   updateAlertDestinationResponse,
@@ -41,8 +44,8 @@ const mapStateToProps = (state) => {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    alertConfigs: () => {
-      return dispatch(alertConfigs()).then((response) => {
+    alertConfigs: (payload) => {
+      return dispatch(alertConfigs(payload)).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
@@ -53,6 +56,16 @@ const mapDispatchToProps = (dispatch) => {
     },
     alertDestionations: () => {
       return dispatch(alertDestionations()).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+          return;
+        }
+        return response.payload.data;
+      });
+    },
+    getTargetMetrics: (payload) => {
+      return dispatch(getTargetMetrics(payload)).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
@@ -103,6 +116,17 @@ const mapDispatchToProps = (dispatch) => {
           toast.success('Successfully added the destination');
         }
         return dispatch(createAlertDestinationResponse(response.payload));
+      });
+    },
+    createAlertConfig: (payload) => {
+      return dispatch(createAlertConfig(payload)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully added the destination');
+        }
+        return dispatch(createAlertConfigResponse(response.payload));
       });
     },
     updateAlertDestination: (payload, uuid) => {

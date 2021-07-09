@@ -4,7 +4,6 @@
 //
 // This file will hold Universe alert creation and Platform
 // alert creation.
-// TODO: Platform alert creation.
 
 import { Field, reduxForm, FieldArray } from 'redux-form';
 import React, { useState, useEffect } from 'react';
@@ -21,6 +20,7 @@ import { Formik } from 'formik';
 import '../CreateAlerts.scss';
 import AlertsPolicy from './AlertsPolicy';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
@@ -29,6 +29,8 @@ const CreateAlert = (props) => {
     enablePlatformAlert,
     onCreateCancel,
     handleSubmit,
+    metricsData,
+    createAlertConfig,
     alertDestionations,
     universes
   } = props;
@@ -65,17 +67,15 @@ const CreateAlert = (props) => {
   }, []);
 
   /**
-   * Constant option for metrics condition
-   * TODO: Source and values of actual list may differ.
+   * Constant option for metrics condition.
    */
-  const alertMetricsConditionList = [
-    <option key={1} value={'cpuUtilization'}>
-      {'CPU Utiliztion'}
-    </option>,
-    <option key={2} value={'memoryUtilization'}>
-      {'Memory Utilization'}
-    </option>
-  ];
+  const alertMetricsConditionList = metricsData.map((metric, i) => {
+    return (
+      <option key={i} value={metric.name}>
+        {metric.name}
+      </option>
+    );
+  });
 
   /**
    *
@@ -97,7 +97,41 @@ const CreateAlert = (props) => {
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
   const handleOnSubmit = (values) => {
-    console.log(values);
+    const cUUID = localStorage.getItem('customerId');
+    let payload = {
+      customerUUID: cUUID,
+      name: values['ALERT_CONFIGURATION_NAME'],
+      description: values['ALERT_CONFIGURATION_DESCRIPTION'],
+      targetType: !enablePlatformAlert ? 'UNIVERSE' : 'CUSTOMER',
+      target: !enablePlatformAlert
+        ? {
+            all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
+            uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
+          }
+        : null,
+      thresholds: '',
+      thresholdUnit: 'MILLISECOND',
+      template: 'REPLICATION_LAG',
+      durationSec: values['ALERT_METRICS_DURATION'],
+      active: true,
+      routeUUID: values['ALERT_DESTINATION_LIST'],
+      defaultRoute: true
+    };
+
+    // Setting up the universe uuids.
+    isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) &&
+      values['ALERT_UNIVERSE_LIST'].forEach((list) => payload.target.uuids.push(list.value));
+
+    // Setting up the threshold values.
+    isNonEmptyArray(values['ALERT_METRICS_CONDITION_POLICY']) &&
+      values['ALERT_METRICS_CONDITION_POLICY'].forEach((policy) => {
+        payload.thresholds = Object.assign(
+          { [policy._SEVERITY]: { condition: policy._CONDITION, threshold: policy._THRESHOLD } },
+          payload.thresholds
+        );
+      });
+
+    createAlertConfig(payload).then(() => onCreateCancel(false));
   };
   return (
     <Formik initialValues={{ ALERT_TARGET_TYPE: 'allUniverses' }}>
@@ -130,7 +164,7 @@ const CreateAlert = (props) => {
               <Col md={6}>
                 <div className="form-item-custom-label">Target</div>
                 <YBRadioButtonGroup
-                  name={'ALERT_TARGET_TYPE'}
+                  name="ALERT_TARGET_TYPE"
                   options={[
                     { label: 'All Universes', value: 'allUniverses' },
                     { label: 'Selected Universes', value: 'selectedUniverses' }
@@ -160,7 +194,7 @@ const CreateAlert = (props) => {
                   name="ALERT_METRICS_CONDITION"
                   component={YBSelectWithLabel}
                   options={alertMetricsConditionList}
-                  onInputChanged={() => {}}
+                  // onInputChanged={() => {}}
                 />
               </Col>
               <Col md={6}>

@@ -21,14 +21,37 @@ export const AlertConfiguration = (props) => {
     updateStatus: ''
   });
   const [listView, setListView] = useState(false);
+  const [targetMetrics, setTargetMetrics] = useState([]);
   const [enablePlatformAlert, setPlatformAlert] = useState(false);
   const [alertDestinationListView, setAlertDestinationListView] = useState(false);
-  const { activeTab, defaultTab, routePrefix, customerProfile, apiToken, customer } = props;
+  const {
+    activeTab,
+    apiToken,
+    customer,
+    customerProfile,
+    defaultTab,
+    getTargetMetrics,
+    routePrefix
+  } = props;
 
   const handleProfileUpdate = (status) => {
     setProfileStatus({
       statusUpdated: false,
       updateStatus: status
+    });
+  };
+
+  /**
+   * This method is used to handle the metrics API call based on
+   * the target type which will be UNIVERSE or CUSTOMER.
+   *
+   * @param {string} targetType
+   */
+  const handleMetricsCall = (targetType) => {
+    console.log(targetType, 'metric APi will be called here.....');
+    getTargetMetrics(targetType).then((response) => {
+      console.log(response, '******** on component');
+      setTargetMetrics(response);
     });
   };
 
@@ -52,9 +75,19 @@ export const AlertConfiguration = (props) => {
           unmountOnExit
         >
           {listView ? (
-            <CreateAlert onCreateCancel={setListView} enablePlatformAlert={enablePlatformAlert} {...props} />
+            <CreateAlert
+              onCreateCancel={setListView}
+              enablePlatformAlert={enablePlatformAlert}
+              metricsData={targetMetrics}
+              {...props}
+            />
           ) : (
-            <AlertsList onCreateAlert={setListView} enablePlatformAlert={setPlatformAlert} {...props} />
+            <AlertsList
+              onCreateAlert={setListView}
+              enablePlatformAlert={setPlatformAlert}
+              handleMetricsCall={handleMetricsCall}
+              {...props}
+            />
           )}
         </Tab>
 

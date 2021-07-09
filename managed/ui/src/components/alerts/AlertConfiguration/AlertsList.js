@@ -14,7 +14,7 @@ import { YBPanelItem } from '../../panels';
 /**
  * This is the header for YB Panel Item.
  */
-const header = (onCreateAlert, enablePlatformAlert) => (
+const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall) => (
   <>
     <h2 className="table-container-title pull-left">Alert Configurations</h2>
     <FlexContainer className="pull-right">
@@ -28,6 +28,7 @@ const header = (onCreateAlert, enablePlatformAlert) => (
           <MenuItem
             className="alert-config-list"
             onClick={() => {
+              handleMetricsCall('UNIVERSE');
               onCreateAlert(true);
               enablePlatformAlert(false);
             }}
@@ -38,6 +39,7 @@ const header = (onCreateAlert, enablePlatformAlert) => (
           <MenuItem
             className="alert-config-list"
             onClick={() => {
+              handleMetricsCall('CUSTOMER');
               onCreateAlert(true);
               enablePlatformAlert(true);
             }}
@@ -55,32 +57,43 @@ export const AlertsList = (props) => {
   const {
     alertConfigs,
     closeModal,
-    enablePlatformAlert,
     deleteAlertConfig,
+    enablePlatformAlert,
+    handleMetricsCall,
     modal: { visibleModal },
     onCreateAlert,
     showDeleteModal
   } = props;
 
   useEffect(() => {
-    alertConfigs().then((res) => {
+    const body = {
+      uuids: [],
+      name: null,
+      active: true,
+      targetType: 'UNIVERSE',
+      template: 'REPLICATION_LAG',
+      targetUuid: null,
+      routeUuid: null
+    };
+
+    alertConfigs(body).then((res) => {
       setAlertList(res);
     });
   }, []);
 
   /**
    * This method will help us to edit the details for a respective row.
-   * 
+   *
    * @param {object} row Respective row object.
    */
   const onEditAlertConfig = (row) => {
-    console.log(row, '******* row on edit..')
+    console.log(row, '******* row on edit..');
 
     // const initialVal = {};
 
     // setInitialValues(initialVal);
     // onCreateAlert(true);
-  }
+  };
 
   /**
    * This method will help us to delete the respective row record.
@@ -134,20 +147,20 @@ export const AlertsList = (props) => {
   // For now, we're dealing with the mock data.
   return (
     <YBPanelItem
-      header={header(onCreateAlert, enablePlatformAlert)}
+      header={header(onCreateAlert, enablePlatformAlert, handleMetricsCall)}
       body={
         <>
           <BootstrapTable className="backup-list-table middle-aligned-table" data={alertList}>
-            <TableHeaderColumn dataField="configUUID" isKey={true} hidden={true} />
+            <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
             <TableHeaderColumn
-              dataField="configName"
+              dataField="name"
               columnClassName="no-border name-column"
               className="no-border"
             >
               Name
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="type"
+              dataField="targetType"
               // dataFormat={}
               dataSort
               columnClassName="no-border name-column"
@@ -156,7 +169,7 @@ export const AlertsList = (props) => {
               Type
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="severity"
+              dataField="thresholds"
               // dataFormat={}
               dataSort
               columnClassName="no-border name-column"
@@ -165,7 +178,7 @@ export const AlertsList = (props) => {
               Severity
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="destination"
+              dataField="routeUUID"
               // dataFormat={}
               columnClassName="no-border name-column"
               className="no-border"
@@ -173,7 +186,7 @@ export const AlertsList = (props) => {
               Destinations
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="created"
+              dataField="createTime"
               // dataFormat={}
               dataSort
               columnClassName="no-border name-column"
@@ -182,7 +195,7 @@ export const AlertsList = (props) => {
               Created
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="metricName"
+              dataField="template"
               // dataFormat={}
               columnClassName="no-border name-column"
               className="no-border"
