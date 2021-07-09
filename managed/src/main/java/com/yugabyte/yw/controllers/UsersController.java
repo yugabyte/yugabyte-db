@@ -23,9 +23,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
+import io.swagger.annotations.*;
 
 import static com.yugabyte.yw.models.Users.Role;
 
+@Api(value = "Users", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
@@ -40,6 +42,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response with user.
    */
+  @ApiOperation(value = "User detail by UUID", response = Users.class)
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -51,6 +54,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response with users belonging to the customer.
    */
+  @ApiOperation(value = "List of Users", response = Users.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
@@ -62,6 +66,15 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response of newly created user.
    */
+  @ApiOperation(value = "Create User", response = Users.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "User",
+        value = "Users data to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
+        paramType = "body")
+  })
   public Result create(UUID customerUUID) {
 
     Customer.getOrBadRequest(customerUUID);
@@ -82,6 +95,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response on whether or not delete user was successful or not.
    */
+  @ApiOperation(value = "Delete customer", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -113,7 +127,8 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response on whether role change was successful or not.
    */
-  public Result changeRole(UUID customerUUID, UUID userUUID) {
+  @ApiOperation(value = "Change role of user by UUID", response = YWResults.YWSuccess.class)
+  public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
@@ -123,17 +138,12 @@ public class UsersController extends AuthenticatedController {
               "User UUID %s does not belong to customer %s",
               userUUID.toString(), customerUUID.toString()));
     }
-    if (request().getQueryString("role") != null) {
-      String role = request().getQueryString("role");
-      if (Role.SuperAdmin == user.getRole()) {
-        throw new YWServiceException(BAD_REQUEST, "Can't change super admin role.");
-      }
-      user.setRole(Role.valueOf(role));
-      user.save();
-      updateFeatures(user);
-    } else {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Request");
+    if (Role.SuperAdmin == user.getRole()) {
+      throw new YWServiceException(BAD_REQUEST, "Can't change super admin role.");
     }
+    user.setRole(Role.valueOf(role));
+    user.save();
+    updateFeatures(user);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
   }
@@ -143,6 +153,15 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response on whether role change was successful or not.
    */
+  @ApiOperation(value = "Chnage password of User", response = YWResults.YWSuccess.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Users",
+        value = "Users data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
+        paramType = "body")
+  })
   public Result changePassword(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);

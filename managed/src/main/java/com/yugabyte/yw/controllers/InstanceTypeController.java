@@ -147,7 +147,7 @@ public class InstanceTypeController extends AuthenticatedController {
           name = "instance type",
           value = "instance type data of the instance to be stored",
           paramType = "body",
-          dataType = "com.yugabyte.yw.forms.InstanceType",
+          dataType = "com.yugabyte.yw.models.InstanceType",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID) {
     Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(InstanceType.class);

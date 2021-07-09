@@ -15,28 +15,39 @@ import javax.persistence.ManyToOne;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.annotation.*;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
 import static play.mvc.Http.Status.*;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Entity
+@ApiModel(description = "Availability Zone of regions.")
 public class AvailabilityZone extends Model {
 
-  @Id public UUID uuid;
+  @Id
+  @ApiModelProperty(value = "AZ uuid", accessMode = READ_ONLY)
+  public UUID uuid;
 
   @Column(length = 25, nullable = false)
+  @ApiModelProperty(value = "AZ code", example = "AWS")
   public String code;
 
   @Column(length = 100, nullable = false)
   @Constraints.Required
+  @ApiModelProperty(value = "AZ name", example = "south-east-1", required = true)
   public String name;
 
   @Constraints.Required
   @Column(nullable = false)
   @ManyToOne
   @JsonBackReference("region-zones")
+  @ApiModelProperty(value = "Region of AZ", example = "South east 1", required = true)
   public Region region;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
+  @ApiModelProperty(value = "AZ is active or not", accessMode = READ_ONLY)
   public Boolean active = true;
 
   public Boolean isActive() {
@@ -48,12 +59,15 @@ public class AvailabilityZone extends Model {
   }
 
   @Column(length = 50)
+  @ApiModelProperty(value = "AZ Subnet", example = "subnet id")
   public String subnet;
 
   @DbJson
   @Column(columnDefinition = "TEXT")
+  @ApiModelProperty(value = "AZ Config values")
   public Map<String, String> config;
 
+  @ApiModelProperty(value = "Kubernetes Config path", accessMode = READ_ONLY)
   public String getKubeconfigPath() {
     Map<String, String> configMap = this.getConfig();
     return configMap.getOrDefault("KUBECONFIG", null);

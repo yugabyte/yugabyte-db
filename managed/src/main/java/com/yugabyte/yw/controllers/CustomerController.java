@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
+import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -38,18 +39,18 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
+import com.yugabyte.yw.forms.YWResults;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Api
+@Api(value = "Customer", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
@@ -68,13 +69,20 @@ public class CustomerController extends AuthenticatedController {
         && !n.cloudInfo.mount_roots.isEmpty();
   }
 
+  @Deprecated
+  @ApiOperation(value = "UI_ONLY", response = UUID.class, responseContainer = "List", hidden = true)
   public Result list() {
     ArrayNode responseJson = Json.newArray();
     Customer.getAll().forEach(c -> responseJson.add(c.getUuid().toString()));
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "getCustomer", response = Customer.class)
+  @ApiOperation(value = "List customer", response = Customer.class, responseContainer = "List")
+  public Result listWithData() {
+    return YWResults.withData(Customer.getAll());
+  }
+
+  @ApiOperation(value = "Get customer by UUID", response = CustomerDetailsData.class)
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -113,6 +121,15 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
+  @ApiOperation(value = "Update customer by UUID", response = Customer.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Customer",
+        value = "Customer data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.AlertingFormData",
+        paramType = "body")
+  })
   public Result update(UUID customerUUID) {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -182,7 +199,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(Json.toJson(customer));
   }
 
-  @ApiOperation(value = "deleteCustomer", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Delete customer by UUID", response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -199,6 +216,18 @@ public class CustomerController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
+  @ApiOperation(
+      value = "Upsert features of customer by UUID",
+      responseContainer = "Map",
+      response = Object.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Feature",
+        value = "Feature to be upserted",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.FeatureUpdateFormData",
+        paramType = "body")
+  })
   public Result upsertFeatures(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -217,6 +246,18 @@ public class CustomerController extends AuthenticatedController {
     return ok(customer.getFeatures());
   }
 
+  @ApiOperation(
+      value = "Add metrics of customer by UUID",
+      response = Object.class,
+      responseContainer = "Map")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Metrics",
+        value = "Metrics to be added",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.MetricQueryParams",
+        paramType = "body")
+  })
   public Result metrics(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -332,6 +373,10 @@ public class CustomerController extends AuthenticatedController {
     return String.join("|", namespaces);
   }
 
+  @ApiOperation(
+      value = "Get host info by customer UUID",
+      responseContainer = "Map",
+      response = Object.class)
   public Result getHostInfo(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     ObjectNode hostInfo = Json.newObject();
