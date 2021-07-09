@@ -12,6 +12,8 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.forms.YWResults.YWSuccess;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -27,7 +29,9 @@ import java.util.List;
 import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
 
+@Api(value = "AccessKey", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AccessKeyController extends AuthenticatedController {
 
   @Inject AccessManager accessManager;
@@ -36,6 +40,7 @@ public class AccessKeyController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
+  @ApiOperation(value = "get access Key", response = AccessKey.class)
   public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -44,6 +49,7 @@ public class AccessKeyController extends AuthenticatedController {
     return YWResults.withData(accessKey);
   }
 
+  @ApiOperation(value = "list AccessKeys for a specific provider", response = AccessKey.class)
   public Result list(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -53,6 +59,7 @@ public class AccessKeyController extends AuthenticatedController {
     return YWResults.withData(accessKeys);
   }
 
+  @ApiOperation(value = "create access Key", response = AccessKey.class)
   public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
     Form<AccessKeyFormData> formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class);
 
@@ -131,6 +138,7 @@ public class AccessKeyController extends AuthenticatedController {
     return YWResults.withData(accessKey);
   }
 
+  @ApiOperation(value = "delete access Key", response = YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -140,6 +148,6 @@ public class AccessKeyController extends AuthenticatedController {
 
     accessKey.deleteOrThrow();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.withData("Deleted KeyCode: " + keyCode);
+    return withMessage("Deleted KeyCode: " + keyCode);
   }
 }
