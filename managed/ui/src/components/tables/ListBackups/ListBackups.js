@@ -421,7 +421,7 @@ export default class ListBackups extends Component {
             />
           </DropdownButton>
         );
-      } else {
+      } else if (row.status !== 'Failed' && !row.showActions) {
         return (
           <DropdownButton
             className="btn btn-default"
@@ -432,8 +432,8 @@ export default class ListBackups extends Component {
             <TableAction
               currentRow={row}
               actionType="stop-backup"
-              onSubmit={(data) => this.handleModalSubmit('Stop', data)}
-              onError={() => console.log('Backup is stopped')}
+              onSubmit={() => {}}
+              onError={() => this.handleModalSubmit('Stop')}
             />
           </DropdownButton>
         );

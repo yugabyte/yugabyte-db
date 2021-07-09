@@ -2,14 +2,8 @@ import React from 'react';
 import { YBModal } from '../../common/forms/fields';
 
 export const StopBackup = (props) => {
-  const {
-    tableInfo,
-    visible,
-    onHide,
-    stopBackup,
-    onSubmit,
-    onError
-  } = props;
+  const { tableInfo, visible, onHide, stopBackup, onSubmit, onError } = props;
+
   const confirmStopBackup = async () => {
     try {
       const response = await stopBackup(tableInfo.backupUUID);
