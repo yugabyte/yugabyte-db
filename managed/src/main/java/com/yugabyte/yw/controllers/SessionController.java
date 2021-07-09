@@ -70,7 +70,7 @@ import java.util.stream.Collectors;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.models.Users.Role;
 
-@Api(value="Session")
+@Api(value = "Session")
 public class SessionController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
