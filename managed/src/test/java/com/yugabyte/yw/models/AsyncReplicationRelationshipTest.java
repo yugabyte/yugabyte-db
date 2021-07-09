@@ -9,6 +9,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.Assert.*;
@@ -70,6 +71,32 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
             relationship.targetUniverse.universeUUID, relationship.targetTableID);
 
     assertEquals(relationship, queryResult);
+  }
+
+  @Test
+  public void testGetBySourceUniverseUUID() {
+    AsyncReplicationRelationship relationship =
+        AsyncReplicationRelationship.create(
+            source, "sourceTableID", target, "targetTableID", false);
+
+    List<AsyncReplicationRelationship> queryResult =
+        AsyncReplicationRelationship.getBySourceUniverseUUID(source.universeUUID);
+
+    assertEquals(1, queryResult.size());
+    assertEquals(relationship, queryResult.get(0));
+  }
+
+  @Test
+  public void testGetByTargetUniverseUUID() {
+    AsyncReplicationRelationship relationship =
+        AsyncReplicationRelationship.create(
+            source, "sourceTableID", target, "targetTableID", false);
+
+    List<AsyncReplicationRelationship> queryResult =
+        AsyncReplicationRelationship.getByTargetUniverseUUID(target.universeUUID);
+
+    assertEquals(1, queryResult.size());
+    assertEquals(relationship, queryResult.get(0));
   }
 
   @Test

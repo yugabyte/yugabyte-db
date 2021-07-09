@@ -46,7 +46,18 @@ include(YugabyteFunctions)
 include(YugabyteTesting)
 
 ADD_CXX_FLAGS("-Werror")
-ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
+ADD_CXX_FLAGS("-fno-strict-aliasing -Wall -Wno-sign-compare -Wno-deprecated")
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  # Certain platforms such as ARM do not use signed chars by default
+  # which causes issues with certain bounds checks.
+  ADD_CXX_FLAGS("-fsigned-char")
+  # Turn off fp-contract on aarch64 to avoid multiply-add operation result difference.
+  ADD_CXX_FLAGS("-ffp-contract=off")
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+  ADD_CXX_FLAGS("-msse4.2")
+else()
+  message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 ADD_CXX_FLAGS("-Winvalid-pch")
 ADD_CXX_FLAGS("-pthread -DBOOST_BIND_NO_PLACEHOLDERS")
 ADD_LINKER_FLAGS("-pthread")
@@ -287,7 +298,7 @@ DETECT_BREW()
 message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 
 # We can only use IS_CLANG after calling VALIDATE_COMPILER_TYPE.
-if (NOT APPLE)
+if (NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   # To enable 16-byte atomics support we should specify appropriate architecture.
   ADD_CXX_FLAGS("-march=ivybridge")
   ADD_CXX_FLAGS("-mcx16")
@@ -309,7 +320,7 @@ endif()
 # Compiler flags
 ############################################################
 
-if(NOT APPLE)
+if(NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   # The following flags are required to not assume the presence of too many CPU features so that the
   # code built can run on many platforms. For example, support building on c4.xlarge in AWS (dev
   # servers) and running on c3.xlarge (flash-based cluster machines). There are a couple more flags
@@ -496,7 +507,9 @@ if (IS_CLANG)
     ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
   endif()
 elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
-  ADD_CXX_FLAGS("-mno-abm -mno-movbe")
+  if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
+    ADD_CXX_FLAGS("-mno-abm -mno-movbe")
+  endif()
 else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()

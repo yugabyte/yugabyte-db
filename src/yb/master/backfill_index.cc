@@ -286,7 +286,7 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   }
 
   Status s =
-      catalog_manager->sys_catalog_->UpdateItem(table.get(), catalog_manager->leader_ready_term());
+      catalog_manager->sys_catalog_->Upsert(catalog_manager->leader_ready_term(), table);
   if (!s.ok()) {
     LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
                  << ". This master may not be the leader anymore.";
@@ -362,8 +362,8 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
-    RETURN_NOT_OK(catalog_manager->sys_catalog_->UpdateItem(
-        indexed_table.get(), catalog_manager->leader_ready_term()));
+    RETURN_NOT_OK(catalog_manager->sys_catalog_->Upsert(
+        catalog_manager->leader_ready_term(), indexed_table));
 
     // Update the in-memory state.
     TRACE("Committing in-memory state");
@@ -731,8 +731,8 @@ void BackfillTable::Launch() {
         backfill_job->mutable_backfill_state()->insert(
             {idx_info.table_id(), BackfillJobPB::IN_PROGRESS});
       }
-      auto s = master_->catalog_manager()->sys_catalog_->UpdateItem(
-              indexed_table_.get(), leader_term());
+      auto s = master_->catalog_manager()->sys_catalog_->Upsert(
+              leader_term(), indexed_table_);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to persist backfill jobs. Abandoning launch. " << s;
         return;
@@ -799,7 +799,7 @@ Status BackfillTable::UpdateRowsProcessedForIndexTable(const int number_rows_pro
           << " more rows. Total rows processed is: " << number_rows_processed_;
 
   RETURN_NOT_OK(
-      master_->catalog_manager()->sys_catalog_->UpdateItem(indexed_table_.get(), leader_term()));
+      master_->catalog_manager()->sys_catalog_->Upsert(leader_term(), indexed_table_));
   l.Commit();
   return Status::OK();
 }
@@ -839,8 +839,8 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
       auto* backfill_job = l.mutable_data()->pb.mutable_backfill_jobs(0);
       backfill_job->set_backfilling_timestamp(read_timestamp.ToUint64());
       RETURN_NOT_OK_PREPEND(
-          master_->catalog_manager()->sys_catalog_->UpdateItem(
-              indexed_table_.get(), leader_term()),
+          master_->catalog_manager()->sys_catalog_->Upsert(
+              leader_term(), indexed_table_),
           "Failed to persist backfilling timestamp. Abandoning.");
       l.Commit();
     }
@@ -934,7 +934,7 @@ Status BackfillTable::MarkIndexesAsDesired(
       }
     }
     RETURN_NOT_OK(
-        master_->catalog_manager()->sys_catalog_->UpdateItem(indexed_table_.get(), leader_term()));
+        master_->catalog_manager()->sys_catalog_->Upsert(leader_term(), indexed_table_));
     l.Commit();
   }
   return Status::OK();
@@ -1011,8 +1011,7 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
     }
   }
   RETURN_NOT_OK_PREPEND(
-      master()->catalog_manager()->sys_catalog()->UpdateItems(tablet_ptrs,
-                                                              leader_term()),
+      master()->catalog_manager()->sys_catalog()->Upsert(leader_term(), tablet_ptrs),
       "Could not persist that the table is done backfilling.");
   for (scoped_refptr<TabletInfo>& tablet : tablets) {
     VLOG(2) << "Done backfilling the table. " << yb::ToString(tablet)
@@ -1029,8 +1028,8 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
     DCHECK_LE(l.data().pb.backfill_jobs_size(), 1) << "For now we only expect to have up to 1 "
                                                        "outstanding backfill job.";
     l.mutable_data()->pb.clear_backfill_jobs();
-    RETURN_NOT_OK_PREPEND(master_->catalog_manager()->sys_catalog_->UpdateItem(
-                              indexed_table_.get(), leader_term()),
+    RETURN_NOT_OK_PREPEND(master_->catalog_manager()->sys_catalog_->Upsert(
+                              leader_term(), indexed_table_),
                           "Could not clear backfilling timestamp.");
     l.Commit();
   }
@@ -1075,8 +1074,8 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating index table metadata on disk");
     RETURN_NOT_OK_PREPEND(
-        master_->catalog_manager()->sys_catalog_->UpdateItem(
-            index_table_info.get(), leader_term()),
+        master_->catalog_manager()->sys_catalog_->Upsert(
+            leader_term(), index_table_info),
         yb::Format(
             "Could not update index_table_info for $0 to enable compactions.",
             index_table_id));
@@ -1195,8 +1194,8 @@ Status BackfillTablet::UpdateBackfilledUntil(
     for (const auto& idx_id : backfill_table_->indexes_to_build()) {
       l.mutable_data()->pb.mutable_backfilled_until()->insert({idx_id, backfilled_until_});
     }
-    RETURN_NOT_OK(backfill_table_->master()->catalog_manager()->sys_catalog()->UpdateItem(
-        tablet_.get(), backfill_table_->leader_term()));
+    RETURN_NOT_OK(backfill_table_->master()->catalog_manager()->sys_catalog()->Upsert(
+        backfill_table_->leader_term(), tablet_));
     l.Commit();
   }
 
