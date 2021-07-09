@@ -22,6 +22,7 @@ import './Review.scss';
 export interface HiddenConfig {
   accessKeyCode: string | null;
   enableYSQL: boolean;
+  enableYCQL: boolean;
   userAZSelected: boolean;
   useTimeSync: boolean;
   installNodeExporter: boolean; // TODO: clarify, maybe it's not hidden field

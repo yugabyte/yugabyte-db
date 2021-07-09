@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -364,6 +365,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               universe.getUniverseDetails().getNodesInCluster(cluster.uuid));
       int iter = 0;
       boolean isYSQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+      boolean isYCQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL;
       for (NodeDetails node : nodesInCluster) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
           if (node.nodeName != null) {
@@ -381,6 +383,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           iter++;
         }
         node.isYsqlServer = isYSQL;
+        node.isYqlServer = isYCQL;
       }
     }
 
@@ -503,7 +506,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     subTaskGroupQueue.add(subTaskGroup);
   }
-
   /**
    * Creates a task list to update tags on the nodes.
    *
@@ -817,6 +819,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Sets the isMaster field
       params.isMaster = node.isMaster;
       params.enableYSQL = userIntent.enableYSQL;
+      params.enableYCQL = userIntent.enableYCQL;
+      params.enableYCQLAuth = userIntent.enableYCQLAuth;
+      params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
       // Set if this node is a master in shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
@@ -908,6 +914,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         && PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
+
     for (Cluster cluster : taskParams().clusters) {
       if (opType == UniverseOpType.EDIT
           && cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
@@ -942,9 +949,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       userIntent.tserverGFlags.put("start_redis_proxy", "false");
     }
-    userIntent.tserverGFlags.put(
-        "cql_proxy_webserver_port",
-        Integer.toString(taskParams().communicationPorts.yqlServerHttpPort));
+    if (userIntent.enableYCQL) {
+      userIntent.tserverGFlags.put(
+          "cql_proxy_webserver_port",
+          Integer.toString(taskParams().communicationPorts.yqlServerHttpPort));
+    }
     if (userIntent.enableYSQL) {
       userIntent.tserverGFlags.put(
           "pgsql_proxy_webserver_port",
