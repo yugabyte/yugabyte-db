@@ -97,7 +97,8 @@ public class TableManager extends DevopsBase {
 
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
-        if (userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
+        if (userIntent.enableYSQLAuth
+            || userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
           commandArgs.add("--ysql_enable_auth");
         }
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {

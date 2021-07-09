@@ -68,6 +68,7 @@ export interface UserIntent {
   assignPublicIP: boolean;
   useTimeSync: boolean;
   enableYSQL: boolean;
+  enableYCQL: boolean;
   enableNodeToNodeEncrypt: boolean;
   enableClientToNodeEncrypt: boolean;
   enableVolumeEncryption: boolean;
