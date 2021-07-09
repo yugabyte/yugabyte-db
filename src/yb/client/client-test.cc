@@ -2128,25 +2128,66 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
     ASSERT_OK(ts->WaitStarted());
   }
 
-  bool stop = false;
-  vector<scoped_refptr<yb::Thread> > threads;
-  int t = 0;
-  while (!stop) {
-    scoped_refptr<yb::Thread> thread;
-    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", t++),
-                                 &CheckRowCount, std::cref(client_table_), &thread));
-    threads.push_back(thread);
+  TestThreadHolder thread_holder;
+  std::mutex idle_threads_mutex;
+  std::vector<CountDownLatch*> idle_threads;
+  std::atomic<int> running_threads{0};
+
+  while (!thread_holder.stop_flag().load()) {
+    CountDownLatch* latch;
+    {
+      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      if (!idle_threads.empty()) {
+        latch = idle_threads.back();
+        idle_threads.pop_back();
+      } else {
+        latch = nullptr;
+      }
+    }
+    if (latch) {
+      latch->CountDown();
+    } else {
+      auto num_threads = ++running_threads;
+      LOG(INFO) << "Start " << num_threads << " thread";
+      thread_holder.AddThreadFunctor([this, &idle_threads, &idle_threads_mutex,
+                                      &stop = thread_holder.stop_flag(), &running_threads]() {
+        CountDownLatch latch(1);
+        while (!stop.load()) {
+          CheckRowCount(client_table_);
+          latch.Reset(1);
+          {
+            std::lock_guard<std::mutex> lock(idle_threads_mutex);
+            idle_threads.push_back(&latch);
+          }
+          latch.Wait();
+        }
+        --running_threads;
+      });
+      std::this_thread::sleep_for(10ms);
+    }
 
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
       scoped_refptr<Counter> counter = METRIC_rpcs_queue_overflow.Instantiate(
           cluster_->mini_tablet_server(i)->server()->metric_entity());
-      stop = counter->value() > 0;
+      if (counter->value() > 0) {
+        thread_holder.stop_flag().store(true, std::memory_order_release);
+        break;
+      }
     }
   }
 
-  for (const scoped_refptr<yb::Thread>& thread : threads) {
-    thread->Join();
+  while (running_threads.load() > 0) {
+    LOG(INFO) << "Left to stop " << running_threads.load() << " threads";
+    {
+      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      while (!idle_threads.empty()) {
+        idle_threads.back()->CountDown(1);
+        idle_threads.pop_back();
+      }
+    }
+    std::this_thread::sleep_for(10ms);
   }
+  thread_holder.JoinAll();
 }
 
 TEST_F(ClientTest, TestReadFromFollower) {
