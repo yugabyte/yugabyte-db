@@ -131,9 +131,9 @@ public class CertificateHelperTest extends FakeDBApplication {
     Date certStart = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
-    JsonNode result =
+    CertificateDetails result =
         CertificateHelper.createClientCertificate(rootCA, null, "postgres", certStart, certExpiry);
-    String clientCert = result.get("yugabytedb.crt").asText();
+    String clientCert = result.crt;
     assertNotNull(clientCert);
     ByteArrayInputStream bytes = new ByteArrayInputStream(clientCert.getBytes());
     X509Certificate clientCer = (X509Certificate) fact.generateCertificate(bytes);
