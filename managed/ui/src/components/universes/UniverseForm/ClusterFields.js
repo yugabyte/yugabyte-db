@@ -118,6 +118,7 @@ const initialState = {
   hasInstanceTypeChanged: false,
   useTimeSync: true,
   enableYSQL: true,
+  enableYCQL: true,
   enableIPV6: false,
   // By default, we don't want to expose the service.
   enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
@@ -148,6 +149,7 @@ export default class ClusterFields extends Component {
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
+    this.toggleEnableYCQL = this.toggleEnableYCQL.bind(this);
     this.toggleEnableIPV6 = this.toggleEnableIPV6.bind(this);
     this.toggleEnableExposingService = this.toggleEnableExposingService.bind(this);
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
@@ -293,6 +295,7 @@ export default class ClusterFields extends Component {
           assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
+          enableYCQL: userIntent.enableYCQL,
           enableIPV6: userIntent.enableIPV6,
           enableExposingService: userIntent.enableExposingService,
           enableYEDIS: userIntent.enableYEDIS,
@@ -339,6 +342,10 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].enableYSQL) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({ enableYSQL: formValues['primary'].enableYSQL });
+          }
+          if (formValues[clusterType].enableYCQL) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({ enableYCQL: formValues['primary'].enableYCQL });
           }
           if (formValues[clusterType].enableIPV6) {
             // We would also default to whatever primary cluster's state for this one.
@@ -770,7 +777,16 @@ export default class ClusterFields extends Component {
       this.setState({ enableYSQL: event.target.checked });
     }
   }
-
+  toggleEnableYCQL(event) {
+    const { updateFormField, clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === 'primary') {
+      updateFormField('primary.enableYCQL', event.target.checked);
+      updateFormField('async.enableYCQL', event.target.checked);
+      this.setState({ enableYCQL: event.target.checked });
+    }
+  }
   toggleEnableIPV6(event) {
     const { updateFormField, clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
@@ -1438,6 +1454,7 @@ export default class ClusterFields extends Component {
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
+    let enableYCQL = <span />;
     let enableYEDIS = <span />;
     let enableNodeToNodeEncrypt = <span />;
     let enableClientToNodeEncrypt = <span />;
@@ -1464,6 +1481,18 @@ export default class ClusterFields extends Component {
           onToggle={this.toggleEnableYSQL}
           label="Enable YSQL"
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
+        />
+      );
+      enableYCQL = (
+        <Field
+          name={`${clusterType}.enableYCQL`}
+          component={YBToggle}
+          isReadOnly={isFieldReadOnly}
+          disableOnChange={disableToggleOnChange}
+          checkedVal={this.state.enableYCQL}
+          onToggle={this.toggleEnableYCQL}
+          label="Enable YCQL"
+          subLabel="Enable the YCQL API endpoint to run Cassandra compatible workloads."
         />
       );
       enableYEDIS = (
@@ -2025,6 +2054,7 @@ export default class ClusterFields extends Component {
                 {assignPublicIP}
                 {useTimeSync}
                 {enableYSQL}
+                {enableYCQL}
                 {enableYEDIS}
                 {enableNodeToNodeEncrypt}
                 {enableClientToNodeEncrypt}
@@ -2223,7 +2253,7 @@ export default class ClusterFields extends Component {
               </Col>
             </Row>
           )}
-          {this.state.customizePorts && (
+          {this.state.customizePorts && this.state.enableYCQL && (
             <Row>
               <Col sm={3}>
                 <div className="form-right-aligned-labels">

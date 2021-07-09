@@ -15,6 +15,7 @@ import static play.mvc.Results.ok;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.password.RedactingService;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
@@ -42,7 +43,9 @@ public class PlatformResults {
    * @param data - to be serialized to json and returned
    */
   public static Result withData(Object data) {
-    return Results.ok(Json.toJson(data));
+    JsonNode dataObj = Json.toJson(data);
+    dataObj = RedactingService.filterSecretFields(dataObj);
+    return Results.ok(dataObj);
   }
 
   @ApiModel(description = "Generic error response from the Yugabyte Platform API")
