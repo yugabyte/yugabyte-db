@@ -1,4 +1,17 @@
 -- Copyright (c) YugaByte, Inc.
+
+DO $$
+declare
+  value_type text;
+begin
+  select data_type into value_type from information_schema.columns
+    where table_schema = 'public' and table_name= 'runtime_config_entry' and column_name = 'value';
+  if value_type = 'text' then
+    alter table runtime_config_entry alter column value type bytea using convert_to(value::text, 'utf8');
+  end if;
+end;
+$$ language plpgsql;
+
 CREATE OR REPLACE FUNCTION get_default_threshold(customer_uuid uuid, name text, default_value double precision)
  RETURNS double precision
  language plpgsql
@@ -18,8 +31,15 @@ $$
   END;
 $$;
 
-drop extension if exists pgcrypto cascade;
-create extension pgcrypto cascade;
+CREATE OR REPLACE FUNCTION gen_random_uuid()
+ RETURNS uuid
+ language plpgsql
+ as
+$$
+  BEGIN
+    RETURN md5(random()::text || clock_timestamp()::text)::uuid;
+  END;
+$$;
 
 insert into alert_definition_group
   (uuid, customer_uuid, name, description, create_time, target_type, target, thresholds, template, active)

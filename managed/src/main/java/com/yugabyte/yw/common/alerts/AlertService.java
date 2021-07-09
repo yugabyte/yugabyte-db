@@ -14,6 +14,9 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.paging.AlertPagedQuery;
+import com.yugabyte.yw.models.paging.AlertPagedResponse;
+import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -28,6 +31,8 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.Alert.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -71,7 +76,7 @@ public class AlertService {
 
   public Alert get(UUID uuid) {
     if (uuid == null) {
-      throw new IllegalArgumentException("Can't get alert by null uuid");
+      throw new YWServiceException(BAD_REQUEST, "Can't get alert by null uuid");
     }
     return list(AlertFilter.builder().uuid(uuid).build()).stream().findFirst().orElse(null);
   }
@@ -90,21 +95,54 @@ public class AlertService {
   @Transactional
   public List<Alert> markResolved(AlertFilter filter) {
     AlertFilter notResolved =
+        filter
+            .toBuilder()
+            .targetState(Alert.State.CREATED, Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
+            .build();
+    List<Alert> resolved =
+        list(notResolved)
+            .stream()
+            .peek(
+                alert -> {
+                  alert.setTargetState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
+                  // Resolve immediately to avoid resolve notifications.
+                  if (alert.getState() == Alert.State.ACKNOWLEDGED) {
+                    alert.setState(Alert.State.RESOLVED);
+                  }
+                })
+            .collect(Collectors.toList());
+    return save(resolved);
+  }
+
+  @Transactional
+  public List<Alert> acknowledge(AlertFilter filter) {
+    AlertFilter notResolved =
         filter.toBuilder().targetState(Alert.State.CREATED, Alert.State.ACTIVE).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
-            .map(alert -> alert.setTargetState(Alert.State.RESOLVED))
+            .map(
+                alert ->
+                    alert
+                        .setTargetState(Alert.State.ACKNOWLEDGED)
+                        .setState(Alert.State.ACKNOWLEDGED)
+                        .setAcknowledgedTime(nowWithoutMillis()))
             .collect(Collectors.toList());
     return save(resolved);
   }
 
   public List<Alert> list(AlertFilter filter) {
-    return createQueryByFilter(filter).findList();
+    return createQueryByFilter(filter).orderBy().desc("createTime").findList();
+  }
+
+  public AlertPagedResponse pagedList(AlertPagedQuery pagedQuery) {
+    Query<Alert> query = Alert.createQueryByFilter(pagedQuery.getFilter()).query();
+    return performPagedQuery(query, pagedQuery, AlertPagedResponse.class);
   }
 
   public List<Alert> listNotResolved(AlertFilter filter) {
-    AlertFilter notResolved = filter.toBuilder().targetState(Alert.State.ACTIVE).build();
+    AlertFilter notResolved =
+        filter.toBuilder().targetState(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
     return list(notResolved);
   }
 
@@ -142,21 +180,21 @@ public class AlertService {
     return alert
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, alert.getCustomerUUID().toString())
         .setLabel(KnownAlertLabels.ERROR_CODE, alert.getErrCode())
-        .setLabel(KnownAlertLabels.ALERT_TYPE, alert.getType());
+        .setLabel(KnownAlertLabels.SEVERITY, alert.getSeverity().name());
   }
 
   private void validate(Alert alert) {
     if (alert.getCustomerUUID() == null) {
-      throw new IllegalArgumentException("Customer UUID field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
-    if (StringUtils.isEmpty(alert.getType())) {
-      throw new IllegalArgumentException("Alert type field is mandatory");
+    if (alert.getSeverity() == null) {
+      throw new YWServiceException(BAD_REQUEST, "Alert severity field is mandatory");
     }
     if (StringUtils.isEmpty(alert.getErrCode())) {
-      throw new IllegalArgumentException("Error code field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Error code field is mandatory");
     }
     if (StringUtils.isEmpty(alert.getMessage())) {
-      throw new IllegalArgumentException("Message field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Message field is mandatory");
     }
   }
 }

@@ -166,7 +166,7 @@ public class CertificateHelper {
     return createRootCA(nodePrefix + CLIENT_NODE_SUFFIX, customerUUID, storagePath);
   }
 
-  public static JsonNode createClientCertificate(
+  public static CertificateDetails createClientCertificate(
       UUID rootCA, String storagePath, String username, Date certStart, Date certExpiry) {
     LOG.info(
         "Creating client certificate signed by root CA {} and user {} at path {}",
@@ -251,7 +251,7 @@ public class CertificateHelper {
       JcaPEMWriter clientKeyWriter;
       StringWriter certWriter = new StringWriter();
       StringWriter keyWriter = new StringWriter();
-      ObjectNode bodyJson = Json.newObject();
+      CertificateDetails bodyJson = new CertificateDetails();
       if (storagePath != null) {
         String clientCertPath = String.format("%s/%s", storagePath, CLIENT_CERT);
         String clientKeyPath = String.format("%s/%s", storagePath, CLIENT_KEY);
@@ -268,8 +268,8 @@ public class CertificateHelper {
       clientKeyWriter.writeObject(clientKeyPair.getPrivate());
       clientKeyWriter.flush();
       if (storagePath == null) {
-        bodyJson.put(CLIENT_CERT, certWriter.toString());
-        bodyJson.put(CLIENT_KEY, keyWriter.toString());
+        bodyJson.crt = certWriter.toString();
+        bodyJson.key = keyWriter.toString();
       }
       LOG.info("Created Client CA for username {} signed by root CA {}.", username, rootCA);
       return bodyJson;
@@ -322,7 +322,7 @@ public class CertificateHelper {
         List<X509Certificate> x509ServerCertificates =
             getX509CertificateCertObject(customServerCertData.serverCertContent);
         // Verify that the uploaded server cert was signed by the uploaded CA cert
-        ArrayList combinedArrayList = new ArrayList(x509ServerCertificates);
+        List<X509Certificate> combinedArrayList = new ArrayList<>(x509ServerCertificates);
         combinedArrayList.addAll(x509CACerts);
         verifyCertValidity(combinedArrayList);
         // The first entry in the file should be the cert we want to use for generating server
@@ -621,7 +621,7 @@ public class CertificateHelper {
       cert.verify(potentialRootCert.getPublicKey());
       return true;
     } catch (Exception exp) {
-      LOG.error(exp.getMessage());
+      // Exception means the verify failed.
       return false;
     }
   }

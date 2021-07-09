@@ -29,7 +29,7 @@ public class ReleaseController extends AuthenticatedController {
 
   @Inject ValidatingFormFactory formFactory;
 
-  @ApiOperation(value = "Create release", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Create release", response = YWResults.YWSuccess.class, nickname="createRelease")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
