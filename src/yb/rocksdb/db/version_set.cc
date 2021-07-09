@@ -41,7 +41,9 @@
 #include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/casts.h"
+
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
@@ -3601,10 +3603,14 @@ bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
   Version* version = c->column_family_data()->current();
   const VersionStorageInfo* vstorage = version->storage_info();
   if (c->input_version_number() != version->GetVersionNumber()) {
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
-        "[%s] compaction output being applied to a different base version from"
-        " input version",
-        c->column_family_data()->GetName().c_str());
+    RLOG(
+        InfoLogLevel::INFO_LEVEL, db_options_->info_log,
+        yb::Format(
+            "[$0] compaction output being applied to a different base version ($1) from input "
+            "version ($2)",
+            c->column_family_data()->GetName(), version->GetVersionNumber(),
+            c->input_version_number())
+            .c_str());
 
     if (vstorage->compaction_style_ == kCompactionStyleLevel &&
         c->start_level() == 0 && c->num_input_levels() > 2U) {
@@ -3624,7 +3630,8 @@ bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
   for (size_t input = 0; input < c->num_input_levels(); ++input) {
     int level = c->level(input);
     for (size_t i = 0; i < c->num_input_files(input); ++i) {
-      uint64_t number = c->input(input, i)->fd.GetNumber();
+      const auto& fd = c->input(input, i)->fd;
+      uint64_t number = fd.GetNumber();
       bool found = false;
       for (size_t j = 0; j < vstorage->files_[level].size(); j++) {
         FileMetaData* f = vstorage->files_[level][j];
@@ -3634,6 +3641,9 @@ bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
         }
       }
       if (!found) {
+        RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
+            yb::Format("[$0] compaction input file $1 not found in current version",
+            c->column_family_data()->GetName(), fd).c_str());
         return false;  // input files non existent in current version
       }
     }

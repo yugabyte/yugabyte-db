@@ -2780,22 +2780,6 @@ TEST_P(CompactionPriTest, Test) {
   }
 }
 
-namespace {
-
-class CompactionStartedListener : public test::FlushedFileCollector {
- public:
-  void OnCompactionStarted() override {
-    ++num_compactions_started_;
-  }
-
-  int GetNumCompactionsStarted() { return num_compactions_started_; }
-
- private:
-  std::atomic<int> num_compactions_started_;
-};
-
-} // namespace
-
 // Test that manual compaction is aborted during shutdown.
 TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
   FLAGS_use_priority_thread_pool_for_compactions = true;
@@ -2823,8 +2807,10 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
     std::shared_ptr<RateLimiter> rate_limiter(NewGenericRateLimiter(kMaxCompactFlushRate));
     struct DbInfo {
       std::unique_ptr<DB> db;
-      std::shared_ptr<CompactionStartedListener> listener =
+      std::shared_ptr<CompactionStartedListener> compactions_listener =
           std::make_shared<CompactionStartedListener>();
+      std::shared_ptr<test::FlushedFileCollector> flushed_file_collector =
+          std::make_shared<test::FlushedFileCollector>();
       std::string db_path;
     };
     std::vector<DbInfo> dbs;
@@ -2853,7 +2839,8 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
       options.disable_auto_compactions = true;
       options.max_background_compactions = kMaxBackgroundCompactions;
       options.priority_thread_pool_for_compactions_and_flushes = &thread_pool;
-      options.listeners.push_back(db_info.listener);
+      options.listeners.push_back(db_info.compactions_listener);
+      options.listeners.push_back(db_info.flushed_file_collector);
       options.log_prefix = db_name + ": ";
       options.info_log_level = InfoLogLevel::INFO_LEVEL;
       options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
@@ -2888,7 +2875,8 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
       // For 1st db we flush to estimate file size to be flushed for 2nd db.
       if (last_sst_size == 0) {
         ASSERT_OK(db->Flush(flush_options));
-        const auto last_file_path = db_info.listener->GetFlushedFileInfos().back().file_path;
+        const auto last_file_path =
+            db_info.flushed_file_collector->GetFlushedFileInfos().back().file_path;
         for (const auto& file_meta : db->GetLiveFilesMetaData()) {
           if (file_meta.db_path + file_meta.name == last_file_path) {
             last_sst_size = file_meta.total_size;
@@ -2921,8 +2909,10 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
     threads.push_back(std::thread(
         [&manual_compaction_func, db = dbs[0].db.get()] { manual_compaction_func(db); }));
     ASSERT_OK(yb::LoggedWaitFor(
-        [listener = dbs[0].listener] { return listener->GetNumCompactionsStarted() > 0; }, kTimeout,
-        "Waiting for first compaction start"));
+        [listener = dbs[0].compactions_listener] {
+          return listener->GetNumCompactionsStarted() > 0;
+        },
+        kTimeout, "Waiting for first compaction start"));
 
     for (size_t db_idx = 1; db_idx < dbs.size(); ++db_idx) {
       threads.push_back(std::thread(
@@ -2957,7 +2947,7 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, testing::Test) {
       db_info.db.reset();
     }
 
-    ASSERT_EQ(dbs.back().listener->GetNumCompactionsStarted(), 0)
+    ASSERT_EQ(dbs.back().compactions_listener->GetNumCompactionsStarted(), 0)
         << "Second manual compaction should be cancelled before starting";
 
     {

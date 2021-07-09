@@ -27,7 +27,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/header_manager_impl.h"
 #include "yb/util/universe_key_manager.h"
+
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+#include "yb/rocksutil/yb_rocksdb_logger.h"
 
 namespace rocksdb {
 
@@ -1083,6 +1085,12 @@ std::unordered_map<std::string, uint64_t> DBTestBase::GetAllSSTFiles(
     }
   }
   return res;
+}
+
+void ConfigureLoggingToGlog(Options* options, const std::string& log_prefix) {
+  options->log_prefix = log_prefix;
+  options->info_log_level = InfoLogLevel::INFO_LEVEL;
+  options->info_log = std::make_shared<yb::YBRocksDBLogger>(options->log_prefix);
 }
 
 }  // namespace rocksdb

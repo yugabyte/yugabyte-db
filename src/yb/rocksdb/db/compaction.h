@@ -106,15 +106,15 @@ struct LevelFilesBrief {
 // A Compaction encapsulates information about a compaction.
 class Compaction {
  public:
-  Compaction(VersionStorageInfo* input_version,
-             const MutableCFOptions& mutable_cf_options,
-             std::vector<CompactionInputFiles> inputs, int output_level,
-             uint64_t target_file_size, uint64_t max_grandparent_overlap_bytes,
-             uint32_t output_path_id, CompressionType compression,
-             std::vector<FileMetaData*> grandparents,
-             bool manual_compaction = false, double score = -1,
-             bool deletion_compaction = false,
-             CompactionReason compaction_reason = CompactionReason::kUnknown);
+  static std::unique_ptr<Compaction> Create(
+      VersionStorageInfo* input_version, const MutableCFOptions& mutable_cf_options,
+      std::vector<CompactionInputFiles> inputs, int output_level, uint64_t target_file_size,
+      uint64_t max_grandparent_overlap_bytes, uint32_t output_path_id, CompressionType compression,
+      std::vector<FileMetaData*> grandparents,
+      Logger* info_log,
+      bool manual_compaction = false, double score = -1,
+      bool deletion_compaction = false,
+      CompactionReason compaction_reason = CompactionReason::kUnknown);
 
   // No copying allowed
   Compaction(const Compaction&) = delete;
@@ -301,6 +301,16 @@ class Compaction {
   void SetSuspender(yb::PriorityThreadPoolSuspender* value) { suspender_ = value; }
 
  private:
+  Compaction(VersionStorageInfo* input_version,
+             const MutableCFOptions& mutable_cf_options,
+             std::vector<CompactionInputFiles> inputs, int output_level,
+             uint64_t target_file_size, uint64_t max_grandparent_overlap_bytes,
+             uint32_t output_path_id, CompressionType compression,
+             std::vector<FileMetaData*> grandparents,
+             bool manual_compaction, double score,
+             bool deletion_compaction,
+             CompactionReason compaction_reason);
+
   // mark (or clear) all files that are being compacted
   void MarkFilesBeingCompacted(bool mark_as_compacted);
 

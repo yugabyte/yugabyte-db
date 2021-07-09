@@ -32,11 +32,14 @@
 #include <algorithm>
 #include <vector>
 
+#include "yb/gutil/stl_util.h"
+
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sync_point.h"
+
 #include "yb/util/logging.h"
 
 namespace rocksdb {
@@ -208,6 +211,45 @@ bool Compaction::IsFullCompaction(
     num_files_in_compaction += inputs[i].size();
   }
   return num_files_in_compaction == total_num_files;
+}
+
+std::unique_ptr<Compaction> Compaction::Create(
+    VersionStorageInfo* vstorage, const MutableCFOptions& _mutable_cf_options,
+    std::vector<CompactionInputFiles> inputs, int output_level, uint64_t target_file_size,
+    uint64_t max_grandparent_overlap_bytes, uint32_t output_path_id, CompressionType compression,
+    std::vector<FileMetaData*> grandparents, Logger* info_log, bool manual_compaction, double score,
+    bool deletion_compaction, CompactionReason compaction_reason) {
+  bool has_input_files = false;
+  for (auto& input : inputs) {
+    yb::EraseIf([info_log](FileMetaData* file) {
+      bool being_deleted = file->being_deleted;
+      if (being_deleted) {
+        RLOG(
+            InfoLogLevel::INFO_LEVEL, info_log,
+            yb::Format("Skipping compaction of file that is being deleted: $0", file).c_str());
+      }
+      return being_deleted;
+    }, &input.files);
+    has_input_files |= !input.empty();
+  }
+  if (!has_input_files) {
+    RLOG(
+        InfoLogLevel::INFO_LEVEL, info_log,
+        "Skipping compaction creation, no input files to compact");
+    return nullptr;
+  }
+  // We don't remove empty input levels, because empty input levels are handled differently
+  // than absent ones, for example by Compaction::IsTrivialMove.
+  // But we need to remove inputs[0] if it is empty and has level 0, otherwise
+  // Compaction::IsBottommostLevel will fail.
+  if (inputs[0].level == 0 && inputs[0].empty()) {
+    inputs.erase(inputs.begin());
+  }
+
+  return std::unique_ptr<Compaction>(new Compaction(
+      vstorage, _mutable_cf_options, inputs, output_level, target_file_size,
+      max_grandparent_overlap_bytes, output_path_id, compression, grandparents, manual_compaction,
+      score, deletion_compaction, compaction_reason));
 }
 
 Compaction::Compaction(VersionStorageInfo* vstorage,

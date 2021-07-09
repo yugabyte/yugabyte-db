@@ -2251,7 +2251,7 @@ Status DBImpl::CompactFilesImpl(
       compact_options, input_files, output_level, version->storage_info(),
       *cfd->GetLatestMutableCFOptions(), output_path_id);
   if (!c) {
-    return STATUS(Aborted, "Another Level 0 compaction is running");
+    return STATUS(Aborted, "Another Level 0 compaction is running or nothing to compact");
   }
   c->SetInputVersion(version);
   // deletion compaction currently not allowed in CompactFiles.
@@ -2298,6 +2298,9 @@ Status DBImpl::CompactFilesImpl(
   Status status;
   {
     mutex_.Unlock();
+    for (auto listener : db_options_.listeners) {
+      listener->OnCompactionStarted();
+    }
     auto file_numbers_holder = compaction_job.Run();
     TEST_SYNC_POINT("CompactFilesImpl:2");
     TEST_SYNC_POINT("CompactFilesImpl:3");
@@ -2725,6 +2728,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
                                    int output_level, uint32_t output_path_id,
                                    const Slice* begin, const Slice* end,
                                    bool exclusive, bool disallow_trivial_move) {
+  TEST_SYNC_POINT("DBImpl::RunManualCompaction");
+
   DCHECK(input_level == ColumnFamilyData::kCompactAllLevels ||
          input_level >= 0);
 
@@ -2968,6 +2973,7 @@ Status DBImpl::WaitForFlushMemTable(ColumnFamilyData* cfd) {
 
 Status DBImpl::EnableAutoCompaction(
     const std::vector<ColumnFamilyHandle*>& column_family_handles) {
+  TEST_SYNC_POINT("DBImpl::EnableAutoCompaction");
   Status s;
   for (auto cf_ptr : column_family_handles) {
     Status status =
@@ -3140,6 +3146,7 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
       ++unscheduled_compactions_;
     }
   }
+  TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
 }
 
 void DBImpl::RecordFlushIOStats() {
@@ -3519,6 +3526,9 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   }
 
   Result<FileNumbersHolder> result = FileNumbersHolder();
+  for (auto listener : db_options_.listeners) {
+    listener->OnCompactionStarted();
+  }
   if (c->deletion_compaction()) {
     // TODO(icanadi) Do we want to honor snapshots here? i.e. not delete old
     // file if there is alive snapshot pointing to it
@@ -5804,6 +5814,11 @@ Status DBImpl::DeleteFile(std::string name) {
       job_context.Clean();
       return STATUS(InvalidArgument, "File in level 0, but not oldest");
     }
+
+    TEST_SYNC_POINT("DBImpl::DeleteFile:DecidedToDelete");
+
+    metadata->being_deleted = true;
+
     edit.SetColumnFamily(cfd->GetID());
     edit.DeleteFile(level, number);
     status = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(),

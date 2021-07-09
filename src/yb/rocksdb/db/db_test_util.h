@@ -91,6 +91,9 @@ void TestResetTickerCount(const Options& options, Tickers ticker_type) {
   return options.statistics->setTickerCount(ticker_type, 0);
 }
 
+// Update options for RocksDB to be redirected to GLOG via YBRocksDBLogger.
+void ConfigureLoggingToGlog(Options* options, const std::string& log_prefix = "TEST: ");
+
 class OnFileDeletionListener : public EventListener {
  public:
   OnFileDeletionListener() :
@@ -118,6 +121,18 @@ class OnFileDeletionListener : public EventListener {
  private:
   size_t matched_count_;
   std::string expected_file_name_;
+};
+
+class CompactionStartedListener : public EventListener {
+ public:
+  void OnCompactionStarted() override {
+    ++num_compactions_started_;
+  }
+
+  int GetNumCompactionsStarted() { return num_compactions_started_; }
+
+ private:
+  std::atomic<int> num_compactions_started_;
 };
 
 namespace anon {
