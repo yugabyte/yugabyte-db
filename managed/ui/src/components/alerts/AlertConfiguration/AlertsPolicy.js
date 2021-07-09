@@ -30,7 +30,6 @@ export default class AlertsPolicy extends Component {
       Less than
     </option>
   ];
-
   /**
    * list of options that frequency unit can take.
    * TODO: Check if seconds are required.
@@ -72,7 +71,20 @@ export default class AlertsPolicy extends Component {
   };
 
   render() {
-    const { fields } = this.props;
+    const { fields, currentMetric } = this.props;
+
+    let metricUnit = '';
+
+    switch (currentMetric) {
+      case 'MILLISECOND':
+        metricUnit = 'ms';
+        break;
+      case 'PERCENT':
+        metricUnit = '%';
+        break;
+      default:
+        metricUnit = '%';
+    }
     return (
       <div className="instance-row-container">
         <Row>
@@ -113,7 +125,7 @@ export default class AlertsPolicy extends Component {
             </Col>
             <Col lg={1}>
               <div className="flex-container">
-                <p className="percent-text">%</p>
+                <p className="percent-text">{metricUnit}</p>
               </div>
             </Col>
           </Row>

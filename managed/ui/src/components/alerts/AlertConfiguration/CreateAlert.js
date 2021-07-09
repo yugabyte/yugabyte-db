@@ -37,7 +37,7 @@ const CreateAlert = (props) => {
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
   const [alertDestionation, setAlertDesionation] = useState([]);
   const [alertUniverseList, setAlertUniverseList] = useState([]);
-
+  const [currentMetric, setCurrentMetric] = useState('PERCENT');
   useEffect(() => {
     alertDestionations().then((res) => {
       res = res.map((destination, index) => (
@@ -69,13 +69,17 @@ const CreateAlert = (props) => {
   /**
    * Constant option for metrics condition.
    */
-  const alertMetricsConditionList = metricsData.map((metric, i) => {
-    return (
-      <option key={i} value={metric.name}>
-        {metric.name}
-      </option>
-    );
-  });
+  const alertMetricsConditionList = [
+    <option key={'default'} value={null} placeHolder="select..."/>,
+    ...metricsData.map((metric, i) => {
+      return (
+        <option key={i} value={metric.name}>
+          {metric.name}
+        </option>
+      );
+    })
+  ];
+  
 
   /**
    *
@@ -91,6 +95,11 @@ const CreateAlert = (props) => {
       setIsAllUniversesDisabled(false);
     }
   };
+
+  const handleMetricConditionChange = (value) => {
+    const metric = metricsData.find(metric => metric.name === value);
+    setCurrentMetric(metric.thresholdUnit);
+  }
   /**
    *
    * @param {Formvalues} values
@@ -133,6 +142,7 @@ const CreateAlert = (props) => {
 
     createAlertConfig(payload).then(() => onCreateCancel(false));
   };
+
   return (
     <Formik initialValues={{ ALERT_TARGET_TYPE: 'allUniverses' }}>
       <form name="alertConfigForm" onSubmit={handleSubmit(handleOnSubmit)}>
@@ -194,7 +204,7 @@ const CreateAlert = (props) => {
                   name="ALERT_METRICS_CONDITION"
                   component={YBSelectWithLabel}
                   options={alertMetricsConditionList}
-                  // onInputChanged={() => {}}
+                  onInputChanged={handleMetricConditionChange}
                 />
               </Col>
               <Col md={6}>
@@ -210,7 +220,7 @@ const CreateAlert = (props) => {
             <Row>
               <Col md={12}>
                 <div className="form-field-grid">
-                  <FieldArray name="ALERT_METRICS_CONDITION_POLICY" component={AlertsPolicy} />
+                  <FieldArray name="ALERT_METRICS_CONDITION_POLICY" component={AlertsPolicy} props ={{ currentMetric: currentMetric}}/>
                 </div>
               </Col>
             </Row>
