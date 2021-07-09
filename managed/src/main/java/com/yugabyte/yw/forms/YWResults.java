@@ -86,7 +86,13 @@ public class YWResults {
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class YWSuccess extends OkResult {
+
+    @ApiModelProperty(value = "Has API success", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final boolean success;
+
+    @ApiModelProperty(
+        value = "API response mssage.",
+        accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final String message;
 
     YWSuccess() {
@@ -108,7 +114,9 @@ public class YWResults {
   }
 
   public static class YWTask extends OkResult {
-    @VisibleForTesting public UUID taskUUID;
+    @VisibleForTesting
+    @ApiModelProperty(value = "Task UUID", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+    public UUID taskUUID;
 
     @ApiModelProperty(
         value = "UUID of the resource being modified  by the task",
