@@ -74,6 +74,17 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(json.get(0).textValue(), customer.uuid.toString());
   }
 
+  @Test
+  public void testListWithDataCustomersWithAuth() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    System.out.println(rootRoute + "_data");
+    Result result = route(fakeRequest("GET", rootRoute + "_data").cookie(validCookie));
+    assertEquals(OK, result.status());
+    ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
+    assertEquals(json.get(0).get("uuid").textValue(), customer.uuid.toString());
+  }
+
   // check that invalid creds is failing to do that
 
   @Test
