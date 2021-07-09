@@ -427,46 +427,6 @@
         } ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/restore" : {
-      "post" : {
-        "tags" : [ "Backups" ],
-        "summary" : "restore Backups",
-        "description" : "",
-        "operationId" : "restore",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "in" : "body",
-          "name" : "backup",
-          "description" : "backup params of the backup to be restored",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/Backup table params"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/tasks/{tUUID}" : {
       "get" : {
         "tags" : [ "Backups" ],
@@ -506,6 +466,46 @@
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
               "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/restore" : {
+      "post" : {
+        "tags" : [ "Backups" ],
+        "summary" : "restore Backups",
+        "description" : "",
+        "operationId" : "restore",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "in" : "body",
+          "name" : "backup",
+          "description" : "backup params of the backup to be restored",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Backup table params"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWTask"
             }
           }
         },
@@ -1075,17 +1075,6 @@
         }
       }
     },
-    "/api/v1/logout" : {
-      "get" : {
-        "operationId" : "logout",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        }
-      }
-    },
     "/api/v1/login" : {
       "post" : {
         "summary" : "login",
@@ -1252,6 +1241,17 @@
           "required" : true,
           "type" : "string"
         } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        }
+      }
+    },
+    "/api/v1/logout" : {
+      "get" : {
+        "operationId" : "logout",
+        "parameters" : [ ],
         "responses" : {
           "default" : {
             "description" : "successful operation"
@@ -2808,7 +2808,7 @@
           "description" : "instance type data of the instance to be stored",
           "required" : true,
           "schema" : {
-            "type" : "string"
+            "$ref" : "#/definitions/InstanceType"
           }
         } ],
         "responses" : {
@@ -3752,38 +3752,6 @@
         } ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
-      "post" : {
-        "tags" : [ "Universe Actions" ],
-        "summary" : "setUniverseKey",
-        "description" : "",
-        "operationId" : "setUniverseKey",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "uniUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/UniverseResp"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/setup_universe_2dc" : {
       "put" : {
         "tags" : [ "Universe Actions" ],
@@ -3808,6 +3776,38 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/YWSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
+      "post" : {
+        "tags" : [ "Universe Actions" ],
+        "summary" : "setUniverseKey",
+        "description" : "",
+        "operationId" : "setUniverseKey",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "uniUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UniverseResp"
             }
           }
         },
@@ -4823,6 +4823,76 @@
         } ]
       }
     },
+    "/api/v1/customers/{cUUID}/zones/{azUUID}/nodes/list" : {
+      "get" : {
+        "tags" : [ "Node Instances" ],
+        "summary" : "List of node instances by zone",
+        "description" : "",
+        "operationId" : "listByZone",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "azUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/NodeInstance"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/nodes/list" : {
+      "get" : {
+        "tags" : [ "Node Instances" ],
+        "summary" : "List of node instances by provider",
+        "description" : "",
+        "operationId" : "listByProvider",
+        "parameters" : [ {
+          "name" : "cUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        }, {
+          "name" : "pUUID",
+          "in" : "path",
+          "required" : true,
+          "type" : "string",
+          "format" : "uuid"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/NodeInstance"
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ]
+      }
+    },
     "/api/v1/customers/{cUUID}/nodes/{nodeUUID}/list" : {
       "get" : {
         "tags" : [ "Node Instances" ],
@@ -4888,76 +4958,6 @@
             "schema" : {
               "type" : "object",
               "additionalProperties" : {
-                "$ref" : "#/definitions/NodeInstance"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/zones/{azUUID}/nodes/list" : {
-      "get" : {
-        "tags" : [ "Node Instances" ],
-        "summary" : "List of node instances by zone",
-        "description" : "",
-        "operationId" : "listByZone",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "azUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/NodeInstance"
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/nodes/list" : {
-      "get" : {
-        "tags" : [ "Node Instances" ],
-        "summary" : "List of node instances by provider",
-        "description" : "",
-        "operationId" : "listByProvider",
-        "parameters" : [ {
-          "name" : "cUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        }, {
-          "name" : "pUUID",
-          "in" : "path",
-          "required" : true,
-          "type" : "string",
-          "format" : "uuid"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "array",
-              "items" : {
                 "$ref" : "#/definitions/NodeInstance"
               }
             }
@@ -5702,6 +5702,105 @@
         }
       }
     },
+    "Bulk import params" : {
+      "type" : "object",
+      "required" : [ "s3Bucket" ],
+      "properties" : {
+        "errorString" : {
+          "type" : "string",
+          "description" : "Error message"
+        },
+        "nodeExporterUser" : {
+          "type" : "string",
+          "description" : "Node exporter user"
+        },
+        "deviceInfo" : {
+          "description" : "Device information",
+          "$ref" : "#/definitions/Device info"
+        },
+        "universeUUID" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "Associate universe UUID"
+        },
+        "expectedUniverseVersion" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Universe version"
+        },
+        "cmkArn" : {
+          "type" : "string",
+          "description" : "Amazon Resource Name (ARN) of the CMK"
+        },
+        "encryptionAtRestConfig" : {
+          "description" : "Encryption at rest configation",
+          "$ref" : "#/definitions/Encryption at rest config"
+        },
+        "nodeDetailsSet" : {
+          "type" : "array",
+          "description" : "Node details",
+          "uniqueItems" : true,
+          "items" : {
+            "$ref" : "#/definitions/Node details"
+          }
+        },
+        "communicationPorts" : {
+          "description" : "Communication ports",
+          "$ref" : "#/definitions/Communication ports"
+        },
+        "extraDependencies" : {
+          "description" : "Extra dependencies",
+          "$ref" : "#/definitions/Extra dependencies"
+        },
+        "firstTry" : {
+          "type" : "boolean",
+          "description" : "Whether this task has been tried before or not"
+        },
+        "keyspace" : {
+          "type" : "string",
+          "description" : "Key space"
+        },
+        "tableName" : {
+          "type" : "string",
+          "description" : "Table name"
+        },
+        "tableUUID" : {
+          "type" : "string",
+          "format" : "uuid",
+          "description" : "Table UUID"
+        },
+        "sse" : {
+          "type" : "boolean",
+          "description" : "Is SSE"
+        },
+        "s3Bucket" : {
+          "type" : "string",
+          "description" : "S3 bucket URL"
+        },
+        "instanceCount" : {
+          "type" : "integer",
+          "format" : "int32",
+          "description" : "Instance count"
+        },
+        "targetAsyncReplicationRelationships" : {
+          "type" : "array",
+          "description" : "Async replication relationships as the target universe",
+          "readOnly" : true,
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          }
+        },
+        "sourceAsyncReplicationRelationships" : {
+          "type" : "array",
+          "description" : "Async replication relationships as the source universe",
+          "readOnly" : true,
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          }
+        }
+      },
+      "description" : "Bulk import params"
+    },
     "Column details" : {
       "type" : "object",
       "properties" : {
@@ -5867,105 +5966,6 @@
       },
       "description" : "Universe task"
     },
-    "Bulk import params" : {
-      "type" : "object",
-      "required" : [ "s3Bucket" ],
-      "properties" : {
-        "errorString" : {
-          "type" : "string",
-          "description" : "Error message"
-        },
-        "nodeExporterUser" : {
-          "type" : "string",
-          "description" : "Node exporter user"
-        },
-        "deviceInfo" : {
-          "description" : "Device information",
-          "$ref" : "#/definitions/Device info"
-        },
-        "universeUUID" : {
-          "type" : "string",
-          "format" : "uuid",
-          "description" : "Associate universe UUID"
-        },
-        "expectedUniverseVersion" : {
-          "type" : "integer",
-          "format" : "int32",
-          "description" : "Universe version"
-        },
-        "cmkArn" : {
-          "type" : "string",
-          "description" : "Amazon Resource Name (ARN) of the CMK"
-        },
-        "encryptionAtRestConfig" : {
-          "description" : "Encryption at rest configation",
-          "$ref" : "#/definitions/Encryption at rest config"
-        },
-        "nodeDetailsSet" : {
-          "type" : "array",
-          "description" : "Node details",
-          "uniqueItems" : true,
-          "items" : {
-            "$ref" : "#/definitions/Node details"
-          }
-        },
-        "communicationPorts" : {
-          "description" : "Communication ports",
-          "$ref" : "#/definitions/Communication ports"
-        },
-        "extraDependencies" : {
-          "description" : "Extra dependencies",
-          "$ref" : "#/definitions/Extra dependencies"
-        },
-        "firstTry" : {
-          "type" : "boolean",
-          "description" : "Whether this task has been tried before or not"
-        },
-        "keyspace" : {
-          "type" : "string",
-          "description" : "Key space"
-        },
-        "tableName" : {
-          "type" : "string",
-          "description" : "Table name"
-        },
-        "tableUUID" : {
-          "type" : "string",
-          "format" : "uuid",
-          "description" : "Table UUID"
-        },
-        "sse" : {
-          "type" : "boolean",
-          "description" : "Is SSE"
-        },
-        "s3Bucket" : {
-          "type" : "string",
-          "description" : "S3 bucket URL"
-        },
-        "instanceCount" : {
-          "type" : "integer",
-          "format" : "int32",
-          "description" : "Instance count"
-        },
-        "targetAsyncReplicationRelationships" : {
-          "type" : "array",
-          "description" : "Async replication relationships as the target universe",
-          "readOnly" : true,
-          "items" : {
-            "$ref" : "#/definitions/AsyncReplicationConfig"
-          }
-        },
-        "sourceAsyncReplicationRelationships" : {
-          "type" : "array",
-          "description" : "Async replication relationships as the source universe",
-          "readOnly" : true,
-          "items" : {
-            "$ref" : "#/definitions/AsyncReplicationConfig"
-          }
-        }
-      },
-      "description" : "Bulk import params"
-    },
     "TableInfo" : {
       "type" : "object",
       "properties" : {
@@ -6005,9 +6005,6 @@
       "type" : "object",
       "required" : [ "array", "bigDecimal", "bigInteger", "binary", "boolean", "containerNode", "double", "float", "floatingPointNumber", "int", "integralNumber", "long", "missingNode", "nodeType", "null", "number", "object", "pojo", "short", "textual", "valueNode" ],
       "properties" : {
-        "float" : {
-          "type" : "boolean"
-        },
         "nodeType" : {
           "type" : "string",
           "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ]
@@ -6067,6 +6064,9 @@
           "type" : "boolean"
         },
         "null" : {
+          "type" : "boolean"
+        },
+        "float" : {
           "type" : "boolean"
         }
       }
@@ -6443,9 +6443,6 @@
         "array" : {
           "type" : "boolean"
         },
-        "float" : {
-          "type" : "boolean"
-        },
         "object" : {
           "type" : "boolean"
         },
@@ -6499,6 +6496,9 @@
         },
         "null" : {
           "type" : "boolean"
+        },
+        "float" : {
+          "type" : "boolean"
         }
       }
     },
@@ -6539,14 +6539,14 @@
           "description" : "Configuration data",
           "$ref" : "#/definitions/JsonNode"
         },
+        "inUse" : {
+          "type" : "boolean",
+          "description" : "True if there is an in use reference to the object"
+        },
         "universeDetails" : {
           "example" : "{\"name\": \"jd-aws-21-6-21-test4\"}",
           "description" : "Universe details",
           "$ref" : "#/definitions/ArrayNode"
-        },
-        "inUse" : {
-          "type" : "boolean",
-          "description" : "True if there is an in use reference to the object"
         }
       },
       "description" : "Customers Configuration"
@@ -6606,15 +6606,15 @@
           "description" : "Details about the Certificate",
           "$ref" : "#/definitions/CustomCertInfo"
         },
-        "universeDetails" : {
-          "description" : "Associated universe details of the Certificate",
-          "readOnly" : true,
-          "$ref" : "#/definitions/ArrayNode"
-        },
         "inUse" : {
           "type" : "boolean",
           "description" : "Indicates whether the Certificate is in use or not",
           "readOnly" : true
+        },
+        "universeDetails" : {
+          "description" : "Associated universe details of the Certificate",
+          "readOnly" : true,
+          "$ref" : "#/definitions/ArrayNode"
         },
         "customServerCertInfo" : {
           "$ref" : "#/definitions/CustomServerCertInfo"
@@ -6844,10 +6844,10 @@
           "type" : "string",
           "description" : "Transient property - only present in mutate API request"
         },
-        "hostedZoneName" : {
+        "hostedZoneId" : {
           "type" : "string"
         },
-        "hostedZoneId" : {
+        "hostedZoneName" : {
           "type" : "string"
         },
         "config" : {
