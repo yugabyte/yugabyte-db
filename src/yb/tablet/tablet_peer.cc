@@ -1258,13 +1258,19 @@ bool TabletPeer::CanBeDeleted() {
     return can_be_deleted_;
   }
 
-  const auto tablet_data_state = tablet()->metadata()->tablet_data_state();
+  const auto tablet = shared_tablet();
+  const auto consensus = shared_raft_consensus();
+  if (!tablet || !consensus) {
+    return false;
+  }
+
+  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
   if (tablet_data_state != TABLET_DATA_SPLIT_COMPLETED) {
     return false;
   }
 
-  const auto all_applied_op_id = consensus_->GetAllAppliedOpId();
-  const auto committed_op_id = consensus_->GetLastCommittedOpId();
+  const auto all_applied_op_id = consensus->GetAllAppliedOpId();
+  const auto committed_op_id = consensus->GetLastCommittedOpId();
   if (all_applied_op_id < committed_op_id) {
     return false;
   }
