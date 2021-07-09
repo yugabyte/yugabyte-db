@@ -76,14 +76,14 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-    value = "list Backups for a specific task",
-    response = Backup.class,
-    responseContainer = "List")
-@ApiResponses(
-    @io.swagger.annotations.ApiResponse(
-        code = 500,
-        message = "If there was a server or database issue when listing the backups",
-        response = YWError.class))
+      value = "list Backups for a specific task",
+      response = Backup.class,
+      responseContainer = "List")
+  @ApiResponses(
+      @io.swagger.annotations.ApiResponse(
+          code = 500,
+          message = "If there was a server or database issue when listing the backups",
+          response = YWError.class))
   public Result fetchBackupsByTaskUUID(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -93,16 +93,16 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-    value = "restore Backups",
-    response = YWResults.YWTask.class,
-    responseContainer = "Restore")
-@ApiImplicitParams(
-    @ApiImplicitParam(
-        name = "backup",
-        value = "backup params of the backup to be restored",
-        paramType = "body",
-        dataType = "com.yugabyte.yw.forms.BackupTableParams",
-        required = true))
+      value = "restore Backups",
+      response = YWResults.YWTask.class,
+      responseContainer = "Restore")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "backup params of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.BackupTableParams",
+          required = true))
   public Result restore(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);

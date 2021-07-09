@@ -111,6 +111,13 @@ public class CertificateController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "post certificate info", response = CertificateDetails.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "certificate",
+          value = "post certificate info",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.ClientCertParams",
+          required = true))
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
     Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
     Customer.getOrBadRequest(customerUUID);
