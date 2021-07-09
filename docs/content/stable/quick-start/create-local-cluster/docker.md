@@ -49,9 +49,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-This Docker Quick Start is based on the new [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
-
-Note that yugabyted currently supports creating a single-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057). 
+This Docker Quick Start uses the [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
 
 {{< /note >}}
 
@@ -82,7 +80,7 @@ Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `local
 $ docker ps
 ```
 
-```
+```output
 CONTAINER ID        IMAGE                 COMMAND                  CREATED             STATUS              PORTS                                                                                                                                                                     NAMES
 5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
 ```

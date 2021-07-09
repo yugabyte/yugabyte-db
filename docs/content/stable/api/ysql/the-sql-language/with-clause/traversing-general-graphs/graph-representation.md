@@ -18,7 +18,7 @@ Look at the diagram of an example [undirected cyclic graph](../#undirected-cycli
 
 > _(n1-n2), (n2-n3), (n2-n4), (n3-n5), (n4-n5), (n4-n6), (n5-n6)_
 
-The minimal representation in a SQL database uses a just table of table of edges, created thus:
+The minimal representation in a SQL database uses just a table of table of edges, created thus:
 
 ##### `cr-edges.sql`
 
