@@ -14,7 +14,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link active">
+    <a href="/latest/secure/enable-authentication/ysql_hba_conf-configuration" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -25,14 +25,14 @@ The client authentication in YugabyteDB is managed by the T-Server <code>[--ysql
 configuration flag, which works similar to the <code>pg_hba.conf</code> file in PostgreSQL. 
 The values include records that specify allowed connection types, users, client IP addresses, and the authentication method.
 
-Records in the YugabyteDB` ysql_hba.conf` file are auto generated based on the values included in the <code>--ysql_hba_conf_csv</code> flag. 
+Records in the YugabyteDB `ysql_hba.conf` file are auto generated based on the values included in the <code>--ysql_hba_conf_csv</code> flag. 
 For example, starting a YB-TServer with the following <code>--ysql_hba_conf_csv</code> flag will enable trust authentication for all users.
 
 ```
 --ysql_hba_conf_csv='host all all 0.0.0.0/0 trust, host all all ::0/0 trust'
 ```
 
-To display the current values in the` ysql_hba.conf` file, run the following `SHOW` statement to get the file location:
+To display the current values in the `ysql_hba.conf` file, run the following `SHOW` statement to get the file location:
 
 ```
 yugabyte=# SHOW hba_file;

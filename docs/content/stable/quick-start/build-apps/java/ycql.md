@@ -7,7 +7,7 @@ menu:
   stable:
     parent: build-apps
     name: Java
-    identifier: java-3
+    identifier: java-4
     weight: 550
 type: page
 isTocNested: true
@@ -19,6 +19,12 @@ showAsideToc: true
     <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
+    </a>
+  </li>
+  <li >
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC SSL/TLS
     </a>
   </li>
   <li >
@@ -204,7 +210,7 @@ $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YB
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');

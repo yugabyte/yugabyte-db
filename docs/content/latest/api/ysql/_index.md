@@ -48,7 +48,7 @@ the query result shows that the PostgreSQL version is 11.2:
 
 ## Quick Start
 
-You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore-ysql) steps.
+You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore/ysql) steps.
 
 ## The SQL language
 
