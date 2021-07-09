@@ -8,7 +8,6 @@ import { StopBackup } from './StopBackup';
 const mapDispatchToProps = (dispatch) => {
   return {
     stopBackup: (backupUUID) => {
-      console.log(backupUUID);
       return dispatch(stopBackup(backupUUID)).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
