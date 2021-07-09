@@ -10,6 +10,8 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.Transactional;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -25,8 +27,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Entity
+@ApiModel(description = "Customers Task Information.")
 public class CustomerTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTask.class);
 
@@ -221,6 +225,7 @@ public class CustomerTask extends Model {
   // Use IDENTITY strategy because `customer_task.id` is a `bigserial` type; not a sequence.
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @ApiModelProperty(value = "Customer task uuid", accessMode = READ_ONLY)
   private Long id;
 
   public Long getId() {
@@ -229,6 +234,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY, required = true)
   private UUID customerUUID;
 
   public UUID getCustomerUUID() {
@@ -237,6 +243,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Task uuid", accessMode = READ_ONLY, required = true)
   private UUID taskUUID;
 
   public UUID getTaskUUID() {
@@ -245,6 +252,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Task target type", accessMode = READ_ONLY, required = true)
   private TargetType targetType;
 
   public TargetType getTarget() {
@@ -253,6 +261,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Task target name", accessMode = READ_ONLY, required = true)
   private String targetName;
 
   public String getTargetName() {
@@ -261,6 +270,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Task task type", accessMode = READ_ONLY, required = true)
   private TaskType type;
 
   public TaskType getType() {
@@ -269,6 +279,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Task target uuid", accessMode = READ_ONLY, required = true)
   private UUID targetUUID;
 
   public UUID getTargetUUID() {
@@ -278,6 +289,11 @@ public class CustomerTask extends Model {
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(
+      value = "Create time",
+      accessMode = READ_ONLY,
+      example = "1624295187911",
+      required = true)
   private Date createTime;
 
   public Date getCreateTime() {
@@ -286,6 +302,7 @@ public class CustomerTask extends Model {
 
   @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(value = "Completion time", accessMode = READ_ONLY, example = "1624295187911")
   private Date completionTime;
 
   public Date getCompletionTime() {
