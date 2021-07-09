@@ -4,6 +4,9 @@ package com.yugabyte.yw.models;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import play.libs.Json;
 
@@ -17,6 +20,9 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
+
+@ApiModel(description = "Metric config")
 @Entity
 public class MetricConfig extends Model {
   public static class Layout {
@@ -40,6 +46,7 @@ public class MetricConfig extends Model {
   @Transient public Layout layout = new Layout();
   @Transient public String operator;
 
+  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_ONLY)
   @Id
   @Column(length = 100)
   private String config_key;
@@ -52,6 +59,8 @@ public class MetricConfig extends Model {
     this.config_key = key;
   }
 
+  // TODO : update this field once json cleanup is done.
+  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_WRITE)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode config;
