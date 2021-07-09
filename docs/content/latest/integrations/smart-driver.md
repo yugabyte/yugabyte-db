@@ -152,22 +152,23 @@ To be able to use the samples, you need to complete the following steps:
   ```
 
   In the precediding command, replace:
-  *[-v] [-i]* with `-v` if you want to run the script in `VERBOSE` mode.
 
-  *[-v] [-i]* with `-i` if you want to run the script in `INTERACTIVE` mode.
+  - *[-v] [-i]* &nbsp; with `-v` if you want to run the script in `VERBOSE` mode.
 
-  *[-v] [-i]* with `-v` `-i` if you want to run the script in both `VERBOSE` and `INTERACTIVE` mode at the same time.
+  - *[-v] [-i]* &nbsp; with `-i` if you want to run the script in `INTERACTIVE` mode.
 
-  *</path_to_yugabyte_installation/>* with the path to the directory where you installed YugabyteDB. 
+  - *[-v] [-i]* &nbsp; with `-v` `-i` if you want to run the script in both `VERBOSE` and `INTERACTIVE` mode at the same time.
 
-  For more details, you can consult the help for the script.
+  - *</path_to_yugabyte_installation/>* &nbsp; with the path to the directory where you installed YugabyteDB. 
 
-  The following is an example of a shell command that runs the script:
+  <br>For more details, you can consult the help for the script.<br>
+
+  <br> The following is an example of a shell command that runs the script:
 
   ```sh
   ./run.sh -v -i -D ~/yugabyte-2.7.1.1/
   ```
 
-  The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
+  <br>The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
 
-  In the beginning, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Selecting one of these options starts running the corresponding script with its Java application in the background.
+  <br>In the beginning, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Selecting one of these options starts running the corresponding script with its Java application in the background.
