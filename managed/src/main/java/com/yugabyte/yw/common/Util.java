@@ -59,6 +59,12 @@ public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
+  public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
+  public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
+  public static final String DEFAULT_YCQL_USERNAME = "cassandra";
+  public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
+  public static final String YUGABYTE_DB = "yugabyte";
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */

@@ -208,19 +208,29 @@ public class UniverseDefinitionTaskBaseTest {
   }
 
   @Test
-  @Parameters({"false, false", "true, true", "true, false", "false, true"})
-  @TestCaseName("{method}(YSQL:{0}, YEDIS:{1})")
-  public void doTestAddDefaultGFlags(boolean enableYSQL, boolean enableYEDIS) {
+  // @Parameters({"false, false", "true, true", "true, false", "false, true"})
+  @Parameters({
+    "false, true, false",
+    "false, true, true",
+    "true, false, false",
+    "true, false, true",
+    "true, true, false",
+    "true, true, true"
+  })
+  // @TestCaseName("{method}(YSQL:{0}, YEDIS:{1})")
+  @TestCaseName("{method}(YCQL:{0}, YSQL:{1}, YEDIS:{2})")
+  public void doTestAddDefaultGFlags(boolean enableYCQL, boolean enableYSQL, boolean enableYEDIS) {
     UniverseDefinitionTaskBaseFake instance = new UniverseDefinitionTaskBaseFake();
     instance.taskParams = new UniverseDefinitionTaskParams();
     ((UniverseDefinitionTaskParams) instance.taskParams).clusters.add(myCluster);
     myCluster.userIntent.enableYEDIS = enableYEDIS;
     myCluster.userIntent.enableYSQL = enableYSQL;
+    myCluster.userIntent.enableYCQL = enableYCQL;
 
     assertEquals(0, userIntent.tserverGFlags.size());
     instance.addDefaultGFlags(userIntent);
     assertEquals(userIntent, instance.taskParams().getPrimaryCluster().userIntent);
-    assertTrue(userIntent.tserverGFlags.containsKey("cql_proxy_webserver_port"));
+    assertEquals(enableYCQL, userIntent.tserverGFlags.containsKey("cql_proxy_webserver_port"));
     assertEquals(enableYSQL, userIntent.tserverGFlags.containsKey("pgsql_proxy_webserver_port"));
     assertEquals(enableYEDIS, userIntent.tserverGFlags.containsKey("redis_proxy_webserver_port"));
     assertEquals(!enableYEDIS, userIntent.tserverGFlags.containsKey("start_redis_proxy"));

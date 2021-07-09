@@ -220,6 +220,7 @@ const formFieldNames = [
   'primary.assignPublicIP',
   'primary.useTimeSync',
   'primary.enableYSQL',
+  'primary.enableYCQL',
   'primary.enableIPV6',
   'primary.enableExposingService',
   'primary.enableYEDIS',
@@ -242,6 +243,7 @@ const formFieldNames = [
   'async.assignPublicIP',
   'async.useTimeSync',
   'async.enableYSQL',
+  'async.enableYCQL',
   'async.enableIPV6',
   'async.enableExposingService',
   'async.enableYEDIS',
@@ -271,6 +273,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].assignPublicIP = userIntent.assignPublicIP;
     data[clusterType].useTimeSync = userIntent.useTimeSync;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
+    data[clusterType].enableYCQL = userIntent.enableYCQL;
     data[clusterType].enableIPV6 = userIntent.enableIPV6;
     data[clusterType].enableExposingService = userIntent.enableExposingService;
     data[clusterType].enableYEDIS = userIntent.enableYEDIS;
@@ -330,6 +333,7 @@ function mapStateToProps(state, ownProps) {
       useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
+      enableYCQL: true,
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
@@ -349,6 +353,7 @@ function mapStateToProps(state, ownProps) {
       useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
+      enableYCQL: true,
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
@@ -406,6 +411,7 @@ function mapStateToProps(state, ownProps) {
       'primary.mountPoints',
       'primary.useTimeSync',
       'primary.enableYSQL',
+      'primary.enableYCQL',
       'primary.enableIPV6',
       'primary.enableExposingService',
       'primary.enableYEDIS',
@@ -443,6 +449,7 @@ function mapStateToProps(state, ownProps) {
       'async.storageType',
       'async.assignPublicIP',
       'async.enableYSQL',
+      'async.enableYCQL',
       'async.enableIPV6',
       'async.enableExposingService',
       'async.enableYEDIS',

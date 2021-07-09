@@ -47,7 +47,6 @@ public class UniverseControllerRequestBinder {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
-
       taskParams.clusters = clusters;
       return taskParams;
     } catch (JsonProcessingException exception) {

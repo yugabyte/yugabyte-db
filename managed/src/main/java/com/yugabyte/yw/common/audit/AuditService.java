@@ -39,7 +39,8 @@ public class AuditService {
       ImmutableList.of(
           "$..password",
           "$..confirmPassword",
-          // AWS credentials
+          "$..ysqlPassword",
+          "$..ycqlPassword",
           "$..['config.AWS_ACCESS_KEY_ID']",
           "$..['config.AWS_SECRET_ACCESS_KEY']",
           // GCP private key

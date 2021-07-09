@@ -28,8 +28,8 @@ import play.mvc.Http;
 @Singleton
 public class YsqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YsqlQueryExecutor.class);
-  private static final String DEFAULT_DB_USER = "yugabyte";
-  private static final String DEFAULT_DB_PASSWORD = "yugabyte";
+  private static final String DEFAULT_DB_USER = Util.DEFAULT_YSQL_USERNAME;
+  private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YSQL_PASSWORD;
 
   private String getQueryType(String queryString) {
     String[] queryParts = queryString.split(" ");

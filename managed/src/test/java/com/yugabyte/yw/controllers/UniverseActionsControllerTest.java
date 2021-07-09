@@ -133,6 +133,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
+            .put("ycqlPassword", "@123Byte")
+            .put("enableYSQL", "false")
             .put("accessKeyCode", accessKeyCode);
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());

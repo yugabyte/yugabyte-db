@@ -85,6 +85,8 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     connInfo.put("password", this.password);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
+    connInfo.put("user", DEFAULT_DB_USER);
+    connInfo.put("password", DEFAULT_DB_PASSWORD);
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
       connInfo.put("ssl", "true");
       connInfo.put("sslmode", "require");

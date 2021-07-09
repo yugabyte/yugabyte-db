@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -72,6 +73,7 @@ public class UniverseCRUDHandler {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject KubernetesManager kubernetesManager;
+  @Inject PasswordPolicyService passwordPolicyService;
 
   @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
@@ -191,6 +193,28 @@ public class UniverseCRUDHandler {
           taskParams.getPrimaryCluster().userIntent;
       if (userIntent.providerType.isVM() && userIntent.enableYSQL) {
         taskParams.setTxnTableWaitCountFlag = true;
+      }
+      if (!(userIntent.enableYSQL || userIntent.enableYCQL)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Enable atleast one endpoint among YSQL and YCQL");
+      }
+      if (!userIntent.enableYSQL && userIntent.enableYSQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YSQL Authentication if YSQL endpoint is disabled.");
+      }
+      if (!userIntent.enableYCQL && userIntent.enableYCQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
+      }
+      try {
+        if (userIntent.enableYSQLAuth) {
+          passwordPolicyService.checkPasswordPolicy(null, userIntent.ysqlPassword);
+        }
+        if (userIntent.enableYCQLAuth) {
+          passwordPolicyService.checkPasswordPolicy(null, userIntent.ycqlPassword);
+        }
+      } catch (Exception e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
     }
 

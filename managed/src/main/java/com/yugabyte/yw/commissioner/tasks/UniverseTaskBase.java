@@ -50,6 +50,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -57,6 +58,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -69,6 +71,8 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
@@ -392,6 +396,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.universeUUID = taskParams().universeUUID;
     UniverseUpdateSucceeded task = createTask(UniverseUpdateSucceeded.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createChangeAdminPasswordTask(
+      Cluster primaryCluster,
+      String ysqlPassword,
+      String ysqlCurrentPassword,
+      String ysqlUserName,
+      String ysqlDbName,
+      String ycqlPassword,
+      String ycqlCurrentPassword,
+      String ycqlUserName) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ChangeAdminPassword", executor);
+    ChangeAdminPassword.Params params = new ChangeAdminPassword.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.primaryCluster = primaryCluster;
+    params.ycqlNewPassword = ycqlPassword;
+    params.ysqlNewPassword = ysqlPassword;
+    params.ycqlCurrentPassword = ycqlCurrentPassword;
+    params.ysqlCurrentPassword = ysqlCurrentPassword;
+    params.ycqlUserName = ycqlUserName;
+    params.ysqlUserName = ysqlUserName;
+    params.ysqlDbName = ysqlDbName;
+    ChangeAdminPassword task = createTask(ChangeAdminPassword.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);

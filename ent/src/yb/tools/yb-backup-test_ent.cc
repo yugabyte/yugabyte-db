@@ -16,6 +16,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/ql-dml-test-base.h"

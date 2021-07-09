@@ -136,6 +136,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                 Provider.getOrBadRequest(UUID.fromString(provider)),
                 Play.current().injector().instanceOf(Config.class),
                 Play.current().injector().instanceOf(ConfigHelper.class));
+        log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes
                 .stream()

@@ -8,6 +8,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -121,8 +122,10 @@ public class SubTaskGroup implements Runnable {
   }
 
   public void addTask(AbstractTaskBase task) {
-    log.info("Adding task #" + taskMap.size() + ": " + task.getName());
-    log.debug("Details for task #" + taskMap.size() + ": " + task.toString());
+    LOG.info("Adding task #" + taskMap.size() + ": " + task.getName());
+    JsonNode redactedTask = RedactingService.filterSecretFields(task.getTaskDetails());
+    LOG.debug(
+        "Details for task #" + taskMap.size() + ": " + task.getName() + "details=" + redactedTask);
 
     // Set up corresponding TaskInfo.
     TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
@@ -224,6 +227,7 @@ public class SubTaskGroup implements Runnable {
           log.error(errorString);
         }
       } catch (Exception e) {
+        taskInfo.setTaskDetails(RedactingService.filterSecretFields(taskInfo.getTaskDetails()));
         errorString =
             "Failed to execute task "
                 + StringUtils.abbreviate(taskInfo.getTaskDetails().toString(), 500)

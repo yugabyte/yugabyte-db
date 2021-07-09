@@ -122,6 +122,7 @@ export const useLaunchUniverse = () => {
                   enableClientToNodeEncrypt: formData.securityConfig.enableClientToNodeEncrypt,
                   accessKeyCode: formData.hiddenConfig.accessKeyCode,
                   enableYSQL: formData.hiddenConfig.enableYSQL,
+                  enableYCQL: formData.hiddenConfig.enableYCQL,
                   useTimeSync: formData.hiddenConfig.useTimeSync
                 }
               }

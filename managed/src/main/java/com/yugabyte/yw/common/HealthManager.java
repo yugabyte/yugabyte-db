@@ -35,13 +35,14 @@ public class HealthManager extends DevopsBase {
     public boolean rootAndClientRootCASame = true;
     public String sslProtocol = "";
     public boolean enableYSQL = false;
+    public boolean enableYCQL = false;
+    public boolean enableYSQLAuth = false;
     public int ysqlPort = 5433;
     public int ycqlPort = 9042;
     public boolean enableYEDIS = false;
     public int redisPort = 6379;
     public int masterHttpPort = 7000;
     public int tserverHttpPort = 9000;
-    public boolean enableYSQLAuth = false;
   }
 
   public ShellResponse runCommand(

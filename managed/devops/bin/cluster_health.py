@@ -804,6 +804,7 @@ class Cluster():
         self.namespace_to_config = data["namespaceToConfig"]
         self.ssl_protocol = data["sslProtocol"]
         self.enable_ysql = data["enableYSQL"]
+        self.enable_ycql = data["enableYCQL"]
         self.ysql_port = data["ysqlPort"]
         self.ycql_port = data["ycqlPort"]
         self.enable_yedis = data["enableYEDIS"]
@@ -870,7 +871,8 @@ def main():
                     coordinator.add_check(checker, "check_for_fatal_logs", "yb-tserver")
                     # Only need to check redis-cli/cqlsh for tserver nodes
                     # to be docker/k8s friendly.
-                    coordinator.add_check(checker, "check_cqlsh")
+                    if c.enable_ycql:
+                        coordinator.add_check(checker, "check_cqlsh")
                     if c.enable_yedis:
                         coordinator.add_check(checker, "check_redis_cli")
                     # TODO: Enable check after addressing issue #1845.

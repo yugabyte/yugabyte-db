@@ -111,8 +111,6 @@ public class TaskRunner implements Runnable {
 
     // Persist the task in the queue.
     taskRunner.save();
-    LOG.info("Created task, details: " + taskRunner.toString());
-    LOG.debug("Created task, details: " + taskRunner.toDebugString());
 
     return taskRunner;
   }

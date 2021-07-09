@@ -231,7 +231,6 @@ public class ImportController extends AuthenticatedController {
     if (importForm.universeUUID != null) {
       universe = Universe.maybeGet(importForm.universeUUID).orElse(null);
     }
-
     try {
       if (null == universe) {
         universe =
@@ -241,7 +240,6 @@ public class ImportController extends AuthenticatedController {
                 Util.getNodePrefix(customer.getCustomerId(), universeName),
                 universeName);
       }
-
       List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
       Provider provider;
       if (!providerList.isEmpty()) {
@@ -255,7 +253,6 @@ public class ImportController extends AuthenticatedController {
                 customer.uuid, importForm.providerType);
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, results.error);
       }
-
       Region region = Region.getByCode(provider, importForm.regionCode);
       AvailabilityZone zone = AvailabilityZone.getByCode(provider, importForm.zoneCode);
       taskParams = universe.getUniverseDetails();
@@ -659,7 +656,6 @@ public class ImportController extends AuthenticatedController {
     userIntent.providerType = importForm.providerType;
     userIntent.instanceType = importForm.instanceType;
     userIntent.replicationFactor = importForm.replicationFactor;
-    userIntent.enableYSQL = true;
     // Currently using YW version instead of YB version.
     // TODO: #1842: Create YBClient endpoint for getting ybSoftwareVersion.
     userIntent.ybSoftwareVersion =

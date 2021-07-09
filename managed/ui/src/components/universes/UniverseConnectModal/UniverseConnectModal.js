@@ -140,7 +140,10 @@ class UniverseConnectModal extends Component {
               isEnabled(currentCustomer.data.features, 'universe.defaultYSQL')) && (
               <FlexShrink>{this.renderEndpointUrl(ysqlServiceUrl, 'YSQL')}</FlexShrink>
             )}
-            <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, 'YCQL')}</FlexShrink>
+            {(userIntent.enableYCQL ||
+              isEnabled(currentCustomer.data.features, 'universe.defaultYCQL')) && (
+              <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, 'YCQL')}</FlexShrink>
+            )}
             {(userIntent.enableYEDIS ||
               isEnabled(currentCustomer.data.features, 'universe.defaultYEDIS', 'disabled')) && (
               <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, 'YEDIS')}</FlexShrink>
@@ -185,11 +188,14 @@ class UniverseConnectModal extends Component {
                     <td>{isTLSEnabled ? ySqlTLSConnection : ysqlConnection}</td>
                   </tr>
                 )}
-                <tr>
-                  <td>YCQL Shell</td>
+                {(userIntent.enableYCQL ||
+                  isEnabled(currentCustomer.data.features, 'universe.defaultYCQL')) && (
+                  <tr>
+                    <td>YCQL Shell</td>
                   <td>: </td>
                   <td>{isTLSEnabled ? yCqlTLSConnection : ycqlConnection}</td>
-                </tr>
+                  </tr>
+                )}
                 {(userIntent.enableYEDIS ||
                   isEnabled(
                     currentCustomer.data.features,
