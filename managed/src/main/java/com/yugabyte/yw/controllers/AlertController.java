@@ -56,7 +56,11 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertService alertService;
 
   /** Lists alerts for given customer. */
-  @ApiOperation(value = "listAlerts", response = Alert.class, responseContainer = "List")
+  @ApiOperation(
+      value = "listAlerts",
+      response = Alert.class,
+      responseContainer = "List",
+      nickname = "listOfAlerts")
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 

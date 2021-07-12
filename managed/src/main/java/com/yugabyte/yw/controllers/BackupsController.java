@@ -40,7 +40,8 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "list Backups for a specific customer",
       response = Backup.class,
-      responseContainer = "List")
+      responseContainer = "List",
+      nickname = "ListOfBackups")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
@@ -201,7 +202,7 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID).asResult();
   }
 
-  @ApiOperation(value = "delete", response = YWResults.YWTask.class)
+  @ApiOperation(value = "delete", response = YWResults.YWTask.class, nickname = "deleteBackups")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // TODO(API): Let's get rid of raw Json.
