@@ -43,7 +43,8 @@ public class RegionController extends AuthenticatedController {
   @ApiOperation(
       value = "list Regions for a specific provider",
       response = Region.class,
-      responseContainer = "List")
+      responseContainer = "List",
+      nickname = "getRegion")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
@@ -83,7 +84,7 @@ public class RegionController extends AuthenticatedController {
    *
    * @return JSON response of newly created region
    */
-  @ApiOperation(value = "create new region", response = Region.class)
+  @ApiOperation(value = "create new region", response = Region.class, nickname = "createRegion")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "region",
@@ -159,7 +160,7 @@ public class RegionController extends AuthenticatedController {
    * @param regionUUID Region UUID
    * @return JSON response on whether or not delete region was sucessful or not.
    */
-  @ApiOperation(value = "delete", response = Object.class)
+  @ApiOperation(value = "delete", response = Object.class, nickname = "deleteRegion")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     region.disableRegionAndZones();

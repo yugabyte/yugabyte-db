@@ -26,7 +26,10 @@ public class CustomerConfigController extends AuthenticatedController {
 
   @Inject private CustomerConfigValidator configValidator;
 
-  @ApiOperation(value = "Create customer configuration", response = CustomerConfig.class)
+  @ApiOperation(
+      value = "Create customer configuration",
+      response = CustomerConfig.class,
+      nickname = "createCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",
@@ -52,7 +55,10 @@ public class CustomerConfigController extends AuthenticatedController {
     return YWResults.withData(customerConfig);
   }
 
-  @ApiOperation(value = "Delete customer configuration", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Delete customer configuration",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteCustomerConfig")
   public Result delete(UUID customerUUID, UUID configUUID) {
     CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     customerConfig.deleteOrThrow();
@@ -63,12 +69,16 @@ public class CustomerConfigController extends AuthenticatedController {
   @ApiOperation(
       value = "List of customer configuration",
       response = CustomerConfig.class,
-      responseContainer = "List")
+      responseContainer = "List",
+      nickname = "getListOfCustomerConfig")
   public Result list(UUID customerUUID) {
     return YWResults.withData(CustomerConfig.getAll(customerUUID));
   }
 
-  @ApiOperation(value = "List of customer configuration", response = CustomerConfig.class)
+  @ApiOperation(
+      value = "List of customer configuration",
+      response = CustomerConfig.class,
+      nickname = "getCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",

@@ -60,7 +60,8 @@ public class InstanceTypeController extends AuthenticatedController {
   @ApiOperation(
       value = "list Instance Types for specific provider.",
       response = YWResults.class,
-      responseContainer = "List")
+      responseContainer = "List",
+      nickname = "listOfInstanceType")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
@@ -141,7 +142,10 @@ public class InstanceTypeController extends AuthenticatedController {
    * @param providerUUID, UUID of provider
    * @return JSON response of newly created instance type
    */
-  @ApiOperation(value = "create Instance type", response = InstanceType.class)
+  @ApiOperation(
+      value = "create Instance type",
+      response = InstanceType.class,
+      nickname = "createInstanceType")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "instance type",
@@ -172,7 +176,10 @@ public class InstanceTypeController extends AuthenticatedController {
    * @param instanceTypeCode, Instance TaskType code.
    * @return JSON response to denote if the delete was successful or not.
    */
-  @ApiOperation(value = "delete", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "delete",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteInstanceType")
   public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
@@ -192,7 +199,8 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "get instance type through instance type code.",
-      response = InstanceType.class)
+      response = InstanceType.class,
+      nickname = "instanceTypeDetail")
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 

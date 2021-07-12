@@ -24,7 +24,7 @@ public class MetricsController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetricsController.class);
 
-  @ApiOperation(value = "index", response = String.class)
+  @ApiOperation(value = "index", response = String.class, nickname = "MetricsDetail")
   public Result index() {
     final ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
     try {

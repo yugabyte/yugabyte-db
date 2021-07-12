@@ -24,7 +24,11 @@ public class UniverseController extends AuthenticatedController {
   @Inject private UniverseCRUDHandler universeCRUDHandler;
 
   /** List the universes for a given customer. */
-  @ApiOperation(value = "List Universes", response = UniverseResp.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List Universes",
+      response = UniverseResp.class,
+      responseContainer = "List",
+      nickname = "getListOfUniverses")
   public Result list(UUID customerUUID, String name) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Verify the customer is present.
@@ -35,7 +39,7 @@ public class UniverseController extends AuthenticatedController {
     return YWResults.withData(universeCRUDHandler.list(customer));
   }
 
-  @ApiOperation(value = "getUniverse", response = UniverseResp.class)
+  @ApiOperation(value = "getUniverse", response = UniverseResp.class, nickname = "getUniverse")
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -43,7 +47,10 @@ public class UniverseController extends AuthenticatedController {
         UniverseResp.create(universe, null, runtimeConfigFactory.globalRuntimeConf()));
   }
 
-  @ApiOperation(value = "Destroy the universe", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Destroy the universe",
+      response = YWResults.YWTask.class,
+      nickname = "deleteUniverse")
   public Result destroy(
       UUID customerUUID, UUID universeUUID, boolean isForceDelete, boolean isDeleteBackups) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

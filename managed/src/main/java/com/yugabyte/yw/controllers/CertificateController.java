@@ -13,13 +13,7 @@ import com.yugabyte.yw.forms.YWResults.YWError;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiResponses;
-import io.swagger.annotations.Authorization;
-
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -148,7 +142,8 @@ public class CertificateController extends AuthenticatedController {
   @ApiOperation(
       value = "list Certificates for a specific customer",
       response = CertificateInfo.class,
-      responseContainer = "List")
+      responseContainer = "List",
+      nickname = "getListOfCertificate")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
@@ -159,13 +154,16 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withData(certs);
   }
 
-  @ApiOperation(value = "get certificate UUID", response = UUID.class)
+  @ApiOperation(value = "get certificate UUID", response = UUID.class, nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
     return YWResults.withData(cert.uuid);
   }
 
-  @ApiOperation(value = "delete certificate", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "delete certificate",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteCertificate")
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
     CertificateInfo.delete(reqCertUUID, customerUUID);
     auditService().createAuditEntry(ctx(), request());
