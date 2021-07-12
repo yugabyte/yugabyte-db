@@ -108,12 +108,12 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
 
 RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
                                      ThreadPool* callback_pool,
-                                     gscoped_ptr<TSPicker> replica_picker,
+                                     std::unique_ptr<TSPicker> replica_picker,
                                      const scoped_refptr<TableInfo>& table)
   : master_(master),
     callback_pool_(callback_pool),
-    replica_picker_(replica_picker.Pass()),
-    table_(DCHECK_NOTNULL(table)),
+    replica_picker_(std::move(replica_picker)),
+    table_(table),
     start_ts_(MonoTime::Now()),
     deadline_(start_ts_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {
 }
@@ -129,14 +129,22 @@ RetryingTSRpcTask::~RetryingTSRpcTask() {
 Status RetryingTSRpcTask::Run() {
   ++attempt_;
   VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;
-  auto task_state = state();
-  if (task_state == MonitoredTaskState::kAborted) {
-    return STATUS(IllegalState, "Unable to run task because it has been aborted");
+  for (;;) {
+    auto task_state = state();
+    if (task_state == MonitoredTaskState::kAborted) {
+      return STATUS(IllegalState, "Unable to run task because it has been aborted");
+    }
+    if (task_state == MonitoredTaskState::kWaiting) {
+      break;
+    }
+
+    LOG_IF_WITH_PREFIX(DFATAL, task_state != MonitoredTaskState::kScheduling)
+        << "Expected task to be in kScheduling state but found: " << AsString(task_state);
+
+    // We expect this case to be very rare, since we switching to waiting state right after
+    // scheduling task on messenger. So just busy wait.
+    std::this_thread::yield();
   }
-  // TODO(bogdan): There is a race between scheduling and running and can cause this to fail.
-  // Should look into removing the kScheduling state, if not needed, and simplifying the state
-  // transitions!
-  DCHECK(task_state == MonitoredTaskState::kWaiting) << "State: " << AsString(task_state);
 
   Status s = ResetTSProxy();
   if (!s.ok()) {
@@ -466,7 +474,7 @@ bool RetryingTSRpcTask::TransitionToWaitingState(MonitoredTaskState expected) {
 AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
           tablet->table().get()),
       tablet_(tablet) {
 }
@@ -475,7 +483,7 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
       tablet_(tablet) {
 }
 
@@ -786,7 +794,7 @@ AsyncCopartitionTable::AsyncCopartitionTable(Master *master,
                                              const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(master,
                         callback_pool,
-                        gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+                        std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
                         table.get()),
       tablet_(tablet), table_(table) {
 }
@@ -860,7 +868,7 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
           tablet->table()),
       tablet_(tablet),
       cstate_(cstate),
@@ -1123,7 +1131,7 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
       tablet_(tablet),
       table_(table),
       tablet_id_(tablet->tablet_id()) {
@@ -1185,7 +1193,7 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
       table_(table),
       tablet_(tablet),
       tablet_id_(tablet->tablet_id()) {
@@ -1229,6 +1237,14 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
   return true;
 }
 
+namespace {
+
+bool IsDefinitelyPermanentError(const Status& s) {
+  return s.IsInvalidArgument() || s.IsNotFound();
+}
+
+} // namespace
+
 // ============================================================================
 //  Class AsyncGetTabletSplitKey.
 // ============================================================================
@@ -1246,6 +1262,21 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
                              << ") failed for tablet " << tablet_id() << " with error code "
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    if (IsDefinitelyPermanentError(s) || s.IsIllegalState()) {
+      // It can happen that tablet leader has completed post-split compaction after previous split,
+      // but followers have not yet completed post-split compaction.
+      // Catalog manager decides to split again and sends GetTabletSplitKey RPC, but tablet leader
+      // changes due to some reason and new tablet leader is not yet compacted.
+      // In this case we get IllegalState error and we don't want to retry until post-split
+      // compaction happened on leader. Once post-split compaction is done, CatalogManager will
+      // resend RPC.
+      //
+      // Another case for IsIllegalState is trying to split a tablet that has all the data with
+      // the same hash_code or the same doc_key, in this case we also don't want to retry RPC
+      // automatically.
+      // See https://github.com/yugabyte/yugabyte-db/issues/9159.
+      TransitionToFailedState(state(), s);
+    }
   } else {
     VLOG_WITH_PREFIX(1)
         << "TS " << permanent_uuid() << ": got split key for tablet " << tablet_id();
@@ -1289,16 +1320,14 @@ AsyncSplitTablet::AsyncSplitTablet(
 void AsyncSplitTablet::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     const Status s = StatusFromPB(resp_.error().status());
+    const TabletServerErrorPB::Code code = resp_.error().code();
+    LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": split (attempt " << attempt
+                             << ") failed for tablet " << tablet_id() << " with error code "
+                             << TabletServerErrorPB::Code_Name(code) << ": " << s;
     if (s.IsAlreadyPresent()) {
-      LOG_WITH_PREFIX(INFO) << "SplitTablet RPC for tablet " << req_.tablet_id()
-                            << " on TS " << permanent_uuid() << " returned already present: "
-                            << s;
       TransitionToCompleteState();
-    } else {
-      const TabletServerErrorPB::Code code = resp_.error().code();
-      LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": split (attempt " << attempt
-                              << ") failed for tablet " << tablet_id() << " with error code "
-                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    } else if (IsDefinitelyPermanentError(s)) {
+      TransitionToFailedState(state(), s);
     }
   } else {
     VLOG_WITH_PREFIX(1)

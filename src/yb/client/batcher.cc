@@ -99,6 +99,12 @@ namespace internal {
 const std::string Batcher::kErrorReachingOutToTServersMsg(
     "Errors occurred while reaching out to the tablet servers");
 
+namespace {
+
+const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTServersMsg);
+
+}  // namespace
+
 // About lock ordering in this file:
 // ------------------------------
 // The locks must be acquired in the following order:
@@ -238,7 +244,7 @@ void Batcher::CheckForFinishedFlush() {
     // In the general case, the user is responsible for fetching errors from the error collector.
     // TODO: use the Combined status here, so it is easy to recognize.
     // https://github.com/YugaByte/yugabyte-db/issues/702
-    s = STATUS(IOError, kErrorReachingOutToTServersMsg);
+    s = kGeneralErrorStatus;
   }
 
   RunCallback(s);
@@ -310,20 +316,13 @@ Status Batcher::DoAdd(shared_ptr<YBOperation> yb_op) {
   if (state() != BatcherState::kGatheringOps) {
     const auto error =
         STATUS_FORMAT(InternalError, "Adding op to batcher in a wrong state: $0", state_);
-    LOG(DFATAL) << error << "\n" << GetStackTrace();
+    LOG_WITH_PREFIX(DFATAL) << error << "\n" << GetStackTrace();
     return error;
   }
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.
   auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
-
-  // TODO(tsplit): Consider implementing Batcher::AddInflightOp that returns void and use it for
-  // retries.
-  // TODO(tsplit): Consider doing refresh somewhere else, not inside Batcher::Add.
-  if (VERIFY_RESULT(yb_op->MaybeRefreshTablePartitionList())) {
-    client_->data_->meta_cache_->InvalidateTableCache(*yb_op->table());
-  }
 
   if (yb_op->table()->partition_schema().IsHashPartitioning()) {
     switch (yb_op->type()) {
@@ -367,14 +366,24 @@ Status Batcher::DoAdd(shared_ptr<YBOperation> yb_op) {
     TabletLookupFinished(std::move(in_flight_op), yb_op->tablet());
   } else {
     client_->data_->meta_cache_->LookupTabletByKey(
-        in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline_,
+        in_flight_op->yb_op->mutable_table(), in_flight_op->partition_key, deadline_,
         std::bind(&Batcher::TabletLookupFinished, BatcherPtr(this), in_flight_op, _1));
   }
   return Status::OK();
 }
 
+bool Batcher::Has(std::shared_ptr<YBOperation> yb_op) const {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  for (const InFlightOpPtr& fl_op : ops_) {
+    if (fl_op->yb_op == yb_op) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
-  LOG_IF(DFATAL, op->state != InFlightOpState::kLookingUpTablet)
+  LOG_IF_WITH_PREFIX(DFATAL, op->state != InFlightOpState::kLookingUpTablet)
       << "Adding in flight op in a wrong state: " << op->state;
 
   std::lock_guard<decltype(mutex_)> lock(mutex_);
@@ -390,6 +399,14 @@ bool Batcher::IsAbortedUnlocked() const {
 }
 
 void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status) {
+  if (ClientError(status) == ClientErrorCode::kTablePartitionListIsStale) {
+    // MetaCache returns ClientErrorCode::kTablePartitionListIsStale error for tablet lookup request
+    // in case GetTabletLocations from master returns newer version of table partitions.
+    // Since MetaCache has no write access to YBTable, it just returns an error which we receive
+    // here and mark the table partitions as stale, so they will be refetched on retry.
+    in_flight_op->yb_op->MarkTablePartitionListAsStale();
+  }
+
   error_collector_.AddError(in_flight_op->yb_op, status);
   if (FLAGS_TEST_combine_batcher_errors) {
     if (combined_error_.ok()) {
@@ -404,15 +421,8 @@ void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Stat
 void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s) {
   CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
                                         << " from in-flight list";
-  if (ClientError(s) == ClientErrorCode::kTablePartitionListIsStale) {
-    // MetaCache returns ClientErrorCode::kTablePartitionListIsStale error for tablet lookup request
-    // in case GetTabletLocations from master returns newer version of table partitions.
-    // Since MetaCache has no write access to YBTable, it just returns an error which we receive
-    // here and mark the table partitions as stale, so they will be refetched on retry.
-    // TODO(tsplit): handle splitting-related retries on YB level instead of returning back to
-    // client app/driver.
-    in_flight_op->yb_op->MarkTablePartitionListAsStale();
-  }
+
+  first_lookup_error_by_key_.emplace(in_flight_op->partition_key, s);
   CombineErrorUnlocked(in_flight_op, s);
 }
 
@@ -479,9 +489,9 @@ void Batcher::TabletLookupFinished(
       }
     }
 
-    VLOG_WITH_PREFIX(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": "
-                        << lookup_result << ", outstanding lookups: " << outstanding_lookups_;
-
+    VLOG_WITH_PREFIX(lookup_result.ok() ? 3 : 2)
+        << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result
+        << ", outstanding lookups: " << outstanding_lookups_;
     if (lookup_result.ok()) {
       CHECK(*lookup_result);
 
@@ -545,15 +555,32 @@ void Batcher::FlushBuffersIfReady() {
   }
 
   if (had_errors_) {
-    // We are doing it to keep guarantee on the order of ops (see InFlightOp::sequence_number_)
-    // when we retry on YBSession level.
-    // ClientErrorCode::kAbortedBatchDueToFailedTabletLookup is retriable at YBSession level,
-    // so YBSession will check other errors in error collector to decide whether to retry.
-    static Status tablet_resolution_failed = STATUS(
-            Aborted, "Tablet resolution failed for some ops, aborted the whole batch.",
-            ClientError(ClientErrorCode::kAbortedBatchDueToFailedTabletLookup));
-    Abort(tablet_resolution_failed);
-    return;
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    // If some operation tablet lookup failed - set this error for all operations designated for
+    // the same partition key. We are doing this to keep guarantee on the order of ops for the
+    // same partition key (see InFlightOp::sequence_number_).
+    {
+      auto op_it = ops_.begin();
+      while (op_it != ops_.end()) {
+        auto lookup_error_it = first_lookup_error_by_key_.find((*op_it)->partition_key);
+        if (lookup_error_it != first_lookup_error_by_key_.end()) {
+          CombineErrorUnlocked(*op_it, lookup_error_it->second);
+          op_it = ops_.erase(op_it);
+        } else {
+          ++op_it;
+        }
+      }
+    }
+    {
+      auto op_it = ops_queue_.begin();
+      while (op_it != ops_queue_.end()) {
+        if (first_lookup_error_by_key_.count((*op_it)->partition_key) > 0) {
+          op_it = ops_queue_.erase(op_it);
+        } else {
+          ++op_it;
+        }
+      }
+    }
   }
 
   // All operations were added, and tablets for them were resolved.
@@ -836,7 +863,8 @@ CollectedErrors Batcher::GetAndClearPendingErrors() {
 
 std::string Batcher::LogPrefix() const {
   const void* self = this;
-  return Format("Batcher ($0): ", self);
+  return Format(
+      "Batcher ($0), session ($1): ", self, static_cast<void*>(weak_session_.lock().get()));
 }
 
 BatcherState Batcher::state() const {

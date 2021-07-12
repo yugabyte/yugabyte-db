@@ -36,6 +36,25 @@ class OperationFilter : public boost::intrusive::list_base_hook<> {
   virtual ~OperationFilter() = default;
 };
 
+template <class F>
+class FunctorOperationFilter : public OperationFilter {
+ public:
+  explicit FunctorOperationFilter(const F& f) : f_(f) {}
+
+  CHECKED_STATUS CheckOperationAllowed(
+      const OpId& id, consensus::OperationType op_type) const override {
+    return f_(id, op_type);
+  }
+
+ private:
+  F f_;
+};
+
+template <class F>
+std::unique_ptr<OperationFilter> MakeFunctorOperationFilter(const F& f) {
+  return std::make_unique<FunctorOperationFilter<F>>(f);
+}
+
 }  // namespace tablet
 }  // namespace yb
 

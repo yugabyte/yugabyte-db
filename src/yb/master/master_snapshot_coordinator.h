@@ -64,13 +64,13 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   // As usual negative leader_term means that this operation was replicated at the follower.
   CHECKED_STATUS CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const tablet::SnapshotOperationState& state) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);
@@ -89,6 +89,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   CHECKED_STATUS ListSnapshotSchedules(
       const SnapshotScheduleId& snapshot_schedule_id, ListSnapshotSchedulesResponsePB* resp);
 
+  CHECKED_STATUS DeleteSnapshotSchedule(
+      const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term,
+      CoarseTimePoint deadline);
+
   // Load snapshots data from system catalog.
   CHECKED_STATUS Load(tablet::Tablet* tablet) override;
 
@@ -104,6 +108,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type);
+
+  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
 
   void Start();
 

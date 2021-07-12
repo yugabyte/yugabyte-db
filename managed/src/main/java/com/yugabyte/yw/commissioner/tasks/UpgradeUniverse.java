@@ -10,50 +10,77 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.google.common.collect.ImmutableList;
+import play.api.Play;
+import com.typesafe.config.Config;
 
+import javax.inject.Inject;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.*;
 
-public class UpgradeUniverse extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UpgradeUniverse.class);
+@Slf4j
+public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
   boolean loadbalancerOff = false;
+
+  @Inject
+  protected UpgradeUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Upgrade Task Type
   public enum UpgradeTaskType {
     Everything,
     Software,
+    VMImage,
     GFlags,
     Restart,
-    Certs
+    Certs,
+    ToggleTls,
+    ResizeNode
   }
 
   public enum UpgradeTaskSubType {
     None,
     Download,
-    Install
+    Install,
+    CopyCerts,
+    Round1GFlagsUpdate,
+    Round2GFlagsUpdate
+  }
+
+  private enum UpgradeIteration {
+    Round1,
+    Round2
   }
 
   public static class Params extends UpgradeParams {}
+
+  private Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  private Map<UUID, UUID> nodeToRegion = new HashMap<>();
 
   @Override
   protected UpgradeParams taskParams() {
@@ -62,6 +89,112 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
   private void verifyParams(Universe universe, UserIntent primIntent) {
     switch (taskParams().taskType) {
+      case ResizeNode:
+        if (taskParams().upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+          throw new IllegalArgumentException(
+              "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
+        }
+
+        // Disk Size
+        DeviceInfo deviceInfo = taskParams().getPrimaryCluster().userIntent.deviceInfo;
+        if (deviceInfo != null) {
+          // Disk size cannot decrease
+          Integer currDiskSize = primIntent.deviceInfo.volumeSize;
+          if (deviceInfo.volumeSize == null) {
+            throw new IllegalArgumentException(
+                "deviceInfo must contain volumeSize, or if you do not intend to change"
+                    + "volume size, remove DeviceInfo");
+          }
+          if (currDiskSize > deviceInfo.volumeSize) {
+            throw new IllegalArgumentException(
+                "Disk size cannot decrease. It was "
+                    + currDiskSize
+                    + " got "
+                    + deviceInfo.volumeSize);
+          }
+
+          // ResizeNode cannot change the number of volumes
+          if (deviceInfo.numVolumes != null
+              && primIntent.deviceInfo.numVolumes != deviceInfo.numVolumes) {
+            throw new IllegalArgumentException(
+                "ResizeNode cannot change the number of volumes. It was "
+                    + primIntent.deviceInfo.numVolumes
+                    + " got "
+                    + deviceInfo.numVolumes);
+          }
+        }
+
+        // Instance Type
+        // Make sure the instance type exists.
+        String newInstanceTypeCode = taskParams().getPrimaryCluster().userIntent.instanceType;
+        String provider = primIntent.provider;
+
+        List<InstanceType> instanceTypes =
+            InstanceType.findByProvider(
+                Provider.getOrBadRequest(UUID.fromString(provider)),
+                Play.current().injector().instanceOf(Config.class));
+        InstanceType newInstanceType =
+            instanceTypes
+                .stream()
+                .filter(type -> type.getInstanceTypeCode().equals(newInstanceTypeCode))
+                .findFirst()
+                .orElse(null);
+        if (newInstanceType == null) {
+          throw new IllegalArgumentException(
+              "Provider "
+                  + primIntent.providerType
+                  + " does not have the intended instance type "
+                  + newInstanceTypeCode);
+        }
+
+        // Make sure instance type has the right storage
+        if (newInstanceType.instanceTypeDetails != null
+            && newInstanceType.instanceTypeDetails.volumeDetailsList != null
+            && newInstanceType.instanceTypeDetails.volumeDetailsList.size() > 0
+            && newInstanceType.instanceTypeDetails.volumeDetailsList.get(0).volumeType
+                == InstanceType.VolumeType.NVME) {
+          throw new IllegalArgumentException(
+              "Instance type "
+                  + newInstanceTypeCode
+                  + " has NVME storage and is not supported by the ResizeNode operation");
+        }
+        if (primIntent.providerType.equals(Common.CloudType.aws)) {
+          if (newInstanceTypeCode.contains("i3")) {
+            throw new IllegalArgumentException(
+                "ResizeNode operation does not support the instance type " + newInstanceTypeCode);
+          }
+          int dot_position = newInstanceTypeCode.indexOf('.');
+          if (dot_position > 0 && newInstanceTypeCode.charAt(dot_position - 1) == 'd') {
+            throw new IllegalArgumentException(
+                "ResizeNode operation does not support the instance type " + newInstanceTypeCode);
+          }
+        }
+        break;
+      case VMImage:
+        if (taskParams().upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+          throw new IllegalArgumentException(
+              "Only ROLLING_UPGRADE option is supported for OS upgrades.");
+        }
+
+        for (NodeDetails node : universe.getUniverseDetails().nodeDetailsSet) {
+          if (node.isMaster || node.isTserver) {
+            Region region =
+                AvailabilityZone.maybeGet(node.azUuid)
+                    .map(az -> az.region)
+                    .orElseThrow(
+                        () ->
+                            new IllegalArgumentException(
+                                "Could not find region for AZ " + node.cloudInfo.az));
+
+            if (!taskParams().machineImages.containsKey(region.uuid)) {
+              throw new IllegalArgumentException(
+                  "No VM image was specified for region " + node.cloudInfo.region);
+            }
+
+            nodeToRegion.putIfAbsent(node.nodeUuid, region.uuid);
+          }
+        }
+        break;
       case Software:
         if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
           throw new IllegalArgumentException("Software upgrade cannot be non restart.");
@@ -114,6 +247,23 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
           throw new IllegalArgumentException("Cert update cannot be non restart.");
         }
+        break;
+      case ToggleTls:
+        if (taskParams().upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE
+            && taskParams().upgradeOption != UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE) {
+          throw new IllegalArgumentException(
+              "Toggle TLS operation needs to be of type either rolling or non-rolling upgrade");
+        }
+        if (taskParams().enableNodeToNodeEncrypt == primIntent.enableNodeToNodeEncrypt
+            && taskParams().enableClientToNodeEncrypt == primIntent.enableClientToNodeEncrypt) {
+          throw new IllegalArgumentException(
+              "No change in node-to-node or client-to-node properties");
+        }
+        if ((taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt)
+            && taskParams().rootCA == null) {
+          throw new IllegalArgumentException("Root certificate cannot be null when enabling TLS");
+        }
+        break;
     }
   }
 
@@ -175,7 +325,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error={}.", getName(), t);
+      log.error("Error executing task {} with error={}.", getName(), t);
 
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // If the task failed, we don't want the loadbalancer to be disabled,
@@ -189,7 +339,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     } finally {
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   // Find the master leader and move it to the end of the list.
@@ -242,26 +392,354 @@ public class UpgradeUniverse extends UniverseTaskBase {
         .collect(Collectors.toList());
   }
 
+  private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ChangeInstanceType", executor);
+    ChangeInstanceType.Params params = new ChangeInstanceType.Params();
+
+    params.nodeName = node.nodeName;
+    params.universeUUID = taskParams().universeUUID;
+    params.azUuid = node.azUuid;
+    params.instanceType = taskParams().getPrimaryCluster().userIntent.instanceType;
+
+    ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
+    changeInstanceTypeTask.initialize(params);
+    subTaskGroup.addTask(changeInstanceTypeTask);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ReplaceRootVolume", executor);
+    ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
+    replaceParams.nodeName = node.nodeName;
+    replaceParams.azUuid = node.azUuid;
+    replaceParams.universeUUID = taskParams().universeUUID;
+    replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+
+    ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
+    replaceDiskTask.initialize(replaceParams);
+    subTaskGroup.addTask(replaceDiskTask);
+
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  private SubTaskGroup createRootVolumeCreationTasks(List<NodeDetails> nodes) {
+    Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
+        nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
+    SubTaskGroup subTaskGroup = new SubTaskGroup("CreateRootVolumes", executor);
+
+    rootVolumesPerAZ
+        .entrySet()
+        .forEach(
+            e -> {
+              NodeDetails node = e.getValue().get(0);
+              UUID region = this.nodeToRegion.get(node.nodeUuid);
+              String machineImage = taskParams().machineImages.get(region);
+              int numVolumes = e.getValue().size();
+
+              if (!taskParams().forceVMImageUpgrade) {
+                numVolumes =
+                    (int)
+                        e.getValue()
+                            .stream()
+                            .filter(n -> !machineImage.equals(n.machineImage))
+                            .count();
+              }
+
+              if (numVolumes == 0) {
+                log.info("Nothing to upgrade in AZ {}", node.cloudInfo.az);
+                return;
+              }
+
+              CreateRootVolumes.Params params = new CreateRootVolumes.Params();
+              UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+              fillSetupParamsForNode(params, userIntent, node);
+              params.numVolumes = numVolumes;
+              params.machineImage = machineImage;
+              params.bootDisksPerZone = replacementRootVolumes;
+
+              log.info(
+                  "Creating {} root volumes using {} in AZ {}",
+                  params.numVolumes,
+                  params.machineImage,
+                  node.cloudInfo.az);
+
+              CreateRootVolumes task = createTask(CreateRootVolumes.class);
+              task.initialize(params);
+              subTaskGroup.addTask(task);
+            });
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateNodeDetails", executor);
+    UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
+    updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
+    updateNodeDetailsParams.azUuid = node.azUuid;
+    updateNodeDetailsParams.nodeName = node.nodeName;
+    updateNodeDetailsParams.details = node;
+
+    UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
+    updateNodeTask.initialize(updateNodeDetailsParams);
+    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(updateNodeTask);
+
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   private void createServerUpgradeTasks(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
-    // Setup subtasks for the taskTypes.
+    createPreUpgradeTasks(masterNodes, tServerNodes);
+    createUpgradeTasks(masterNodes, tServerNodes, UpgradeIteration.Round1);
+    createMetadataUpdateTasks();
+    createUpgradeTasks(masterNodes, tServerNodes, UpgradeIteration.Round2);
+    createPostUpgradeTasks();
+  }
+
+  private void createPreUpgradeTasks(
+      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
     if (taskParams().taskType == UpgradeTaskType.Software) {
       // TODO: This is assuming that master nodes is a subset of tserver node,
       // instead we should do a union.
       createDownloadTasks(tServerNodes);
     } else if (taskParams().taskType == UpgradeTaskType.Certs) {
       createCertUpdateTasks(tServerNodes);
+    } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+      createCopyCertTasks(tServerNodes);
+    }
+  }
+
+  private void createResizeNodeTasks(
+      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
+    Set<NodeDetails> nodes = new LinkedHashSet<>();
+    nodes.addAll(masterNodes);
+    nodes.addAll(tServerNodes);
+
+    Integer currDiskSize =
+        Universe.getOrBadRequest(taskParams().universeUUID)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .deviceInfo
+            .volumeSize;
+
+    String currInstanceType =
+        Universe.getOrBadRequest(taskParams().universeUUID)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .instanceType;
+
+    // Todo: Add preflight checks here
+
+    // Change disk size
+    DeviceInfo deviceInfo = taskParams().getPrimaryCluster().userIntent.deviceInfo;
+    if (deviceInfo != null) {
+      Integer newDiskSize = deviceInfo.volumeSize;
+      // Check if the storage needs to be resized
+      if (taskParams().forceResizeNode || !currDiskSize.equals(newDiskSize)) {
+        log.info("Resizing disk from {} to {}", currDiskSize, newDiskSize);
+
+        // Resize the nodes' disks
+        createUpdateDiskSizeTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResizingDisk);
+
+        // Persist changes in the universe
+        createPersistResizeNodeTask(currInstanceType, newDiskSize)
+            .setSubTaskGroupType(SubTaskGroupType.ResizingDisk);
+      } else {
+        log.info(
+            "Skipping resizing disk as both old and new sizes are {}, "
+                + "and forceResizeNode flag is false",
+            currDiskSize);
+      }
     }
 
-    // Common subtasks.
-    if (masterNodes != null && !masterNodes.isEmpty()) {
-      createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+    // Change instance type
+    String newInstanceType = taskParams().getPrimaryCluster().userIntent.instanceType;
+    if (taskParams().forceResizeNode || !currInstanceType.equals(newInstanceType)) {
+      for (NodeDetails node : nodes) {
+        // Check if the node needs to be resized
+        if (!taskParams().forceResizeNode && node.cloudInfo.instance_type.equals(newInstanceType)) {
+          log.info("Skipping node {} as its type is already {}", node.nodeName, currInstanceType);
+          continue;
+        }
+
+        // Update node state to Resizing
+        createSetNodeStateTask(node, NodeDetails.NodeState.Resizing)
+            .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+
+        // Stop the tserver.
+        if (node.isTserver) {
+          createTServerTaskForNode(node, "stop")
+              .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+        }
+
+        // Stop the master process on this node.
+        if (node.isMaster) {
+          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(node)))
+              .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+
+          createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+          createChangeConfigTask(
+              node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType, true /* useHostPort */);
+        }
+
+        // Change the instance type
+        createChangeInstanceTypeTask(node).setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+
+        // Persist the new instance type in the node details
+        node.cloudInfo.instance_type = newInstanceType;
+        createNodeDetailsUpdateTask(node).setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+
+        // Start the master process on this node.
+        if (node.isMaster) {
+          // Set gflags for master.
+          createGFlagsOverrideTasks(ImmutableList.of(node), ServerType.MASTER);
+
+          // Start a master process.
+          createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(node)))
+              .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+
+          // Wait for the master to be responsive.
+          createWaitForServersTasks(
+                  new HashSet<NodeDetails>(Arrays.asList(node)), ServerType.MASTER)
+              .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+
+          // Add stopped master to the quorum.
+          createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+        }
+
+        // Start the tserver process on this node.
+        if (node.isTserver) {
+          // Start the tserver process
+          createTServerTaskForNode(node, "start")
+              .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+
+          // Wait for the tablet server to be responsive.
+          createWaitForServersTasks(
+                  new HashSet<NodeDetails>(Arrays.asList(node)), ServerType.TSERVER)
+              .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+        }
+
+        // Update node state to Live
+        createSetNodeStateTask(node, NodeDetails.NodeState.Live)
+            .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+      }
+
+      // Persist changes in the universe
+      createPersistResizeNodeTask(newInstanceType)
+          .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
     }
-    if (tServerNodes != null && !tServerNodes.isEmpty()) {
-      createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
+  }
+
+  private void createUpgradeTasks(
+      List<NodeDetails> masterNodes,
+      List<NodeDetails> tServerNodes,
+      UpgradeIteration upgradeIteration) {
+    // Currently two round upgrade is needed only for ToggleTls
+    if (upgradeIteration == UpgradeIteration.Round2
+        && taskParams().taskType != UpgradeTaskType.ToggleTls) {
+      return;
     }
 
-    // Metadata updation subtasks.
+    if (taskParams().taskType == UpgradeTaskType.ResizeNode) {
+      createResizeNodeTasks(masterNodes, tServerNodes);
+      return;
+    }
+
+    if (taskParams().taskType != UpgradeTaskType.VMImage) {
+      UpgradeParams.UpgradeOption upgradeOption = taskParams().upgradeOption;
+      if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+        int nodeToNodeChange =
+            getNodeToNodeChangeForToggleTls(
+                Universe.getOrBadRequest(taskParams().universeUUID)
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent,
+                taskParams());
+        if (nodeToNodeChange > 0) {
+          // Setting allow_insecure to false can be done in non-restart way
+          if (upgradeIteration == UpgradeIteration.Round2) {
+            upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
+          }
+        } else if (nodeToNodeChange < 0) {
+          // Setting allow_insecure to true can be done in non-restart way
+          if (upgradeIteration == UpgradeIteration.Round1) {
+            upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
+          }
+        } else {
+          // Two round upgrade not needed when there is no change in node-to-node
+          if (upgradeIteration == UpgradeIteration.Round2) {
+            return;
+          }
+        }
+      }
+
+      // Common subtasks
+      if (masterNodes != null && !masterNodes.isEmpty()) {
+        createAllUpgradeTasks(masterNodes, ServerType.MASTER, upgradeIteration, upgradeOption);
+      }
+      if (tServerNodes != null && !tServerNodes.isEmpty()) {
+        createAllUpgradeTasks(tServerNodes, ServerType.TSERVER, upgradeIteration, upgradeOption);
+      }
+    } else {
+      SubTaskGroupType subGroupType = getTaskSubGroupType();
+      Set<NodeDetails> nodes = new LinkedHashSet<>();
+      // FIXME: proper equals/hashCode for NodeDetails
+      nodes.addAll(masterNodes);
+      nodes.addAll(tServerNodes);
+
+      createRootVolumeCreationTasks(new ArrayList<>(nodes)).setSubTaskGroupType(subGroupType);
+
+      for (NodeDetails node : nodes) {
+        UUID region = this.nodeToRegion.get(node.nodeUuid);
+        String machineImage = taskParams().machineImages.get(region);
+
+        if (!taskParams().forceVMImageUpgrade && machineImage.equals(node.machineImage)) {
+          log.info(
+              "Skipping node {} as it's already running on {} and force flag is not set",
+              node.nodeName,
+              machineImage);
+          continue;
+        }
+
+        List<UniverseDefinitionTaskBase.ServerType> processTypes = new ArrayList<>();
+        if (node.isMaster) processTypes.add(ServerType.MASTER);
+        if (node.isTserver) processTypes.add(ServerType.TSERVER);
+
+        processTypes.forEach(
+            processType ->
+                createServerControlTask(node, processType, "stop")
+                    .setSubTaskGroupType(subGroupType));
+        createRootVolumeReplacementTask(node).setSubTaskGroupType(subGroupType);
+
+        List<NodeDetails> nodeList = Collections.singletonList(node);
+
+        createSetupServerTasks(nodeList, true)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+        createConfigureServerTasks(nodeList, false /* isShell */, false, false)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
+        processTypes.forEach(
+            processType -> {
+              createGFlagsOverrideTasks(nodeList, processType);
+              createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+              createWaitForServersTasks(new HashSet<NodeDetails>(nodeList), processType);
+              createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+                  .setSubTaskGroupType(subGroupType);
+            });
+        createWaitForKeyInMemoryTask(node);
+
+        node.machineImage = machineImage;
+        createNodeDetailsUpdateTask(node).setSubTaskGroupType(subGroupType);
+      }
+    }
+  }
+
+  private void createPostUpgradeTasks() {
     if (taskParams().taskType == UpgradeTaskType.Software) {
       // Update the software version on success.
       createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
@@ -275,8 +753,18 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
   }
 
-  private void createAllUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
-    switch (taskParams().upgradeOption) {
+  private void createMetadataUpdateTasks() {
+    if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+      createUniverseSetTlsParamsTask();
+    }
+  }
+
+  private void createAllUpgradeTasks(
+      List<NodeDetails> nodes,
+      ServerType processType,
+      UpgradeIteration upgradeIteration,
+      UpgradeParams.UpgradeOption upgradeOption) {
+    switch (upgradeOption) {
       case ROLLING_UPGRADE:
         // For a rolling upgrade, we need the data to not move, so
         // we disable the data load balancing.
@@ -286,25 +774,27 @@ public class UpgradeUniverse extends UniverseTaskBase {
           loadbalancerOff = true;
         }
         for (NodeDetails node : nodes) {
-          createSingleNodeUpgradeTasks(node, processType);
+          createSingleNodeUpgradeTasks(node, processType, upgradeIteration);
         }
         if (loadbalancerOff) {
           createLoadBalancerStateChangeTask(true /*enable*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+          loadbalancerOff = false;
         }
         break;
       case NON_ROLLING_UPGRADE:
-        createMultipleNonRollingNodeUpgradeTasks(nodes, processType);
+        createMultipleNonRollingNodeUpgradeTasks(nodes, processType, upgradeIteration);
         createWaitForServersTasks(nodes, processType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         break;
       case NON_RESTART_UPGRADE:
-        createNonRestartUpgradeTasks(nodes, processType);
+        createNonRestartUpgradeTasks(nodes, processType, upgradeIteration);
     }
   }
 
   // This is used for rolling upgrade, which is done per node in the universe.
-  private void createSingleNodeUpgradeTasks(NodeDetails node, ServerType processType) {
+  private void createSingleNodeUpgradeTasks(
+      NodeDetails node, ServerType processType, UpgradeIteration upgradeIteration) {
     NodeDetails.NodeState nodeState = null;
     switch (taskParams().taskType) {
       case Software:
@@ -315,18 +805,26 @@ public class UpgradeUniverse extends UniverseTaskBase {
         break;
       case Restart:
         nodeState = Stopping;
+        break;
       case Certs:
         nodeState = UpdateCert;
         break;
+      case ToggleTls:
+        nodeState = ToggleTls;
+        break;
     }
+
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
     if (taskParams().taskType == UpgradeTaskType.Software) {
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
-      createSoftwareInstallTasks(Arrays.asList(node), processType);
+      createSoftwareInstallTasks(Collections.singletonList(node), processType);
     } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
-      createServerConfFileUpdateTasks(Arrays.asList(node), processType);
+      createServerConfFileUpdateTasks(Collections.singletonList(node), processType);
       // Stop is done after conf file update to reduce unavailability.
+      createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
+    } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+      createToggleTlsTasks(Collections.singletonList(node), processType, upgradeIteration);
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
     }
     // For both rolling restart and a cert update, just a stop is good enough.
@@ -335,24 +833,47 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
 
     createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
-    createWaitForServersTasks(new HashSet<NodeDetails>(Arrays.asList(node)), processType);
+    createWaitForServersTasks(new HashSet<>(Collections.singletonList(node)), processType)
+        .setSubTaskGroupType(subGroupType);
     createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
         .setSubTaskGroupType(subGroupType);
-    createWaitForKeyInMemoryTask(node);
+    createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
     createSetNodeStateTask(node, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
-  private void createNonRestartUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
-    createServerConfFileUpdateTasks(nodes, processType);
+  private void createNonRestartUpgradeTasks(
+      List<NodeDetails> nodes, ServerType processType, UpgradeIteration upgradeIteration) {
+    NodeDetails.NodeState nodeState = null;
     SubTaskGroupType subGroupType = getTaskSubGroupType();
-    createSetNodeStateTasks(nodes, UpdateGFlags).setSubTaskGroupType(subGroupType);
 
-    createSetFlagInMemoryTasks(
-        nodes,
-        processType,
-        true /* force */,
-        processType == ServerType.MASTER ? taskParams().masterGFlags : taskParams().tserverGFlags,
-        false /* updateMasterAddrs */);
+    if (taskParams().taskType == UpgradeTaskType.GFlags) {
+      nodeState = UpdateGFlags;
+      createServerConfFileUpdateTasks(nodes, processType);
+    } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+      nodeState = ToggleTls;
+      createToggleTlsTasks(nodes, processType, upgradeIteration);
+    }
+
+    createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
+
+    if (taskParams().taskType == UpgradeTaskType.GFlags) {
+      createSetFlagInMemoryTasks(
+              nodes,
+              processType,
+              true,
+              processType == ServerType.MASTER
+                  ? taskParams().masterGFlags
+                  : taskParams().tserverGFlags,
+              false)
+          .setSubTaskGroupType(subGroupType);
+    } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+      Map<String, String> gflags = new HashMap<>();
+      gflags.put(
+          "allow_insecure_connections",
+          upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
+      createSetFlagInMemoryTasks(nodes, processType, true, gflags, false)
+          .setSubTaskGroupType(subGroupType);
+    }
 
     createSetNodeStateTasks(nodes, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
   }
@@ -360,10 +881,13 @@ public class UpgradeUniverse extends UniverseTaskBase {
   // This is used for non-rolling upgrade, where each operation is done in parallel across all
   // the provided nodes per given process type.
   private void createMultipleNonRollingNodeUpgradeTasks(
-      List<NodeDetails> nodes, ServerType processType) {
+      List<NodeDetails> nodes, ServerType processType, UpgradeIteration upgradeIteration) {
     if (taskParams().taskType == UpgradeTaskType.GFlags) {
       createServerConfFileUpdateTasks(nodes, processType);
+    } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
+      createToggleTlsTasks(nodes, processType, upgradeIteration);
     }
+
     NodeDetails.NodeState nodeState = null;
     switch (taskParams().taskType) {
       case Software:
@@ -375,7 +899,11 @@ public class UpgradeUniverse extends UniverseTaskBase {
       case Certs:
         nodeState = UpdateCert;
         break;
+      case ToggleTls:
+        nodeState = ToggleTls;
+        break;
     }
+
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
     createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
@@ -396,6 +924,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
         return SubTaskGroupType.UpdatingGFlags;
       case Restart:
         return SubTaskGroupType.StoppingNodeProcesses;
+      case ToggleTls:
+        return SubTaskGroupType.ToggleTls;
       default:
         return SubTaskGroupType.Invalid;
     }
@@ -429,6 +959,26 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
     rotateCertGroup.setSubTaskGroupType(SubTaskGroupType.RotatingCert);
     subTaskGroupQueue.add(rotateCertGroup);
+  }
+
+  private void createCopyCertTasks(List<NodeDetails> nodes) {
+    // Copy cert tasks are not needed if TLS is disabled
+    if (!taskParams().enableNodeToNodeEncrypt && !taskParams().enableClientToNodeEncrypt) {
+      return;
+    }
+
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ToggleTls, taskParams().nodePrefix);
+    SubTaskGroup copyCertGroup = new SubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      copyCertGroup.addTask(
+          getConfigureTask(
+              node, ServerType.TSERVER, UpgradeTaskType.ToggleTls, UpgradeTaskSubType.CopyCerts));
+    }
+    copyCertGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
+    subTaskGroupQueue.add(copyCertGroup);
   }
 
   private void createServerConfFileUpdateTasks(List<NodeDetails> nodes, ServerType processType) {
@@ -469,10 +1019,60 @@ public class UpgradeUniverse extends UniverseTaskBase {
     subTaskGroupQueue.add(taskGroup);
   }
 
+  private void createToggleTlsTasks(
+      List<NodeDetails> nodes, ServerType processType, UpgradeIteration upgradeIteration) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ToggleTls, taskParams().nodePrefix);
+    SubTaskGroup taskGroup = new SubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      taskGroup.addTask(
+          getConfigureTask(
+              node,
+              processType,
+              UpgradeTaskType.ToggleTls,
+              upgradeIteration == UpgradeIteration.Round1
+                  ? UpgradeTaskSubType.Round1GFlagsUpdate
+                  : UpgradeTaskSubType.Round2GFlagsUpdate));
+    }
+    taskGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
+    subTaskGroupQueue.add(taskGroup);
+  }
+
+  private void createUniverseSetTlsParamsTask() {
+    SubTaskGroup taskGroup = new SubTaskGroup("UniverseSetTlsParams", executor);
+
+    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
+    params.allowInsecure = taskParams().allowInsecure;
+    params.rootCA = taskParams().rootCA;
+
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
+    task.initialize(params);
+    taskGroup.addTask(task);
+
+    taskGroup.setSubTaskGroupType(SubTaskGroupType.ToggleTls);
+    subTaskGroupQueue.add(taskGroup);
+  }
+
   private int getSleepTimeForProcess(ServerType processType) {
     return processType == ServerType.MASTER
         ? taskParams().sleepAfterMasterRestartMillis
         : taskParams().sleepAfterTServerRestartMillis;
+  }
+
+  private int getNodeToNodeChangeForToggleTls(UserIntent userIntent, UpgradeParams params) {
+    return userIntent.enableNodeToNodeEncrypt != params.enableNodeToNodeEncrypt
+        ? (params.enableNodeToNodeEncrypt ? 1 : -1)
+        : 0;
   }
 
   private AnsibleConfigureServers getConfigureTask(
@@ -527,6 +1127,12 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
     } else if (type == UpgradeTaskType.Certs) {
       params.rootCA = taskParams().certUUID;
+    } else if (type == UpgradeTaskType.ToggleTls) {
+      params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
+      params.allowInsecure = taskParams().allowInsecure;
+      params.rootCA = taskParams().rootCA;
+      params.nodeToNodeChange = getNodeToNodeChangeForToggleTls(userIntent, taskParams());
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
@@ -534,7 +1140,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
 
     // Create the Ansible task to get the server info.
-    AnsibleConfigureServers task = new AnsibleConfigureServers();
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
 

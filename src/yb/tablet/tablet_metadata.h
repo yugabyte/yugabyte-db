@@ -174,6 +174,9 @@ struct RaftGroupMetadataData {
   std::vector<SnapshotScheduleId> snapshot_schedules;
 };
 
+using RestorationCompleteTimeMap = std::unordered_map<
+    TxnSnapshotRestorationId, HybridTime, TxnSnapshotRestorationIdHash>;
+
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
 // Raft groups from this data.
@@ -361,6 +364,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return kv_store_.snapshot_schedules.insert(schedule_id).second;
   }
 
+  bool RemoveSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.erase(schedule_id) != 0;
+  }
+
   std::vector<SnapshotScheduleId> SnapshotSchedules() const {
     std::lock_guard<MutexType> lock(data_mutex_);
     return std::vector<SnapshotScheduleId>(
@@ -405,8 +413,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
 
-  CHECKED_STATUS SetHiddenAndFlush(bool value);
+  void SetHidden(bool value);
   bool hidden() const;
+
+  void SetRestorationHybridTime(HybridTime value);
+  HybridTime restoration_hybrid_time() const;
 
   CHECKED_STATUS Flush();
 
@@ -485,6 +496,18 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   OpId split_op_id() const;
 
   void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
+
+  bool has_active_restoration() const;
+
+  void RegisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+  void UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+
+  // Find whether some of active restorations complete. Returns max complete hybrid time of such
+  // restoration.
+  HybridTime CheckCompleteRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
+
+  // Removes all complete or unknown restorations.
+  bool CleanupRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
  private:
   typedef simple_spinlock MutexType;
@@ -571,8 +594,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
 
+  HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_) = HybridTime::kMin;
+
   OpId split_op_id_ GUARDED_BY(data_mutex_);
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+
+  std::vector<TxnSnapshotRestorationId> active_restorations_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

@@ -40,7 +40,7 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Start YugabyteDB. 
 
-  For more information, see [Quick Start](https://docs.yugabyte.com/quick-start/install).
+  For more information, see [Quick Start](/quick-start/install).
 
 - Install JRE or JDK for Java 8 or later. 
 
@@ -77,4 +77,4 @@ You can expand the list to see all keyspaces available in YugabyteDB cluster, as
 
 ![img](/images/develop/tools/dbeaver/dbeaver-ycql-system.png)
 
-For sample databases to explore YugabyteDB CQL using DBeaver, see [Sample data](https://docs.yugabyte.com/latest/explore/json-support/jsonb-ycql/#root).
+For sample databases to explore YugabyteDB CQL using DBeaver, see [Sample data](/latest/explore/json-support/jsonb-ycql/#root).

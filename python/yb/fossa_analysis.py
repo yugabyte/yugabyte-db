@@ -89,6 +89,9 @@ def main():
     fossa_yml_path = os.path.join(YB_SRC_ROOT, '.fossa-local.yml')
     fossa_yml_data = load_yaml_file(fossa_yml_path)
     modules = fossa_yml_data['analyze']['modules']
+    # fossa v2.6.1 does not pick up project name from config file version 2 format.
+    # TODO: update to config file version 3
+    fossa_cmd_line.extend(["--project", fossa_yml_data['cli']['project']])
 
     thirdparty_dir = get_thirdparty_dir()
     fossa_modules_path = os.path.join(thirdparty_dir, 'fossa_modules.yml')

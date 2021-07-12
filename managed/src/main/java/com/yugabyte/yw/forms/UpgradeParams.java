@@ -18,10 +18,19 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   // The software version to install. Do not set this value if no software needs to be installed.
   public String ybSoftwareVersion = null;
 
+  public final Map<UUID, String> machineImages = new HashMap<>();
+  public boolean forceVMImageUpgrade;
+
+  public boolean forceResizeNode;
+
   // The certificate that needs to be used.
   public UUID certUUID = null;
   // If the root certificate needs to be rotated.
   public boolean rotateRoot = false;
+
+  // Parameters for toggle tls operation
+  public boolean enableNodeToNodeEncrypt = false;
+  public boolean enableClientToNodeEncrypt = false;
 
   @Deprecated
   // This is deprecated use cluster.userIntent.masterGFlags

@@ -4,12 +4,18 @@ package com.yugabyte.yw.models;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.junit.MockitoJUnitRunner;
 
+import javax.persistence.OptimisticLockException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -17,12 +23,11 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThrows;
 
-@RunWith(JUnitParamsRunner.class)
+@RunWith(MockitoJUnitRunner.class)
 public class AlertDefinitionTest extends FakeDBApplication {
 
-  private static final String TEST_DEFINITION_NAME = "Alert Definition";
   private static final String TEST_DEFINITION_QUERY = "some_metric > 100";
 
   private static final String TEST_LABEL = "test_label";
@@ -35,10 +40,15 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
   private Universe universe;
 
+  private AlertDefinitionGroup group;
+
+  @InjectMocks private AlertDefinitionService alertDefinitionService;
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
     universe = ModelFactory.createUniverse();
+    group = ModelFactory.createAlertDefinitionGroup(customer, universe);
   }
 
   @Test
@@ -46,7 +56,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinition definition = createTestDefinition1();
     createTestDefinition2();
 
-    AlertDefinition queriedDefinition = AlertDefinition.get(definition.uuid);
+    AlertDefinition queriedDefinition = alertDefinitionService.get(definition.getUuid());
 
     assertTestDefinition1(queriedDefinition);
   }
@@ -55,10 +65,15 @@ public class AlertDefinitionTest extends FakeDBApplication {
   public void testQueryByCustomerUniverse() {
     createTestDefinition1();
 
-    AlertDefinition queriedDefinition =
-        AlertDefinition.get(customer.uuid, universe.universeUUID, TEST_DEFINITION_NAME);
+    List<AlertDefinition> queriedDefinitions =
+        alertDefinitionService.list(
+            AlertDefinitionFilter.builder()
+                .customerUuid(customer.uuid)
+                .label(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString())
+                .build());
 
-    assertTestDefinition1(queriedDefinition);
+    assertThat(queriedDefinitions, hasSize(1));
+    assertTestDefinition1(queriedDefinitions.get(0));
   }
 
   @Test
@@ -67,7 +82,9 @@ public class AlertDefinitionTest extends FakeDBApplication {
     createTestDefinition2();
 
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
-    List<AlertDefinition> queriedDefinitions = AlertDefinition.get(customer.uuid, label1);
+    List<AlertDefinition> queriedDefinitions =
+        alertDefinitionService.list(
+            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label1).build());
 
     assertThat(queriedDefinitions, hasSize(1));
     assertTestDefinition1(queriedDefinitions.get(0));
@@ -80,22 +97,42 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label2 = new AlertDefinitionLabel(TEST_LABEL_2, TEST_LABEL_VALUE_2);
 
     String newQuery = "qwewqewqe";
-    AlertDefinition.update(definition.uuid, newQuery, false, ImmutableList.of(label2));
+    definition.setQuery(newQuery);
+    definition.setLabels(ImmutableList.of(label2));
+    alertDefinitionService.save(definition);
 
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
-    List<AlertDefinition> queriedDefinitions = AlertDefinition.get(customer.uuid, label2);
+    List<AlertDefinition> queriedDefinitions =
+        alertDefinitionService.list(
+            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label2).build());
 
-    List<AlertDefinition> queriedByOldLabelDefinitions = AlertDefinition.get(customer.uuid, label1);
+    List<AlertDefinition> queriedByOldLabelDefinitions =
+        alertDefinitionService.list(
+            AlertDefinitionFilter.builder().customerUuid(customer.uuid).label(label1).build());
 
     assertThat(queriedDefinitions, hasSize(1));
     assertThat(queriedByOldLabelDefinitions, empty());
 
     AlertDefinition queriedDefinition = queriedDefinitions.get(0);
-    assertThat(queriedDefinition.customerUUID, equalTo(customer.uuid));
-    assertThat(queriedDefinition.name, equalTo(TEST_DEFINITION_NAME));
-    assertThat(queriedDefinition.query, equalTo(newQuery));
-    assertFalse(queriedDefinition.isActive);
-    assertThat(queriedDefinition.getLabels(), containsInAnyOrder(label2));
+    assertThat(queriedDefinition.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(queriedDefinition.getQuery(), equalTo(newQuery));
+
+    assertThat(queriedDefinition.getLabelValue(TEST_LABEL_2), equalTo(TEST_LABEL_VALUE_2));
+  }
+
+  @Test
+  public void testOptimisticLocking() {
+    AlertDefinition definition = createTestDefinition1();
+
+    AlertDefinition createdDefinition = alertDefinitionService.get(definition.getUuid());
+
+    String newQuery = "qwewqewqe";
+    definition.setQuery(newQuery);
+    alertDefinitionService.save(definition);
+
+    createdDefinition.setConfigWritten(true);
+    assertThrows(
+        OptimisticLockException.class, () -> alertDefinitionService.save(createdDefinition));
   }
 
   @Test
@@ -104,7 +141,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
     definition.delete();
 
-    AlertDefinition queriedDefinition = AlertDefinition.get(definition.uuid);
+    AlertDefinition queriedDefinition = alertDefinitionService.get(definition.getUuid());
 
     assertThat(queriedDefinition, nullValue());
   }
@@ -113,24 +150,24 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel label1 = new AlertDefinitionLabel(TEST_LABEL, TEST_LABEL_VALUE);
     AlertDefinitionLabel knownLabel =
         new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString());
-    return AlertDefinition.create(
-        customer.uuid,
-        AlertDefinition.TargetType.Universe,
-        TEST_DEFINITION_NAME,
-        TEST_DEFINITION_QUERY,
-        true,
-        ImmutableList.of(label1, knownLabel));
+    AlertDefinition definition =
+        new AlertDefinition()
+            .setCustomerUUID(customer.uuid)
+            .setGroupUUID(group.getUuid())
+            .setQuery(TEST_DEFINITION_QUERY)
+            .setLabels(Arrays.asList(label1, knownLabel));
+    return alertDefinitionService.save(definition);
   }
 
   private AlertDefinition createTestDefinition2() {
     AlertDefinitionLabel label2 = new AlertDefinitionLabel(TEST_LABEL_2, TEST_LABEL_VALUE_2);
-    return AlertDefinition.create(
-        customer.uuid,
-        AlertDefinition.TargetType.Universe,
-        TEST_DEFINITION_NAME,
-        TEST_DEFINITION_QUERY,
-        true,
-        ImmutableList.of(label2));
+    AlertDefinition definition =
+        new AlertDefinition()
+            .setCustomerUUID(customer.uuid)
+            .setGroupUUID(group.getUuid())
+            .setQuery(TEST_DEFINITION_QUERY)
+            .setLabels(Collections.singletonList(label2));
+    return alertDefinitionService.save(definition);
   }
 
   private void assertTestDefinition1(AlertDefinition definition) {
@@ -140,10 +177,9 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinitionLabel knownLabel =
         new AlertDefinitionLabel(
             definition, KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString());
-    assertThat(definition.customerUUID, equalTo(customer.uuid));
-    assertThat(definition.name, equalTo(TEST_DEFINITION_NAME));
-    assertThat(definition.query, equalTo(TEST_DEFINITION_QUERY));
-    assertTrue(definition.isActive);
+    assertThat(definition.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(definition.getQuery(), equalTo(TEST_DEFINITION_QUERY));
+    assertFalse(definition.isConfigWritten());
     assertThat(definition.getLabels(), containsInAnyOrder(label1, knownLabel));
   }
 }

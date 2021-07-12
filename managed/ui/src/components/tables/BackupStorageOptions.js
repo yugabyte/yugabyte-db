@@ -26,17 +26,15 @@ export const BackupStorageOptions = (storageConfigs) => {
 
   if (isNonEmptyObject(optGroups)) {
     configTypeList = Object.keys(optGroups).map((key, idx) => {
-      return (
-        <optgroup label={(`${key} storage`).toUpperCase()} key={key + idx}>
-          {optGroups[key]
-            .sort((a, b) => regex.exec(a) - regex.exec(b))
-            .map((item, arrIdx) => (
-              <option key={idx + arrIdx} value={item.configUUID}>
-                {item.configName}
-              </option>
-            ))}
-        </optgroup>
-      );
+      return {
+        label: `${key} storage`.toUpperCase(),
+        options: optGroups[key]
+          .sort((a, b) => regex.exec(a) - regex.exec(b))
+          .map((item, arrIdx) => ({
+            label: item.configName,
+            value: item.configUUID
+          }))
+      };
     });
   }
 

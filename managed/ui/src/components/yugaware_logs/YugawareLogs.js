@@ -22,7 +22,6 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError }) => {
     if (isDefinedNotNull(yugawareLogs) && isNonEmptyObject(yugawareLogs)) {
       return yugawareLogs
         .slice(yugawareLogs.length - hardLimit)
-        .reverse()
         .join('\n');
     } else {
       return 'Loading ...';

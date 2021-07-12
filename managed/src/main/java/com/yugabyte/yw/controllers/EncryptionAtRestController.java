@@ -12,12 +12,14 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.YWResults;
@@ -28,20 +30,73 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
+import io.swagger.annotations.*;
 
-import java.util.Base64;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Api(
+    value = "Encryption At Rest",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
+
+  private static Set<String> API_URL =
+      ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
+
+  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
 
   @Inject EncryptionAtRestManager keyManager;
 
   @Inject Commissioner commissioner;
 
+  @Inject CloudAPI.Factory cloudAPIFactory;
+
+  private void validateKMSProviderConfigFormData(ObjectNode formData, String keyProvider) {
+    if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
+        && (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null
+            || formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null)) {
+      CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
+      Map<String, String> config = new HashMap<>();
+      config.put(
+          AWS_ACCESS_KEY_ID_FIELDNAME, formData.get(AWS_ACCESS_KEY_ID_FIELDNAME).textValue());
+      config.put(
+          AWS_SECRET_ACCESS_KEY_FIELDNAME,
+          formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).textValue());
+      if (cloudAPI != null
+          && !cloudAPI.isValidCreds(config, formData.get(AWS_REGION_FIELDNAME).textValue())) {
+        throw new YWServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
+      }
+    }
+    if (keyProvider.toUpperCase().equals(KeyProvider.SMARTKEY.toString())) {
+      if (formData.get("base_url") == null
+          || !EncryptionAtRestController.API_URL.contains(formData.get("base_url").textValue())) {
+        throw new YWServiceException(BAD_REQUEST, "Invalid API URL.");
+      }
+      if (formData.get("api_key") != null) {
+        try {
+          Function<ObjectNode, String> token =
+              new SmartKeyEARService()::retrieveSessionAuthorization;
+          token.apply(formData);
+        } catch (Exception e) {
+          throw new YWServiceException(BAD_REQUEST, "Invalid API Key.");
+        }
+      }
+    }
+  }
+
+  @ApiOperation(value = "Create KMS config", response = YWResults.YWTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "KMS Config",
+        value = "KMS Config to be created",
+        required = true,
+        dataType = "Object",
+        paramType = "body")
+  })
   public Result createKMSConfig(UUID customerUUID, String keyProvider) {
     LOG.info(
         String.format(
@@ -51,6 +106,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
     try {
       TaskType taskType = TaskType.CreateKMSConfig;
       ObjectNode formData = (ObjectNode) request().body().asJson();
+      // Validating the KMS Provider config details.
+      validateKMSProviderConfigFormData(formData, keyProvider);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
       taskParams.providerConfig = formData;
@@ -77,6 +134,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(
+      value = "KMS config detail by config UUID",
+      response = Object.class,
+      responseContainer = "Map")
   public Result getKMSConfig(UUID customerUUID, UUID configUUID) {
     LOG.info(String.format("Retrieving KMS configuration %s", configUUID.toString()));
     KmsConfig config = KmsConfig.get(configUUID);
@@ -87,9 +148,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
           BAD_REQUEST,
           String.format("No KMS configuration found for config %s", configUUID.toString()));
     }
-    return ApiResponse.success(kmsConfig);
+    return YWResults.withRawData(kmsConfig);
   }
 
+  @ApiOperation(value = "List KMS config", response = Object.class, responseContainer = "List")
   public Result listKMSConfigs(UUID customerUUID) {
     LOG.info(String.format("Listing KMS configurations for customer %s", customerUUID.toString()));
     List<JsonNode> kmsConfigs =
@@ -121,9 +183,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
 
-    return ApiResponse.success(kmsConfigs);
+    return YWResults.withData(kmsConfigs);
   }
 
+  @ApiOperation(value = "Delete KMS config", response = YWResults.YWTask.class)
   public Result deleteKMSConfig(UUID customerUUID, UUID configUUID) {
     LOG.info(
         String.format(
@@ -157,6 +220,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "Retrive KMS key", response = Object.class, responseContainer = "Map")
   public Result retrieveKey(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -171,7 +235,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .put("reference", keyRef)
             .put("value", Base64.getEncoder().encodeToString(recoveredKey));
     auditService().createAuditEntry(ctx(), request(), formData);
-    return ApiResponse.success(result);
+    return YWResults.withRawData(result);
   }
 
   public byte[] getRecoveredKeyOrBadRequest(UUID universeUUID, UUID configUUID, byte[] keyRef) {
@@ -184,12 +248,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return recoveredKey;
   }
 
+  @ApiOperation(value = "Get key ref History", response = Object.class, responseContainer = "List")
   public Result getKeyRefHistory(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
             "Retrieving key ref history for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
-    return ApiResponse.success(
+    return YWResults.withData(
         KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY)
             .stream()
             .map(
@@ -202,6 +267,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
+  @ApiOperation(value = "Remove key ref History", response = YWResults.YWSuccess.class)
   public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -212,6 +278,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return YWResults.YWSuccess.withMessage("Key ref was successfully removed");
   }
 
+  @ApiOperation(value = "Get key ref", response = Object.class, responseContainer = "Map")
   public Result getCurrentKeyRef(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -226,6 +293,6 @@ public class EncryptionAtRestController extends AuthenticatedController {
               "Could not retrieve key service for customer %s and universe %s",
               customerUUID.toString(), universeUUID.toString()));
     }
-    return ApiResponse.success(Json.newObject().put("reference", keyRef));
+    return YWResults.withRawData(Json.newObject().put("reference", keyRef));
   }
 }

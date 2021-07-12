@@ -46,7 +46,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb-replication/replication/) of `1`. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails, bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of `1`. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails, bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 If you haven't installed YugabyteDB yet, you can create a local YugabyteDB cluster within five minutes by following the [Quick Start](../../../quick-start/install/) guide.
 
@@ -58,6 +58,7 @@ If you have a previously running local universe, destroy it using the following 
 $ helm uninstall yb-demo -n yb-demo
 $ kubectl delete pvc --namespace yb-demo --all
 ```
+
 Create a new YugabyteDB cluster.
 
 ```sh
@@ -82,7 +83,7 @@ To check the cluster status, you need to access the Admin UI on port `7000` expo
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000.
+Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000>.
 
 ## 3. Connect to YugabyteDB Shell
 
@@ -92,7 +93,7 @@ Connect to `ycqlsh` on node `1`.
 $ kubectl -n yb-demo exec -it yb-tserver-0 -- ycqlsh yb-tserver-0
 ```
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -107,9 +108,9 @@ ycqlsh> CREATE KEYSPACE users;
 
 ```sql
 ycqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
-	                               email text,
-	                               password text,
-	                               profile frozen<map<text, text>>);
+                                    email text,
+                                    password text,
+                                    profile frozen<map<text, text>>);
 ```
 
 ## 4. Insert data through a node
@@ -136,7 +137,7 @@ Query all the rows.
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -157,7 +158,7 @@ $ kubectl -n yb-demo exec -it yb-tserver-2 -- ycqlsh yb-tserver-2
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -184,7 +185,7 @@ Now running the status command should would show that the `yb-tserver-2` pod is 
 $ kubectl -n yb-demo get pods
 ```
 
-```
+```output
 NAME           READY     STATUS        RESTARTS   AGE
 yb-master-0    1/1       Running       0          33m
 yb-master-1    1/1       Running       0          33m
@@ -214,7 +215,7 @@ Now query the data. We see that all the data inserted so far is returned and the
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -232,7 +233,7 @@ We can now check the cluster status to verify that Kubernetes has indeed brought
 $ kubectl -n yb-demo get pods
 ```
 
-```
+```output
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          34m
 yb-master-1    1/1       Running   0          34m

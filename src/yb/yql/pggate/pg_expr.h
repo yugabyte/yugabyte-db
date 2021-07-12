@@ -70,8 +70,7 @@ class PgExpr {
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
   // Convert this expression structure to PB format.
-  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
-  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result);
+  virtual CHECKED_STATUS Eval(PgsqlExpressionPB *expr_pb);
   virtual CHECKED_STATUS Eval(QLValuePB *result);
 
   // Access methods.
@@ -238,8 +237,7 @@ class PgConstant : public PgExpr {
   void UpdateConstant(const void *value, size_t bytes, bool is_null);
 
   // Expression to PB.
-  CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
-  CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result) override;
+  CHECKED_STATUS Eval(PgsqlExpressionPB *expr_pb) override;
   CHECKED_STATUS Eval(QLValuePB *result) override;
 
   // Read binary value.

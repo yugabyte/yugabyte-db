@@ -108,7 +108,7 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content if req.status_code == requests.codes.ok else None
+            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
         except requests.exceptions.ConnectionError as e:
             return None
 
@@ -121,7 +121,7 @@ class GcpMetadata():
         network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
-            return network_data.split('/')[1]
+            return str(network_data).split('/')[1]
         except (IndexError, AttributeError):
             return None
 
@@ -551,14 +551,21 @@ class GoogleCloudAdmin():
         operation = self.compute.disks().insert(project=self.project,
                                                 zone=zone,
                                                 body=body).execute()
-        self.waiter.wait(operatio, zonen)
+        return self.waiter.wait(operation, zone=zone)
 
     def mount_disk(self, zone, instance, body):
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
                                                         body=body).execute()
-        self.waiter.wait(operation, zone)
+        return self.waiter.wait(operation, zone=zone)
+
+    def unmount_disk(self, zone, instance, name):
+        operation = self.compute.instances().detachDisk(project=self.project,
+                                                        zone=zone,
+                                                        instance=instance,
+                                                        deviceName=name).execute()
+        return self.waiter.wait(operation, zone=zone)
 
     def update_disk(self, args, instance):
         zone = args.zone
@@ -581,11 +588,33 @@ class GoogleCloudAdmin():
                                                         body=body).execute()
                 self.waiter.wait(operation, zone=zone)
 
+    def change_instance_type(self, zone, instance_name, newInstanceType):
+        body = {
+            "machineType": "zones/" + zone + "/machineTypes/" + newInstanceType
+        }
+        operation = self.compute.instances().setMachineType(project=self.project,
+                                                            zone=zone,
+                                                            instance=instance_name,
+                                                            body=body).execute()
+        self.waiter.wait(operation, zone=zone)
+
     def delete_instance(self, zone, instance_name):
         operation = self.compute.instances().delete(project=self.project,
                                                     zone=zone,
                                                     instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
+
+    def stop_instance(self, zone, instance_name):
+        operation = self.compute.instances().stop(project=self.project,
+                                                  zone=zone,
+                                                  instance=instance_name).execute()
+        self.waiter.wait(operation, zone=zone)
+
+    def start_instance(self, zone, instance_name):
+        operation = self.compute.instances().start(project=self.project,
+                                                   zone=zone,
+                                                   instance=instance_name).execute()
+        return self.waiter.wait(operation, zone=zone)
 
     def query_vpc(self, region):
         """
@@ -651,6 +680,8 @@ class GoogleCloudAdmin():
         results = []
         for data in instances:
             metadata = data.get("metadata", {}).get("items", {})
+            disks = data.get("disks", [])
+            root_vol = next(disk for disk in disks if disk.get("boot", False))
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
             interface = data.get("networkInterfaces", [None])[0]
             access_config = interface.get("accessConfigs", [None])[0]
@@ -668,7 +699,9 @@ class GoogleCloudAdmin():
                 instance_type=machine_type,
                 server_type=server_types[0] if server_types else None,
                 launched_by=None,
-                launch_time=data.get("creationTimestamp")
+                launch_time=data.get("creationTimestamp"),
+                root_volume=root_vol["source"],
+                root_volume_device_name=root_vol["deviceName"]
                 )
             if not get_all:
                 return result
@@ -677,13 +710,13 @@ class GoogleCloudAdmin():
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
-                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None):
-        network_name = os.environ.get("CUSTOM_GCE_NETWORK", YB_NETWORK_NAME)
+                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None,
+                        boot_script=None, auto_delete_boot_disk=True):
         # Name of the project that target VPC network belongs to.
         host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
 
         boot_disk_json = {
-            "autoDelete": True,
+            "autoDelete": auto_delete_boot_disk,
             "boot": True,
             "index": 0,
         }
@@ -727,6 +760,13 @@ class GoogleCloudAdmin():
             }
         }
 
+        if boot_script:
+            with open(boot_script, 'r') as script:
+                body["metadata"]["items"].append({
+                    "key": "startup-script",
+                    "value": script.read()
+                    })
+
         initial_params = {}
         if volume_type == GCP_SCRATCH:
             initial_params.update({
@@ -745,7 +785,7 @@ class GoogleCloudAdmin():
             "initializeParams": initial_params
         }
 
-        for i in range(num_volumes):
+        for _ in range(num_volumes):
             body["disks"].append(disk_config)
 
         logging.info("[app] About to create GCP VM {} in region {}.".format(

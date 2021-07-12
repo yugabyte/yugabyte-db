@@ -153,17 +153,6 @@ class StorageConfiguration extends Component {
     };
 
     if (values.type === 'update') {
-      this.setState({
-        editView: {
-          ...this.state.editView,
-          [props.activeTab]: false
-        },
-        listView: {
-          ...this.state.listView,
-          [props.activeTab]: true
-        }
-      });
-
       return this.props
         .editCustomerConfig({
           type: 'STORAGE',
@@ -176,18 +165,21 @@ class StorageConfiguration extends Component {
           if (getPromiseState(this.props.editConfig).isSuccess()) {
             this.props.reset();
             this.props.fetchCustomerConfigs();
+            this.setState({
+              editView: {
+                ...this.state.editView,
+                [props.activeTab]: false
+              },
+              listView: {
+                ...this.state.listView,
+                [props.activeTab]: true
+              }
+            });
           } else if (getPromiseState(this.props.editConfig).isError()) {
             throw new SubmissionError(this.props.editConfig.error);
           }
         });
     } else {
-      this.setState({
-        listView: {
-          ...this.state.listView,
-          [props.activeTab]: true
-        }
-      });
-
       return this.props
         .addCustomerConfig({
           type: 'STORAGE',
@@ -200,6 +192,14 @@ class StorageConfiguration extends Component {
             // reset form after successful submission due to BACKUP_LOCATION value is shared across all tabs
             this.props.reset();
             this.props.fetchCustomerConfigs();
+
+            // Change to list view if form is successfully submitted.
+            this.setState({
+              ...this.state,
+              listView: {
+                [props.activeTab]: true
+              }
+            });
           } else if (getPromiseState(this.props.addConfig).isError()) {
             // show server-side validation errors under form inputs
             throw new SubmissionError(this.props.addConfig.error);

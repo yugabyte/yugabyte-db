@@ -130,12 +130,12 @@ class TransactionStateContext {
 
   // Submits update transaction to the RAFT log. Returns false if was not able to submit.
   virtual MUST_USE_RESULT bool SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state) = 0;
+      std::unique_ptr<UpdateTxnOperation> operation) = 0;
 
   virtual void CompleteWithStatus(
-      std::unique_ptr<UpdateTxnOperationState> request, Status status) = 0;
+      std::unique_ptr<UpdateTxnOperation> request, Status status) = 0;
 
-  virtual void CompleteWithStatus(UpdateTxnOperationState* request, Status status) = 0;
+  virtual void CompleteWithStatus(UpdateTxnOperation* request, Status status) = 0;
 
   virtual bool leader() const = 0;
 
@@ -381,7 +381,7 @@ class TransactionState {
     }
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request) {
     auto& state = *request->request();
     VLOG_WITH_PREFIX(1) << "Handle: " << state.ShortDebugString();
     if (state.status() == TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
@@ -565,7 +565,7 @@ class TransactionState {
     FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
   }
 
-  void DoHandle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
+  void DoHandle(std::unique_ptr<tablet::UpdateTxnOperation> request) {
     const auto& state = *request->request();
 
     Status status;
@@ -620,7 +620,7 @@ class TransactionState {
     state.set_transaction_id(id_.data(), id_.size());
     state.set_status(status);
 
-    auto request = context_.coordinator_context().CreateUpdateTransactionState(&state);
+    auto request = context_.coordinator_context().CreateUpdateTransaction(&state);
     if (replicating_) {
       request_queue_.push_back(std::move(request));
     } else {
@@ -840,15 +840,15 @@ class TransactionState {
 
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
-  tablet::UpdateTxnOperationState* replicating_ = nullptr;
-  std::deque<std::unique_ptr<tablet::UpdateTxnOperationState>> request_queue_;
+  tablet::UpdateTxnOperation* replicating_ = nullptr;
+  std::deque<std::unique_ptr<tablet::UpdateTxnOperation>> request_queue_;
 
   std::vector<TransactionAbortCallback> abort_waiters_;
 };
 
 struct CompleteWithStatusEntry {
-  std::unique_ptr<UpdateTxnOperationState> holder;
-  UpdateTxnOperationState* request;
+  std::unique_ptr<UpdateTxnOperation> holder;
+  UpdateTxnOperation* request;
   Status status;
 };
 
@@ -859,7 +859,7 @@ struct PostponedLeaderActions {
   // is applying.
   std::vector<NotifyApplyingData> notify_applying;
   // List of update transaction records, that should be replicated via RAFT.
-  std::vector<std::unique_ptr<UpdateTxnOperationState>> updates;
+  std::vector<std::unique_ptr<UpdateTxnOperation>> updates;
 
   std::vector<CompleteWithStatusEntry> complete_with_status;
 
@@ -1155,7 +1155,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         std::chrono::microseconds(kTimeMultiplier * FLAGS_transaction_check_interval_usec));
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
     auto& state = *request->request();
     auto id = FullyDecodeTransactionId(state.transaction_id());
     if (!id.ok()) {
@@ -1372,26 +1372,26 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   MUST_USE_RESULT bool SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state) override {
+      std::unique_ptr<UpdateTxnOperation> operation) override {
     if (!postponed_leader_actions_.leader()) {
       auto status = STATUS(IllegalState, "Submit update transaction on non leader");
       VLOG_WITH_PREFIX(1) << status;
-      state->CompleteWithStatus(status);
+      operation->CompleteWithStatus(status);
       return false;
     }
 
-    postponed_leader_actions_.updates.push_back(std::move(state));
+    postponed_leader_actions_.updates.push_back(std::move(operation));
     return true;
   }
 
   void CompleteWithStatus(
-      std::unique_ptr<UpdateTxnOperationState> request, Status status) override {
+      std::unique_ptr<UpdateTxnOperation> request, Status status) override {
     auto ptr = request.get();
     postponed_leader_actions_.complete_with_status.push_back({
         std::move(request), ptr, std::move(status)});
   }
 
-  void CompleteWithStatus(UpdateTxnOperationState* request, Status status) override {
+  void CompleteWithStatus(UpdateTxnOperation* request, Status status) override {
     postponed_leader_actions_.complete_with_status.push_back({
         nullptr /* holder */, request, std::move(status)});
   }
@@ -1488,7 +1488,7 @@ size_t TransactionCoordinator::test_count_transactions() const {
 }
 
 void TransactionCoordinator::Handle(
-    std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term) {
+    std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
   impl_->Handle(std::move(request), term);
 }
 

@@ -54,7 +54,7 @@ public class TableManagerTest extends FakeDBApplication {
       String azName = "PlacementAZ " + Integer.toString(i);
       String subnetName = "Subnet - " + Integer.toString(i);
       Region r = Region.create(testProvider, regionCode, regionName, "default-image");
-      AvailabilityZone.create(r, azCode, azName, subnetName);
+      AvailabilityZone.createOrThrow(r, azCode, azName, subnetName);
       regionUUIDs.add(r.uuid);
     }
     return regionUUIDs;
@@ -318,6 +318,7 @@ public class TableManagerTest extends FakeDBApplication {
     Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG", "foo");
     testProvider.setConfig(config);
+    testProvider.save();
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;

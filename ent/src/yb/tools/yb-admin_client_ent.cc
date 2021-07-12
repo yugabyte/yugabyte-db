@@ -22,6 +22,7 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/json_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/master/master_defaults.h"
@@ -45,9 +46,6 @@ DECLARE_bool(use_client_to_server_encryption);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {
-
-using enterprise::EncryptionParams;
-
 namespace tools {
 namespace enterprise {
 
@@ -94,11 +92,13 @@ using master::SysSnapshotEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
-Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, bool show_deleted) {
+Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
+  rapidjson::Document document(rapidjson::kObjectType);
+  bool json = flags.Test(ListSnapshotsFlag::JSON);
   RpcController rpc;
   rpc.set_timeout(timeout_);
   ListSnapshotsRequestPB req;
-  req.set_list_deleted_snapshots(show_deleted);
+  req.set_list_deleted_snapshots(flags.Test(ListSnapshotsFlag::SHOW_DELETED));
   ListSnapshotsResponsePB resp;
   RETURN_NOT_OK(master_backup_proxy_->ListSnapshots(req, &resp, &rpc));
 
@@ -107,19 +107,41 @@ Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, 
   }
 
   if (resp.has_current_snapshot_id()) {
-    cout << "Current snapshot id: " << SnapshotIdToString(resp.current_snapshot_id()) << endl;
+    if (json) {
+      AddStringField("current_snapshot_id",
+                     SnapshotIdToString(resp.current_snapshot_id()),
+                     &document, &document.GetAllocator());
+
+    } else {
+      cout << "Current snapshot id: " << SnapshotIdToString(resp.current_snapshot_id()) << endl;
+    }
   }
 
-  if (resp.snapshots_size()) {
-    cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << endl;
+  rapidjson::Value json_snapshots(rapidjson::kArrayType);
+  if (json) {
+    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
   } else {
-    cout << "No snapshots" << endl;
+    if (resp.snapshots_size()) {
+      cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << endl;
+    } else {
+      cout << "No snapshots" << endl;
+    }
   }
 
   for (SnapshotInfoPB& snapshot : *resp.mutable_snapshots()) {
-    cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+    rapidjson::Value json_snapshot(rapidjson::kObjectType);
+    if (json) {
+      AddStringField(
+          "id", SnapshotIdToString(snapshot.id()), &json_snapshot, &document.GetAllocator());
+      AddStringField(
+          "state", SysSnapshotEntryPB::State_Name(snapshot.entry().state()), &json_snapshot,
+          &document.GetAllocator());
+    } else {
+      cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
+    }
 
-    if (show_details) {
+    // Not implemented in json mode.
+    if (flags.Test(ListSnapshotsFlag::SHOW_DETAILS)) {
       for (SysRowEntry& entry : *snapshot.mutable_entry()->mutable_entries()) {
         string decoded_data;
         switch (entry.type()) {
@@ -148,6 +170,9 @@ Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, 
         }
       }
     }
+    if (json) {
+      json_snapshots.PushBack(json_snapshot, document.GetAllocator());
+    }
   }
 
   rpc.Reset();
@@ -156,15 +181,21 @@ Status ClusterAdminClient::ListSnapshots(bool show_details, bool show_restored, 
   ListSnapshotRestorationsResponsePB rest_resp;
   RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(rest_req, &rest_resp, &rpc));
 
+  if (json) {
+    std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
+    return Status::OK();
+  }
+
   if (rest_resp.restorations_size() == 0) {
     cout << "No snapshot restorations" << endl;
-  } else if (!show_restored) {
+  } else if (flags.Test(ListSnapshotsFlag::NOT_SHOW_RESTORED)) {
     cout << "Not show fully RESTORED entries" << endl;
   }
 
   bool title_printed = false;
   for (const auto& restoration : rest_resp.restorations()) {
-    if (show_restored || restoration.entry().state() != SysSnapshotEntryPB::RESTORED) {
+    if (!flags.Test(ListSnapshotsFlag::NOT_SHOW_RESTORED) ||
+        restoration.entry().state() != SysSnapshotEntryPB::RESTORED) {
       if (!title_printed) {
         cout << RightPadToUuidWidth("Restoration UUID") << kColumnSep << "State" << endl;
         title_printed = true;
@@ -299,7 +330,7 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotRestorations(
 }
 
 Result<rapidjson::Document> ClusterAdminClient::CreateSnapshotSchedule(
-    const std::vector<client::YBTableName>& tables, MonoDelta interval, MonoDelta retention) {
+    const client::YBTableName& keyspace, MonoDelta interval, MonoDelta retention) {
   RpcController rpc;
   rpc.set_timeout(timeout_);
   master::CreateSnapshotScheduleRequestPB req;
@@ -307,9 +338,7 @@ Result<rapidjson::Document> ClusterAdminClient::CreateSnapshotSchedule(
 
   auto& options = *req.mutable_options();
   auto& filter_tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
-  for (const YBTableName& table_name : tables) {
-    table_name.SetIntoTableIdentifierPB(filter_tables.Add());
-  }
+  keyspace.SetIntoTableIdentifierPB(filter_tables.Add());
 
   options.set_interval_sec(interval.ToSeconds());
   options.set_retention_duration_sec(retention.ToSeconds());
@@ -353,12 +382,44 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
     AddStringField("id", VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())).ToString(),
                    &json_schedule, &result.GetAllocator());
 
+    const auto& filter = schedule.options().filter();
+    string filter_output;
+    // The user input should only have 1 entry, at namespace level.
+    if (filter.tables().tables_size() == 1) {
+      const auto& table_id = filter.tables().tables(0);
+      if (table_id.has_namespace_()) {
+        string database_type;
+        if (table_id.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+          database_type = "ysql";
+        } else if (table_id.namespace_().database_type() == YQL_DATABASE_CQL) {
+          database_type = "ycql";
+        }
+        if (!database_type.empty()) {
+          filter_output = Format("$0.$1", database_type, table_id.namespace_().name());
+        }
+      }
+    }
+    // If the user input was non standard, just display the whole debug PB.
+    if (filter_output.empty()) {
+      filter_output = filter.ShortDebugString();
+      DCHECK(false) << "Non standard filter " << filter_output;
+    }
     rapidjson::Value options(rapidjson::kObjectType);
-    AddStringField("interval", MonoDelta::FromSeconds(schedule.options().interval_sec()).ToString(),
+    AddStringField("filter", filter_output, &options, &result.GetAllocator());
+    auto interval_min = schedule.options().interval_sec() / MonoTime::kSecondsPerMinute;
+    AddStringField("interval",
+                   Format("$0 min", interval_min),
                    &options, &result.GetAllocator());
+    auto retention_min = schedule.options().retention_duration_sec() / MonoTime::kSecondsPerMinute;
     AddStringField("retention",
-                   MonoDelta::FromSeconds(schedule.options().retention_duration_sec()).ToString(),
+                   Format("$0 min", retention_min),
                    &options, &result.GetAllocator());
+    auto delete_time = HybridTime::FromPB(schedule.options().delete_time());
+    if (delete_time) {
+      AddStringField("delete_time", HybridTimeToString(delete_time), &options,
+                     &result.GetAllocator());
+    }
+
     json_schedule.AddMember("options", options, result.GetAllocator());
     rapidjson::Value json_snapshots(rapidjson::kArrayType);
     for (const auto& snapshot : schedule.snapshots()) {
@@ -384,6 +445,26 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
   }
   result.AddMember("schedules", json_schedules, result.GetAllocator());
   return result;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::DeleteSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id) {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master::DeleteSnapshotScheduleRequestPB req;
+  master::DeleteSnapshotScheduleResponsePB resp;
+  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+
+  RETURN_NOT_OK(master_backup_proxy_->DeleteSnapshotSchedule(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetObject();
+  AddStringField("schedule_id", schedule_id.ToString(), &document, &document.GetAllocator());
+  return document;
 }
 
 bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {

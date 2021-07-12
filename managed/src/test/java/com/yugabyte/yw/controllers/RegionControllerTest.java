@@ -1,50 +1,33 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import org.hamcrest.core.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.*;
+import org.hamcrest.CoreMatchers;
+import org.hamcrest.core.AllOf;
+import org.hamcrest.core.Is;
+import org.hamcrest.core.IsInstanceOf;
+import org.hamcrest.core.IsNull;
+import org.junit.Before;
+import org.junit.Test;
+import play.libs.Json;
+import play.mvc.Result;
+
+import java.util.List;
+import java.util.UUID;
+
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NetworkManager;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.YugawareProperty;
-import org.hamcrest.CoreMatchers;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-
-import org.mockito.Mockito;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.mvc.Result;
-import play.test.Helpers;
 
 public class RegionControllerTest extends FakeDBApplication {
   Provider provider;
@@ -101,7 +84,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListAllRegionsWithValidRegion() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     AvailabilityZone az =
-        AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+        AvailabilityZone.createOrThrow(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     Result result = listAllRegions();
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -131,7 +114,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testListRegionWithoutZonesAndValidProviderUUID() {
-    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
+    Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -144,7 +127,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithValidProviderUUID() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
-    AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone.createOrThrow(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -162,11 +145,11 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListRegions() {
     Region r1 = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     Region r2 = Region.create(provider, "region-2", "PlacementRegion 2", "default-image");
-    AvailabilityZone.create(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
-    AvailabilityZone.create(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
-    AvailabilityZone.create(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
-    AvailabilityZone.create(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
-    AvailabilityZone.create(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
+    AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
+    AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
     Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -179,15 +162,15 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
     UUID randomUUID = UUID.randomUUID();
-    Result result = createRegion(randomUUID, regionJson);
+    Result result = assertYWSE(() -> createRegion(randomUUID, regionJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertErrorResponse(result, "Invalid Provider UUID:" + randomUUID);
+    assertErrorResponse(result, "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testCreateRegionsWithoutRequiredParams() {
-    Result result = createRegion(provider.uuid, Json.newObject());
+    Result result = assertYWSE(() -> createRegion(provider.uuid, Json.newObject()));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result),
@@ -265,7 +248,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
     when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
-    Result result = createRegion(provider.uuid, regionJson);
+    Result result = assertYWSE(() -> createRegion(provider.uuid, regionJson));
     assertInternalServerError(result, "Region Bootstrap failed.");
     Region r = Region.getByCode(provider, "foo-region");
     assertNull(r);
@@ -273,21 +256,20 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteRegionWithInValidParams() {
+  public void testDeleteRegionWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
-    Result result = deleteRegion(provider.uuid, randomUUID);
+    Result result = assertYWSE(() -> deleteRegion(provider.uuid, randomUUID));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
-        contentAsString(result),
-        CoreMatchers.containsString("Invalid Provider/Region UUID:" + randomUUID));
+        contentAsString(result), CoreMatchers.containsString("Invalid Provider/Region UUID"));
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteRegionWithValidParams() {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "AZ 2", "subnet-2");
     Result result = deleteRegion(provider.uuid, r.uuid);
     assertEquals(OK, result.status());
 

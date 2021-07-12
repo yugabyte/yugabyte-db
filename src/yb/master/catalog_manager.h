@@ -95,15 +95,15 @@ class ThreadPool;
 template<class T>
 class AtomicGauge;
 
-namespace pgwrapper {
-
 #define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
+namespace pgwrapper {
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
-#undef CALL_GTEST_TEST_CLASS_NAME_
-
 }
+
+class CALL_GTEST_TEST_CLASS_NAME_(MasterPartitionedTest, VerifyOldLeaderStepsDown);
+#undef CALL_GTEST_TEST_CLASS_NAME_
 
 namespace tablet {
 
@@ -149,6 +149,7 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
                               (kRunning) // All running tables
                               (kVisibleToClient) // All tables visible to the client
                );
+typedef unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -183,7 +184,7 @@ class CatalogManager :
   void CompleteShutdown();
 
   // Create Postgres sys catalog table.
-  CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
+  CHECKED_STATUS CreateYsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
 
   CHECKED_STATUS ReplicatePgMetadataChange(const tserver::ChangeMetadataRequestPB* req);
 
@@ -797,13 +798,19 @@ class CatalogManager :
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id);
 
+  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+      const scoped_refptr<TableInfo>& table);
+
   void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
 
   void CheckTableDeleted(const TableInfoPtr& table);
 
-  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) const override;
+  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) override;
 
-  bool ShouldSplitValidCandidate(const TabletReplicaDriveInfo& drive_info) const override;
+  bool ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
+
+  BlacklistSet BlacklistSetFromPB() const;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -833,6 +840,7 @@ class CatalogManager :
   FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
 
   FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
+  FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -1014,8 +1022,9 @@ class CatalogManager :
 
   // Extract the set of tablets that can be deleted and the set of tablets
   // that must be processed because not running yet.
+  // Returns a map of table_id -> {tablet_info1, tablet_info2, etc.}.
   void ExtractTabletsToProcess(TabletInfos *tablets_to_delete,
-                               TabletInfos *tablets_to_process);
+                               TableToTabletInfos *tablets_to_process);
 
   // Determine whether any tables are in the DELETING state.
   bool AreTablesDeleting();
@@ -1271,6 +1280,11 @@ class CatalogManager :
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
 
+  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
+
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type) {
     return SnapshotSchedulesToObjectIdsMap();
@@ -1329,7 +1343,7 @@ class CatalogManager :
   // Random number generator used for selecting replica locations.
   ThreadSafeRandom rng_;
 
-  gscoped_ptr<SysCatalogTable> sys_catalog_;
+  std::unique_ptr<SysCatalogTable> sys_catalog_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;
@@ -1340,7 +1354,7 @@ class CatalogManager :
   // Background thread, used to execute the catalog manager tasks
   // like the assignment and cleaner.
   friend class CatalogManagerBgTasks;
-  gscoped_ptr<CatalogManagerBgTasks> background_tasks_;
+  std::unique_ptr<CatalogManagerBgTasks> background_tasks_;
 
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
@@ -1364,10 +1378,10 @@ class CatalogManager :
   // NOTE: Presently, this thread pool must contain only a single
   // thread (to correctly serialize invocations of ElectedAsLeaderCb
   // upon closely timed consecutive elections).
-  gscoped_ptr<ThreadPool> leader_initialization_pool_;
+  std::unique_ptr<ThreadPool> leader_initialization_pool_;
 
   // Thread pool to do the async RPC task work.
-  gscoped_ptr<ThreadPool> async_task_pool_;
+  std::unique_ptr<ThreadPool> async_task_pool_;
 
   // This field is updated when a node becomes leader master,
   // waits for all outstanding uncommitted metadata (table and tablet metadata)
@@ -1503,6 +1517,33 @@ class CatalogManager :
   // Helper function to refresh the tablespace info.
   CHECKED_STATUS DoRefreshTablespaceInfo();
 
+  // Processes committed consensus state for specified tablet from ts_desc.
+  // Returns true if tablet was mutated.
+  bool ProcessCommittedConsensusState(
+      TSDescriptor* ts_desc,
+      bool is_incremental,
+      const ReportedTabletPB& report,
+      const TableInfo::ReadLock& table_lock,
+      const TabletInfoPtr& tablet,
+      const TabletInfo::WriteLock& tablet_lock,
+      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+
+  struct ReportedTablet {
+    TabletId tablet_id;
+    TabletInfoPtr info;
+    const ReportedTabletPB* report;
+  };
+  using ReportedTablets = std::vector<ReportedTablet>;
+
+  // Process tablets batch while processing tablet report.
+  CHECKED_STATUS ProcessTabletReportBatch(
+      TSDescriptor* ts_desc,
+      bool is_incremental,
+      ReportedTablets::const_iterator begin,
+      ReportedTablets::const_iterator end,
+      TabletReportUpdatesPB* full_report_update,
+      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -1525,8 +1566,6 @@ class CatalogManager :
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   ServerRegistrationPB server_registration_;
-
-  BlacklistSet BlacklistSetFromPB();
 
   TabletSplitManager tablet_split_manager_;
 

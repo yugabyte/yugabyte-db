@@ -38,7 +38,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
@@ -133,7 +132,7 @@ class OperationTracker {
       ScopedRefPtrEqualsFunctor> OperationMap;
   OperationMap pending_operations_ GUARDED_BY(mutex_);
 
-  gscoped_ptr<Metrics> metrics_;
+  std::unique_ptr<Metrics> metrics_;
 
   std::shared_ptr<MemTracker> mem_tracker_;
 

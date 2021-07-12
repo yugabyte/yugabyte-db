@@ -339,8 +339,12 @@ Result<std::shared_ptr<const VersionedTablePartitionList>> YBTable::FetchPartiti
           continue;
         }
       }
-      if (s.ok()) {
-        s = StatusFromPB(resp.error().status());
+      s = StatusFromPB(resp.error().status());
+      if (s.IsShutdownInProgress() || s.IsNotFound()) {
+        // Return without retry in case of permanent errors.
+        // We can get ShutdownInProgress when catalog manager is in process of shutting down.
+        // And when table has been deleted - we get NotFound and no need to retry it.
+        return s;
       }
     }
     if (!s.ok()) {

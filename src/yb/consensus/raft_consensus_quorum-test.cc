@@ -125,7 +125,7 @@ class RaftConsensusQuorumTest : public YBTest {
       opts.wal_paths = { test_path };
       opts.data_paths = { test_path };
       opts.server_type = "tserver_test";
-      gscoped_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
+      std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
       RETURN_NOT_OK(fs_manager->CreateInitialFileSystemLayout());
       RETURN_NOT_OK(fs_manager->Open());
 
@@ -565,7 +565,7 @@ class RaftConsensusQuorumTest : public YBTest {
   vector<scoped_refptr<Log> > logs_;
   unique_ptr<ThreadPool> raft_pool_;
   unique_ptr<ThreadPool> log_thread_pool_;
-  gscoped_ptr<TestPeerMapManager> peers_;
+  std::unique_ptr<TestPeerMapManager> peers_;
   std::vector<std::unique_ptr<TestOperationFactory>> operation_factories_;
   scoped_refptr<server::Clock> clock_;
   MetricRegistry metric_registry_;

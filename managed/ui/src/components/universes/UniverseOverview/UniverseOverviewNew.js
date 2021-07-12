@@ -236,7 +236,7 @@ class HealthInfoPanel extends PureComponent {
     const { healthCheck, universeInfo } = this.props;
     let disabledUntilStr = '';
     if (getPromiseState(healthCheck).isSuccess()) {
-      const healthCheckData = JSON.parse([...healthCheck.data].reverse()[0]);
+      const healthCheckData = [...healthCheck.data].reverse()[0];
       const lastUpdateDate = moment.utc(healthCheckData.timestamp).local();
       if (universeInfo.universeConfig && 'disableAlertsUntilSecs' in universeInfo.universeConfig) {
         const disabledUntilSecs = Number(universeInfo.universeConfig.disableAlertsUntilSecs);

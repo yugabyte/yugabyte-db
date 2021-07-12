@@ -237,7 +237,7 @@ Status FsManager::Open() {
   }
 
   for (const string& root : canonicalized_all_fs_roots_) {
-    gscoped_ptr<InstanceMetadataPB> pb(new InstanceMetadataPB);
+    auto pb = std::make_unique<InstanceMetadataPB>();
     RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root), pb.get()));
     if (!metadata_) {
       metadata_.reset(pb.release());
@@ -496,6 +496,10 @@ Status FsManager::CreateDirIfMissingAndSync(const std::string& path, bool* creat
 
 const string& FsManager::uuid() const {
   return CHECK_NOTNULL(metadata_.get())->uuid();
+}
+
+set<string> FsManager::GetFsRootDirs() const {
+  return canonicalized_all_fs_roots_;
 }
 
 vector<string> FsManager::GetDataRootDirs() const {

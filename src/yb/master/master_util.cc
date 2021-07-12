@@ -158,5 +158,32 @@ TableType GetTableTypeForDatabase(const YQLDatabase database_type) {
   }
 }
 
+Result<bool> TableMatchesIdentifier(
+    const TableId& id, const SysTablesEntryPB& table, const TableIdentifierPB& table_identifier) {
+  if (table_identifier.has_table_id()) {
+    return id == table_identifier.table_id();
+  }
+  if (!table_identifier.table_name().empty() && table_identifier.table_name() != table.name()) {
+    return false;
+  }
+  if (table_identifier.has_namespace_()) {
+    const auto& ns = table_identifier.namespace_();
+    if (ns.has_id()) {
+      return table.namespace_id() == ns.id();
+    }
+    if (ns.has_database_type() &&
+        ns.database_type() != master::GetDatabaseTypeForTable(table.table_type())) {
+      return false;
+    }
+    if (ns.has_name()) {
+      return table.namespace_name() == ns.name();
+    }
+    return STATUS_FORMAT(
+      InvalidArgument, "Wrong namespace identifier format: $0", ns);
+  }
+  return STATUS_FORMAT(
+    InvalidArgument, "Wrong table identifier format: $0", table_identifier);
+}
+
 } // namespace master
 } // namespace yb

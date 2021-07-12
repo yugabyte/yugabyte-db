@@ -23,39 +23,45 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
+import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.MetricQueryParams;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
+import com.yugabyte.yw.forms.YWResults;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.yugabyte.yw.common.ApiResponse.success;
-
-@Api
+@Api(value = "Customer", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private MetricQueryHelper metricQueryHelper;
 
   @Inject private CloudQueryHelper cloudQueryHelper;
 
-  @Inject private AlertManager alertManager;
+  @Inject private AlertService alertService;
+
+  @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -63,13 +69,32 @@ public class CustomerController extends AuthenticatedController {
         && !n.cloudInfo.mount_roots.isEmpty();
   }
 
+  @Deprecated
+  @ApiOperation(
+      value = "UI_ONLY",
+      response = UUID.class,
+      responseContainer = "List",
+      hidden = true,
+      nickname = "ListOfCustomers")
   public Result list() {
     ArrayNode responseJson = Json.newArray();
     Customer.getAll().forEach(c -> responseJson.add(c.getUuid().toString()));
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "getCustomer", response = Customer.class)
+  @ApiOperation(
+      value = "List customer",
+      response = Customer.class,
+      responseContainer = "List",
+      nickname = "getCustomer")
+  public Result listWithData() {
+    return YWResults.withData(Customer.getAll());
+  }
+
+  @ApiOperation(
+      value = "Get customer by UUID",
+      response = CustomerDetailsData.class,
+      nickname = "CustomerDetail")
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -108,6 +133,15 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
+  @ApiOperation(value = "Update customer by UUID", response = Customer.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Customer",
+        value = "Customer data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.AlertingFormData",
+        paramType = "body")
+  })
   public Result update(UUID customerUUID) {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -124,16 +158,36 @@ public class CustomerController extends AuthenticatedController {
     if (request.has("alertingData") || request.has("smtpData")) {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
-      if (config == null && alertingFormData.alertingData != null) {
-        CustomerConfig.createAlertConfig(customerUUID, Json.toJson(alertingFormData.alertingData));
-      } else if (config != null && alertingFormData.alertingData != null) {
-        config.setData(Json.toJson(alertingFormData.alertingData));
-        config.update();
+      if (alertingFormData.alertingData != null) {
+        if (config == null) {
+          CustomerConfig.createAlertConfig(
+              customerUUID, Json.toJson(alertingFormData.alertingData));
+        } else {
+          config.setData(Json.toJson(alertingFormData.alertingData));
+          config.update();
+        }
+
+        // Update Clock Skew Alert definition activity.
+        // TODO: Remove after implementation of a separate window for
+        // all definition groups configuration.
+        List<AlertDefinitionGroup> groups =
+            alertDefinitionGroupService.list(
+                AlertDefinitionGroupFilter.builder()
+                    .customerUuid(customerUUID)
+                    .name(AlertDefinitionTemplate.CLOCK_SKEW.getName())
+                    .build());
+        for (AlertDefinitionGroup group : groups) {
+          group.setActive(alertingFormData.alertingData.enableClockSkew);
+        }
+        alertDefinitionGroupService.save(groups);
+        LOG.info(
+            "Updated {} Clock Skew Alert definition groups, new state {}",
+            groups.size(),
+            alertingFormData.alertingData.enableClockSkew);
       }
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
       if (smtpConfig == null && alertingFormData.smtpData != null) {
-        alertManager.resolveAlerts(customer.uuid, EmailHelper.DEFAULT_CONFIG_UUID, "%");
         CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData));
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
         smtpConfig.setData(Json.toJson(alertingFormData.smtpData));
@@ -141,7 +195,6 @@ public class CustomerController extends AuthenticatedController {
       } // In case we want to reset the smtpData and use the default mailing server.
       else if (request.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {
-          alertManager.resolveAlerts(customer.uuid, smtpConfig.configUUID, "%");
           smtpConfig.delete();
         }
       }
@@ -158,7 +211,10 @@ public class CustomerController extends AuthenticatedController {
     return ok(Json.toJson(customer));
   }
 
-  @ApiOperation(value = "deleteCustomer", response = Object.class)
+  @ApiOperation(
+      value = "Delete customer by UUID",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteCustomer")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -167,16 +223,26 @@ public class CustomerController extends AuthenticatedController {
       user.delete();
     }
 
-    if (customer.delete()) {
-      ObjectNode responseJson = Json.newObject();
-      auditService().createAuditEntry(ctx(), request());
-      responseJson.put("success", true);
-      return success(responseJson);
+    if (!customer.delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
-    throw new YWServiceException(
-        INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
+    auditService().createAuditEntry(ctx(), request());
+    return YWResults.YWSuccess.empty();
   }
 
+  @ApiOperation(
+      value = "Upsert features of customer by UUID",
+      responseContainer = "Map",
+      response = Object.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Feature",
+        value = "Feature to be upserted",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.FeatureUpdateFormData",
+        paramType = "body")
+  })
   public Result upsertFeatures(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -195,6 +261,18 @@ public class CustomerController extends AuthenticatedController {
     return ok(customer.getFeatures());
   }
 
+  @ApiOperation(
+      value = "Add metrics of customer by UUID",
+      response = Object.class,
+      responseContainer = "Map")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Metrics",
+        value = "Metrics to be added",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.MetricQueryParams",
+        paramType = "body")
+  })
   public Result metrics(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -265,7 +343,7 @@ public class CustomerController extends AuthenticatedController {
     if (response.has("error")) {
       throw new YWServiceException(BAD_REQUEST, response.get("error"));
     }
-    return success(response);
+    return YWResults.withRawData(response);
   }
 
   private String getNamespacesFilter(Customer customer, String nodePrefix) {
@@ -310,6 +388,10 @@ public class CustomerController extends AuthenticatedController {
     return String.join("|", namespaces);
   }
 
+  @ApiOperation(
+      value = "Get host info by customer UUID",
+      responseContainer = "Map",
+      response = Object.class)
   public Result getHostInfo(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     ObjectNode hostInfo = Json.newObject();
@@ -321,7 +403,7 @@ public class CustomerController extends AuthenticatedController {
     hostInfo.put(
         Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null));
 
-    return success(hostInfo);
+    return YWResults.withRawData(hostInfo);
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(

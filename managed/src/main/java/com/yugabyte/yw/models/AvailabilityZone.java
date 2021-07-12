@@ -13,28 +13,41 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.annotation.*;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.*;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Entity
+@ApiModel(description = "Availability Zone of regions.")
 public class AvailabilityZone extends Model {
 
-  @Id public UUID uuid;
+  @Id
+  @ApiModelProperty(value = "AZ uuid", accessMode = READ_ONLY)
+  public UUID uuid;
 
   @Column(length = 25, nullable = false)
+  @ApiModelProperty(value = "AZ code", example = "AWS")
   public String code;
 
   @Column(length = 100, nullable = false)
   @Constraints.Required
+  @ApiModelProperty(value = "AZ name", example = "south-east-1", required = true)
   public String name;
 
   @Constraints.Required
   @Column(nullable = false)
   @ManyToOne
-  @JsonBackReference
+  @JsonBackReference("region-zones")
+  @ApiModelProperty(value = "Region of AZ", example = "South east 1", required = true)
   public Region region;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
+  @ApiModelProperty(value = "AZ is active or not", accessMode = READ_ONLY)
   public Boolean active = true;
 
   public Boolean isActive() {
@@ -46,12 +59,15 @@ public class AvailabilityZone extends Model {
   }
 
   @Column(length = 50)
+  @ApiModelProperty(value = "AZ Subnet", example = "subnet id")
   public String subnet;
 
   @DbJson
   @Column(columnDefinition = "TEXT")
+  @ApiModelProperty(value = "AZ Config values")
   public Map<String, String> config;
 
+  @ApiModelProperty(value = "Kubernetes Config path", accessMode = READ_ONLY)
   public String getKubeconfigPath() {
     Map<String, String> configMap = this.getConfig();
     return configMap.getOrDefault("KUBECONFIG", null);
@@ -77,14 +93,22 @@ public class AvailabilityZone extends Model {
   public static final Finder<UUID, AvailabilityZone> find =
       new Finder<UUID, AvailabilityZone>(AvailabilityZone.class) {};
 
-  public static AvailabilityZone create(Region region, String code, String name, String subnet) {
-    AvailabilityZone az = new AvailabilityZone();
-    az.region = region;
-    az.code = code;
-    az.name = name;
-    az.subnet = subnet;
-    az.save();
-    return az;
+  public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZone.class);
+
+  public static AvailabilityZone createOrThrow(
+      Region region, String code, String name, String subnet) {
+    try {
+      AvailabilityZone az = new AvailabilityZone();
+      az.region = region;
+      az.code = code;
+      az.name = name;
+      az.subnet = subnet;
+      az.save();
+      return az;
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create zone: " + code);
+    }
   }
 
   public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID) {
@@ -93,6 +117,15 @@ public class AvailabilityZone extends Model {
 
   public static Set<AvailabilityZone> getAllByCode(String code) {
     return find.query().where().eq("code", code).findSet();
+  }
+
+  public static AvailabilityZone getByRegionOrBadRequest(UUID azUUID, UUID regionUUID) {
+    AvailabilityZone availabilityZone =
+        AvailabilityZone.find.query().where().idEq(azUUID).eq("region_uuid", regionUUID).findOne();
+    if (availabilityZone == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
+    }
+    return availabilityZone;
   }
 
   public static AvailabilityZone getByCode(Provider provider, String code) {

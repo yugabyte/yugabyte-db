@@ -142,19 +142,33 @@ CHECKED_STATUS TabletInfo::CheckRunning() const {
   return Status::OK();
 }
 
-Result<TSDescriptor*> TabletInfo::GetLeader() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  auto result = GetLeaderUnlocked();
-  if (result) {
-    return result;
-  }
-
+CHECKED_STATUS TabletInfo::GetLeaderNotFoundStatus() const {
   RETURN_NOT_OK(CheckRunning());
 
   return STATUS_FORMAT(
       NotFound,
       "No leader found for tablet $0 with $1 replicas: $2.",
       ToString(), replica_locations_->size(), *replica_locations_);
+}
+
+Result<TSDescriptor*> TabletInfo::GetLeader() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto result = GetLeaderUnlocked();
+  if (result) {
+    return result;
+  }
+  return GetLeaderNotFoundStatus();
+}
+
+Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+
+  for (const auto& pair : *replica_locations_) {
+    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+      return pair.second.drive_info;
+    }
+  }
+  return GetLeaderNotFoundStatus();
 }
 
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
@@ -279,6 +293,10 @@ const TableName TableInfo::name() const {
 
 bool TableInfo::is_running() const {
   return LockForRead()->is_running();
+}
+
+bool TableInfo::is_deleted() const {
+  return LockForRead()->is_deleted();
 }
 
 string TableInfo::ToString() const {
@@ -450,13 +468,13 @@ bool TableInfo::IsCreateInProgress() const {
 }
 
 Status TableInfo::SetIsBackfilling() {
+  const auto table_lock = LockForRead();
   std::lock_guard<decltype(lock_)> l(lock_);
   if (is_backfilling_) {
     return STATUS(AlreadyPresent, "Backfill already in progress", id(),
                   MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
   }
 
-  const auto table_lock = LockForRead();
   for (const auto& tablet_it : tablet_map_) {
     const auto& tablet = tablet_it.second;
     if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
@@ -634,7 +652,8 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated();
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
+         l->namespace_id() != kPgSequencesDataNamespaceId;
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {

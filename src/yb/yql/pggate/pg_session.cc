@@ -28,6 +28,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
@@ -35,6 +36,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
@@ -78,24 +80,12 @@ using yb::master::MasterServiceProxy;
 
 using yb::tserver::TServerSharedObject;
 
-#if defined(__APPLE__) && !defined(NDEBUG)
-// We are experiencing more slowness in tests on macOS in debug mode.
-const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
-#else
-const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
-#endif
-
-DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
-             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
-
 namespace {
 //--------------------------------------------------------------------------------------------------
 // Constants used for the sequences data table.
 //--------------------------------------------------------------------------------------------------
 static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
 static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
-
-static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 // Columns names and ids.
 static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
@@ -314,13 +304,6 @@ bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
     return true;
   }
   return false;
-}
-
-void SetupSession(client::YBSession* session) {
-  // Sets the timeout for each rpc as well as the whole operation to
-  // 'FLAGS_pg_yb_session_timeout_ms'.
-  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
-  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 } // namespace
@@ -549,15 +532,12 @@ PgSession::PgSession(
     const tserver::TServerSharedObject* tserver_shared_object,
     const YBCPgCallbacks& pg_callbacks)
     : client_(client),
-      session_(client_->NewSession()),
+      session_(BuildSession(client_)),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
-      catalog_session_(std::make_shared<YBSession>(client_, clock_.get())),
+      catalog_session_(BuildSession(client_, clock_)),
       tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
-
-  SetupSession(session_.get());
-  SetupSession(catalog_session_.get());
 }
 
 PgSession::~PgSession() {
@@ -1241,6 +1221,36 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
 
 Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
   return client_->TabletServerCount(tserver_count, primary_only, use_cache);
+}
+
+Status PgSession::ListTabletServers(YBCServerDescriptor **servers, int *numofservers) {
+  std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>> tablet_servers;
+  Status ret = client_->ListLiveTabletServers(&tablet_servers, false);
+  *numofservers = tablet_servers.size();
+  int cnt = *numofservers;
+  if (cnt > 0) {
+    for (int i = 0; i < cnt; i++) {
+      std::string host = tablet_servers.at(i)->hostname();
+      std::string cloud = tablet_servers.at(i)->cloud();
+      std::string region = tablet_servers.at(i)->region();
+      std::string zone = tablet_servers.at(i)->zone();
+      std::string publicIp = tablet_servers.at(i)->publicIp();
+      bool isPrimary = tablet_servers.at(i)->isPrimary();
+      const char *hostC = YBCPAllocStdString(host);
+      const char *cloudC = YBCPAllocStdString(cloud);
+      const char *regionC = YBCPAllocStdString(region);
+      const char *zoneC = YBCPAllocStdString(zone);
+      const char *publicIpC = YBCPAllocStdString(publicIp);
+      servers[i] = reinterpret_cast<YBCServerDescriptor *>(YBCPAlloc(sizeof(YBCServerDescriptor)));
+      servers[i]->host = hostC;
+      servers[i]->cloud = cloudC;
+      servers[i]->region = regionC;
+      servers[i]->zone = zoneC;
+      servers[i]->publicIp = publicIpC;
+      servers[i]->isPrimary = isPrimary;
+    }
+  }
+  return ret;
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {

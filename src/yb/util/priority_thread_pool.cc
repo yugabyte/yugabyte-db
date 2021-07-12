@@ -113,7 +113,7 @@ class PriorityThreadPoolInternalTask {
   }
 
   std::string ToString() const {
-    return Format("{ task: $0 worker: $1 state: $2 priority: $3 serial: $4 }",
+    return Format("{ task: $0 worker: $1 state: $2 priority: $3 serial_no: $4 }",
                   TaskToString(), worker_, state(), priority(), serial_no_);
   }
 
@@ -209,6 +209,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
       {
         yb::ReverseLock<decltype(lock)> rlock(lock);
         for (;;) {
+          VLOG(4) << "Worker " << this << " running task: " << task_->ToString();
           task_->task()->Run(Status::OK(), this);
           if (!context_->WorkerFinished(this)) {
             break;
@@ -423,7 +424,8 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (auto it = tasks_.begin(); it != tasks_.end();) {
-        if (it->state() == PriorityThreadPoolTaskState::kNotStarted && it->task()->BelongsTo(key)) {
+        if (it->state() == PriorityThreadPoolTaskState::kNotStarted &&
+            it->task()->ShouldRemoveWithKey(key)) {
           abort_tasks.push_back(std::move(it->task()));
           it = tasks_.erase(it);
         } else {
@@ -439,6 +441,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     if (stopping_.exchange(true, std::memory_order_acq_rel)) {
       return;
     }
+    VLOG(1) << "Starting shutdown";
     std::vector<TaskPtr> abort_tasks;
     std::vector<PriorityThreadPoolWorker*> workers;
     {
@@ -619,6 +622,8 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   void AbortTasks(const std::vector<TaskPtr>& tasks, const Status& abort_status) {
+    VLOG(2) << "Aborting tasks: " << AsString(tasks)
+            << " with status: " << abort_status;
     for (const auto& task : tasks) {
       task->Run(abort_status, nullptr /* suspender */);
     }
@@ -651,7 +656,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       case PriorityThreadPoolTaskState::kNotStarted:
         worker->SetTask(&*it);
         SetWorker(tasks_.project<PriorityTag>(it), worker);
-        VLOG(4) << "Picked task for " << worker;
+        VLOG(4) << "Picked task " << it->task()->ToString() << " for " << worker;
         return true;
       case PriorityThreadPoolTaskState::kRunning:
         VLOG(4) << "Only running tasks left, nothing for " << worker;
@@ -690,7 +695,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
         static_cast<int64_t>(free_workers_.size()) >= max_running_tasks_) {
       VLOG(1) << "We already have " << workers_.size() << " - " << paused_workers_ << " - "
               << free_workers_.size() << " >= " << max_running_tasks_
-              << " workers running, we could not run a new worker.";
+                          << " workers running, we could not run a new worker.";
       return nullptr;
     }
 
@@ -718,18 +723,17 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     }
 
     worker->SetThread(*thread);
+    VLOG(3) << "Created new worker: " << worker << " thread id: " << (*thread)->tid();
     threads_.push_back(std::move(*thread));
-    VLOG(3) << "Created new worker: " << worker;
 
     return worker;
   }
 
   const PriorityThreadPoolInternalTask* AddTask(
       int priority, TaskPtr task, PriorityThreadPoolWorker* worker) REQUIRES(mutex_) {
-    VLOG(4) << "Adding new task: " << AsString(task);
     auto it = tasks_.emplace(priority, std::move(task), worker, &mutex_).first;
     UpdateMaxPriorityToDefer();
-    VLOG(4) << "New task added, max to defer: "
+    VLOG(4) << "New task added " << it->ToString() << ", max to defer: "
             << max_priority_to_defer_.load(std::memory_order_acquire);
     return &*it;
   }

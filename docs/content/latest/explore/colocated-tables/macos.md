@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: colocated-tables-1-macos
     parent: explore
-    weight: 245
+    weight: 600
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,14 +17,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/colocated-tables/macos" class="nav-link active">
+    <a href="../macos/" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/colocated-tables/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>

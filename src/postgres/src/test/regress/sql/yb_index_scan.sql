@@ -164,6 +164,8 @@ insert into test values(6,6,6,6,6,6,'Ff',6,88);
 -- Creating indices with included columns
 create index idx_col3 on test(col3) include (col4,col5,col6);
 create index idx_col5 on test(col5) include (col6,col7);
+-- Ordering is disallowed for included columns
+create index on test(col5) include (col6 hash, col7);
 
 -- Performing a few updates and checking if subsequent commands exhibit expected behavior
 update test set col3=11, col4=11 where pk=1;
@@ -214,6 +216,14 @@ SELECT * FROM test WHERE col5 = 444 and col6 = 35;
 update test set col6=5554 where pk=5;
 EXPLAIN SELECT * FROM test WHERE col6 = 5554;
 SELECT * FROM test WHERE col6 = 5554;
+
+-- test index only scan with non-target column refs in qual (github issue #9176)
+-- baseline, col5 is in target columns
+EXPLAIN SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+-- same lines are expected without col5 in the target list
+EXPLAIN SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
 
 -- testing update on primary key
 update test set pk=17 where pk=1;

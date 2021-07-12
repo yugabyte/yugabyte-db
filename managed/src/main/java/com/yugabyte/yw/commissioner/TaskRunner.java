@@ -2,23 +2,22 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.api.Play;
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-
-import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.ScheduleTask;
-import com.yugabyte.yw.models.CustomerTask;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.TaskInfo;
-import play.api.Play;
 
 /**
  * This class is responsible for creating and running a task. It provides all the common
@@ -87,7 +86,7 @@ public class TaskRunner implements Runnable {
       throws InstantiationException, IllegalAccessException {
 
     // Create an instance of the task.
-    task = taskTypeToTaskClassMap.get(taskType).newInstance();
+    task = Play.current().injector().instanceOf(taskTypeToTaskClassMap.get(taskType));
     // Init the task.
     task.initialize(taskParams);
     // Create a new task info object.

@@ -106,27 +106,24 @@ DECLARE_int32(ysql_transaction_abort_timeout_ms);
 namespace yb {
 namespace tablet {
 
-METRIC_DEFINE_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
+METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be prepared within this tablet. "
                         "High queue lengths indicate that the server is unable to process "
-                        "operations as fast as they are being written to the WAL.",
-                        10000, 2);
+                        "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
+METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the prepare queue before being "
                         "processed. High queue times indicate that the server is unable to "
-                        "process operations as fast as they are being written to the WAL.",
-                        10000000, 2);
+                        "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
+METRIC_DEFINE_coarse_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations are experiencing high contention with one another for "
-                        "locks.",
-                        10000000, 2);
+                        "locks.");
 
 using consensus::Consensus;
 using consensus::ConsensusBootstrapInfo;
@@ -225,7 +222,7 @@ Status TabletPeer::InitTabletPeer(
           return largest.op_id().index <= index;
         }
 
-        // It is correct to don't have frontiers when memtable is empty.
+        // It is correct to not have frontiers when memtable is empty
         if (memtable.IsEmpty()) {
           return true;
         }
@@ -335,11 +332,10 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
     if (propagated_history_cutoff) {
       VLOG_WITH_PREFIX(2) << "Propagate history cutoff: " << propagated_history_cutoff;
 
-      auto state = std::make_unique<HistoryCutoffOperationState>(tablet_.get());
-      auto request = state->AllocateRequest();
+      auto operation = std::make_unique<HistoryCutoffOperation>(tablet_.get());
+      auto request = operation->AllocateRequest();
       request->set_history_cutoff(propagated_history_cutoff.ToUint64());
 
-      auto operation = std::make_unique<tablet::HistoryCutoffOperation>(std::move(state));
       Submit(std::move(operation), leader_term);
     }
   }
@@ -408,7 +404,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* operation_pause */ nullptr);
+  return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
 }
 
 const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
@@ -416,13 +412,13 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   return consensus_->CommittedConfig();
 }
 
-bool TabletPeer::StartShutdown() {
+bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
     if (tablet_) {
-      tablet_->StartShutdown();
+      tablet_->StartShutdown(is_drop_table);
     }
   }
 
@@ -460,6 +456,11 @@ bool TabletPeer::StartShutdown() {
 }
 
 void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
+  auto* strand = strand_.get();
+  if (strand) {
+    strand->Shutdown();
+  }
+
   preparing_operations_counter_.Shutdown();
 
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
@@ -485,6 +486,7 @@ void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   // Only mark the peer as SHUTDOWN when all other components have shut down.
   {
     std::lock_guard<simple_spinlock> lock(lock_);
+    strand_.reset();
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     consensus_.reset();
@@ -532,7 +534,7 @@ void TabletPeer::WaitUntilShutdown() {
 }
 
 Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  bool isShutdownInitiated = StartShutdown();
+  bool isShutdownInitiated = StartShutdown(is_drop_table);
 
   RETURN_NOT_OK(AbortSQLTransactions());
 
@@ -613,22 +615,15 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-void TabletPeer::WriteAsync(
-    std::unique_ptr<WriteOperationState> state, int64_t term, CoarseTimePoint deadline) {
-  if (term == yb::OpId::kUnknownTerm) {
-    state->CompleteWithStatus(STATUS(IllegalState, "Write while not leader"));
-    return;
-  }
-
+void TabletPeer::WriteAsync(std::unique_ptr<WriteOperation> operation) {
   ScopedOperation preparing_token(&preparing_operations_counter_);
   auto status = CheckRunning();
   if (!status.ok()) {
-    state->CompleteWithStatus(status);
+    operation->CompleteWithStatus(status);
     return;
   }
 
-  auto operation = std::make_unique<WriteOperation>(
-      std::move(state), term, std::move(preparing_token), deadline, this);
+  operation->set_preparing_token(std::move(preparing_token));
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 }
 
@@ -654,11 +649,10 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 }
 
 void TabletPeer::SubmitUpdateTransaction(
-    std::unique_ptr<UpdateTxnOperationState> state, int64_t term) {
-  if (!state->tablet()) {
-    state->SetTablet(tablet());
+    std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
+  if (!operation->tablet()) {
+    operation->SetTablet(tablet());
   }
-  auto operation = std::make_unique<tablet::UpdateTxnOperation>(std::move(state));
   Submit(std::move(operation), term);
 }
 
@@ -680,9 +674,9 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
   clock_->Update(hybrid_time);
 }
 
-std::unique_ptr<UpdateTxnOperationState> TabletPeer::CreateUpdateTransactionState(
+std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
     tserver::TransactionStatePB* request) {
-  auto result = std::make_unique<UpdateTxnOperationState>(tablet());
+  auto result = std::make_unique<UpdateTxnOperation>(tablet());
   result->TakeRequest(request);
   return result;
 }
@@ -782,7 +776,7 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
 void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
                                        vector<consensus::OperationStatusPB>* out) const {
   for (const auto& driver : operation_tracker_.GetPendingOperations()) {
-    if (driver->state() == nullptr) {
+    if (driver->operation() == nullptr) {
       continue;
     }
     auto op_type = driver->operation_type();
@@ -977,44 +971,37 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
           " operation must receive a WriteRequestPB";
       // We use separate preparing token only on leader, so here it could be empty.
       return std::make_unique<WriteOperation>(
-          std::make_unique<WriteOperationState>(tablet()), yb::OpId::kUnknownTerm,
-          ScopedOperation(), CoarseTimePoint::max(), this);
+          OpId::kUnknownTerm, CoarseTimePoint::max(), this, tablet());
 
     case consensus::CHANGE_METADATA_OP:
       DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"
           " operation must receive an ChangeMetadataRequestPB";
-      return std::make_unique<ChangeMetadataOperation>(
-          std::make_unique<ChangeMetadataOperationState>(tablet(), log()));
+      return std::make_unique<ChangeMetadataOperation>(tablet(), log());
 
     case consensus::UPDATE_TRANSACTION_OP:
       DCHECK(replicate_msg->has_transaction_state()) << "UPDATE_TRANSACTION_OP replica"
           " operation must receive an TransactionStatePB";
-      return std::make_unique<UpdateTxnOperation>(
-          std::make_unique<UpdateTxnOperationState>(tablet()));
+      return std::make_unique<UpdateTxnOperation>(tablet());
 
     case consensus::TRUNCATE_OP:
       DCHECK(replicate_msg->has_truncate_request()) << "TRUNCATE_OP replica"
           " operation must receive an TruncateRequestPB";
-      return std::make_unique<TruncateOperation>(
-          std::make_unique<TruncateOperationState>(tablet()));
+      return std::make_unique<TruncateOperation>(tablet());
 
     case consensus::SNAPSHOT_OP:
        DCHECK(replicate_msg->has_snapshot_request()) << "SNAPSHOT_OP replica"
           " operation must receive an TabletSnapshotOpRequestPB";
-      return std::make_unique<SnapshotOperation>(
-          std::make_unique<SnapshotOperationState>(tablet()));
+      return std::make_unique<SnapshotOperation>(tablet());
 
     case consensus::HISTORY_CUTOFF_OP:
        DCHECK(replicate_msg->has_history_cutoff()) << "HISTORY_CUTOFF_OP replica"
           " transaction must receive an HistoryCutoffPB";
-      return std::make_unique<HistoryCutoffOperation>(
-          std::make_unique<HistoryCutoffOperationState>(tablet()));
+      return std::make_unique<HistoryCutoffOperation>(tablet());
 
     case consensus::SPLIT_OP:
        DCHECK(replicate_msg->has_split_request()) << "SPLIT_OP replica"
           " operation must receive an SplitOpRequestPB";
-      return std::make_unique<SplitOperation>(
-          std::make_unique<SplitOperationState>(tablet(), tablet_splitter_));
+      return std::make_unique<SplitOperation>(tablet(), tablet_splitter_);
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
@@ -1036,21 +1023,20 @@ Status TabletPeer::StartReplicaOperation(
   auto operation = CreateOperation(replicate_msg);
 
   // TODO(todd) Look at wiring the stuff below on the driver
-  OperationState* state = operation->state();
   // It's imperative that we set the round here on any type of operation, as this
   // allows us to keep the reference to the request in the round instead of copying it.
-  state->set_consensus_round(round);
+  operation->set_consensus_round(round);
   HybridTime ht(replicate_msg->hybrid_time());
-  state->set_hybrid_time(ht);
+  operation->set_hybrid_time(ht);
   clock_->Update(ht);
 
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
+  auto* operation_ptr = operation.get();
   OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(&operation));
 
-  // Unretained is required to avoid a refcount cycle.
-  state->consensus_round()->SetCallback(driver.get());
+  operation_ptr->consensus_round()->SetCallback(driver.get());
 
   if (propagated_safe_time) {
     driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
@@ -1128,7 +1114,7 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
 
   DCHECK(maintenance_ops_.empty());
 
-  gscoped_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
+  std::unique_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(log_gc.release());
   LOG_WITH_PREFIX(INFO) << "Registered log gc";
@@ -1272,13 +1258,19 @@ bool TabletPeer::CanBeDeleted() {
     return can_be_deleted_;
   }
 
-  const auto tablet_data_state = tablet()->metadata()->tablet_data_state();
+  const auto tablet = shared_tablet();
+  const auto consensus = shared_raft_consensus();
+  if (!tablet || !consensus) {
+    return false;
+  }
+
+  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
   if (tablet_data_state != TABLET_DATA_SPLIT_COMPLETED) {
     return false;
   }
 
-  const auto all_applied_op_id = consensus_->GetAllAppliedOpId();
-  const auto committed_op_id = consensus_->GetLastCommittedOpId();
+  const auto all_applied_op_id = consensus->GetAllAppliedOpId();
+  const auto committed_op_id = consensus->GetLastCommittedOpId();
   if (all_applied_op_id < committed_op_id) {
     return false;
   }

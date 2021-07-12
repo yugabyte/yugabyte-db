@@ -357,6 +357,10 @@ message BackfillJobPB {
   }
   // Index's TableId -> State for each index.
   map<string, State> backfill_state = 2;
+
+  // Number of rows processed for this backfill task (the same for all indexes)
+  optional uint64 num_rows_processed = 4 [ default = 0 ];
+
   optional uint64 backfilling_timestamp = 3;
 }
 
@@ -791,8 +795,18 @@ message TSSnapshotScheduleInfoPB {
   optional fixed64 last_snapshot_hybrid_time = 2;
 }
 
-message TSSnapshotSchedulesInfoPB {
+message TSSnapshotRestorationInfoPB {
+  // 16 bytes for UUID.
+  optional bytes id = 1;
+  optional fixed64 complete_time_ht = 2;
+}
+
+message TSSnapshotsInfoPB {
   repeated TSSnapshotScheduleInfoPB schedules = 1;
+  // Last restorations update hybrid time.
+  optional fixed64 last_restorations_update_ht = 2;
+  // Restorations info.
+  repeated TSSnapshotRestorationInfoPB restorations = 3;
 }
 
 // Heartbeat sent from the tablet-server to the master
@@ -884,11 +898,11 @@ message TSHeartbeatResponsePB {
 
   optional int32 cluster_config_version = 13;
 
-  optional int64 tablet_split_size_threshold_bytes = 14;
-
   optional int32 tablet_report_limit = 16;
 
-  optional TSSnapshotSchedulesInfoPB snapshot_schedules = 17;
+  optional TSSnapshotsInfoPB snapshots_info = 17;
+
+  optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
 }
 
 message TSInformationPB {
@@ -1127,7 +1141,12 @@ message DeleteTableResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 
+  // table_id for the requested table.
   optional bytes table_id = 2;
+  // Deleted table ids. Includes the requested table, and also
+  // any index tables that it may have.
+  repeated bytes deleted_table_ids = 4;
+
   // For index table, the indexed table of this index.
   optional TableIdentifierPB indexed_table = 3;
 }
@@ -1357,6 +1376,22 @@ message ListTabletServersResponsePB {
     optional int32 millis_since_heartbeat = 3;
     optional bool alive = 4;
     optional TServerMetricsPB metrics = 5;
+  }
+  repeated Entry servers = 2;
+}
+
+message ListLiveTabletServersRequestPB {
+  // If set to true, return only the live tservers which are in the primary/sync cluster.
+  optional bool primary_only = 1 [default = false];
+}
+
+message ListLiveTabletServersResponsePB {
+  optional MasterErrorPB error = 1;
+
+  message Entry {
+    required NodeInstancePB instance_id = 1;
+    optional TSRegistrationPB registration = 2;
+    optional bool isFromReadReplica = 3;
   }
   repeated Entry servers = 2;
 }
@@ -2176,6 +2211,8 @@ service MasterService {
 
   // Administrative/monitoring RPCs
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);
+  rpc ListLiveTabletServers(ListLiveTabletServersRequestPB)
+      returns (ListLiveTabletServersResponsePB);
   rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
   rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns

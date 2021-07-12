@@ -4,7 +4,7 @@ import _ from 'lodash';
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
-import { YBFormSelect, YBFormInput, YBSelectWithLabel } from '../../common/forms/fields';
+import { YBFormSelect, YBFormInput } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyArray, isNonEmptyObject, isEmptyString } from '../../../utils/ObjectUtils';
 import { YBModalForm } from '../../common/forms';
@@ -26,7 +26,9 @@ export default class RestoreBackup extends Component {
     ) {
       const { restoreToUniverseUUID } = values;
       const payload = {
-        storageConfigUUID: values.storageConfigUUID,
+        storageConfigUUID: values.storageConfigUUID.value
+          ? values.storageConfigUUID.value
+          : values.storageConfigUUID,
         storageLocation: values.storageLocation,
         actionType: 'RESTORE',
         parallelism: values.parallelism
@@ -60,15 +62,6 @@ export default class RestoreBackup extends Component {
   hasBackupInfo = () => {
     return isNonEmptyObject(this.props.backupInfo);
   };
-
-  /**
-   * This is an onchange event for storage type.
-   * 
-   * @param {string} value Input field value.
-   */
-   backupConfigType = (value) => {
-    this.props.initialValues.storageConfigUUID = value;
-  }
 
   render() {
     const {
@@ -126,7 +119,7 @@ export default class RestoreBackup extends Component {
       const labelName = config.metadata.provider + ' - ' + config.metadata.name;
       return { value: config.metadata.configUUID, label: labelName };
     });
-    
+
     const configTypeList = BackupStorageOptions(storageConfigs);
     const initialValues = this.props.initialValues;
     const isUniverseBackup =
@@ -168,6 +161,7 @@ export default class RestoreBackup extends Component {
             if (values.storageLocation) {
               payload.storageLocation = values.storageLocation.trim();
             }
+
             this.restoreBackup(payload);
           }}
           initialValues={initialValues}
@@ -176,10 +170,12 @@ export default class RestoreBackup extends Component {
           <Field
             name="storageConfigUUID"
             {...(hasBackupInfo ? { type: 'hidden' } : null)}
-            component={YBSelectWithLabel}
+            component={YBFormSelect}
+            className="config"
+            classNamePrefix="select-nested"
             label={'Storage'}
+            defaultValue={initialValues.storageConfigUUID.value}
             options={configTypeList}
-            onInputChanged={this.backupConfigType}
           />
           <Field
             name="storageLocation"

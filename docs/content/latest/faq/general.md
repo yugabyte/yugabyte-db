@@ -43,13 +43,13 @@ YugabyteDB feature highlights are listed below.
 
 ### SQL and ACID transactions
 
-- SQL [JOINs](../../quick-start/explore-ysql/#3-joins) and [distributed transactions](../../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
+- SQL [JOINs](../../quick-start/explore/ysql/#3-joins) and [distributed transactions](../../quick-start/explore/ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
 
-- Transactional [document store](../../architecture/concepts/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../../architecture/concepts/docdb-replication/replication/).
+- Transactional [document store](../../architecture/docdb/) backed by self-healing, strongly-consistent, synchronous [replication](../../architecture/docdb-replication/replication/).
 
 ### High performance and massive scalability
 
-- Low latency for geo-distributed applications with multiple [read consistency levels](../../architecture/concepts/docdb-replication/replication/#tunable-read-consistency) and [read replicas](../../architecture/concepts/docdb-replication/replication/#read-replicas).
+- Low latency for geo-distributed applications with multiple [read consistency levels](../../architecture/docdb-replication/replication/#tunable-read-consistency) and [read replicas](../../architecture/docdb-replication/replication/#read-replicas).
 
 - Linearly scalable throughput for ingesting and serving ever-growing datasets.
 
@@ -71,7 +71,7 @@ YugabyteDB feature highlights are listed below.
 
 ### Built-in enterprise features
 
-- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/cdc-architecture/) and [2 Data Center Deployments](../../architecture/2dc-deployments/) are also included in open source.
+- Starting in [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugabyteDB is the only open-source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. New features such as [Change Data Capture (CDC)](../../architecture/docdb-replication/change-data-capture//) and [2 Data Center Deployments](../../architecture/docdb-replication/async-replication/) are also included in open source.
 
 ## What client APIs are supported by YugabyteDB?
 
@@ -79,7 +79,7 @@ YugabyteDB supports two flavors of distributed SQL.
 
 ### Yugabyte SQL (YSQL)
 
-[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../../quick-start/explore-ysql/).
+[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Get started by [exploring YSQL features](../../quick-start/explore/ysql/).
 
 ### Yugabyte Cloud QL (YCQL)
 
@@ -87,7 +87,7 @@ YugabyteDB supports two flavors of distributed SQL.
 
 {{< note title="Note" >}}
 
-The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../develop/ecosystem-integrations/presto/) can help for simple cases).
+The YugabyteDB APIs are isolated and independent from one another today. This means that the data inserted or managed by one API cannot be queried by the other API. Additionally, there is no common way to access the data across the APIs (external frameworks such as [Presto](../../integrations/presto/) can help for simple cases).
 
 **The net impact is that you need to select an API first before undertaking detailed database schema/query design and implementation.**
 
@@ -107,7 +107,7 @@ If you have a specific use case in mind, share it in our [Slack community](https
 
 ## How does YugabyteDB's common document store work?
 
-[DocDB](../../architecture/concepts/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../../architecture/concepts/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/concepts/docdb-replication/replication/) and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
+[DocDB](../../architecture/docdb/), YugabyteDB's distributed document store common across all APIs, is built using a custom integration of Raft replication, distributed ACID transactions and the RocksDB storage engine. Specifically, DocDB enhances RocksDB by transforming it from a key-value store (with only primitive data types) to a document store (with complex data types). **Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key.** DocDB’s [sharding](../../architecture/docdb-sharding/sharding/), [replication/fault-tolerance](../../architecture/docdb-replication/replication/) and [distributed ACID transactions](../../architecture/transactions/distributed-txns/) architecture are all based on the [Google Spanner design](https://research.google.com/archive/spanner-osdi2012.pdf) first published in 2012. [How We Built a High Performance Document Store on RocksDB?](https://blog.yugabyte.com/how-we-built-a-high-performance-document-store-on-rocksdb/) provides an in-depth look into DocDB.
 
 ## What are the trade-offs involved in using YugabyteDB?
 
@@ -229,7 +229,8 @@ A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Co
 
 YugabyteDB has had the following major releases:
 
-- [v2.4](https://blog.yugabyte.com/) in January 2021.
+- [v2.6](https://blog.yugabyte.com/) in July 2021.
+- [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.
 - [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
 - [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.
 - [v2.0](https://blog.yugabyte.com/announcing-yugabyte-db-2-0-ga:-jepsen-tested,-high-performance-distributed-sql/ ) in September 2019.
@@ -271,7 +272,7 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). \
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate the behavior of databases under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugabyteDB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/).
 
 ## Is YugabyteDB open source?
 

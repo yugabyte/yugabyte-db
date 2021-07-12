@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -48,6 +49,7 @@ public class SessionControllerTest {
   CallbackController mockCallbackController;
   PlayCacheSessionStore mockSessionStore;
   QueryAlerts mockQueryAlerts;
+  AlertConfigurationWriter mockAlertConfigurationWriter;
 
   Application app;
 
@@ -58,6 +60,7 @@ public class SessionControllerTest {
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockQueryAlerts = mock(QueryAlerts.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
             .configure((Map) Helpers.inMemoryDatabase())
@@ -68,6 +71,8 @@ public class SessionControllerTest {
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
             .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+            .overrides(
+                bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();
     Helpers.start(app);
   }
@@ -81,7 +86,7 @@ public class SessionControllerTest {
   public void testValidLogin() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
@@ -97,7 +102,7 @@ public class SessionControllerTest {
   public void testLoginWithInvalidPassword() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password1");
@@ -115,10 +120,10 @@ public class SessionControllerTest {
   public void testLoginWithNullPassword() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
-    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result = assertYWSE(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
@@ -132,7 +137,7 @@ public class SessionControllerTest {
   public void testInsecureLoginValid() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer, "tc1@test.com", Role.ReadOnly);
+    ModelFactory.testUser(customer, "tc1@test.com", Role.ReadOnly);
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
@@ -150,14 +155,12 @@ public class SessionControllerTest {
   public void testInsecureLoginWithoutReadOnlyUser() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer, "tc1@test.com", Role.Admin);
+    ModelFactory.testUser(customer, "tc1@test.com", Role.Admin);
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
 
     Result result = route(fakeRequest("GET", "/api/insecure_login"));
-    JsonNode json = Json.parse(contentAsString(result));
-
     assertUnauthorized(result, "No read only customer exists.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -166,11 +169,9 @@ public class SessionControllerTest {
   public void testInsecureLoginInvalid() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer);
-    ConfigHelper configHelper = new ConfigHelper();
+    ModelFactory.testUser(customer);
 
     Result result = route(fakeRequest("GET", "/api/insecure_login"));
-    JsonNode json = Json.parse(contentAsString(result));
 
     assertUnauthorized(result, "Insecure login unavailable.");
     assertAuditEntry(0, customer.uuid);
@@ -201,6 +202,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertAuditEntry(0, c1.uuid);
+    assertNotNull(AlertRoute.getDefaultRoute(c1.uuid));
   }
 
   @Test
@@ -212,8 +214,8 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
-    JsonNode json = Json.parse(contentAsString(result));
+    Result result =
+        assertYWSE(() -> route(fakeRequest("POST", "/api/register").bodyJson(registerJson)));
 
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -254,7 +256,7 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testRegisterMultiCustomerWithoutAuth() {
+  public void testRegisterMultiCustomerNoAuth() {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
@@ -277,9 +279,7 @@ public class SessionControllerTest {
     registerJson2.put("name", "Foo");
 
     result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson2));
-    json = Json.parse(contentAsString(result));
 
-    assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
 
@@ -328,9 +328,7 @@ public class SessionControllerTest {
             fakeRequest("POST", "/api/register")
                 .bodyJson(registerJson3)
                 .header("X-AUTH-TOKEN", authToken2));
-    json = Json.parse(contentAsString(result));
 
-    assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
 
@@ -343,7 +341,8 @@ public class SessionControllerTest {
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
 
-    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result =
+        assertYWSE(() -> route(fakeRequest("POST", "/api/register").bodyJson(registerJson)));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
@@ -368,7 +367,8 @@ public class SessionControllerTest {
     startApp(false);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("email", "test@customer.com");
-    Result result = route(fakeRequest("POST", "/api/login").bodyJson(registerJson));
+    Result result =
+        assertYWSE(() -> route(fakeRequest("POST", "/api/login").bodyJson(registerJson)));
 
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -382,7 +382,7 @@ public class SessionControllerTest {
   public void testLogout() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
@@ -400,7 +400,7 @@ public class SessionControllerTest {
   public void testAuthTokenExpiry() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
@@ -420,7 +420,7 @@ public class SessionControllerTest {
   public void testApiTokenUpsert() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
@@ -445,7 +445,7 @@ public class SessionControllerTest {
   public void testApiTokenUpdate() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    Users user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password");
@@ -535,11 +535,11 @@ public class SessionControllerTest {
     Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     Provider provider = ModelFactory.awsProvider(customer);
-    ;
+
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
-    AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
             provider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -569,11 +569,11 @@ public class SessionControllerTest {
     Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     Provider provider = ModelFactory.awsProvider(customer);
-    ;
+
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
-    AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
             provider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -598,11 +598,11 @@ public class SessionControllerTest {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Provider provider = ModelFactory.awsProvider(customer);
-    ;
+
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "PlacementAZ-2", "subnet-2");
-    AvailabilityZone.create(r, "az-3", "PlacementAZ-3", "subnet-3");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
             provider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
