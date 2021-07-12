@@ -70,19 +70,31 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @Deprecated
-  @ApiOperation(value = "UI_ONLY", response = UUID.class, responseContainer = "List", hidden = true)
+  @ApiOperation(
+      value = "UI_ONLY",
+      response = UUID.class,
+      responseContainer = "List",
+      hidden = true,
+      nickname = "ListOfCustomers")
   public Result list() {
     ArrayNode responseJson = Json.newArray();
     Customer.getAll().forEach(c -> responseJson.add(c.getUuid().toString()));
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "List customer", response = Customer.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List customer",
+      response = Customer.class,
+      responseContainer = "List",
+      nickname = "getCustomer")
   public Result listWithData() {
     return YWResults.withData(Customer.getAll());
   }
 
-  @ApiOperation(value = "Get customer by UUID", response = CustomerDetailsData.class)
+  @ApiOperation(
+      value = "Get customer by UUID",
+      response = CustomerDetailsData.class,
+      nickname = "CustomerDetail")
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -199,7 +211,10 @@ public class CustomerController extends AuthenticatedController {
     return ok(Json.toJson(customer));
   }
 
-  @ApiOperation(value = "Delete customer by UUID", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Delete customer by UUID",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteCustomer")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

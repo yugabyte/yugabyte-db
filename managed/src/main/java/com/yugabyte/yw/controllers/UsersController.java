@@ -42,7 +42,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response with user.
    */
-  @ApiOperation(value = "User detail by UUID", response = Users.class)
+  @ApiOperation(value = "User detail by UUID", response = Users.class, nickname = "usersDetail")
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -54,7 +54,11 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response with users belonging to the customer.
    */
-  @ApiOperation(value = "List of Users", response = Users.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List of Users",
+      response = Users.class,
+      responseContainer = "List",
+      nickname = "ListOfUsers")
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
@@ -66,7 +70,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response of newly created user.
    */
-  @ApiOperation(value = "Create User", response = Users.class)
+  @ApiOperation(value = "Create User", response = Users.class, nickname = "createUsers")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "User",
@@ -95,7 +99,10 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response on whether or not delete user was successful or not.
    */
-  @ApiOperation(value = "Delete customer", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Delete customer",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteUsers")
   public Result delete(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
