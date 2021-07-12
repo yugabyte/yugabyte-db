@@ -182,7 +182,7 @@ ADD_YB_TEST_DEPENDENCIES(yb-admin-snapshot-schedule-test
 ADD_YB_TEST(yb-admin-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-test
   yb-admin)
-target_link_libraries(yb-admin-test cql_test_util)
+YB_TEST_TARGET_LINK_LIBRARIES(yb-admin-test cql_test_util)
 ADD_YB_TEST(yb-admin-multi-master-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-multi-master-test
   yb-admin)

@@ -319,7 +319,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
-  CHECKED_STATUS UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info);
+  CHECKED_STATUS UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
@@ -591,6 +591,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       missing_snapshot_schedules_
       GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
   int64_t snapshot_schedules_version_ = 0;
+  HybridTime last_restorations_update_ht_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

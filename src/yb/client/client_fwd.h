@@ -87,6 +87,7 @@ class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
 class YBTabletServer;
+class YBTabletServerPlacementInfo;
 
 struct YBTableInfo;
 
@@ -99,8 +100,12 @@ YB_STRONGLY_TYPED_BOOL(UseCache);
 namespace internal {
 
 class AsyncRpc;
+class GetTableSchemaRpc;
+class GetColocatedTabletSchemaRpc;
+class LookupRpc;
 class MetaCache;
 class TabletInvoker;
+class WriteRpc;
 
 struct InFlightOp;
 typedef std::shared_ptr<InFlightOp> InFlightOpPtr;

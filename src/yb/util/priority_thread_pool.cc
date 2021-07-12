@@ -209,6 +209,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
       {
         yb::ReverseLock<decltype(lock)> rlock(lock);
         for (;;) {
+          VLOG(4) << "Worker " << this << " running task: " << task_->ToString();
           task_->task()->Run(Status::OK(), this);
           if (!context_->WorkerFinished(this)) {
             break;
@@ -655,7 +656,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       case PriorityThreadPoolTaskState::kNotStarted:
         worker->SetTask(&*it);
         SetWorker(tasks_.project<PriorityTag>(it), worker);
-        VLOG(4) << "Picked task for " << worker;
+        VLOG(4) << "Picked task " << it->task()->ToString() << " for " << worker;
         return true;
       case PriorityThreadPoolTaskState::kRunning:
         VLOG(4) << "Only running tasks left, nothing for " << worker;

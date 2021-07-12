@@ -16,7 +16,7 @@ showAsideToc: true
 A string that's intended to identify a _UTC offset_ is never resolved in _pg_timezone_names.abbrev_.
 {{< /tip >}}
 
-You can discover, with _ad hoc_ queries. that the string _WEST_ occurs uniquely in _pg_timezone_names.abbrev_. Use the function [_occurrences()_](../helpers/#function-occurrences-string-in-text) to confirm it thus:
+You can discover, with _ad hoc_ queries, that the string _WEST_ occurs uniquely in _pg_timezone_names.abbrev_. Use the function [_occurrences()_](../helper-functions/#function-occurrences-string-in-text) to confirm it thus:
 
 ```plpgsql
 with c as (select occurrences('WEST') as r)
@@ -35,7 +35,7 @@ This is the result:
  false       | true          | false
 ```
 
-This means that the string _WEST_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helpers/#function-legal-scopes-for-syntax-context-string-in-text)_:
+This means that the string _WEST_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helper-functions/#function-legal-scopes-for-syntax-context-string-in-text)_:
 
 ```plpgsql
 select x from legal_scopes_for_syntax_context('WEST');
@@ -53,7 +53,9 @@ This is the result:
 
 You can copy-and-paste each offending statement to see each error occurring "live".
 
-This outcome supports the formulation of the rule that this page addresses. The values in _pg_timezone_names.abbrev_ are useful only for decorating the _to_char()_ rendition of a _timestamptz_ value, thus:
+**This outcome supports the formulation of the rule that this page addresses.**
+
+The values in _pg_timezone_names.abbrev_ are useful only for decorating the _to_char()_ rendition of a _timestamptz_ value, thus:
 
 ```plpgsql
 set timezone = 'Atlantic/Faeroe';
@@ -117,9 +119,9 @@ The calendar assistant, at least if it knew already what your location and your 
 
 <p>A timezone abbreviation (in the world of human convention) is unique <i>only</i> within the scope of the timezone to which it belongs. Even then, it's not a very useful notion. with one caveat<i>[1]</i>, because the combination of date-time and timezone tells you unambiguously if it's Winter Time or Summer Time.</p>
 
-This is why _pg_timezone_names.abbrev_ is never used to resolve a string that's intended to identify a UTC offset.
+This is why _pg_timezone_names.abbrev_ is never used to resolve a string that's intended to identify a _UTC offset_.
 
-_[1]_ The caveat is that the abbreviation _is_ useful, just once per year, during the period of one hour at the "fall back" moment when your wall-clock reads the same time after the moment as it did before. See the [discussion](../../../../date-time-data-types-semantics/type-timestamp/#just-after-fall-back), in the section _"The plain timestamp and timestamptz data types"_ of this code example:
+_[1]_ The caveat is that the abbreviation _is_ useful, just once per year, during the period of one hour at the "fall back" moment when your wall-clock reads the same time after that moment as it did before. See the [discussion](../../../../date-time-data-types-semantics/type-timestamp/#just-after-fall-back), in the section _"The plain timestamp and timestamptz data types"_ of this code example:
 
 ```plpgsql
 set timezone = 'America/Los_Angeles';

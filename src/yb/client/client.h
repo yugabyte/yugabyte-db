@@ -558,6 +558,10 @@ class YBClient {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
+  CHECKED_STATUS ListLiveTabletServers(
+      std::vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers,
+      bool primary_only = false);
+
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
@@ -716,7 +720,7 @@ class YBClient {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  void LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
+  void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,
                          LookupTabletCallback callback);
@@ -732,7 +736,7 @@ class YBClient {
                         LookupTabletRangeCallback callback);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
-      const std::shared_ptr<const YBTable>& table,
+      const std::shared_ptr<YBTable>& table,
       const std::string& partition_key,
       CoarseTimePoint deadline);
 

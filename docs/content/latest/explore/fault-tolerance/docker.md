@@ -46,7 +46,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 ## Prerequisite
 
@@ -94,9 +94,9 @@ ycqlsh> CREATE KEYSPACE users;
 
 ```sql
 ycqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
-	                               email text,
-	                               password text,
-	                               profile frozen<map<text, text>>);
+                                    email text,
+                                    password text,
+                                    profile frozen<map<text, text>>);
 ```
 
 ## 2. Insert data through a node
@@ -124,7 +124,7 @@ Query all the rows.
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -146,7 +146,7 @@ $ docker exec -it yb-tserver-n5 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N5_ADDR
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -196,7 +196,7 @@ Now query the data.
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -241,7 +241,7 @@ Run the query.
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
         superman@yugabyte.com |                    {'firstname': 'Clark', 'lastname': 'Kent'}

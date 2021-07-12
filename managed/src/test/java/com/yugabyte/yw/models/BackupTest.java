@@ -118,7 +118,7 @@ public class BackupTest extends FakeDBApplication {
         ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
     UUID taskUUID = UUID.randomUUID();
     b.setTaskUUID(taskUUID);
-    Backup fb = Backup.fetchByTaskUUID(taskUUID);
+    Backup fb = Backup.fetchAllBackupsByTaskUUID(taskUUID).get(0);
     assertNotNull(fb);
     assertEquals(fb, b);
   }
@@ -133,8 +133,8 @@ public class BackupTest extends FakeDBApplication {
             CustomerTask.TargetType.Backup,
             CustomerTask.TaskType.Create,
             "Demo Backup");
-    Backup fb = Backup.fetchByTaskUUID(ct.getTaskUUID());
-    assertNull(fb);
+    List<Backup> fb = Backup.fetchAllBackupsByTaskUUID(ct.getTaskUUID());
+    assertEquals(0, fb.size());
   }
 
   @Test
@@ -150,8 +150,8 @@ public class BackupTest extends FakeDBApplication {
             CustomerTask.TargetType.Table,
             CustomerTask.TaskType.Create,
             "Demo Backup");
-    Backup fb = Backup.fetchByTaskUUID(ct.getTaskUUID());
-    assertNull(fb);
+    List<Backup> fb = Backup.fetchAllBackupsByTaskUUID(ct.getTaskUUID());
+    assertEquals(0, fb.size());
   }
 
   @Test

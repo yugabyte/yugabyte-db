@@ -10,25 +10,28 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
+import java.util.UUID;
+
+@Slf4j
 public class DestroyEncryptionAtRest extends AbstractTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(DestroyEncryptionAtRest.class);
+  private final EncryptionAtRestManager keyManager;
 
-  public EncryptionAtRestManager keyManager = null;
-
-  // Timeout for failing to respond to pings.
-  private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
+  @Inject
+  protected DestroyEncryptionAtRest(
+      BaseTaskDependencies baseTaskDependencies, EncryptionAtRestManager keyManager) {
+    super(baseTaskDependencies);
+    this.keyManager = keyManager;
+  }
 
   public static class Params extends EncryptionAtRestKeyParams {
     public UUID customerUUID = null;
@@ -37,12 +40,6 @@ public class DestroyEncryptionAtRest extends AbstractTaskBase {
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
   }
 
   @Override
@@ -58,7 +55,7 @@ public class DestroyEncryptionAtRest extends AbstractTaskBase {
           String.format(
               "Error caught cleaning up encryption at rest for universe %s",
               taskParams().universeUUID);
-      LOG.error(errMsg, e);
+      log.error(errMsg, e);
     }
   }
 }

@@ -10,7 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -18,14 +18,18 @@ import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+@Slf4j
 public class UpdateDiskSize extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UpdateDiskSize.class);
+
+  @Inject
+  protected UpdateDiskSize(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends DiskIncreaseFormData {}
 
@@ -62,11 +66,11 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error={}.", getName(), t);
+      log.error("Error executing task {} with error={}.", getName(), t);
       throw t;
     } finally {
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

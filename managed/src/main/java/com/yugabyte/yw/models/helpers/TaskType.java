@@ -52,6 +52,10 @@ public enum TaskType {
 
   ReplaceRootVolume("subtasks.ReplaceRootVolume"),
 
+  ChangeInstanceType("subtasks.ChangeInstanceType"),
+
+  PersistResizeNode("subtasks.PersistResizeNode"),
+
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
@@ -80,6 +84,8 @@ public enum TaskType {
   UpdateDiskSize("UpdateDiskSize"),
 
   StartMasterOnNode("StartMasterOnNode"),
+
+  SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
@@ -194,7 +200,11 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
-  UniverseSetTlsParams("subtasks.UniverseSetTlsParams");
+  UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
+
+  AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
+
+  ResetUniverseVersion("subtasks.ResetUniverseVersion");
 
   private String relativeClassPath;
 

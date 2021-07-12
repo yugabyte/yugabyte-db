@@ -2,7 +2,7 @@
 title: Rule 4 (for string intended to specify the UTC offset) [YSQL]
 headerTitle: Rule 4
 linkTitle: 4 ~abbrevs.abbrev before ~names.name
-description: ZZZ [YSQL].
+description: Substantiates the rule that a string that's intended to identify a UTC offset is resolved first in pg_timezone_abbrevs.abbrev and, only if this fails, then in pg_timezone_names.name. [YSQL]
 menu:
   latest:
     identifier: rule-4
@@ -22,7 +22,7 @@ The page for [Rule 3](../rule-3) tested with a string that's found uniquely in _
 
 ## Test with a string that's found uniquely in 'pg_timezone_names.name'
 
-You can discover, with _ad hoc_ queries. that the string _Europe/Amsterdam_ occurs only in _pg_timezone_names.name_. Use the function [_occurrences()_](../helpers/#function-occurrences-string-in-text) to confirm it thus
+You can discover, with _ad hoc_ queries. that the string _Europe/Amsterdam_ occurs only in _pg_timezone_names.name_. Use the function [_occurrences()_](../helper-functions/#function-occurrences-string-in-text) to confirm it thus
 
 ```plpgsql
 with c as (select occurrences('Europe/Amsterdam') as r)
@@ -41,7 +41,7 @@ This is the result:
  true        | false         | false
 ```
 
-This means that the string _Europe/Amsterdam_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helpers/#function-legal-scopes-for-syntax-context-string-in-text)_:
+This means that the string _Europe/Amsterdam_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helper-functions/#function-legal-scopes-for-syntax-context-string-in-text)_:
 
 ```plpgsql
 select x from legal_scopes_for_syntax_context('Europe/Amsterdam');
@@ -62,7 +62,7 @@ So _pg_timezone_names.name_ is searched in each of the three syntax contexts.
 
 The outcomes of the test that substantiated [Rule-3](../rule-3) and of the test [above](#test-with-a-string-that-s-found-uniquely-in-pg-timezone-names-names) raise the question of priority: what if the string that's intended to specify the _UTC offset_ occurs in _both_ columns?
 
-You can discover, with _ad hoc_ queries. that the string _MET_ occurs both in _pg_timezone_names.name_ and in _pg_timezone_abbrevs.abbrev_. Use the function [_occurrences()_](../helpers/#function-occurrences-string-in-text) to confirm it thus
+You can discover, with _ad hoc_ queries. that the string _MET_ occurs both in _pg_timezone_names.name_ and in _pg_timezone_abbrevs.abbrev_. Use the function [_occurrences()_](../helper-functions/#function-occurrences-string-in-text) to confirm it thus
 
 ```plpgsql
 with c as (select occurrences('MET') as r)
@@ -81,7 +81,7 @@ This is the result:
  true        | false         | true
 ```
 
-This means that the string _MET_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helpers/#function-legal-scopes-for-syntax-context-string-in-text)_:
+This means that the string _MET_ can be used as a probe, using the function [_legal_scopes_for_syntax_context()_](../helper-functions/#function-legal-scopes-for-syntax-context-string-in-text)_:
 
 ```plpgsql
 select x from legal_scopes_for_syntax_context('MET');
@@ -135,7 +135,7 @@ This is the result:
  MET    | 02:00:00     | true   | 01:00:00
 ```
 
-Of course, there is just one row because both  _pg_timename_names.name_ and _pg_timezone_abbrevs.abbrev_ have unique values. You can see that the query happens to have been executed during the Day Light Savings Time period for the timezone _MET_. This is fortunate for the usefulness of the test that follows. Look up _MET_ in the [_extended_timezone_names_](../../../extended-timezone-names/) view. 
+Of course, there is just one row because both  _pg_timezone_names.name_ and _pg_timezone_abbrevs.abbrev_ have unique values. You can see that the query happens to have been executed during the Day Light Savings Time period for the timezone _MET_. This is fortunate for the usefulness of the test that follows. Look up _MET_ in the [_extended_timezone_names_](../../../extended-timezone-names/) view. 
 
 ```plpgsql
 select name, std_abbrev, dst_abbrev, std_offset, dst_offset
@@ -152,8 +152,6 @@ This is the result:
 ```
 
 So the test that follows would not be useful during _MET's_ winter.
-
-This outcome supports the formulation of the rule that this page addresses.
 
 ## Can the test be carried out during the winter?
 
@@ -226,7 +224,7 @@ This is the result:
  WET    | WET        | WEST       |  00:00:00              |  01:00:00              |  00:00:00
 ```
 
-The blank lines were added by hand to highlight the rows where the value of _"offset from ~abbrevs"_ differs from one of _"std offset from ~names"_ or _"dst offset from ~names"_. Notice that when it does differ,  it always differs from the summer value. This means that the test cannot be carried out in the winter.
+The blank lines were added by hand to highlight the rows where the value of _"offset from ~abbrevs"_ differs from one of _"std offset from ~names"_ or _"dst offset from ~names"_. Notice that when it does differ, it always differs from the summer value. This means that the test cannot be carried out in the winter.
 
 The names with the summer difference are _CET_, _EET_, _MET_, and _WET_.
 
@@ -243,7 +241,7 @@ But, here, there is a critical difference in how the rule is formulated. It's fo
     ts_with_tz_2 == ts_with_tz_1
 ```
 
-Execute the test for a set of two kinds of string, as the comments in the initialization code of the _strings text[]_ array explain. Notice the _if_ test that outputs the value of _string_ only when the _timestamptz_ values produced by the two different syntaxes disagree. And for each such output, it shows the difference (as an _interval_ value, of course) between the two disagreeing _timestamptz_ values
+Execute the test for a set of two kinds of string, as the comments in the initialization code of the _strings text[]_ array explain. Notice that the _if_ test means that the value of _string_ is output only when the _timestamptz_ values produced by the two different syntaxes disagree. And for each such output, it shows the difference (as an _interval_ value, of course) between the two disagreeing _timestamptz_ values
 
 ```plpgsql
 drop function if exists priority_rule_demo() cascade;
@@ -311,8 +309,10 @@ This is the result:
  WET                                                                  01:00
 ```
 
-Notice that the difference, when there is one, is always equal to the difference between the _UTC offset_ values read from the _"~names.name"_ column and the _"~abbrevs.abbrev"_ column— _one hour_ in each case.
+Notice that the difference, when it's non-zero, is always equal to the difference between the _UTC offset_ values read from the _"~names.name"_ column and the _"~abbrevs.abbrev"_ column— _one hour_ in each case.
+
+**This outcome supports the formulation of the rule that this page addresses.**
 
 The results also highlight an insidious risk. Suppose that a developer doesn't know the priority rule and assumes (erroneously, but arguably reasonably) that a timezone name never occurs in _pg_timezone_abbrevs.abbrev_ (or, maybe, that if it did then _pg_timezone_names.name_ would win). And assume that she carries out acceptance tests of her application code, using any of the four timezone names where the _~names_ offset and the _~abbrevs_ offset differ only in the summer—and that she does this testing in the winter. All will seem to be good. And then the summer will bring silent wrong results!
 
-Yugabyte recommends that you program your application code defensively so that you explicitly avoid this risk by ensuring that names that are used to specify the _UTC offset_ occur _only_ in _pg_timezone_names.name_. The section [Recommended practice for specifying the UTC offset](../../../recommendation/) explains how to do this.
+Yugabyte recommends that you program your application code defensively so that you explicitly avoid this risk by ensuring that names that are used to specify the _UTC offset_ occur _only_ in _pg_timezone_names.name_. The section [Recommended practice for specifying the _UTC offset_](../../../recommendation/) explains how to do this.

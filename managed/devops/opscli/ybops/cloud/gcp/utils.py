@@ -588,6 +588,16 @@ class GoogleCloudAdmin():
                                                         body=body).execute()
                 self.waiter.wait(operation, zone=zone)
 
+    def change_instance_type(self, zone, instance_name, newInstanceType):
+        body = {
+            "machineType": "zones/" + zone + "/machineTypes/" + newInstanceType
+        }
+        operation = self.compute.instances().setMachineType(project=self.project,
+                                                            zone=zone,
+                                                            instance=instance_name,
+                                                            body=body).execute()
+        self.waiter.wait(operation, zone=zone)
+
     def delete_instance(self, zone, instance_name):
         operation = self.compute.instances().delete(project=self.project,
                                                     zone=zone,

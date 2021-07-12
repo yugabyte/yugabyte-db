@@ -159,3 +159,13 @@ const char *YBGetCurrentZone()
 {
 	return getenv("FLAGS_placement_zone");
 }
+
+bool
+YBIsCollationEnabled()
+{
+#ifdef USE_ICU
+	return true;
+#else
+	return false;
+#endif
+}

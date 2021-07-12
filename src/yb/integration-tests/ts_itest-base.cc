@@ -91,7 +91,7 @@ void TabletServerIntegrationTestBase::CreateCluster(
 // in 'tablet_servers_'.
 void TabletServerIntegrationTestBase::CreateTSProxies() {
   CHECK(tablet_servers_.empty());
-  CHECK_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
+  CHECK_OK(itest::CreateTabletServerMap(cluster_->GetLeaderMasterProxy().get(),
                                         proxy_cache_.get(),
                                         &tablet_servers_));
 }
@@ -109,7 +109,7 @@ void TabletServerIntegrationTestBase::WaitForReplicasAndUpdateLocations() {
     rpc::RpcController controller;
     kTableName.SetIntoTableIdentifierPB(req.mutable_table());
     controller.set_timeout(MonoDelta::FromSeconds(1));
-    CHECK_OK(cluster_->master_proxy()->GetTableLocations(req, &resp, &controller));
+    CHECK_OK(cluster_->GetLeaderMasterProxy()->GetTableLocations(req, &resp, &controller));
     CHECK_OK(controller.status());
     CHECK(!resp.has_error()) << "Response had an error: " << resp.error().ShortDebugString();
 
@@ -367,6 +367,12 @@ Status TabletServerIntegrationTestBase::CheckTabletServersAreAlive(int num_table
 void TabletServerIntegrationTestBase::TearDown() {
   client_.reset();
   if (cluster_) {
+    for (const auto* daemon : cluster_->master_daemons()) {
+      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive());
+    }
+    for (const auto* daemon : cluster_->tserver_daemons()) {
+      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive());
+    }
     cluster_->Shutdown();
   }
   tablet_servers_.clear();
@@ -375,9 +381,11 @@ void TabletServerIntegrationTestBase::TearDown() {
 
 Result<std::unique_ptr<client::YBClient>> TabletServerIntegrationTestBase::CreateClient() {
   // Connect to the cluster.
-  return client::YBClientBuilder()
-             .add_master_server_addr(yb::ToString(cluster_->master()->bound_rpc_addr()))
-             .Build();
+  client::YBClientBuilder builder;
+  for (const auto* master : cluster_->master_daemons()) {
+    builder.add_master_server_addr(AsString(master->bound_rpc_addr()));
+  }
+  return builder.Build();
 }
 
 // Create a table with a single tablet.

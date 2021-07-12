@@ -140,7 +140,7 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
-  "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19",
+  "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "1.17",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
@@ -171,7 +171,8 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
-  "com.google.cloud" % "google-cloud-storage" % "1.115.0"
+  "com.google.cloud" % "google-cloud-storage" % "1.115.0",
+  "org.projectlombok" % "lombok" % "1.18.20"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -313,7 +314,6 @@ libraryDependencies ++= Seq(
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
 
 
-dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 

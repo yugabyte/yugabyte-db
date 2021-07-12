@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -15,6 +14,7 @@ import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
+import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -27,8 +27,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@Api(
+    value = "Node Instances",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class NodeInstanceController extends AuthenticatedController {
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject Commissioner commissioner;
 
@@ -41,6 +43,10 @@ public class NodeInstanceController extends AuthenticatedController {
    * @param nodeUuid the node UUID
    * @return JSON response with Node data
    */
+  @ApiOperation(
+      value = "Get node instance by UUID",
+      response = NodeInstance.class,
+      nickname = "getNodeInstance")
   public Result get(UUID customerUuid, UUID nodeUuid) {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
@@ -54,6 +60,10 @@ public class NodeInstanceController extends AuthenticatedController {
    * @param zoneUuid the zone UUID
    * @return JSON response with list of nodes
    */
+  @ApiOperation(
+      value = "List of node instances by zone",
+      response = NodeInstance.class,
+      responseContainer = "List")
   public Result listByZone(UUID customerUuid, UUID zoneUuid) {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone.getOrBadRequest(zoneUuid);
@@ -66,6 +76,10 @@ public class NodeInstanceController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(
+      value = "List of node instances by provider",
+      response = NodeInstance.class,
+      responseContainer = "List")
   public Result listByProvider(UUID customerUUID, UUID providerUUID) {
     List<NodeInstance> regionList;
     try {
@@ -83,6 +97,19 @@ public class NodeInstanceController extends AuthenticatedController {
    * @param zoneUuid the zone UUID
    * @return JSON response of newly created Nodes
    */
+  @ApiOperation(
+      value = "Create node instance",
+      response = NodeInstance.class,
+      responseContainer = "Map",
+      nickname = "createNodeInstance")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node instance",
+        value = "Node instance data to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeInstanceFormData",
+        paramType = "body")
+  })
   public Result create(UUID customerUuid, UUID zoneUuid) {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone.getOrBadRequest(zoneUuid);
@@ -109,6 +136,7 @@ public class NodeInstanceController extends AuthenticatedController {
    * Endpoint deletes the configured instance for a provider. Since instance name and instance uuid
    * are absent in a pristine (unused) instance We use IP to query for Instance and delete it
    */
+  @ApiOperation(value = "Delete node instance by IP")
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
     // Validate customer UUID and universe UUID and AWS provider.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -131,6 +159,15 @@ public class NodeInstanceController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "Update node actions", response = YWResults.YWTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node action",
+        value = "Node action data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeActionFormData",
+        paramType = "body")
+  })
   public Result nodeAction(UUID customerUUID, UUID universeUUID, String nodeName) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
