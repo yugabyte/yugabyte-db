@@ -22,7 +22,11 @@ import java.util.UUID;
 public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
-  @ApiOperation(value = "list", response = Schedule.class, responseContainer = "List")
+  @ApiOperation(
+      value = "list",
+      response = Schedule.class,
+      responseContainer = "List",
+      nickname = "listOfSchedule")
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -30,7 +34,7 @@ public class ScheduleController extends AuthenticatedController {
     return YWResults.withData(schedules);
   }
 
-  @ApiOperation(value = "delete", response = YWResults.class)
+  @ApiOperation(value = "delete", response = YWResults.class, nickname = "deleteSchedule")
   public Result delete(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
 
