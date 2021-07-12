@@ -724,7 +724,7 @@ if (USING_LINUXBREW)
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
 endif()
 
-message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
+message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")
 
 # Define full paths to libpq and libyb_pgbackend shared libraries. These libraries are built as part
 # of building PostgreSQL. We need to declare these as by-products of running the PostgreSQL build
