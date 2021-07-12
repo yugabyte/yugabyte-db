@@ -75,8 +75,8 @@ public class CustomerController extends AuthenticatedController {
       response = UUID.class,
       responseContainer = "List",
       hidden = true,
-      nickname = "ListOfCustomers")
-  public Result list() {
+      nickname = "ListOfCustomersUUID")
+  public Result listUuids() {
     ArrayNode responseJson = Json.newArray();
     Customer.getAll().forEach(c -> responseJson.add(c.getUuid().toString()));
     return ok(responseJson);
@@ -86,8 +86,8 @@ public class CustomerController extends AuthenticatedController {
       value = "List customer",
       response = Customer.class,
       responseContainer = "List",
-      nickname = "getCustomer")
-  public Result listWithData() {
+      nickname = "ListOfCustomers")
+  public Result list() {
     return YWResults.withData(Customer.getAll());
   }
 
@@ -133,7 +133,10 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "Update customer by UUID", response = Customer.class)
+  @ApiOperation(
+      value = "Update customer by UUID",
+      response = Customer.class,
+      nickname = "UpdateCustomer")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Customer",

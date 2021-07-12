@@ -142,6 +142,20 @@ public class CustomerTaskController extends AuthenticatedController {
     return YWResults.withData(taskList);
   }
 
+  @ApiOperation(
+      value = "List task",
+      response = CustomerTaskFormData.class,
+      responseContainer = "List")
+  public Result tasksList(UUID customerUUID, UUID universeUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    List<CustomerTaskFormData> flattenList = new ArrayList<CustomerTaskFormData>();
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, universeUUID);
+    for (List<CustomerTaskFormData> task : taskList.values()) {
+      flattenList.addAll(task);
+    }
+    return YWResults.withData(flattenList);
+  }
+
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
     Customer.getOrBadRequest(customerUUID);
