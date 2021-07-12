@@ -75,7 +75,7 @@ const DEFAULT_PORTS = {
 };
 
 const DEFAULT_STORAGE_TYPES = {
-  AWS: 'GP2',
+  AWS: 'GP3',
   GCP: 'Persistent',
   AZU: 'Premium_LRS'
 };
@@ -212,7 +212,7 @@ export default class ClusterFields extends Component {
           data: { universeDetails }
         }
       }
-    } = this.props;    
+    } = this.props;
 
     // Set default software version in case of create
     if (
@@ -844,7 +844,7 @@ export default class ClusterFields extends Component {
     if (clusterType === 'primary') {
       updateFormField('primary.enableEncryptionAtRest', toggleValue);
       this.setState({ enableEncryptionAtRest: toggleValue });
-      /* 
+      /*
        * Check if toggle is set to true and fetch list of KMS configs if
        * the PromiseState is not success. Note that if returned data is
        * an empty array, it is considered EMPTY and not SUCCESS, so if
