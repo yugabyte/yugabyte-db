@@ -337,7 +337,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
   rpc::RpcController rpc;
   auto master_proxy = std::make_shared<master::MasterServiceProxy>(
       &consumer_client()->proxy_cache(),
-      consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   {
     rpc.Reset();
@@ -413,7 +413,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     master::SysClusterConfigEntryPB cluster_info;
-    auto cm = consumer_cluster()->leader_mini_master()->master()->catalog_manager();
+    auto cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->master()->catalog_manager();
     CHECK_OK(cm->GetClusterConfig(&cluster_info));
     setup_universe_req.set_producer_id(cluster_info.cluster_uuid());
 
@@ -440,7 +440,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
   auto producer_master_proxy = std::make_shared<master::MasterServiceProxy>(
       &producer_client()->proxy_cache(),
-      producer_cluster()->leader_mini_master()->bound_rpc_addr());
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   std::unique_ptr<client::YBClient> client;
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
@@ -546,7 +546,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   auto master_proxy = std::make_shared<master::MasterServiceProxy>(
       &consumer_client()->proxy_cache(),
-      consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc.Reset();
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -686,10 +686,10 @@ TEST_P(TwoDCTest, PollWithProducerNodesRestart) {
 
   // Stop the Master and wait for failover.
   LOG(INFO) << "Failover to new Master";
-  MiniMaster* old_master = producer_cluster()->leader_mini_master();
+  MiniMaster* old_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
   ASSERT_OK(old_master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-  producer_cluster()->leader_mini_master()->Shutdown();
-  MiniMaster* new_master = producer_cluster()->leader_mini_master();
+  ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->Shutdown();
+  MiniMaster* new_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
   ASSERT_OK(producer_cluster()->WaitForAllTabletServers());
@@ -1250,7 +1250,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &v_resp));
   ASSERT_EQ(v_resp.entry().producer_master_addresses_size(), 1);
   ASSERT_EQ(HostPortFromPB(v_resp.entry().producer_master_addresses(0)),
-            producer_cluster()->leader_mini_master()->bound_rpc_addr());
+            ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), t_count));
@@ -1272,7 +1272,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
 
     auto master_proxy = std::make_shared<master::MasterServiceProxy>(
         &consumer_client()->proxy_cache(),
-        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+        ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
     ASSERT_FALSE(alter_resp.has_error());
 
@@ -1288,9 +1288,9 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
 
   // Stop the old master.
   LOG(INFO) << "Failover to new Master";
-  MiniMaster* old_master = producer_cluster()->leader_mini_master();
-  producer_cluster()->leader_mini_master()->Shutdown();
-  MiniMaster* new_master = producer_cluster()->leader_mini_master();
+  MiniMaster* old_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+  ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->Shutdown();
+  MiniMaster* new_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
   ASSERT_OK(producer_cluster()->WaitForAllTabletServers());
@@ -1307,7 +1307,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationMasters) {
 
     auto master_proxy = std::make_shared<master::MasterServiceProxy>(
         &consumer_client()->proxy_cache(),
-        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+        ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
     ASSERT_FALSE(alter_resp.has_error());
 
@@ -1356,7 +1356,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
 
     auto master_proxy = std::make_shared<master::MasterServiceProxy>(
         &consumer_client()->proxy_cache(),
-        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+        ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
     ASSERT_FALSE(alter_resp.has_error());
 
@@ -1385,7 +1385,7 @@ TEST_P(TwoDCTest, AlterUniverseReplicationTables) {
 
     auto master_proxy = std::make_shared<master::MasterServiceProxy>(
         &consumer_client()->proxy_cache(),
-        consumer_cluster()->leader_mini_master()->bound_rpc_addr());
+        ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
     ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
     ASSERT_FALSE(alter_resp.has_error());
 

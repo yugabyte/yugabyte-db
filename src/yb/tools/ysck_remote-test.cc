@@ -88,7 +88,7 @@ class RemoteYsckTest : public YBTest {
     mini_cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(mini_cluster_->Start());
 
-    master_rpc_addr_ = mini_cluster_->GetLeaderMasterBoundRpcAddr();
+    master_rpc_addr_ = ASSERT_RESULT(mini_cluster_->GetLeaderMasterBoundRpcAddr());
 
     // Connect to the cluster.
     client_ = ASSERT_RESULT(mini_cluster_->CreateClient());
