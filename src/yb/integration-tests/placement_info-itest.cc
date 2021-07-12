@@ -67,8 +67,8 @@ class PlacementInfoTest : public YBTest {
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
-                                                cluster_->leader_mini_master()->bound_rpc_addr()));
+    proxy_.reset(new master::MasterServiceProxy(
+        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr()));
 
     // Create the table.
     YBSchema schema;
@@ -132,7 +132,8 @@ class PlacementInfoTest : public YBTest {
     YBClientBuilder client_builder;
     client_builder.set_tserver_uuid(client_uuid);
     client_builder.set_cloud_info_pb(cloud_info);
-    client_builder.add_master_server_addr(cluster_->leader_mini_master()->bound_rpc_addr_str());
+    client_builder.add_master_server_addr(
+        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr_str());
     auto client = CHECK_RESULT(client_builder.Build());
 
     // Select tserver.

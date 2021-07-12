@@ -781,7 +781,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoS
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   const std::string kDatabaseName = "testdb";
   master::CatalogManager *catalog_manager =
-      cluster_->leader_mini_master()->master()->catalog_manager();
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
   scoped_refptr<master::TabletInfo> sys_tablet;
   std::array<int, 4> num_tables;
@@ -808,7 +808,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   ASSERT_OK(cluster_->RestartSync());
   {
     // Refresh stale local variables after RestartSync.
-    catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
     master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
@@ -826,7 +826,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
   master::CatalogManager *catalog_manager =
-      cluster_->leader_mini_master()->master()->catalog_manager();
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
@@ -842,7 +842,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
   // Refresh stale local variable after RestartSync.
-  catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+  catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
 }
 
@@ -853,7 +853,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   constexpr int kMaxNumSleeps = 20;
   int num_tables_before, num_tables_after;
   master::CatalogManager *catalog_manager =
-      cluster_->leader_mini_master()->master()->catalog_manager();
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
   scoped_refptr<master::TabletInfo> sys_tablet;
 
@@ -885,7 +885,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_OK(cluster_->RestartSync());
   {
     // Refresh stale local variables after RestartSync.
-    catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
     master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
@@ -912,9 +912,9 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
   }
   // Failover to a new master.
   LOG(INFO) << "Failover to new Master";
-  auto old_master = cluster_->leader_mini_master();
-  cluster_->leader_mini_master()->Shutdown();
-  auto new_master = cluster_->leader_mini_master();
+  auto old_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  auto new_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
   // Wait for all the TabletServers to report in, so we can run CREATE TABLE with working replicas.

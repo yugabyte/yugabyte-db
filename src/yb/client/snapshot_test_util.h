@@ -48,9 +48,9 @@ class SnapshotTestUtil {
   void SetCluster(MiniCluster* cluster) {
       cluster_ = cluster;
   }
-  master::MasterBackupServiceProxy MakeBackupServiceProxy() {
-      return master::MasterBackupServiceProxy(proxy_cache_,
-                                              cluster_->leader_mini_master()->bound_rpc_addr());
+  Result<master::MasterBackupServiceProxy> MakeBackupServiceProxy() {
+    return master::MasterBackupServiceProxy(
+        proxy_cache_, VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
   }
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id);

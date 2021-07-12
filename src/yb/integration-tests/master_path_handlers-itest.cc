@@ -77,7 +77,8 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
-    Endpoint master_http_endpoint = cluster_->leader_mini_master()->bound_http_addr();
+    Endpoint master_http_endpoint =
+        ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_http_addr();
     master_http_url_ = "http://" + AsString(master_http_endpoint);
   }
 };

@@ -387,9 +387,12 @@ int MiniCluster::LeaderMasterIdx() {
   return -1;
 }
 
-MiniMaster* MiniCluster::leader_mini_master() {
-  auto idx = LeaderMasterIdx();
-  return idx != -1 ? mini_master(idx) : nullptr;
+Result<MiniMaster*> MiniCluster::GetLeaderMiniMaster() {
+  const auto idx = LeaderMasterIdx();
+  if (idx == -1) {
+    return STATUS(TimedOut, "No leader master has been elected");
+  }
+  return mini_master(idx);
 }
 
 void MiniCluster::Shutdown() {
@@ -498,9 +501,15 @@ Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < kTabletReportWaitTimeSeconds) {
+    auto leader_mini_master = GetLeaderMiniMaster();
+    if (!leader_mini_master.ok()) {
+      continue;
+    }
     locations->Clear();
-    Status s =
-        leader_mini_master()->master()->catalog_manager()->GetTabletLocations(tablet_id, locations);
+    Status s = (*leader_mini_master)
+                   ->master()
+                   ->catalog_manager()
+                   ->GetTabletLocations(tablet_id, locations);
     if (s.ok() && ((locations->stale() && expected_count == 0) ||
         (!locations->stale() && locations->replicas_size() == expected_count))) {
       return Status::OK();
@@ -526,9 +535,9 @@ Status MiniCluster::WaitForTabletServerCount(int count,
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < kRegistrationWaitTimeSeconds) {
-    auto leader = leader_mini_master();
-    if (leader) {
-      leader->master()->ts_manager()->GetAllDescriptors(descs);
+    auto leader = GetLeaderMiniMaster();
+    if (leader.ok()) {
+      (*leader)->master()->ts_manager()->GetAllDescriptors(descs);
       if (descs->size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
@@ -569,8 +578,8 @@ void MiniCluster::ConfigureClientBuilder(YBClientBuilder* builder) {
   }
 }
 
-HostPort MiniCluster::DoGetLeaderMasterBoundRpcAddr() {
-  return leader_mini_master()->bound_rpc_addr();
+Result<HostPort> MiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+  return VERIFY_RESULT(GetLeaderMiniMaster())->bound_rpc_addr();
 }
 
 void MiniCluster::AllocatePortsForDaemonType(
@@ -878,7 +887,8 @@ int NumRunningFlushes(MiniCluster* cluster) {
 
 Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name) {
-  auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
+  auto* catalog_manager =
+      VERIFY_RESULT(cluster->GetLeaderMiniMaster())->master()->catalog_manager();
   master::TableIdentifierPB identifier;
   table_name.SetIntoTableIdentifierPB(&identifier);
   return catalog_manager->FindTable(identifier);
@@ -888,7 +898,11 @@ Status WaitForInitDb(MiniCluster* cluster) {
   const auto start_time = CoarseMonoClock::now();
   const auto kTimeout = RegularBuildVsSanitizers(600s, 1800s);
   while (CoarseMonoClock::now() <= start_time + kTimeout) {
-    auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
+    auto leader_mini_master = cluster->GetLeaderMiniMaster();
+    if (!leader_mini_master.ok()) {
+      continue;
+    }
+    auto* catalog_manager = (*leader_mini_master)->master()->catalog_manager();
     master::IsInitDbDoneRequestPB req;
     master::IsInitDbDoneResponsePB resp;
     auto status = catalog_manager->IsInitDbDone(&req, &resp);

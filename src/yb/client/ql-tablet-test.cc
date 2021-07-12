@@ -283,8 +283,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     EXPECT_OK(cluster_->FlushTablets());
 
-    auto source_infos = GetTabletInfos(kTable1Name);
-    auto dest_infos = GetTabletInfos(kTable2Name);
+    auto source_infos = VERIFY_RESULT(GetTabletInfos(kTable1Name));
+    auto dest_infos = VERIFY_RESULT(GetTabletInfos(kTable2Name));
     EXPECT_EQ(source_infos.size(), dest_infos.size());
     for (size_t i = 0; i != source_infos.size(); ++i) {
       std::string start1, end1, start2, end2;
@@ -323,20 +323,21 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  scoped_refptr<master::TableInfo> GetTableInfo(const YBTableName& table_name) {
-    auto* catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+  Result<scoped_refptr<master::TableInfo>> GetTableInfo(const YBTableName& table_name) {
+    auto* catalog_manager =
+        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
     auto all_tables = catalog_manager->GetTables(master::GetTablesMode::kAll);
     for (const auto& table : all_tables) {
       if (table->name() == table_name.table_name()) {
         return table;
       }
     }
-    return nullptr;
+    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
   }
 
-  std::vector<scoped_refptr<master::TabletInfo>> GetTabletInfos(const YBTableName& table_name) {
-    auto table_info = GetTableInfo(table_name);
-    EXPECT_NE(nullptr, table_info);
+  Result<std::vector<scoped_refptr<master::TabletInfo>>> GetTabletInfos(
+      const YBTableName& table_name) {
+    auto table_info = VERIFY_RESULT(GetTableInfo(table_name));
     std::vector<scoped_refptr<master::TabletInfo>> tablets;
     table_info->GetAllTablets(&tablets);
     return tablets;
@@ -352,7 +353,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
       auto master_proxy = std::make_shared<master::MasterServiceProxy>(
           &client_->proxy_cache(),
-          cluster_->leader_mini_master()->bound_rpc_addr());
+          VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
       rpc::RpcController rpc;
       rpc.set_timeout(MonoDelta::FromSeconds(30));
 
@@ -446,7 +447,7 @@ TEST_F(QLTabletTest, TransactionsTableTablets) {
   ASSERT_OK(WaitForTableCreation(table_name, &resp));
   ASSERT_TRUE(resp.done());
 
-  auto tablets = GetTabletInfos(table_name);
+  auto tablets = ASSERT_RESULT(GetTabletInfos(table_name));
   ASSERT_EQ(tablets.size(), cluster_->num_tablet_servers() * FLAGS_yb_num_shards_per_tserver);
 }
 

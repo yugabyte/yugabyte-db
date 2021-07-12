@@ -1679,7 +1679,7 @@ void ExternalMiniCluster::ConfigureClientBuilder(client::YBClientBuilder* builde
   }
 }
 
-HostPort ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+Result<HostPort> ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return GetLeaderMaster()->bound_rpc_addr();
 }
 

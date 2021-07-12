@@ -238,7 +238,7 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "First restart";
 
-  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
   ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
                                            table_.table()->GetPartitionCount()));
 
@@ -251,14 +251,15 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "Flush";
 
-  auto catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+  auto catalog_manager =
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   tablet::TabletPeerPtr tablet_peer;
   ASSERT_OK(catalog_manager->GetTabletPeer(master::kSysCatalogTabletId, &tablet_peer));
   ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "Second restart";
 
-  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
 
   LOG(INFO) << "Verify";
 
@@ -292,7 +293,7 @@ TEST_F(BackupTxnTest, CleanupAfterRestart) {
   ASSERT_FALSE(ASSERT_RESULT(snapshot_util_->ListSnapshots()).empty());
 
   SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
-  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
 
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsCleaned());
 }
@@ -402,7 +403,7 @@ TEST_F(BackupTxnTest, CompleteAndBounceMaster) {
 
   ASSERT_OK(client_->DeleteTable(kTableName));
 
-  auto leader = cluster_->leader_mini_master();
+  auto leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   leader->Shutdown();
 
   ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));

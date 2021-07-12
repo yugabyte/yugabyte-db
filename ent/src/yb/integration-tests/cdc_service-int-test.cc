@@ -413,7 +413,7 @@ TEST_P(CDCServiceTest, TestBootstrapProducer) {
   constexpr int kNRows = 100;
   auto master_proxy = std::make_shared<master::MasterServiceProxy>(
       &client_->proxy_cache(),
-      cluster_->leader_mini_master()->bound_rpc_addr());
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
   std::string tablet_id;
   GetTablet(&tablet_id);

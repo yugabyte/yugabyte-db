@@ -170,8 +170,8 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
   DontVerifyClusterBeforeNextTearDown();
 
   auto master_0_is_leader = [this]() {
-    auto l = cluster_->leader_mini_master();
-    return l != nullptr && l->permanent_uuid() == cluster_->mini_master(0)->permanent_uuid();
+    auto l = cluster_->GetLeaderMiniMaster();
+    return l.ok() && (*l)->permanent_uuid() == cluster_->mini_master(0)->permanent_uuid();
   };
 
   // Break connectivity so that :
@@ -183,8 +183,11 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
   bool connectivity_broken = false;
 
   ASSERT_OK(WaitFor([this, &master_0_is_leader, &break_connectivity, &connectivity_broken]() {
-    if (LastReceivedOpId(cluster_->leader_mini_master()) !=
-        LastReceivedOpId(cluster_->mini_master(0))) {
+    auto leader_mini_master = cluster_->GetLeaderMiniMaster();
+    if (!leader_mini_master.ok()) {
+      return false;
+    }
+    if (LastReceivedOpId(*leader_mini_master) != LastReceivedOpId(cluster_->mini_master(0))) {
       if (connectivity_broken) {
         for (const auto& p : break_connectivity) {
           RestoreMasterConnectivityTo(p.first, p.second);

@@ -66,7 +66,7 @@ class MiniClusterBase {
     return builder.Build(std::move(messenger));
   }
 
-  HostPort GetLeaderMasterBoundRpcAddr() {
+  Result<HostPort> GetLeaderMasterBoundRpcAddr() {
     return DoGetLeaderMasterBoundRpcAddr();
   }
 
@@ -80,7 +80,7 @@ class MiniClusterBase {
  private:
   virtual void ConfigureClientBuilder(client::YBClientBuilder* builder) = 0;
 
-  virtual HostPort DoGetLeaderMasterBoundRpcAddr() = 0;
+  virtual Result<HostPort> DoGetLeaderMasterBoundRpcAddr() = 0;
 };
 
 }  // namespace yb

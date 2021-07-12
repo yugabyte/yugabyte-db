@@ -67,7 +67,9 @@ Status TwoDCTestBase::SetupUniverseReplication(
 
   req.set_producer_id(universe_id);
   string master_addr = producer_cluster->GetMasterAddresses();
-  if (leader_only) master_addr = producer_cluster->leader_mini_master()->bound_rpc_addr_str();
+  if (leader_only) {
+    master_addr = VERIFY_RESULT(producer_cluster->GetLeaderMiniMaster())->bound_rpc_addr_str();
+  }
   auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
 
@@ -78,7 +80,7 @@ Status TwoDCTestBase::SetupUniverseReplication(
 
   auto master_proxy = std::make_shared<master::MasterServiceProxy>(
       &consumer_client->proxy_cache(),
-      consumer_cluster->leader_mini_master()->bound_rpc_addr());
+      VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -99,7 +101,7 @@ Status TwoDCTestBase::VerifyUniverseReplication(
 
     auto master_proxy = std::make_shared<master::MasterServiceProxy>(
         &consumer_client->proxy_cache(),
-        consumer_cluster->leader_mini_master()->bound_rpc_addr());
+        VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
@@ -120,7 +122,7 @@ Status TwoDCTestBase::ToggleUniverseReplication(
 
   auto master_proxy = std::make_shared<master::MasterServiceProxy>(
       &consumer_client->proxy_cache(),
-      consumer_cluster->leader_mini_master()->bound_rpc_addr());
+      VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -140,7 +142,7 @@ Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_clu
 
     auto master_proxy = std::make_shared<master::MasterServiceProxy>(
         &consumer_client->proxy_cache(),
-        consumer_cluster->leader_mini_master()->bound_rpc_addr());
+        VERIFY_RESULT(consumer_cluster->GetLeaderMiniMaster())->bound_rpc_addr());
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
@@ -156,7 +158,11 @@ Status TwoDCTestBase::GetCDCStreamForTable(
     req.set_table_id(table_id);
     resp->Clear();
 
-    Status s = producer_cluster()->leader_mini_master()->master()->catalog_manager()->
+    auto leader_mini_master = producer_cluster()->GetLeaderMiniMaster();
+    if (!leader_mini_master.ok()) {
+      return false;
+    }
+    Status s = (*leader_mini_master)->master()->catalog_manager()->
         ListCDCStreams(&req, resp);
     return s.ok() && !resp->has_error() && resp->streams_size() == 1;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
@@ -187,7 +193,7 @@ Status TwoDCTestBase::DeleteUniverseReplication(
 
   auto master_proxy = std::make_shared<master::MasterServiceProxy>(
       &client->proxy_cache(),
-      cluster->leader_mini_master()->bound_rpc_addr());
+      VERIFY_RESULT(cluster->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
