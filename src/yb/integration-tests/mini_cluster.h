@@ -156,9 +156,9 @@ class MiniCluster : public MiniClusterBase {
     return mini_master(0);
   }
 
-  // Returns the leader Master for this MiniCluster or NULL if none can be
-  // found. May block until a leader Master is ready.
-  master::MiniMaster* leader_mini_master();
+  // Returns the leader Master for this MiniCluster or error if none can be
+  // elected within kMasterLeaderElectionWaitTimeSeconds. May block until a leader Master is ready.
+  Result<master::MiniMaster*> GetLeaderMiniMaster();
 
   int LeaderMasterIdx();
 
@@ -226,7 +226,7 @@ class MiniCluster : public MiniClusterBase {
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  HostPort DoGetLeaderMasterBoundRpcAddr() override;
+  Result<HostPort> DoGetLeaderMasterBoundRpcAddr() override;
 
   // Allocates ports for the given daemon type and saves them to the ports vector. Does not
   // overwrite values in the ports vector that are non-zero already.
