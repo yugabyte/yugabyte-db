@@ -90,11 +90,11 @@ class GcpCloud(AbstractCloud):
         self.get_admin().unmount_disk(args.zone, args.search_pattern, name)
 
     def stop_instance(self, args):
-        self.get_admin().stop_instance(args["zone"], args["id"])
+        self.admin.stop_instance(args.zone, args.search_pattern)
 
     def start_instance(self, args, ssh_port):
-        self.get_admin().start_instance(args["zone"], args["id"])
-        self._wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
+        self.admin.start_instance(args.zone, args.search_pattern)
+        self._wait_for_ssh_port(args.private_ip, args.search_pattern, ssh_port)
 
     def delete_instance(self, args):
         host_info = self.get_host_info(args)
@@ -278,7 +278,7 @@ class GcpCloud(AbstractCloud):
         self.get_admin().update_disk(args, instance['id'])
 
     def change_instance_type(self, args, newInstanceType):
-        self.get_admin().change_instance_type(args['zone'], args['id'], newInstanceType)
+        self.get_admin().change_instance_type(args.zone, args.search_pattern, newInstanceType)
 
     def get_per_region_meta(self, args):
         if hasattr(args, "custom_payload") and args.custom_payload:

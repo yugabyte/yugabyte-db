@@ -1082,7 +1082,7 @@ def _wait_for_disk_modifications(ec2_client, vol_ids):
     # It should retry for a 6 hour limit
     retry_num = int((6 * 3600) / AbstractCloud.SSH_WAIT_SECONDS) + 1
     # Loop till the progress is at 100 or the limit is reached
-    while retry_num is not 0:
+    while retry_num != 0:
         response = ec2_client.describe_volumes_modifications(VolumeIds=vol_ids)
         # The response format can be found here:
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_volumes_modifications
@@ -1099,5 +1099,5 @@ def _wait_for_disk_modifications(ec2_client, vol_ids):
         time.sleep(AbstractCloud.SSH_WAIT_SECONDS)
         retry_num -= 1
 
-    if retry_num is 0:
+    if retry_num == 0:
         raise YBOpsRuntimeError("wait_for_disk_modifications failed. Retry limit reached.")
