@@ -15,14 +15,14 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/enable-authentication/ysql" class="nav-link active">
+    <a href="../row-level-geo-partitioning/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 </ul>
 
-Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparent schema change propagation across the regions would benefit from this feature. 
+Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparent schema change propagation across the regions would benefit from this feature.
 
 {{< tip title="Moving data closer to users" >}}
 Geo-partitioning makes it easy for developers to move data closer to users for:
@@ -33,7 +33,7 @@ Geo-partitioning makes it easy for developers to move data closer to users for:
 
 Geo-partitioning of data enables fine-grained, row-level control over the placement of table data across different geographical locations. This is accomplished in two simple steps – first, partitioning a table into user-defined table partitions, and subsequently pinning these partitions to the desired geographic locations by configuring metadata for each partition.
 
-* The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to. 
+* The first step of creating user-defined table partitions is done by designating a column of the table as the partition column that will be used to geo-partition the data. The value of this column for a given row is used to determine the table partition that the row belongs to.
 * The second step involves creating partitions in the respective geographic locations using tablespaces. Note that the data in each partition can be configured to get replicated across multiple zones in a cloud provider region, or across multiple nearby regions / datacenters.
 
 An entirely new geographic partition can be introduced dynamically by adding a new table partition and configuring it to keep the data resident in the desired geographic location. Data in one or more of the existing geographic locations can be purged efficiently simply by dropping the necessary partitions. Users of traditional RDBMS would recognize this scheme as being close to user-defined list-based table partitions, with the ability to control the geographic location of each partition.
@@ -44,7 +44,7 @@ This tutorial explains this feature in the context of an example scenario descri
 
 ## Example scenario
 
-Let us look at this feature in the context of a use case. Say that a large but imaginary bank, Yuga Bank, wants to offer an online banking service to users in many countries by processing their deposits, withdrawals, and transfers. 
+Let us look at this feature in the context of a use case. Say that a large but imaginary bank, Yuga Bank, wants to offer an online banking service to users in many countries by processing their deposits, withdrawals, and transfers.
 
 The following attributes would be required in order to build such a service.
 
@@ -71,7 +71,7 @@ First, we create the parent table that contains a `geo_partition` column which i
         geo_partition VARCHAR,
         account_type VARCHAR NOT NULL,
         amount NUMERIC NOT NULL,
-        txn_type VARCHAR NOT NULL, 
+        txn_type VARCHAR NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
     ) PARTITION BY LIST (geo_partition);
     ```
@@ -101,29 +101,29 @@ First, we create the parent table that contains a `geo_partition` column which i
     );
     ```
 
-1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third default partition for the rest of the regions called `transactions_default`.
+1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third partition for US region called `transactions_us`.
 
     ```sql
-    CREATE TABLE transactions_eu 
-        PARTITION OF transactions 
-          (user_id, account_id, geo_partition, account_type, 
+    CREATE TABLE transactions_eu
+        PARTITION OF transactions
+          (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('EU') TABLESPACE eu_central_1_tablespace;;
 
-    CREATE TABLE transactions_india 
+    CREATE TABLE transactions_india
         PARTITION OF transactions
-          (user_id, account_id, geo_partition, account_type, 
+          (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('India') TABLESPACE ap_south_1_tablespace;
 
-    CREATE TABLE transactions_default 
+    CREATE TABLE transactions_us
         PARTITION OF transactions
-          (user_id, account_id, geo_partition, account_type, 
+          (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
-        DEFAULT TABLESPACE us_west_2_tablespace;
+        FOR VALUES IN ('US') TABLESPACE us_west_2_tablespace;
     ```
 
 1. Use the `\d` command to view the table and partitions you've created so far.
@@ -137,9 +137,9 @@ First, we create the parent table that contains a `geo_partition` column which i
      Schema |         Name         | Type  |  Owner
     --------+----------------------+-------+----------
     public | transactions         | table | yugabyte
-    public | transactions_default | table | yugabyte
     public | transactions_eu      | table | yugabyte
     public | transactions_india   | table | yugabyte
+    public | transactions_us      | table | yugabyte
     (4 rows)
     ```
 
@@ -171,7 +171,7 @@ Expanded display is used automatically.
 1. Insert a row into the table with the `geo_partition` column value set to `EU` below.
 
     ```sql
-    INSERT INTO transactions 
+    INSERT INTO transactions
         VALUES (100, 10001, 'EU', 'checking', 120.50, 'debit');
     ```
 
@@ -220,7 +220,7 @@ yugabyte=# select count(*) from transactions_india;
 ```
 
 ```sql
-yugabyte=# select count(*) from transactions_default;
+yugabyte=# select count(*) from transactions_us;
 ```
 
 ```sql
@@ -232,9 +232,9 @@ yugabyte=# select count(*) from transactions_default;
 Now, let's insert data into the other partitions.
 
 ```sql
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (200, 20001, 'India', 'savings', 1000, 'credit');
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (300, 30001, 'US', 'checking', 105.25, 'debit');
 ```
 
@@ -256,7 +256,7 @@ created_at    | 2020-11-07 21:45:26.011636
 ```
 
 ```sql
-yugabyte=# select * from transactions_default;
+yugabyte=# select * from transactions_us;
 ```
 
 ```output
@@ -270,14 +270,14 @@ txn_type      | debit
 created_at    | 2020-11-07 21:45:26.067444
 ```
 
-## Step 4. Users travelling across geographic locations
+## Step 3. Users travelling across geographic locations
 
 In order to make things interesting, let us say user 100, whose first transaction was performed in the EU region travels to India and the US, and performs two other transactions. This can be simulated by using the following statements.
 
 ```sql
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (100, 10001, 'India', 'savings', 2000, 'credit');
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (100, 10001, 'US', 'checking', 105, 'debit');
 ```
 
@@ -299,7 +299,7 @@ created_at    | 2020-11-07 21:56:26.760253
 ```
 
 ```sql
-yugabyte=# select * from transactions_default where user_id=100;
+yugabyte=# select * from transactions_us where user_id=100;
 ```
 
 ```output
@@ -346,7 +346,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:28:11.056236
 ```
 
-## Step 5. Adding a new geographic location
+## Step 4. Adding a new geographic location
 
 Assume that after a while, our fictitious Yuga Bank gets a lot of customers across the globe, and wants to offer the service to residents of Brazil, which also has data residency laws. Thanks to row-level geo-partitioning, this can be accomplished easily. We can simply add a new partition and pin it to the AWS South America (São Paulo) region `sa-east-1` as shown below.
 
@@ -369,7 +369,7 @@ CREATE TABLE transactions_brazil
 And with that, the new region is ready to store transactions of the residents of Brazil.
 
 ```sql
-INSERT INTO transactions 
+INSERT INTO transactions
     VALUES (400, 40001, 'Brazil', 'savings', 1000, 'credit');
 
 select * from transactions_brazil;

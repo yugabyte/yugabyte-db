@@ -498,10 +498,11 @@ $ ./bin/yb-admin \
 
 Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:7000/`) and clicking **Tables** in the navigation bar. Navigate to the appropriate table whose placement information you're changing, and check the Replication Info section.
 
-{{< note title="Note" >}}
-* Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
+{{< note title="Notes" >}}
 
-* Use this command to create custom placement policies only for YCQL tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
+
+Use this command to create custom placement policies only for YCQL tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
 {{< /note >}}
 
 ---
