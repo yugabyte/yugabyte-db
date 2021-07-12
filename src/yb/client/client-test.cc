@@ -560,7 +560,7 @@ TEST_P(ClientTestForceMasterLookup, TestConcurrentLookups) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto t1 = std::thread([&]() { ASSERT_NO_FATALS(
@@ -578,7 +578,7 @@ TEST_F(ClientTest, TestLookupAllTablets) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto future = client_->LookupAllTabletsFuture(
@@ -594,7 +594,7 @@ TEST_F(ClientTest, TestPointThenRangeLookup) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
@@ -612,7 +612,7 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
