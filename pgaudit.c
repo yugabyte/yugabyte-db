@@ -1342,6 +1342,7 @@ pgaudit_ExecutorCheckPerms_hook(List *rangeTabls, bool abort)
 static void
 pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
                             const char *queryString,
+                            bool readOnlyTree,
                             ProcessUtilityContext context,
                             ParamListInfo params,
                             QueryEnvironment *queryEnv,
@@ -1419,11 +1420,11 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
 
     /* Call the standard process utility chain. */
     if (next_ProcessUtility_hook)
-        (*next_ProcessUtility_hook) (pstmt, queryString, context, params,
-                                     queryEnv, dest, qc);
+        (*next_ProcessUtility_hook) (pstmt, queryString, readOnlyTree, context,
+                                     params, queryEnv, dest, qc);
     else
-        standard_ProcessUtility(pstmt, queryString, context, params,
-                                queryEnv, dest, qc);
+        standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+                                params, queryEnv, dest, qc);
 
     /*
      * Process the audit event if there is one.  Also check that this event
