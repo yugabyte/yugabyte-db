@@ -208,6 +208,9 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
     SHARED_LIB "${PROFILER_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS tcmalloc profiler)
   ADD_CXX_FLAGS("-DTCMALLOC_ENABLED")
+  # Each executable should link with tcmalloc directly so that it does not allocate memory using
+  # system malloc before loading a library that depends on tcmalloc.
+  ADD_EXE_LINKER_FLAGS("-ltcmalloc")
 else()
   message("Not using tcmalloc, YB_TCMALLOC_ENABLED is '${YB_TCMALLOC_ENABLED}'")
 endif()
