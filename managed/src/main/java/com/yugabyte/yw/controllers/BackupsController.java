@@ -256,13 +256,8 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("The back up process you want to stop is not exist");
     } finally {
       Util.removeProcessOrBadRequest(backupUUID);
-    } 
-    if (backup.taskUUID!= null){
-      waitForTask(backup.taskUUID);
     }
-    else{
-    Thread.sleep(500);
-    }
+    waitForTask(backup.taskUUID);
     backup.transitionState(BackupState.Stopped);
     return YWResults.withData("Successfully stopped the backup process.");
   }
