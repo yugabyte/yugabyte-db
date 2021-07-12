@@ -1,24 +1,24 @@
 ---
-title: Building Applications with Hasura
-linkTitle: Hasura
-description: Building Applications with Hasura
+title: Benchmarking
+linkTitle: Benchmarking
+description: Using the benchmark tool with Hasura
 aliases:
 menu:
   latest:
-    identifier: graphql-hasura
-    parent: integrations
+    identifier: graphql
+    parent: hasura
     weight: 580
 isTocNested: true
 showAsideToc: true
 ---
 
-You can use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB to power your GraphQL applications with a distributed SQL database.
+When you use the Hasura GraphQL Engine with YugabyteDB, you have an option to use a benchmark tool created by Yugabyte.
 
-For more information, see the following:
+For information on Hasura, see the following:
 
 - [Hasura GraphQL Engine documentation](https://docs.hasura.io)
-- [Scaling GraphQL Subscriptions to One Million Subscribers Linearly](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/1M_subscriptions.md)
-- [High Availability of GraphQL Subscriptions Under Infrastructure Failures](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/resilient_graphql_apps.md)
+- [Scaling GraphQL Subscriptions to One Million Subscribers Linearly](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/graphql-subscription-with-yugabytedb/1M_subscriptions.md)
+- [High Availability of GraphQL Subscriptions Under Infrastructure Failures](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/graphql-subscription-with-yugabytedb/resilient_graphql_apps.md)
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ To use Hasura with YugabyteDB, the configuration should be similar to PostgreSQL
 
 ## Setting Up the Benchmark
 
-You can use a [benchmark tool](https://github.com/yugabyte/yugabyte-graphql-apps/blob/master/graphql-subscription-perf-tool) to deploy the benchmark setup on a Kubernetes cluster. The entire setup runs inside Kubernetes and includes the following components: 
+You can use a [benchmark tool](https://github.com/yugabyte/yugabyte-graphql-apps/tree/master/graphql-subscription-with-yugabytedb/graphql-subscription-perf-tool) to deploy the benchmark setup on a Kubernetes cluster. The entire setup runs inside Kubernetes and includes the following components: 
 
 - A YugabyteDB cluster running natively inside Kubernetes.
 - A Hasura Kubernetes service.
