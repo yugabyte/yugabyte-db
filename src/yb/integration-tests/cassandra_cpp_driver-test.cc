@@ -2682,7 +2682,12 @@ TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
   thread_holder.WaitAndStop(30s);
   auto total_writes_value = total_writes.load();
   LOG(INFO) << "Total writes: " << total_writes_value;
-  ASSERT_GE(total_writes_value, RegularBuildVsSanitizers(1500, 50));
+#ifndef NDEBUG
+  auto min_total_writes = RegularBuildVsSanitizers(750, 50);
+#else
+  auto min_total_writes = 1500;
+#endif
+  ASSERT_GE(total_writes_value, min_total_writes);
 }
 
 class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {
