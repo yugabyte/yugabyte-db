@@ -403,7 +403,7 @@ Result<std::vector<LiveFileMetaData>> DeleteFileTest::AddFiles(
   }
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
-  return std::move(metadata);
+  return metadata;
 }
 
 size_t DeleteFileTest::TryDeleteFiles(
