@@ -1,9 +1,8 @@
 ---
-title: Point-in-Time Recovery for YSQL
+title: Point-in-Time Recovery
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
-description: Restore data from a specific point in time in YugabyteDB for YSQL
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+description: Restore data from a specific point in time in YugabyteDB
 menu:
   stable:
     identifier: point-in-time-recovery
