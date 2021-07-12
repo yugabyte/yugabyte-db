@@ -29,7 +29,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/server/webserver.h"
 
+#include <iosfwd>
 #include <string>
 
 #include <gflags/gflags.h>
@@ -39,14 +41,16 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/server/default-path-handlers.h"
-#include "yb/server/webserver.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/test_util.h"
+#include "yb/util/zlib.h"
 
 using std::string;
+using strings::Substitute;
 
 DECLARE_int32(webserver_max_post_length_bytes);
+DECLARE_int64(webserver_compression_threshold_kb);
 
 namespace yb {
 
@@ -72,6 +76,7 @@ class WebserverTest : public YBTest {
     ASSERT_OK(server_->GetBoundAddresses(&addrs));
     ASSERT_EQ(addrs.size(), 1);
     addr_ = addrs[0];
+    url_ = Substitute("http://$0", ToString(addr_));
   }
 
  protected:
@@ -79,6 +84,7 @@ class WebserverTest : public YBTest {
   faststring buf_;
   gscoped_ptr<Webserver> server_;
   Endpoint addr_;
+  string url_;
 
   string static_dir_;
 };
@@ -91,6 +97,56 @@ TEST_F(WebserverTest, TestIndexPage) {
 
   // Should have link to the root path handlers (Home).
   ASSERT_STR_CONTAINS(buf_.ToString(), "Home");
+}
+
+TEST_F(WebserverTest, TestHttpCompression) {
+  std::ostringstream oss;
+  string decoded_str;
+  FLAGS_webserver_compression_threshold_kb = 0;
+
+  // Curl with gzip compression enabled.
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
+                           {"Accept-Encoding: deflate, br, gzip"}));
+
+  // If compressed successfully, we should be able to uncompress.
+  ASSERT_OK(zlib::Uncompress(Slice(buf_.ToString()), &oss));
+  decoded_str = oss.str();
+
+  // Should have expected title.
+  ASSERT_STR_CONTAINS(decoded_str, "YugabyteDB");
+
+  // Should have expected header when compressed with headers returned.
+  curl_.set_return_headers(true);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
+                          {"Accept-Encoding: deflate, megaturbogzip,  gzip , br"}));
+  ASSERT_STR_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
+
+
+  // Curl with compression disabled.
+  curl_.set_return_headers(true);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_));
+  // Check expected header.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "Content-Type:");
+
+  // Check unexpected header.
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
+
+  // Should have expected title.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "YugabyteDB");
+
+  // Curl with compression enabled but not accepted by YugabyteDB.
+  curl_.set_return_headers(true);
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec,
+                           {"Accept-Encoding: megaturbogzip, deflate, xz"}));
+  // Check expected header.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "HTTP/1.1 200 OK");
+
+  // Check unexpected header.
+  ASSERT_STR_NOT_CONTAINS(buf_.ToString(), "Content-Encoding: gzip");
+
+  // Should have expected title.
+  ASSERT_STR_CONTAINS(buf_.ToString(), "YugabyteDB");
+
 }
 
 TEST_F(WebserverTest, TestDefaultPaths) {
