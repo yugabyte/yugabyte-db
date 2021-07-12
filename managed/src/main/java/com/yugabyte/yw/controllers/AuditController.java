@@ -27,7 +27,11 @@ public class AuditController extends AuthenticatedController {
    *
    * @return JSON response with audit entries belonging to the user.
    */
-  @ApiOperation(value = "list", response = Audit.class, responseContainer = "List")
+  @ApiOperation(
+      value = "list",
+      response = Audit.class,
+      responseContainer = "List",
+      nickname = "ListOfAudit")
   public Result list(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);

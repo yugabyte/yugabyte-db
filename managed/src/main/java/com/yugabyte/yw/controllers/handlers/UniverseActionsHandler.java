@@ -174,7 +174,8 @@ public class UniverseActionsHandler {
     }
 
     if (!universeDetails.rootAndClientRootCASame
-        || (universeDetails.rootCA != universeDetails.clientRootCA)) {
+        || (universeDetails.rootCA != null
+            && !universeDetails.rootCA.equals(universeDetails.clientRootCA))) {
       throw new YWServiceException(
           Http.Status.BAD_REQUEST, "RootCA and ClientRootCA cannot be different for Upgrade.");
     }
