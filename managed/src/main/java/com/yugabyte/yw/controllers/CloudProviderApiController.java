@@ -30,7 +30,11 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
 
-  @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
+  @ApiOperation(
+      value = "listProvider",
+      response = Provider.class,
+      responseContainer = "List",
+      nickname = "getListOfProviders")
   public Result list(UUID customerUUID) {
     return YWResults.withData(Provider.getAll(customerUUID));
   }
@@ -46,7 +50,10 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
-  @ApiOperation(value = "createProvider", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "createProvider",
+      response = YWResults.YWTask.class,
+      nickname = "createProviders")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateProviderRequest",

@@ -18,6 +18,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.Common.TableType;
@@ -43,10 +45,13 @@ public class CreateTable extends AbstractTaskBase {
   // Parameters for create table task.
   public static class Params extends UniverseTaskParams {
     // The name of the table to be created.
+    @ApiModelProperty(value = "Table name")
     public String tableName;
     // The type of the table to be created (Redis, YSQL)
+    @ApiModelProperty(value = "Table type")
     public TableType tableType;
     // The schema of the table to be created (required for YSQL)
+    @ApiModelProperty(value = "Table details")
     public TableDetails tableDetails;
   }
 

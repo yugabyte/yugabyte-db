@@ -19,6 +19,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import play.mvc.Controller;
 import play.mvc.Result;
 
@@ -28,12 +32,14 @@ import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
+@Api(value = "Metamaster", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
 
   @Inject KubernetesManager kubernetesManager;
 
+  @ApiOperation(value = "get masters list", response = MastersList.class)
   public Result get(UUID universeUUID) {
     // Lookup the entry for the instanceUUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -45,18 +51,22 @@ public class MetaMasterController extends Controller {
     return YWResults.withData(masters);
   }
 
+  @ApiOperation(value = "get master address", response = String.class)
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.MASTER);
   }
 
+  @ApiOperation(value = "get YQL server address", response = String.class)
   public Result getYQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YQLSERVER);
   }
 
+  @ApiOperation(value = "get YSQL server address", response = String.class)
   public Result getYSQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YSQLSERVER);
   }
 
+  @ApiOperation(value = "get redis server address", response = String.class)
   public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
   }

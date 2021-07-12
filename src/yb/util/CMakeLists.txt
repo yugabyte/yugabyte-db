@@ -259,12 +259,14 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  zlib.cc
   async_util.cc
   )
 
 set(UTIL_LIBS
   boost_system
   boost_thread
+  boost_atomic
   cds
   icui18n
   icuuc

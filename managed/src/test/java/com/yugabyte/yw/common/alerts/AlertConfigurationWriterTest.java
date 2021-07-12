@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
@@ -46,6 +47,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Mock private RuntimeConfigFactory configFactory;
 
+  private AlertDefinitionGroupService alertDefinitionGroupService;
+
   private AlertDefinitionService alertDefinitionService;
 
   private AlertConfigurationWriter configurationWriter;
@@ -56,11 +59,16 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Mock private Config globalConfig;
 
+  private AlertDefinitionGroup group;
+
   private AlertDefinition definition;
 
   @Before
   public void setUp() {
-    alertDefinitionService = new AlertDefinitionService();
+    AlertService alertService = new AlertService();
+    alertDefinitionService = new AlertDefinitionService(alertService);
+    alertDefinitionGroupService =
+        new AlertDefinitionGroupService(alertDefinitionService, configFactory);
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     when(globalConfig.getInt(AlertConfigurationWriter.CONFIG_SYNC_INTERVAL_PARAM)).thenReturn(1);
     when(configFactory.globalRuntimeConf()).thenReturn(globalConfig);
@@ -70,6 +78,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
             executionContext,
             actorSystem,
             alertDefinitionService,
+            alertDefinitionGroupService,
             swamperHelper,
             queryHelper,
             configFactory);
@@ -77,7 +86,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse(customer.getCustomerId());
 
-    definition = ModelFactory.createAlertDefinition(customer, universe);
+    group = ModelFactory.createAlertDefinitionGroup(customer, universe);
+    definition = ModelFactory.createAlertDefinition(customer, universe, group);
   }
 
   @Test
@@ -86,14 +96,15 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
-    verify(swamperHelper, times(1)).writeAlertDefinition(expected);
+    verify(swamperHelper, times(1)).writeAlertDefinition(group, expected);
     verify(queryHelper, times(1)).postManagementCommand("reload");
   }
 
   @Test
   public void testSyncNotActiveDefinition() {
-    definition.setActive(false);
-    definition = alertDefinitionService.update(definition);
+    group.setActive(false);
+    alertDefinitionGroupService.save(group);
+    definition = alertDefinitionService.save(definition);
 
     configurationWriter.syncDefinitions();
 
@@ -110,25 +121,25 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
-    verify(swamperHelper, times(1)).writeAlertDefinition(expected);
+    verify(swamperHelper, times(1)).writeAlertDefinition(group, expected);
     verify(swamperHelper, times(1)).removeAlertDefinition(missingDefinitionUuid);
     verify(queryHelper, times(1)).postManagementCommand("reload");
   }
 
   @Test
   public void testNothingToSync() {
-    alertDefinitionService.delete(definition.getUuid());
+    alertDefinitionGroupService.delete(group.getUuid());
 
     configurationWriter.syncDefinitions();
 
-    verify(swamperHelper, never()).writeAlertDefinition(any());
+    verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Called once after startup
     verify(queryHelper, times(1)).postManagementCommand("reload");
 
     configurationWriter.syncDefinitions();
 
-    verify(swamperHelper, never()).writeAlertDefinition(any());
+    verify(swamperHelper, never()).writeAlertDefinition(any(), any());
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Not called on subsequent run
     verify(queryHelper, times(1)).postManagementCommand("reload");

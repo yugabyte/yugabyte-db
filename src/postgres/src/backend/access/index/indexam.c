@@ -208,7 +208,8 @@ index_insert(Relation indexRelation,
 			 HeapTuple heapTuple,
 			 Relation heapRelation,
 			 IndexUniqueCheck checkUnique,
-			 IndexInfo *indexInfo)
+			 IndexInfo *indexInfo,
+			 bool yb_shared_insert)
 {
 	RELATION_CHECKS;
 
@@ -226,7 +227,8 @@ index_insert(Relation indexRelation,
 		CHECK_REL_PROCEDURE(yb_aminsert);
 		return indexRelation->rd_amroutine->yb_aminsert(indexRelation, values, isnull,
 														heapTuple->t_ybctid, heapRelation,
-														checkUnique, indexInfo);
+														checkUnique, indexInfo,
+														yb_shared_insert);
 	}
 	else
 	{

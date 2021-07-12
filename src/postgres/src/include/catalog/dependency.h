@@ -247,6 +247,8 @@ extern void recordMultipleDependencies(const ObjectAddress *depender,
 extern void recordDependencyOnCurrentExtension(const ObjectAddress *object,
 								   bool isReplace);
 
+extern void YBRecordPinDependency(const ObjectAddress *referenced, bool shared_insert);
+
 extern long deleteDependencyRecordsFor(Oid classId, Oid objectId,
 						   bool skipExtensionDeps);
 

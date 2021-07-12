@@ -165,7 +165,7 @@ Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback) {
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      schema.CopyWithoutColumnIds(), boost::none, ReadHybridTime::Max(), /* table_id= */ "",
+      schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
       CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
 
   return EnumerateSysCatalog(

@@ -38,7 +38,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/">
+    <a class="section-link icon-offset" href="fault-tolerance/macos">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>
@@ -84,7 +84,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
-   
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-region-deployments/">
       <div class="head">
@@ -110,7 +110,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads/">
+    <a class="section-link icon-offset" href="follower-reads/fr-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Follower reads</div>
@@ -122,25 +122,13 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="colocated-tables/">
+    <a class="section-link icon-offset" href="colocated-tables/macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Colocated tables</div>
       </div>
       <div class="body">
         Model large number of relations and databases with fault tolerance.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="change-data-capture/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Change data capture (CDC)</div>
-      </div>
-      <div class="body">
-        Stream data changes from YugabyteDB to external systems.
       </div>
     </a>
   </div>
@@ -182,7 +170,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="security/">
+    <a class="section-link icon-offset" href="security/security/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
         <div class="title">Security</div>

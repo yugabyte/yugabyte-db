@@ -7,6 +7,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -94,10 +95,14 @@ public class AlertReceiverTest extends FakeDBApplication {
     // First customer with two receivers.
     AlertReceiver receiver1 =
         AlertReceiver.create(
-            defaultCustomer.uuid, RECEIVER_NAME, AlertUtils.createParamsInstance(TargetType.Email));
+            defaultCustomer.uuid,
+            RECEIVER_NAME + " 1",
+            AlertUtils.createParamsInstance(TargetType.Email));
     AlertReceiver receiver2 =
         AlertReceiver.create(
-            defaultCustomer.uuid, RECEIVER_NAME, AlertUtils.createParamsInstance(TargetType.Slack));
+            defaultCustomer.uuid,
+            RECEIVER_NAME + " 2",
+            AlertUtils.createParamsInstance(TargetType.Slack));
 
     // Second customer with one receiver.
     UUID newCustomerUUID = ModelFactory.testCustomer().uuid;
@@ -114,5 +119,20 @@ public class AlertReceiverTest extends FakeDBApplication {
 
     // Third customer, without alert receivers.
     assertEquals(0, AlertReceiver.list(UUID.randomUUID()).size());
+  }
+
+  @Test
+  public void testNameUniquenessCheck() {
+    Customer secondCustomer = ModelFactory.testCustomer();
+    AlertReceiver.create(
+        defaultCustomer.uuid, RECEIVER_NAME, AlertUtils.createParamsInstance(TargetType.Slack));
+    AlertReceiver.create(
+        secondCustomer.uuid, RECEIVER_NAME, AlertUtils.createParamsInstance(TargetType.Slack));
+    try {
+      AlertReceiver.create(
+          defaultCustomer.uuid, RECEIVER_NAME, AlertUtils.createParamsInstance(TargetType.Slack));
+      fail("Missed expected exception.");
+    } catch (Exception e) {
+    }
   }
 }

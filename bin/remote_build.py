@@ -59,6 +59,8 @@ def main():
                         help='path used for build')
     parser.add_argument('--branch', type=str, default=None,
                         help='base branch for build')
+    parser.add_argument('--upstream', type=str, default=None,
+                        help='base upstream for remote host to fetch')
     parser.add_argument('--build-type', type=str, default=None,
                         help='build type')
     parser.add_argument('--skip-build', action='store_true',
@@ -94,6 +96,9 @@ def main():
     if args.remote_path is None:
         args.remote_path = default_path
 
+    if args.upstream is None:
+        args.upstream = remote.DEFAULT_UPSTREAM
+
     # End of default arguments.
     # ---------------------------------------------------------------------------------------------
 
@@ -105,7 +110,8 @@ def main():
     print("Arguments to remote build: {}".format(args.build_args))
 
     escaped_remote_path = \
-        remote.sync_changes(args.host, args.branch, args.remote_path, args.wait_for_ssh)
+        remote.sync_changes(args.host, args.branch, args.remote_path, args.wait_for_ssh,
+                            args.upstream)
 
     if args.skip_build:
         sys.exit(0)

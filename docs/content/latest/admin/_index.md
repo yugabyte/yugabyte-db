@@ -19,7 +19,6 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
 
 {{< /note >}}
 
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="yb-ctl/">
@@ -58,7 +57,7 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cqlsh/">
+    <a class="section-link icon-offset" href="ycqlsh/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
         <div class="title">ycqlsh</div>
@@ -116,6 +115,5 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
       </div>
     </a>
   </div>
-
 
 </div>

@@ -4,24 +4,29 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import play.libs.Json;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.yugabyte.yw.models.Users.Role;
@@ -250,13 +255,48 @@ public class ModelFactory {
     return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
+  public static AlertDefinitionGroup createAlertDefinitionGroup(
+      Customer customer, Universe universe, Consumer<AlertDefinitionGroup> modifier) {
+    AlertDefinitionGroup group =
+        new AlertDefinitionGroup()
+            .setName("alertDefinitionGroup")
+            .setDescription("alertDefinitionGroup description")
+            .setCustomerUUID(customer.getUuid())
+            .setTargetType(AlertDefinitionGroup.TargetType.UNIVERSE)
+            .setTarget(
+                new AlertDefinitionGroupTarget()
+                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+            .setTemplate(AlertDefinitionTemplate.MEMORY_CONSUMPTION)
+            .setThresholds(
+                ImmutableMap.of(
+                    AlertDefinitionGroup.Severity.SEVERE,
+                    new AlertDefinitionGroupThreshold()
+                        .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
+                        .setThreshold(1)))
+            .setThresholdUnit(Unit.PERCENT)
+            .generateUUID();
+    modifier.accept(group);
+    group.save();
+    return group;
+  }
+
+  public static AlertDefinitionGroup createAlertDefinitionGroup(
+      Customer customer, Universe universe) {
+    return createAlertDefinitionGroup(customer, universe, c -> {});
+  }
+
   public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
+    AlertDefinitionGroup group = createAlertDefinitionGroup(customer, universe);
+    return createAlertDefinition(customer, universe, group);
+  }
+
+  public static AlertDefinition createAlertDefinition(
+      Customer customer, Universe universe, AlertDefinitionGroup group) {
     AlertDefinition alertDefinition =
         new AlertDefinition()
+            .setGroupUUID(group.getUuid())
             .setCustomerUUID(customer.getUuid())
-            .setName("alertDefinition")
-            .setQuery("query < {{ query_threshold }}")
-            .setQueryThreshold(1)
+            .setQuery("query {{ query_condition }} {{ query_threshold }}")
             .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get())
             .generateUUID();
     alertDefinition.save();
@@ -271,10 +311,6 @@ public class ModelFactory {
     return createAlert(customer, universe, null, KnownAlertCodes.CUSTOMER_ALERT);
   }
 
-  public static Alert createAlert(Customer customer, Universe universe, KnownAlertCodes code) {
-    return createAlert(customer, universe, null, code);
-  }
-
   public static Alert createAlert(Customer customer, AlertDefinition definition) {
     return createAlert(customer, null, definition, KnownAlertCodes.CUSTOMER_ALERT);
   }
@@ -285,15 +321,19 @@ public class ModelFactory {
         new Alert()
             .setCustomerUUID(customer.getUuid())
             .setErrCode(code)
-            .setType(KnownAlertTypes.Error)
+            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .setSendEmail(true)
             .generateUUID();
     if (definition != null) {
-      alert.setDefinitionUUID(definition.getUuid());
+      AlertDefinitionGroup group =
+          AlertDefinitionGroup.db().find(AlertDefinitionGroup.class, definition.getGroupUUID());
+      alert.setGroupUuid(definition.getGroupUUID());
+      alert.setGroupType(group.getTargetType());
+      alert.setDefinitionUuid(definition.getUuid());
       List<AlertLabel> labels =
           definition
-              .getEffectiveLabels()
+              .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
               .stream()
               .map(l -> new AlertLabel(l.getName(), l.getValue()))
               .collect(Collectors.toList());
@@ -310,6 +350,14 @@ public class ModelFactory {
     alert.save();
     return alert;
   }
+
+  public static AlertReceiver createEmailReceiver(Customer customer, String name) {
+    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+    params.recipients = Collections.singletonList("test@test.com");
+    params.smtpData = EmailFixtures.createSmtpData();
+    return AlertReceiver.create(customer.uuid, name, params);
+  }
+
   /*
    * KMS Configuration creation helpers.
    */
