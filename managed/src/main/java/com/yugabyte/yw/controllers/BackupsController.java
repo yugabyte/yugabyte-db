@@ -253,16 +253,11 @@ public class BackupsController extends AuthenticatedController {
     try {
       process.destroyForcibly();
     } catch (NullPointerException e) {
-      LOG.info("The back up process you want to stop is not exist");
+      LOG.info("The backup {} process you want to stop is not exist", backupUUID);
     } finally {
       Util.removeProcessOrBadRequest(backupUUID);
-    } 
-    if (backup.taskUUID!= null){
-      waitForTask(backup.taskUUID);
     }
-    else{
-    Thread.sleep(500);
-    }
+    waitForTask(backup.taskUUID);
     backup.transitionState(BackupState.Stopped);
     return YWResults.withData("Successfully stopped the backup process.");
   }

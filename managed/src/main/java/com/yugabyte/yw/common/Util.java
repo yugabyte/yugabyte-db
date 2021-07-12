@@ -418,14 +418,14 @@ public class Util {
 
   public static Process getProcessOrBadRequest(UUID uuid) {
     if (Util.processMap.get(uuid) == null) {
-      throw new YWServiceException(BAD_REQUEST, "Backup UUID is not found.");
+      throw new YWServiceException(BAD_REQUEST, "The backup you want to stop is not in progress.");
     }
     return Util.processMap.get(uuid);
   }
 
   public static void removeProcessOrBadRequest(UUID uuid) {
     if (Util.processMap.get(uuid) == null) {
-      throw new YWServiceException(BAD_REQUEST, "Backup UUID is not found.");
+      throw new YWServiceException(BAD_REQUEST, "The backup you want to stop is not in progress");
     }
     Util.processMap.remove(uuid);
   }
