@@ -28,7 +28,7 @@ import java.util.UUID;
 
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
-  private int maxRetryCount = 200;
+  private int maxRetryCount = 5;
 
   @Inject Commissioner commissioner;
 
@@ -195,12 +195,12 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTasks(taskUUIDList).asResult();
   }
 
-  public Result stop(UUID customerUUID, UUID backupUUID) {
+  public Result stop(UUID customerUUID, UUID backupUUID) throws InterruptedException {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);
     Backup backup = Backup.get(customerUUID, backupUUID);
     if (backup.state != Backup.BackupState.InProgress) {
-      LOG.info("The backup {} you are trying to stop is not in process.", backupUUID);
+      LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
       return YWResults.withData("The backup you are trying to stop is not in process.");
     }
     try {
@@ -209,8 +209,29 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("The back up process you want to stop is not exist");
     } finally {
       Util.removeProcessOrBadRequest(backupUUID);
+    } 
+    if (backup.taskUUID!= null){
+      waitForTask(backup.taskUUID);
+    }
+    else{
+    Thread.sleep(500);
     }
     backup.transitionState(BackupState.Stopped);
     return YWResults.withData("Successfully stopped the backup process.");
+  }
+
+  protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < maxRetryCount) {
+      TaskInfo taskInfo = TaskInfo.get(taskUUID);
+      if (taskInfo.getTaskState() == TaskInfo.State.Success
+          || taskInfo.getTaskState() == TaskInfo.State.Failure) {
+        return taskInfo;
+      }
+      Thread.sleep(1000);
+      numRetries++;
+    }
+    throw new RuntimeException(
+        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 }
