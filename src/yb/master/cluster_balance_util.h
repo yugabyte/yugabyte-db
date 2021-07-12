@@ -906,6 +906,12 @@ class PerTableLoadState {
     SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
            Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
     int num_erased = per_ts_meta_.at(ts_uuid).running_tablets.erase(tablet_id);
+    if (num_erased == 0) {
+      return STATUS_FORMAT(
+        IllegalState,
+        "Could not find running tablet to remove: ts_uuid: $0, tablet_id: $1",
+        ts_uuid, tablet_id);
+    }
     global_state_->per_ts_global_meta_[ts_uuid].running_tablets_count -= num_erased;
     total_running_ -= num_erased;
     per_tablet_meta_[tablet_id].running -= num_erased;
