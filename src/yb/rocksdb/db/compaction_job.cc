@@ -441,9 +441,6 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   TEST_SYNC_POINT("CompactionJob::Run():Start");
   log_buffer_->FlushBufferToLog();
   LogCompaction();
-  for (auto listener : db_options_.listeners) {
-    listener->OnCompactionStarted();
-  }
 
   const size_t num_threads = compact_->sub_compact_states.size();
   assert(num_threads > 0);
