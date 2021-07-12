@@ -211,7 +211,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customer.uuid);
     CustomerConfig alertConfig = CustomerConfig.getAlertConfig(customer.uuid);
-    System.out.println(smtpConfig.data);
     assertEquals(smtpEmail, smtpConfig.data.get("smtpUsername").asText());
     assertEquals(alertEmail, alertConfig.data.get("alertingEmail").asText());
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
