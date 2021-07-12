@@ -20,6 +20,8 @@ import {
   getAlertReceivers,
   getTargetMetrics,
   setInitialValues,
+  updateAlertConfig,
+  updateAlertConfigResponse,
   updateAlertDestination,
   updateAlertDestinationResponse,
   updateProfile,
@@ -127,6 +129,17 @@ const mapDispatchToProps = (dispatch) => {
           toast.success('Successfully added the destination');
         }
         return dispatch(createAlertConfigResponse(response.payload));
+      });
+    },
+    updateAlertConfig: (payload, uuid) => {
+      return dispatch(updateAlertConfig(payload, uuid)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully updated the config');
+        }
+        return dispatch(updateAlertConfigResponse(response.payload));
       });
     },
     updateAlertDestination: (payload, uuid) => {

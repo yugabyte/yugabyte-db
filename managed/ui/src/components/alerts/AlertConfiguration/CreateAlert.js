@@ -19,7 +19,6 @@ import {
 import { Formik } from 'formik';
 import '../CreateAlerts.scss';
 import AlertsPolicy from './AlertsPolicy';
-import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const required = (value) => (value ? undefined : 'This field is required.');
@@ -27,17 +26,20 @@ const required = (value) => (value ? undefined : 'This field is required.');
 const CreateAlert = (props) => {
   const {
     enablePlatformAlert,
+    alertUniverseList,
     onCreateCancel,
     handleSubmit,
+    initialValues,
     metricsData,
+    setInitialValues,
     createAlertConfig,
     alertDestionations,
-    universes
+    updateAlertConfig
   } = props;
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
   const [alertDestionation, setAlertDesionation] = useState([]);
-  const [alertUniverseList, setAlertUniverseList] = useState([]);
   const [currentMetric, setCurrentMetric] = useState('PERCENT');
+
   useEffect(() => {
     alertDestionations().then((res) => {
       res = res.map((destination, index) => (
@@ -45,41 +47,23 @@ const CreateAlert = (props) => {
           {destination.name}
         </option>
       ));
-      setAlertDesionation(res);
+      setAlertDesionation([<option key="i" />, ...res]);
     });
-
-    if (!getPromiseState(universes).isSuccess()) {
-      props.fetchUniverseList().then((data) => {
-        setAlertUniverseList([
-          ...data.map((universe) => ({
-            label: universe.name,
-            value: universe.universeUUID
-          }))
-        ]);
-      });
-    }
-    setAlertUniverseList([
-      ...props.universes.data.map((universe) => ({
-        label: universe.name,
-        value: universe.universeUUID
-      }))
-    ]);
   }, []);
 
   /**
    * Constant option for metrics condition.
    */
   const alertMetricsConditionList = [
-    <option key={'default'} value={null} placeHolder="select..."/>,
+    <option key={'default'} value={null} />,
     ...metricsData.map((metric, i) => {
       return (
-        <option key={i} value={metric.name}>
+        <option key={i} value={metric.template}>
           {metric.name}
         </option>
       );
     })
   ];
-  
 
   /**
    *
@@ -96,10 +80,16 @@ const CreateAlert = (props) => {
     }
   };
 
+  /**
+   * This method is used to set up the thresshold unit.
+   *
+   * @param {string} value Metric.
+   */
   const handleMetricConditionChange = (value) => {
-    const metric = metricsData.find(metric => metric.name === value);
+    const metric = metricsData.find((metric) => metric.template === value);
     setCurrentMetric(metric.thresholdUnit);
-  }
+  };
+
   /**
    *
    * @param {Formvalues} values
@@ -117,15 +107,27 @@ const CreateAlert = (props) => {
             all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
             uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
           }
-        : null,
+        : { all: true },
       thresholds: '',
-      thresholdUnit: 'MILLISECOND',
-      template: 'REPLICATION_LAG',
+      thresholdUnit: '',
+      template: values['ALERT_METRICS_CONDITION'] || 'REPLICATION_LAG',
       durationSec: values['ALERT_METRICS_DURATION'],
       active: true,
       routeUUID: values['ALERT_DESTINATION_LIST'],
       defaultRoute: true
     };
+
+    // setting up the thresshold unit.
+    switch (values['ALERT_METRICS_CONDITION']) {
+      case 'MEMORY_CONSUMPTION':
+        payload.thresholdUnit = 'PERCENT';
+        break;
+      case 'CLOCK_SKEW':
+        payload.thresholdUnit = 'MILLISECOND';
+        break;
+      default:
+        payload.thresholdUnit = 'MILLISECOND';
+    }
 
     // Setting up the universe uuids.
     isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) &&
@@ -140,11 +142,13 @@ const CreateAlert = (props) => {
         );
       });
 
-    createAlertConfig(payload).then(() => onCreateCancel(false));
+    values.type === 'update'
+      ? updateAlertConfig(payload, values.uuid).then(() => onCreateCancel(false))
+      : createAlertConfig(payload).then(() => onCreateCancel(false));
   };
 
   return (
-    <Formik initialValues={{ ALERT_TARGET_TYPE: 'allUniverses' }}>
+    <Formik initialValues={initialValues}>
       <form name="alertConfigForm" onSubmit={handleSubmit(handleOnSubmit)}>
         <Row className="config-section-header">
           <Row>
@@ -164,7 +168,6 @@ const CreateAlert = (props) => {
                 name="ALERT_CONFIGURATION_DESCRIPTION"
                 placeHolder="Enter an alert description"
                 component={YBTextArea}
-                validate={required}
                 isReadOnly={false}
               />
             </Col>
@@ -205,6 +208,7 @@ const CreateAlert = (props) => {
                   component={YBSelectWithLabel}
                   options={alertMetricsConditionList}
                   onInputChanged={handleMetricConditionChange}
+                  // validate={required}
                 />
               </Col>
               <Col md={6}>
@@ -220,7 +224,11 @@ const CreateAlert = (props) => {
             <Row>
               <Col md={12}>
                 <div className="form-field-grid">
-                  <FieldArray name="ALERT_METRICS_CONDITION_POLICY" component={AlertsPolicy} props ={{ currentMetric: currentMetric}}/>
+                  <FieldArray
+                    name="ALERT_METRICS_CONDITION_POLICY"
+                    component={AlertsPolicy}
+                    props={{ currentMetric: currentMetric }}
+                  />
                 </div>
               </Col>
             </Row>
@@ -232,6 +240,7 @@ const CreateAlert = (props) => {
                 name="ALERT_DESTINATION_LIST"
                 component={YBSelectWithLabel}
                 options={alertDestionation}
+                validate={required}
               />
             </Col>
           </Row>
@@ -242,6 +251,7 @@ const CreateAlert = (props) => {
                 btnClass="btn"
                 onClick={() => {
                   onCreateCancel(false);
+                  setInitialValues();
                 }}
               />
               <YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />

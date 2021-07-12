@@ -4,7 +4,6 @@ import axios from 'axios';
 import { IN_DEVELOPMENT_MODE, ROOT_URL, USE_SSO } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
-import alertListMockData from '../components/alerts/AlertConfiguration/AlertListMockData.json';
 
 // Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
@@ -59,6 +58,9 @@ export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPO
 
 export const CREATE_ALERT_CONFIG = 'CREATE_ALERT_CONFIG';
 export const CREATE_ALERT_CONFIG_RESPONSE = 'CREATE_ALERT_CONFIG_RESPONSE';
+
+export const UPDATE_ALERT_CONFIG = 'UPDATE_ALERT_CONFIG';
+export const UPDATE_ALERT_CONFIG_RESPONSE = 'UPDATE_ALERT_CONFIG_RESPONSE';
 
 export const UPDATE_ALERT_DESTINATION = 'UPDATE_ALERT_DESTINATION';
 export const UPDATE_ALERT_DESTINATION_RESPONSE = 'UPDATE_ALERT_DESTINATION_RESPONSE';
@@ -493,6 +495,22 @@ export function createAlertConfig(payload) {
   return {
     type: CREATE_ALERT_CONFIG,
     payload: request
+  };
+}
+
+export function updateAlertConfig(payload, uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups/${uuid}`, payload);
+  return {
+    type: UPDATE_ALERT_CONFIG,
+    payload: request
+  };
+}
+
+export function updateAlertConfigResponse(response) {
+  return {
+    type: UPDATE_ALERT_CONFIG_RESPONSE,
+    payload: response
   };
 }
 

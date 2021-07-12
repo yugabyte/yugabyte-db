@@ -5,7 +5,7 @@
 // This file will hold all the alert configuration tabs along
 // with their respective components.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tab } from 'react-bootstrap';
 import { isDisabled } from '../../../utils/LayoutUtils';
 import { YBTabsPanel } from '../../panels';
@@ -14,6 +14,7 @@ import { AlertProfileForm } from '../../profile';
 import AlertDestinationConfiguration from './AlertDestinationConfiguration';
 import { AlertsList } from './AlertsList';
 import CreateAlert from './CreateAlert';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 export const AlertConfiguration = (props) => {
   const [profileStatus, setProfileStatus] = useState({
@@ -22,6 +23,7 @@ export const AlertConfiguration = (props) => {
   });
   const [listView, setListView] = useState(false);
   const [targetMetrics, setTargetMetrics] = useState([]);
+  const [alertUniverseList, setAlertUniverseList] = useState([]);
   const [enablePlatformAlert, setPlatformAlert] = useState(false);
   const [alertDestinationListView, setAlertDestinationListView] = useState(false);
   const {
@@ -31,8 +33,28 @@ export const AlertConfiguration = (props) => {
     customerProfile,
     defaultTab,
     getTargetMetrics,
-    routePrefix
+    routePrefix,
+    universes
   } = props;
+
+  useEffect(() => {
+    if (!getPromiseState(universes).isSuccess()) {
+      props.fetchUniverseList().then((data) => {
+        setAlertUniverseList([
+          ...data.map((universe) => ({
+            label: universe.name,
+            value: universe.universeUUID
+          }))
+        ]);
+      });
+    }
+    setAlertUniverseList([
+      ...props.universes.data.map((universe) => ({
+        label: universe.name,
+        value: universe.universeUUID
+      }))
+    ]);
+  }, [])
 
   const handleProfileUpdate = (status) => {
     setProfileStatus({
@@ -48,9 +70,7 @@ export const AlertConfiguration = (props) => {
    * @param {string} targetType
    */
   const handleMetricsCall = (targetType) => {
-    console.log(targetType, 'metric APi will be called here.....');
     getTargetMetrics(targetType).then((response) => {
-      console.log(response, '******** on component');
       setTargetMetrics(response);
     });
   };
@@ -79,6 +99,7 @@ export const AlertConfiguration = (props) => {
               onCreateCancel={setListView}
               enablePlatformAlert={enablePlatformAlert}
               metricsData={targetMetrics}
+              alertUniverseList={alertUniverseList}
               {...props}
             />
           ) : (
@@ -86,6 +107,7 @@ export const AlertConfiguration = (props) => {
               onCreateAlert={setListView}
               enablePlatformAlert={setPlatformAlert}
               handleMetricsCall={handleMetricsCall}
+              alertUniverseList={alertUniverseList}
               {...props}
             />
           )}

@@ -4,9 +4,11 @@
 //
 // This file will hold all the configuration list of alerts.
 
+import moment from 'moment';
 import React, { useEffect, useState } from 'react';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
@@ -14,7 +16,7 @@ import { YBPanelItem } from '../../panels';
 /**
  * This is the header for YB Panel Item.
  */
-const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall) => (
+const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall, setInitialValues) => (
   <>
     <h2 className="table-container-title pull-left">Alert Configurations</h2>
     <FlexContainer className="pull-right">
@@ -31,6 +33,7 @@ const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall) => (
               handleMetricsCall('UNIVERSE');
               onCreateAlert(true);
               enablePlatformAlert(false);
+              setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
             }}
           >
             <i className="fa fa-globe"></i> Universe Alert
@@ -42,6 +45,7 @@ const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall) => (
               handleMetricsCall('CUSTOMER');
               onCreateAlert(true);
               enablePlatformAlert(true);
+              setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
             }}
           >
             <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
@@ -52,34 +56,82 @@ const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall) => (
   </>
 );
 
+/**
+ * Request payload to get the list of alerts.
+ */
+const payload = {
+  uuids: [],
+  name: null,
+  active: true,
+  targetType: 'UNIVERSE', // This needs to be changed.
+  template: 'REPLICATION_LAG', // This needs to be changed.
+  targetUuid: null,
+  routeUuid: null
+};
+
 export const AlertsList = (props) => {
   const [alertList, setAlertList] = useState([]);
+  const [alertDestinations, setAlertDestinations] = useState([]);
   const {
     alertConfigs,
+    alertUniverseList,
+    alertDestionations,
     closeModal,
     deleteAlertConfig,
     enablePlatformAlert,
     handleMetricsCall,
     modal: { visibleModal },
     onCreateAlert,
-    showDeleteModal
+    showDeleteModal,
+    setInitialValues
   } = props;
 
   useEffect(() => {
-    const body = {
-      uuids: [],
-      name: null,
-      active: true,
-      targetType: 'UNIVERSE',
-      template: 'REPLICATION_LAG',
-      targetUuid: null,
-      routeUuid: null
-    };
-
-    alertConfigs(body).then((res) => {
+    alertConfigs(payload).then((res) => {
       setAlertList(res);
     });
+
+    alertDestionations().then((res) => {
+      setAlertDestinations(res);
+    });
   }, []);
+
+  /**
+   * This method is used to congifure the routeUUID with its repsective
+   * destination name.
+   *
+   * @param {string} cell Not in-use.
+   * @param {object} row Respective details
+   */
+  const formatRoutes = (cell, row) => {
+    return alertDestinations
+      .map((route) => {
+        return route.uuid === row.routeUUID ? route.name : null;
+      })
+      .filter((res) => res !== null);
+  };
+
+  /**
+   * This method is used to get the severity from thresholds object.
+   *
+   * @param {string} cell Not in-use.
+   * @param {object} row Respective details.
+   */
+  const formatThresholds = (cell, row) => {
+    return Object.keys(row.thresholds)
+      .map((threshold) => threshold)
+      .join();
+  };
+
+  /**
+   * This method will return the date in format.
+   *
+   * @param {string} cell Not in-use.
+   * @param {object} row Respective row.
+   */
+  const formatcreatedTime = (cell, row) => {
+    return moment(row.createTime).format('MM/DD/yyyy');
+  };
 
   /**
    * This method will help us to edit the details for a respective row.
@@ -87,12 +139,51 @@ export const AlertsList = (props) => {
    * @param {object} row Respective row object.
    */
   const onEditAlertConfig = (row) => {
-    console.log(row, '******* row on edit..');
+    row.targetType === 'CUSTOMER' ? enablePlatformAlert(true) : enablePlatformAlert(false);
 
-    // const initialVal = {};
+    // setting up ALERT_DESTINATION_LIST.
+    const destination = alertDestinations
+      .map((route) => {
+        return route.uuid === row.routeUUID
+          ? {
+              value: route.uuid,
+              label: route.name
+            }
+          : null;
+      })
+      .filter((res) => res !== null);
 
-    // setInitialValues(initialVal);
-    // onCreateAlert(true);
+    // setting up ALERT_METRICS_CONDITION_POLICY.
+    const condition = Object.keys(row.thresholds).map((key) => {
+      return {
+        _SEVERITY: key,
+        _CONDITION: row.thresholds[key].condition,
+        _THRESHOLD: row.thresholds[key].threshold
+      };
+    });
+
+    // setting up ALERT_TARGET_TYPE & ALERT_UNIVERSE_LIST.
+    const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
+    const univerList =
+      isNonEmptyArray(row.target.uuids) &&
+      row.target.uuids.map((list) => alertUniverseList.find((universe) => universe.value === list));
+
+    // setting up the initial values.
+    const initialVal = {
+      type: 'update',
+      uuid: row.uuid,
+      ALERT_CONFIGURATION_NAME: row.name,
+      ALERT_CONFIGURATION_DESCRIPTION: row.description,
+      ALERT_TARGET_TYPE: targetType,
+      ALERT_UNIVERSE_LIST: univerList,
+      ALERT_METRICS_CONDITION: row.template,
+      ALERT_METRICS_DURATION: row.durationSec,
+      ALERT_METRICS_CONDITION_POLICY: condition,
+      ALERT_DESTINATION_LIST: destination[0].value
+    };
+
+    setInitialValues(initialVal);
+    onCreateAlert(true);
   };
 
   /**
@@ -102,7 +193,7 @@ export const AlertsList = (props) => {
    */
   const onDeleteConfig = (row) => {
     deleteAlertConfig(row.uuid).then(() => {
-      alertConfigs().then((res) => {
+      alertConfigs(payload).then((res) => {
         setAlertList(res);
       });
     });
@@ -118,7 +209,12 @@ export const AlertsList = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem onClick={() => onEditAlertConfig(row)}>
+          <MenuItem
+            onClick={() => {
+              handleMetricsCall(row.targetType);
+              onEditAlertConfig(row);
+            }}
+          >
             <i className="fa fa-pencil"></i> Edit Alert
           </MenuItem>
 
@@ -147,7 +243,7 @@ export const AlertsList = (props) => {
   // For now, we're dealing with the mock data.
   return (
     <YBPanelItem
-      header={header(onCreateAlert, enablePlatformAlert, handleMetricsCall)}
+      header={header(onCreateAlert, enablePlatformAlert, handleMetricsCall, setInitialValues)}
       body={
         <>
           <BootstrapTable className="backup-list-table middle-aligned-table" data={alertList}>
@@ -161,7 +257,6 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="targetType"
-              // dataFormat={}
               dataSort
               columnClassName="no-border name-column"
               className="no-border"
@@ -170,8 +265,7 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="thresholds"
-              // dataFormat={}
-              dataSort
+              dataFormat={formatThresholds}
               columnClassName="no-border name-column"
               className="no-border"
             >
@@ -179,7 +273,7 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="routeUUID"
-              // dataFormat={}
+              dataFormat={formatRoutes}
               columnClassName="no-border name-column"
               className="no-border"
             >
@@ -187,7 +281,7 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="createTime"
-              // dataFormat={}
+              dataFormat={formatcreatedTime}
               dataSort
               columnClassName="no-border name-column"
               className="no-border"
@@ -196,7 +290,6 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="template"
-              // dataFormat={}
               columnClassName="no-border name-column"
               className="no-border"
             >
@@ -204,7 +297,6 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="createdBy"
-              // dataFormat={}
               dataSort
               columnClassName="no-border name-column"
               className="no-border"

@@ -80,6 +80,8 @@ import {
   CREATE_ALERT_CONFIG_RESPONSE,
   UPDATE_ALERT_DESTINATION,
   UPDATE_ALERT_DESTINATION_RESPONSE,
+  UPDATE_ALERT_CONFIG,
+  UPDATE_ALERT_CONFIG_RESPONSE,
   DELETE_ALERT_DESTINATION,
   DELETE_ALERT_CONFIG
 } from '../actions/customers';
@@ -134,7 +136,8 @@ const INITIAL_STATE = {
   createAlertReceiver: getInitialState({}),
   createAlertDestination: getInitialState({}),
   createAlertConfig: getInitialState({}),
-  updateAlertDestination: getInitialState({})
+  updateAlertDestination: getInitialState({}),
+  updateAlertConfig: getInitialState({})
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -292,6 +295,17 @@ export default function (state = INITIAL_STATE, action) {
     case UPDATE_ALERT_DESTINATION:
       return setLoadingState(state, 'updateAlertDestination', {});
     case UPDATE_ALERT_DESTINATION_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertReceiver', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertReceiver', action);
+    case UPDATE_ALERT_CONFIG:
+      return setLoadingState(state, 'updateAlertConfig', {});
+    case UPDATE_ALERT_CONFIG_RESPONSE:
       if (action.payload.status !== 200) {
         if (isDefinedNotNull(action.payload.data)) {
           return setFailureState(state, 'createAlertReceiver', action.payload.response.data.error);

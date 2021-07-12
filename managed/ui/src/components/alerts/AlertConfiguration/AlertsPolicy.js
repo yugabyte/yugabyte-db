@@ -4,12 +4,15 @@ import { Field } from 'redux-form';
 import { YBInputField, YBSelect } from '../../common/forms/fields';
 import '../CreateAlerts.scss';
 
+const required = (value) => (value ? undefined : 'This field is required.');
+
 export default class AlertsPolicy extends Component {
   /**
    * Constant option for severity types
    * TODO: Source and values of actual list may differ.
    */
   severityTypes = [
+    <option key={0} />,
     <option key={1} value="SEVERE">
       Severe
     </option>,
@@ -23,6 +26,7 @@ export default class AlertsPolicy extends Component {
    * TODO: Source and values of actual list may differ.
    */
   conditionTypes = [
+    <option key={0} />,
     <option key={1} value="GREATER_THAN">
       Greater Than
     </option>,
@@ -30,19 +34,6 @@ export default class AlertsPolicy extends Component {
       Less than
     </option>
   ];
-  /**
-   * list of options that frequency unit can take.
-   * TODO: Check if seconds are required.
-   */
-  frequencyUnitOptions = [
-    <option key={1} value="Hours">
-      Hours
-    </option>,
-    <option key={2} value="Minutes">
-      Minutes
-    </option>
-  ];
-
   /**
    * Push an enpty object if field array is empty.
    */
@@ -109,6 +100,7 @@ export default class AlertsPolicy extends Component {
                 name={`${instanceTypeItem}_SEVERITY`}
                 component={YBSelect}
                 insetError={true}
+                validate={required}
                 options={this.severityTypes}
               />
             </Col>
@@ -117,11 +109,16 @@ export default class AlertsPolicy extends Component {
                 name={`${instanceTypeItem}_CONDITION`}
                 component={YBSelect}
                 insetError={true}
+                validate={required}
                 options={this.conditionTypes}
               />
             </Col>
             <Col lg={1}>
-              <Field name={`${instanceTypeItem}_THRESHOLD`} component={YBInputField} />
+              <Field
+                name={`${instanceTypeItem}_THRESHOLD`}
+                component={YBInputField}
+                validate={required}
+              />
             </Col>
             <Col lg={1}>
               <div className="flex-container">

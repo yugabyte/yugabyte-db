@@ -12,6 +12,8 @@ import { YBModal } from '../../common/forms/fields';
 export const AlertDestinationDetails = ({ details, visible, onHide }) => {
   let showList = [];
   const showDetails = (details) => {
+    const len = details.length;
+    const hr = len > 1 && <hr />;
     details.forEach((detail, i) => {
       const commonDetails = (
         <>
@@ -32,9 +34,9 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
             <label>WebHookURL:</label>
             <div>{detail.webHookURL}</div>
           </li>
+          {hr}
         </>
       );
-
       const emailDetails = (
         <>
           {commonDetails}
@@ -42,6 +44,7 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
             <label>Recipient:</label>
             <div>{detail.recipients}</div>
           </li>
+          {hr}
         </>
       );
 
