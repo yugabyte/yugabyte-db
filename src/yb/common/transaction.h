@@ -141,6 +141,8 @@ class TransactionStatusManager {
 
   virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
 
+  virtual const TabletId& tablet_id() const = 0;
+
  private:
   friend class RequestScope;
 

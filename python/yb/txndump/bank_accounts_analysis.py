@@ -15,7 +15,7 @@ from time import monotonic
 from typing import NamedTuple, List
 from uuid import UUID
 from yb.txndump.model import DocHybridTime, HybridTime, SubDocKey
-from yb.txndump.parser import AnalyzerBase, DumpProcessor, TransactionBase
+from yb.txndump.parser import AnalyzerBase, DumpProcessor, TransactionBase, Update
 
 kValueColumn = 1
 
@@ -40,59 +40,18 @@ class BankAccountTransaction(TransactionBase):
         return result + " }"
 
 
-class Update(NamedTuple):
-    doc_ht: DocHybridTime
-    txn_id: UUID
-    value: int
-    log_ht: HybridTime
-
-
-class Read(NamedTuple):
-    read_time: HybridTime
-    value: int
-    write_time: DocHybridTime
-    txn_id: UUID
-    same_transaction: bool
-
-
-class KeyData(NamedTuple):
-    updates: List[Update] = []
-    reads: List[Read] = []
-
-
-class BankAccountsAnalyzer(AnalyzerBase):
+class BankAccountsAnalyzer(AnalyzerBase[int, int]):
     def __init__(self):
         super().__init__()
-        self.rows = {}
         self.log = []
 
-    def apply_row(self, txn_id: UUID, key: SubDocKey, value: int, log_ht: HybridTime):
+    def extract_key(self, tablet: str, key: SubDocKey):
         if key.sub_keys[0] == kValueColumn:
-            row = key.hash_components[0]
-            self.get_row(row).updates.append(Update(key.doc_ht, txn_id, value, log_ht))
+            return key.hash_components[0]
+        return None
 
-    def read_value(
-        self, txn_id: UUID, key, value, read_time: HybridTime, write_time: DocHybridTime,
-            same_transaction: bool):
-        if key.sub_keys[0] == kValueColumn and (write_time.hybrid_time <= read_time):
-            self.get_row(key.hash_components[0]).reads.append(Read(
-                read_time, value, write_time, txn_id, same_transaction))
-
-    def get_row(self, key) -> KeyData:
-        if key not in self.rows:
-            self.rows[key] = KeyData()
-        return self.rows[key]
-
-    def get_transaction(self, txn_id: UUID):
-        if txn_id not in self.txns:
-            self.txns[txn_id] = BankAccountTransaction(txn_id)
-        return self.txns[txn_id]
-
-    def check_same_updates(self, key: int, update: Update, same_updates: int):
-        if same_updates < 3:
-            err_fmt = "Wrong number of same updates for key {}, update {}: {}"
-            self.error(
-                update.doc_ht.hybrid_time, update.txn_id, err_fmt.format(key, update, same_updates))
+    def create_transaction(self, txn_id: UUID):
+        return BankAccountTransaction(txn_id)
 
     def analyze(self):
         self.check_status_logs()
@@ -107,33 +66,10 @@ class BankAccountsAnalyzer(AnalyzerBase):
             for line in sorted(self.log):
                 print(line)
 
-    def analyze_key(self, key):
-        updates = sorted(self.rows[key].updates,
-                         key=lambda upd: (upd.doc_ht, upd.txn_id))
-        reads = sorted(self.rows[key].reads,
-                       key=lambda read: read.read_time)
-        read_idx = 0
-        old_balance = 100 if key == 0 else 0
-        prev_update = None
-        same_updates = 3
-        for update in updates:
-            if prev_update is not None and prev_update == update:
-                same_updates += 1
-                continue
-            else:
-                self.check_same_updates(key, prev_update, same_updates)
-                same_updates = 1
+    def initial_value(self, key: int):
+        return 100 if key == 0 else 0
 
-            new_balance: int = self.analyze_update(key, update, old_balance)
-
-            read_idx = self.analyze_read(
-                key, reads, read_idx, update.doc_ht.hybrid_time, old_balance)
-
-            old_balance = new_balance
-            prev_update = update
-        self.check_same_updates(key, prev_update, same_updates)
-
-    def analyze_update(self, key: int, update: Update, old_balance: int) -> int:
+    def analyze_update(self, key: int, update: Update[int], old_balance: int) -> int:
         new_balance = update.value
         hybrid_time = update.doc_ht.hybrid_time
         txn = self.txns[update.txn_id]
@@ -167,23 +103,6 @@ class BankAccountsAnalyzer(AnalyzerBase):
             if txn.key1 is not None and txn.key2 is not None:
                 self.log.append((hybrid_time, 'w', txn))
         return new_balance
-
-    def analyze_read(
-            self, key: int, reads: List[Read], read_idx: int, hybrid_time: HybridTime,
-            old_balance: int) -> int:
-        while read_idx < len(reads) and hybrid_time > reads[read_idx].read_time:
-            read_txn = reads[read_idx].txn_id
-            if read_txn in self.txns:
-                read_balance = reads[read_idx].value
-                if old_balance != read_balance:
-                    self.error(
-                        reads[read_idx].read_time,
-                        read_txn,
-                        "Bad read key: {}, actual: {}, read: {}".format(
-                            key, old_balance, reads[read_idx]))
-                self.log.append((reads[read_idx].read_time, 'r', read_txn, key, read_balance))
-            read_idx += 1
-        return read_idx
 
     def check_transaction(self, txn: BankAccountTransaction):
         cnt_keys = (1 if txn.key1 is not None else 0) + (1 if txn.key2 is not None else 0)

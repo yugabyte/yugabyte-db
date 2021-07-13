@@ -110,6 +110,11 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return STATUS(NotSupported, "WaitForSafeTime not implemented");
   }
 
+  const TabletId& tablet_id() const override {
+    static TabletId result;
+    return result;
+  }
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";

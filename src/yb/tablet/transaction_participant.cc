@@ -1245,7 +1245,8 @@ class TransactionParticipant::Impl
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
     YB_TRANSACTION_DUMP(
-        Remove, transaction.id(), participant_context()->Now(), static_cast<uint8_t>(reason));
+        Remove, participant_context_.tablet_id(), transaction.id(), participant_context_.Now(),
+        static_cast<uint8_t>(reason));
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
@@ -1681,6 +1682,10 @@ Result<HybridTime> TransactionParticipant::WaitForSafeTime(
 
 void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit) {
   impl_->IgnoreAllTransactionsStartedBefore(limit);
+}
+
+const TabletId& TransactionParticipant::tablet_id() const {
+  return impl_->participant_context()->tablet_id();
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {

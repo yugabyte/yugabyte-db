@@ -12,7 +12,7 @@ from enum import Enum
 from functools import total_ordering
 from io import BytesIO
 from time import monotonic
-from typing import Any, Dict, List, NamedTuple, Optional, Set
+from typing import Any, Dict, Generic, List, NamedTuple, Optional, Set, TypeVar
 from uuid import UUID
 from yb.txndump.io import BinaryIO
 from yb.txndump.model import DocHybridTime, HybridTime, ReadHybridTime, SubDocKey, \
@@ -81,12 +81,12 @@ class Analyzer:
         pass
 
     @abstractmethod
-    def apply_row(self, txn_id: UUID, key: SubDocKey, value, log_ht: HybridTime):
+    def apply_row(self, tablet: str, txn_id: UUID, key: SubDocKey, value, log_ht: HybridTime):
         pass
 
     @abstractmethod
     def read_value(
-            self, txn_id: UUID, key: SubDocKey, value, read_time: HybridTime,
+            self, tablet: str, txn_id: UUID, key: SubDocKey, value, read_time: HybridTime,
             write_time: DocHybridTime, same_transaction: bool):
         pass
 
@@ -137,6 +137,7 @@ class DumpProcessor:
                         self.cnt_commands, monotonic() - self.start_time))
 
     def parse_apply(self, inp: BinaryIO):
+        tablet = inp.read(32).decode('utf-8')
         txn = read_txn_id(inp)
         log_ht = HybridTime.load(inp)
         inp.read_int64()  # Sequence no
@@ -146,11 +147,12 @@ class DumpProcessor:
             if cmd == WriteBatchEntryType.kTypeValue:
                 key = SubDocKey.decode(inp.read_varbytes(), True)
                 value = decode_value(inp.read_varbytes())
-                self.analyzer.apply_row(txn, key, value, log_ht)
+                self.analyzer.apply_row(tablet, txn, key, value, log_ht)
             else:
                 raise Exception('Not supported write batch entry type: {}'.format(cmd))
 
     def parse_read(self, inp: BinaryIO):
+        tablet = inp.read(32).decode('utf-8')
         txn = read_txn_id(inp)
         read_time = ReadHybridTime.load(inp)
         write_time = DocHybridTime.load(inp)
@@ -160,7 +162,8 @@ class DumpProcessor:
         key = SubDocKey.decode(key_bytes, False)
         value_len = inp.read_uint64()
         value = decode_value(inp.read(value_len))
-        self.analyzer.read_value(txn, key, value, read_time.read, write_time, same_transaction)
+        self.analyzer.read_value(
+            tablet, txn, key, value, read_time.read, write_time, same_transaction)
 
     def parse_commit(self, inp: BinaryIO):
         txn_id = read_txn_id(inp)
@@ -209,6 +212,7 @@ class DumpProcessor:
         self.get_transaction(txn_id).add_log(hybrid_time, "applied")
 
     def parse_remove(self, inp: BinaryIO):
+        tablet = inp.read(32).decode('utf-8')
         txn_id = read_txn_id(inp)
         hybrid_time = HybridTime.load(inp)
         reason = RemoveReason(inp.read_uint8())
@@ -254,11 +258,163 @@ class TransactionBase:
         return "id: {} commit_time: {}".format(self.id, self.commit_time)
 
 
-class AnalyzerBase(Analyzer, ABC):
+K = TypeVar('K')
+T = TypeVar('T')
+
+
+class Update(Generic[T]):
+    def __init__(self, doc_ht: DocHybridTime, txn_id: UUID, value: T, log_ht: HybridTime):
+        self.doc_ht = doc_ht
+        self.txn_id = txn_id
+        self.value = value
+        self.log_ht = log_ht
+
+    def __eq__(self, other):
+        return self.doc_ht == other.doc_ht and self.txn_id == other.txn_id and \
+               self.value == other.value and self.log_ht == other.log_ht
+
+
+class Read(Generic[T]):
+    def __init__(self, read_time: HybridTime, value: T, write_time: DocHybridTime, txn_id: UUID,
+                 same_transaction: bool):
+        self.read_time = read_time
+        self.value = value
+        self.write_time = write_time
+        self.txn_id = txn_id
+        self.same_transaction = same_transaction
+
+
+class KeyData(Generic[T]):
+    def __init__(self):
+        self.updates: List[Update[T]] = []
+        self.reads: List[Read[T]] = []
+
+
+class AnalyzerBase(Analyzer, ABC, Generic[K, T]):
     def __init__(self):
         self.txns: Dict[UUID, TransactionBase] = {}
         self.errors: List[Error] = []
         self.reported_transactions: Set[UUID] = set()
+        self.rows: Dict[K, KeyData[T]] = {}
+
+    @abstractmethod
+    def create_transaction(self, txn_id: UUID):
+        pass
+
+    @abstractmethod
+    def extract_key(self, tablet: str, key: SubDocKey):
+        pass
+
+    @abstractmethod
+    def initial_value(self, key: K):
+        pass
+
+    @abstractmethod
+    def check_transaction(self, transaction):
+        pass
+
+    @abstractmethod
+    def analyze_update(self, key: K, update: Update[T], old_value: T) -> T:
+        pass
+
+    def extract_value(self, value):
+        return value
+
+    def get_row(self, key: K) -> KeyData[T]:
+        if key not in self.rows:
+            self.rows[key] = KeyData[T]()
+        return self.rows[key]
+
+    def apply_row(self, tablet: str, txn_id: UUID, key: SubDocKey, value, log_ht: HybridTime):
+        row_key = self.extract_key(tablet, key)
+        if row_key is None:
+            return
+        row_value = self.extract_value(value)
+        self.get_row(row_key).updates.append(Update(key.doc_ht, txn_id, row_value, log_ht))
+
+    def read_value(
+        self, tablet: str, txn_id: UUID, key, value, read_time: HybridTime,
+            write_time: DocHybridTime, same_transaction: bool):
+        if write_time.hybrid_time > read_time:
+            return
+        row_key = self.extract_key(tablet, key)
+        if row_key is None:
+            return
+        row_value = self.extract_value(value)
+        self.get_row(row_key).reads.append(Read(
+            read_time, row_value, write_time, txn_id, same_transaction))
+
+    def get_transaction(self, txn_id: UUID):
+        if txn_id not in self.txns:
+            self.txns[txn_id] = self.create_transaction(txn_id)
+        return self.txns[txn_id]
+
+    def analyze(self):
+        self.check_status_logs()
+
+        for key in self.rows:
+            self.analyze_key(key)
+
+        for txn in self.txns.values():
+            self.check_transaction(txn)
+
+        if not self.report_errors():
+            for line in sorted(self.log):
+                print(line)
+
+    def check_same_updates(self, key: int, update: Update, same_updates: int):
+        if same_updates < 3:
+            err_fmt = "Wrong number of same updates for key {}, update {}: {}"
+            self.error(
+                update.doc_ht.hybrid_time, update.txn_id, err_fmt.format(key, update, same_updates))
+
+    def analyze_key(self, key: K):
+        updates = sorted(self.rows[key].updates,
+                         key=lambda upd: (upd.doc_ht, upd.txn_id))
+        filtered_reads = filter(
+            lambda x:
+                not x.same_transaction and
+                x.txn_id in self.txns and
+                self.txns[x.txn_id].commit_time.valid(),
+            self.rows[key].reads)
+        reads = sorted(filtered_reads, key=lambda read: read.read_time)
+        read_idx = 0
+        old_value = self.initial_value(key)
+        prev_update = None
+        same_updates = 3
+        for update in updates:
+            if prev_update is not None and prev_update == update:
+                same_updates += 1
+                continue
+            else:
+                self.check_same_updates(key, prev_update, same_updates)
+                same_updates = 1
+
+            new_value: str = self.analyze_update(key, update, old_value)
+
+            read_idx = self.analyze_read(
+                key, reads, read_idx, update.doc_ht.hybrid_time, old_value)
+
+            old_value = new_value
+            prev_update = update
+        self.check_same_updates(key, prev_update, same_updates)
+
+    def analyze_read(
+            self, key: int, reads: List[Read[T]], read_idx: int, hybrid_time: HybridTime,
+            old_value: str) -> int:
+        while read_idx < len(reads) and hybrid_time > reads[read_idx].read_time:
+            read = reads[read_idx]
+            read_idx += 1
+            read_txn = read.txn_id
+            read_value = read.value
+            if old_value != read_value:
+                self.error(
+                    read.read_time,
+                    read_txn,
+                    "Bad read key: {}, actual: '{}', read: {}".format(
+                        key, old_value, read))
+            self.log.append((read.read_time, 'r', read_txn, key, read_value))
+        return read_idx
 
     def report_errors(self):
         for err in sorted(self.errors, key=lambda error: error.hybrid_time):

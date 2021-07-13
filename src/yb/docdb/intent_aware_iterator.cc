@@ -592,7 +592,8 @@ Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
           << ", while read bounds are: " << read_time_;
 
   YB_TRANSACTION_DUMP(
-      Read, txn_op_context_ ? txn_op_context_->transaction_id : TransactionId::Nil(),
+      Read, txn_op_context_ ? txn_op_context_->txn_status_manager.tablet_id() : TabletId(),
+      txn_op_context_ ? txn_op_context_->transaction_id : TransactionId::Nil(),
       read_time_, result.write_time, result.same_transaction,
       result.key.size(), result.key, value().size(), value());
 
