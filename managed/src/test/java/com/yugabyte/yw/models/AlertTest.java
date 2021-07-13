@@ -159,7 +159,7 @@ public class AlertTest extends FakeDBApplication {
   @Test
   public void testQueryByVariousFilters() {
     AlertDefinition definition = createDefinition();
-    Alert alert1 = ModelFactory.createAlert(cust1, definition);
+    ModelFactory.createAlert(cust1, definition);
 
     Customer cust2 = ModelFactory.testCustomer();
     Universe universe2 = ModelFactory.createUniverse(cust2.getCustomerId());
@@ -371,5 +371,32 @@ public class AlertTest extends FakeDBApplication {
             thresholdLabel,
             definitionUuidLabel,
             definitionNameLabel));
+  }
+
+  @Test
+  public void testNotificationPendingFilter() {
+    Alert alert1 = ModelFactory.createAlert(cust1, universe);
+    alert1.setNextNotificationTime(Date.from(new Date().toInstant().plusSeconds(30)));
+    alert1.save();
+    Alert alert2 = ModelFactory.createAlert(cust1, universe);
+    alert2.setNextNotificationTime(Date.from(new Date().toInstant().minusSeconds(30)));
+    alert2.save();
+    Alert alert3 = ModelFactory.createAlert(cust1, universe);
+
+    AlertFilter filter =
+        AlertFilter.builder()
+            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .notificationPending(true)
+            .build();
+    List<Alert> list = alertService.list(filter);
+    assertThat(list, contains(alert2));
+
+    filter =
+        AlertFilter.builder()
+            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .notificationPending(false)
+            .build();
+    list = alertService.list(filter);
+    assertThat(list, containsInAnyOrder(alert1, alert3));
   }
 }
