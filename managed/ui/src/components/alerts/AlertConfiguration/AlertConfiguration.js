@@ -115,7 +115,6 @@ export const AlertConfiguration = (props) => {
 
         {/* Alert Destination Tab */}
         <Tab
-          eventKey="health-alerting"
           eventKey="alertDestinations"
           title={
             <span>
