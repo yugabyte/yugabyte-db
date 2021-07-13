@@ -421,7 +421,7 @@ CassandraStatement CassandraPrepared::Bind() {
   return CassandraStatement(cass_prepared_bind(prepared_.get()));
 }
 
-const MonoDelta kCassandraTimeOut = RegularBuildVsSanitizers(12s, 60s);
+const MonoDelta kCassandraTimeOut = 20s * kTimeMultiplier;
 
 CppCassandraDriver::CppCassandraDriver(
     const std::vector<std::string>& hosts, uint16_t port,

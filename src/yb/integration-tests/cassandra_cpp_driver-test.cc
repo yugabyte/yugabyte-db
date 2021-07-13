@@ -2945,20 +2945,25 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), &table, &key, &pending_writes,
          &max_pending_writes] {
-      SetFlagOnExit set_flag_on_exit(&stop);
       auto session = ASSERT_RESULT(EstablishSession());
-      while (!stop.load()) {
-        CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
-        auto prepared = table.PrepareInsert(&session);
-        if (!prepared.ok()) {
+      CassandraPrepared prepared;
+      ASSERT_OK(WaitFor([&table, &session, &prepared] {
+        auto prepared_result = table.PrepareInsert(&session);
+        if (!prepared_result.ok()) {
           // Prepare could be failed because cluster has heavy load.
           // It is ok to just retry in this case, because we expect total number of writes.
-          continue;
+          LOG(INFO) << "Prepare failed: " << prepared_result.status();
+          return false;
         }
+        prepared = std::move(*prepared_result);
+        return true;
+      }, kCassandraTimeOut * 5, "Prepare statement"));
+      while (!stop.load()) {
+        CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
         for (int i = 0; i != kBatchSize; ++i) {
           auto current_key = key++;
           ColumnsType tuple(current_key, -current_key);
-          auto statement = prepared->Bind();
+          auto statement = prepared.Bind();
           table.BindInsert(&statement, tuple);
           batch.Add(&statement);
         }
@@ -2969,8 +2974,6 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
           auto mpw = max_pending_writes.load();
           while (pw > mpw) {
             if (max_pending_writes.compare_exchange_weak(mpw, pw)) {
-              // Assert that we don't have too many pending writers.
-              ASSERT_LE(pw, kWriters / 3);
               break;
             }
           }
@@ -2986,6 +2989,8 @@ TEST_F_EX(CppCassandraDriverTest, Rejection, CppCassandraDriverRejectionTest) {
 
   thread_holder.WaitAndStop(30s);
   LOG(INFO) << "Max pending writes: " << max_pending_writes.load();
+  // Assert that we don't have too many pending writers.
+  ASSERT_LE(max_pending_writes.load(), kWriters / 3);
 }
 
 TEST_F(CppCassandraDriverTest, BigQueryExpr) {
