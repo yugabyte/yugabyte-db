@@ -243,15 +243,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   @Test
   public void testTasksListHistory() {
     String authToken = user.createAuthToken();
-    UUID universeUUID = UUID.randomUUID();
-    UUID taskUUID =
-        createTaskWithStatus(
-            universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0);
 
     UUID providerUUID = UUID.randomUUID();
-    UUID providerTaskUUID1 =
-        createTaskWithStatus(
-            providerUUID, CustomerTask.TargetType.Provider, Create, "Foo", "Success", 100.0);
     UUID providerTaskUUID2 =
         createTaskWithStatus(
             providerUUID, CustomerTask.TargetType.Provider, Update, "Foo", "Running", 10.0);
@@ -262,7 +255,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     JsonNode universeTasks = Json.parse(contentAsString(result));
 
     assertTrue(universeTasks.isArray());
-    assertEquals(3, universeTasks.size());
+    assertEquals(1, universeTasks.size());
     JsonNode task = universeTasks.get(0);
     assertThat(
         task.get("title").asText(), allOf(notNullValue(), equalTo("Updating Provider : Foo")));
