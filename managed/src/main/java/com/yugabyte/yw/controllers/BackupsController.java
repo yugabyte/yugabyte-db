@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.cronutils.utils.VisibleForTesting;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
@@ -249,7 +248,8 @@ public class BackupsController extends AuthenticatedController {
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
     if (backup.state != Backup.BackupState.InProgress) {
       LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
-      return YWResults.withData("The backup you are trying to stop is not in process.");
+      throw new YWServiceException(
+          BAD_REQUEST, "The backup you are trying to stop is not in process.");
     }
     if (process == null) {
       LOG.info("The backup {} process you want to stop doesn't exist.", backupUUID);
@@ -264,13 +264,11 @@ public class BackupsController extends AuthenticatedController {
     } catch (InterruptedException e) {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
-    waitForTask(backup.taskUUID);
     backup.transitionState(BackupState.Stopped);
     return YWResults.YWSuccess.withMessage("Successfully stopped the backup process.");
   }
 
-  @VisibleForTesting
-  protected void waitForTask(UUID taskUUID) throws InterruptedException {
+  private static void waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
@@ -281,7 +279,8 @@ public class BackupsController extends AuthenticatedController {
       Thread.sleep(1000);
       numRetries++;
     }
-    throw new RuntimeException(
+    throw new YWServiceException(
+        BAD_REQUEST,
         "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 }

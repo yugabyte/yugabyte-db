@@ -85,7 +85,10 @@ public class TableManager extends DevopsBase {
     switch (subType) {
       case BACKUP:
         backupTableParams = (BackupTableParams) taskParams;
-        uuid = backupTableParams.backup.backupUUID;
+        // TODO : backup params should have backup UUID but bunch of tests failing. Fix the tests
+        // and remove this.
+        uuid = backupTableParams.backup != null ? backupTableParams.backup.backupUUID : null;
+
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
