@@ -413,20 +413,17 @@ public class Util {
   }
 
   public static void setPID(UUID uuid, Process pid) {
-    Util.processMap.put(uuid, pid);
+    processMap.put(uuid, pid);
   }
 
   public static Process getProcessOrBadRequest(UUID uuid) {
-    if (Util.processMap.get(uuid) == null) {
-      throw new YWServiceException(BAD_REQUEST, "The backup you want to stop is not in progress.");
+    if (processMap.get(uuid) == null) {
+      throw new YWServiceException(BAD_REQUEST, "The process you want to stop is not in progress.");
     }
-    return Util.processMap.get(uuid);
+    return processMap.get(uuid);
   }
 
-  public static void removeProcessOrBadRequest(UUID uuid) {
-    if (Util.processMap.get(uuid) == null) {
-      throw new YWServiceException(BAD_REQUEST, "The backup you want to stop is not in progress");
-    }
-    Util.processMap.remove(uuid);
+  public static void removeProcess(UUID uuid) {
+    processMap.remove(uuid);
   }
 }

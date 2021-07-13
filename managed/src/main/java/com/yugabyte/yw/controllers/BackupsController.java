@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.cronutils.utils.VisibleForTesting;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
@@ -36,7 +37,7 @@ import java.util.UUID;
 @Api(value = "Backups", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
-  private int maxRetryCount = 5;
+  private static int maxRetryCount = 5;
 
   @Inject Commissioner commissioner;
 
@@ -250,25 +251,27 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
       return YWResults.withData("The backup you are trying to stop is not in process.");
     }
-    try {
+    if (process == null) {
+      LOG.info("The backup {} process you want to stop doesn't exist.", backupUUID);
+      throw new YWServiceException(
+          BAD_REQUEST, "The backup process you want to stop doesn't exist.");
+    } else {
       process.destroyForcibly();
-    } catch (NullPointerException e) {
-      LOG.info("The backup {} process you want to stop is not exist", backupUUID);
-    } finally {
-      Util.removeProcessOrBadRequest(backupUUID);
     }
+    Util.removeProcess(backupUUID);
     waitForTask(backup.taskUUID);
     backup.transitionState(BackupState.Stopped);
-    return YWResults.withData("Successfully stopped the backup process.");
+    return YWResults.YWSuccess.withMessage("Successfully stopped the backup process.");
   }
 
-  protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
+  @VisibleForTesting
+  protected void waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
       if (taskInfo.getTaskState() == TaskInfo.State.Success
           || taskInfo.getTaskState() == TaskInfo.State.Failure) {
-        return taskInfo;
+        return;
       }
       Thread.sleep(1000);
       numRetries++;
