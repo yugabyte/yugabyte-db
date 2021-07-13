@@ -63,8 +63,6 @@ const payload = {
   uuids: [],
   name: null,
   active: true,
-  targetType: 'UNIVERSE', // This needs to be changed.
-  template: 'REPLICATION_LAG', // This needs to be changed.
   targetUuid: null,
   routeUuid: null
 };
@@ -294,14 +292,6 @@ export const AlertsList = (props) => {
               className="no-border"
             >
               Metric Name
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="createdBy"
-              dataSort
-              columnClassName="no-border name-column"
-              className="no-border"
-            >
-              Created By
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="configActions"

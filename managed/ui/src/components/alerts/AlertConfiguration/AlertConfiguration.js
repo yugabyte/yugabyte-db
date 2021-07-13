@@ -54,7 +54,7 @@ export const AlertConfiguration = (props) => {
         value: universe.universeUUID
       }))
     ]);
-  }, [])
+  }, []);
 
   const handleProfileUpdate = (status) => {
     setProfileStatus({
@@ -115,7 +115,7 @@ export const AlertConfiguration = (props) => {
 
         {/* Alert Destination Tab */}
         <Tab
-          eventKey={'health-alerting'}
+          eventKey="health-alerting"
           eventKey="alertDestinations"
           title={
             <span>
@@ -136,7 +136,7 @@ export const AlertConfiguration = (props) => {
           eventKey="health-alerting"
           title={
             <span>
-              <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Health
+              <i className="fa fa-heartbeat tab-logo" aria-hidden="true"></i> Health
             </span>
           }
           key="health-alerting-tab"

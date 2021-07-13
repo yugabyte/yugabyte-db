@@ -98,6 +98,7 @@ const CreateAlert = (props) => {
   const handleOnSubmit = (values) => {
     const cUUID = localStorage.getItem('customerId');
     let payload = {
+      uuid: values.type === 'update' ? values.uuid : null,
       customerUUID: cUUID,
       name: values['ALERT_CONFIGURATION_NAME'],
       description: values['ALERT_CONFIGURATION_DESCRIPTION'],

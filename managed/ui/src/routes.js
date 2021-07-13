@@ -38,7 +38,6 @@ import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
-import { AlertConfigurationContainer } from './components/alerts';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam

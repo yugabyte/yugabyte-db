@@ -1,6 +1,5 @@
 import React, { FC, useEffect } from 'react';
 import { Tab } from 'react-bootstrap';
-import { browserHistory } from 'react-router';
 import { Selector, useSelector } from 'react-redux';
 import { RouteComponentProps } from 'react-router-dom';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
@@ -49,9 +48,6 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
-    // if (!params.tab || !params.section) {
-    //   browserHistory.replace(DEFAULT_ADMIN_PAGE);
-    // }
   }, [currentCustomer, params.tab, params.section]);
 
   return (

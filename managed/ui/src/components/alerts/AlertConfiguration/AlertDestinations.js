@@ -7,7 +7,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
