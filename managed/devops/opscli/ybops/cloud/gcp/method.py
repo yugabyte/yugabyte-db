@@ -284,3 +284,7 @@ class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _change_instance_type(self, args, host_info):
         self.cloud.change_instance_type(host_info, args.instance_type)
+
+    def _host_info(self, args, host_info):
+        args.private_ip = host_info["private_ip"]
+        return args

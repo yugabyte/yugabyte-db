@@ -3,7 +3,6 @@ title: Point-in-Time Recovery for YCQL
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YCQL
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     identifier: explore-point-in-time-recovery-ycql

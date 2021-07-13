@@ -243,10 +243,10 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTasks(taskUUIDList).asResult();
   }
 
-  public Result stop(UUID customerUUID, UUID backupUUID) throws InterruptedException {
+  public Result stop(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);
-    Backup backup = Backup.get(customerUUID, backupUUID);
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
     if (backup.state != Backup.BackupState.InProgress) {
       LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
       return YWResults.withData("The backup you are trying to stop is not in process.");
@@ -259,7 +259,11 @@ public class BackupsController extends AuthenticatedController {
       process.destroyForcibly();
     }
     Util.removeProcess(backupUUID);
-    waitForTask(backup.taskUUID);
+    try {
+      waitForTask(backup.taskUUID);
+    } catch (InterruptedException e) {
+      LOG.info("Error while waiting for the backup task to get finished.");
+    }
     backup.transitionState(BackupState.Stopped);
     return YWResults.YWSuccess.withMessage("Successfully stopped the backup process.");
   }
