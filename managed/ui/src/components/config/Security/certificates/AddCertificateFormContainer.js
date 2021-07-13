@@ -11,6 +11,7 @@ import {
   addCertificateReset
 } from '../../../../actions/customers';
 import { closeDialog } from '../../../../actions/modal';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -26,9 +27,8 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(getTlsCertificatesResponse(response.payload));
           });
         } else {
-          console.error(
-            'Certificate adding has been failed: ' + JSON.stringify(response.payload.data.error)
-          );
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(`Certificate adding has been failed:  ${errorMessage}`);
         }
       });
     },
