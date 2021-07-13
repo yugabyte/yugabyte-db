@@ -143,7 +143,9 @@ public class AlertService {
                     alert
                         .setTargetState(Alert.State.ACKNOWLEDGED)
                         .setState(Alert.State.ACKNOWLEDGED)
-                        .setAcknowledgedTime(nowWithoutMillis()))
+                        .setAcknowledgedTime(nowWithoutMillis())
+                        .setNextNotificationTime(null)
+                        .setNotifiedState(Alert.State.ACKNOWLEDGED))
             .collect(Collectors.toList());
     return save(resolved);
   }

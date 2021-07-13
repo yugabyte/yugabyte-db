@@ -37,6 +37,7 @@ public class AlertFilter {
   Set<AlertDefinitionGroup.Severity> severities;
   Set<AlertDefinitionGroup.TargetType> groupTypes;
   AlertLabel label;
+  Boolean notificationPending;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -71,6 +72,9 @@ public class AlertFilter {
     }
     if (groupTypes != null) {
       result.groupTypes(groupTypes);
+    }
+    if (notificationPending != null) {
+      result.notificationPending(notificationPending);
     }
     return result;
   }
@@ -171,6 +175,11 @@ public class AlertFilter {
 
     public AlertFilterBuilder groupTypes(@NonNull Set<AlertDefinitionGroup.TargetType> groupTypes) {
       this.groupTypes.addAll(groupTypes);
+      return this;
+    }
+
+    public AlertFilterBuilder notificationPending(boolean notificationPending) {
+      this.notificationPending = notificationPending;
       return this;
     }
   }

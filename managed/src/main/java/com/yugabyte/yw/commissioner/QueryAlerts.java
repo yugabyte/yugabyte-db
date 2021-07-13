@@ -18,7 +18,6 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -134,6 +133,9 @@ public class QueryAlerts {
           log.error("Error querying for alerts alerts", e);
         }
         transitionAlerts();
+        alertManager.sendNotifications();
+      } catch (Exception e) {
+        log.error("Error processing alerts", e);
       } finally {
         running.set(false);
       }
@@ -267,26 +269,18 @@ public class QueryAlerts {
   }
 
   private void transitionAlerts() {
-    try {
-      AlertNotificationReport report = new AlertNotificationReport();
-      AlertFilter toSendRaisedFilter =
-          AlertFilter.builder()
-              .state(Alert.State.CREATED)
-              .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
-              .build();
-      List<Alert> toSendRaisedAlerts = alertService.list(toSendRaisedFilter);
-      toSendRaisedAlerts.forEach(alert -> alertManager.transitionAlert(alert, report));
+    AlertFilter toSendRaisedFilter =
+        AlertFilter.builder()
+            .state(Alert.State.CREATED)
+            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .build();
+    List<Alert> toSendRaisedAlerts = alertService.list(toSendRaisedFilter);
+    toSendRaisedAlerts.forEach(alert -> alertManager.transitionAlert(alert));
 
-      AlertFilter toSendResolvedFilter =
-          AlertFilter.builder().state(Alert.State.ACTIVE).targetState(Alert.State.RESOLVED).build();
-      List<Alert> toSendResolvedAlerts = alertService.list(toSendResolvedFilter);
-      toSendResolvedAlerts.forEach(alert -> alertManager.transitionAlert(alert, report));
-      if (!report.isEmpty()) {
-        log.info("{}", report);
-      }
-    } catch (Exception e) {
-      log.error("Error sending notifications for alerts", e);
-    }
+    AlertFilter toSendResolvedFilter =
+        AlertFilter.builder().state(Alert.State.ACTIVE).targetState(Alert.State.RESOLVED).build();
+    List<Alert> toSendResolvedAlerts = alertService.list(toSendResolvedFilter);
+    toSendResolvedAlerts.forEach(alert -> alertManager.transitionAlert(alert));
   }
 
   private String getCustomerUuid(AlertData alertData) {

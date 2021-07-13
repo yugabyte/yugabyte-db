@@ -113,6 +113,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     alertManager =
         new AlertManager(
             emailHelper,
+            alertService,
             alertDefinitionGroupService,
             alertRouteService,
             receiversManager,
@@ -150,6 +151,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     List<Alert> alerts = alertService.list(alertFilter);
 
     Alert expectedAlert = createAlert(raisedTime).setUuid(alerts.get(0).getUuid());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
 
     AssertHelper.assertMetricValue(
@@ -185,6 +187,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     List<Alert> alerts = alertService.list(alertFilter);
 
     Alert expectedAlert = createAlert(raisedTime).setUuid(alerts.get(0).getUuid());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
 
     AssertHelper.assertMetricValue(
@@ -220,6 +223,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     assertThat(alerts, hasSize(1));
 
     Alert expectedAlert = createAlert(raisedTime).setUuid(alerts.get(0).getUuid());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
   }
 
@@ -245,6 +249,7 @@ public class QueryAlertsTest extends FakeDBApplication {
             .setUuid(alert.getUuid())
             .setState(Alert.State.ACTIVE)
             .setTargetState(Alert.State.ACTIVE);
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
 
     AssertHelper.assertMetricValue(
@@ -261,6 +266,13 @@ public class QueryAlertsTest extends FakeDBApplication {
         metricService,
         MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_NEW_ALERTS.getMetricName()).build(),
         0.0);
+  }
+
+  private void copyNotificationFields(Alert expectedAlert, Alert alert) {
+    expectedAlert
+        .setNotificationAttemptTime(alert.getNotificationAttemptTime())
+        .setNextNotificationTime(alert.getNextNotificationTime())
+        .setNotificationsFailed(alert.getNotificationsFailed());
   }
 
   @Test
@@ -316,6 +328,7 @@ public class QueryAlertsTest extends FakeDBApplication {
             .setState(Alert.State.RESOLVED)
             .setTargetState(Alert.State.RESOLVED)
             .setResolvedTime(alerts.get(0).getResolvedTime());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
 
     AssertHelper.assertMetricValue(

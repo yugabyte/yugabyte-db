@@ -147,14 +147,30 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Alert Definition Uuid", accessMode = READ_ONLY)
   private UUID definitionUuid;
 
-  @ApiModelProperty(value = "Alert group Uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert group Uuid.", accessMode = READ_ONLY)
   private UUID groupUuid;
 
-  @ApiModelProperty(value = "Alert definition group type", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert definition group type.", accessMode = READ_ONLY)
   private AlertDefinitionGroup.TargetType groupType;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
+
+  @ApiModelProperty(value = "Time of the last notification attempt.", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  private Date notificationAttemptTime;
+
+  @ApiModelProperty(value = "Time of the nex notification attempt.", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  private Date nextNotificationTime;
+
+  @ApiModelProperty(value = "Count of failures to send a notification.", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private int notificationsFailed = 0;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Alert state in last sent notification.", accessMode = READ_ONLY)
+  private State notifiedState;
 
   private static final Finder<UUID, Alert> find = new Finder<UUID, Alert>(Alert.class) {};
 
@@ -234,6 +250,14 @@ public class Alert extends Model implements AlertLabelsProvider {
     }
     appendInClause(query, "severity", filter.getSeverities());
     appendInClause(query, "groupType", filter.getGroupTypes());
+
+    if (filter.getNotificationPending() != null) {
+      if (filter.getNotificationPending()) {
+        query.isNotNull("nextNotificationTime").le("nextNotificationTime", new Date());
+      } else {
+        query.or().isNull("nextNotificationTime").gt("nextNotificationTime", new Date()).endOr();
+      }
+    }
     return query;
   }
 }
