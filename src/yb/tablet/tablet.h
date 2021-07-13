@@ -342,7 +342,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // The returned iterator is not initialized.
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const Schema& projection,
-      const boost::optional<TransactionId>& transaction_id,
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),

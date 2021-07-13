@@ -1,0 +1,7 @@
+      - alert: {{ definition_name }}
+        expr: {{ definition_expr }}
+        for: {{ duration }}
+        labels:
+{{ labels }}
+        annotations:
+          summary: "{{ summary_template }}"

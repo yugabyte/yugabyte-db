@@ -2209,13 +2209,13 @@ ExecuteDoStmt(DoStmt *stmt, bool atomic)
 void
 ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver *dest)
 {
-	LOCAL_FCINFO(fcinfo, FUNC_MAX_ARGS);
 	ListCell   *lc;
 	FuncExpr   *fexpr;
 	int			nargs;
 	int			i;
 	AclResult	aclresult;
 	FmgrInfo	flinfo;
+	FunctionCallInfoData fcinfo;
 	CallContext *callcontext;
 	EState	   *estate;
 	ExprContext *econtext;
@@ -2290,8 +2290,7 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 	InvokeFunctionExecuteHook(fexpr->funcid);
 	fmgr_info(fexpr->funcid, &flinfo);
 	fmgr_info_set_expr((Node *) fexpr, &flinfo);
-	InitFunctionCallInfoData(*fcinfo, &flinfo, nargs, fexpr->inputcollid,
-							 (Node *) callcontext, NULL);
+	InitFunctionCallInfoData(fcinfo, &flinfo, nargs, fexpr->inputcollid, (Node *) callcontext, NULL);
 
 	/*
 	 * Evaluate procedure arguments inside a suitable execution context.  Note
@@ -2312,14 +2311,14 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 
 		val = ExecEvalExprSwitchContext(exprstate, econtext, &isnull);
 
-		fcinfo->args[i].value = val;
-		fcinfo->args[i].isnull = isnull;
+		fcinfo.arg[i] = val;
+		fcinfo.argnull[i] = isnull;
 
 		i++;
 	}
 
-	pgstat_init_function_usage(fcinfo, &fcusage);
-	retval = FunctionCallInvoke(fcinfo);
+	pgstat_init_function_usage(&fcinfo, &fcusage);
+	retval = FunctionCallInvoke(&fcinfo);
 	pgstat_end_function_usage(&fcusage, true);
 
 	if (fexpr->funcresulttype == VOIDOID)
@@ -2340,7 +2339,7 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 		TupOutputState *tstate;
 		TupleTableSlot *slot;
 
-		if (fcinfo->isnull)
+		if (fcinfo.isnull)
 			elog(ERROR, "procedure returned null record");
 
 		td = DatumGetHeapTupleHeader(retval);

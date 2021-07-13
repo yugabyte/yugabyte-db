@@ -68,7 +68,10 @@ function mapStateToProps(state, ownProps) {
       initialFormValues.restoreToUniverseUUID = { value: currentUniverse.data.universeUUID, label: currentUniverse.data.name };
     }
     if (isNonEmptyArray(storageConfigs)) {
-      initialFormValues.storageConfigUUID = storageConfigs[0].configUUID;
+      initialFormValues.storageConfigUUID = {
+        value: storageConfigs[0].configUUID,
+        label: storageConfigs[0].name + ' Storage'
+      };
     }
   }
 

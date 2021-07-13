@@ -1019,7 +1019,6 @@ Status Tablet::CompleteShutdownRocksDBs(Destroy destroy, ScopedRWOperationPauses
 
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const Schema &projection,
-    const boost::optional<TransactionId>& transaction_id,
     const ReadHybridTime read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
@@ -1044,7 +1043,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
 
   auto txn_op_ctx = CreateTransactionOperationContext(
-      transaction_id, schema.table_properties().is_ysql_catalog_table());
+      boost::none, schema.table_properties().is_ysql_catalog_table());
   const auto read_time = read_hybrid_time
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
@@ -1059,7 +1058,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  return NewRowIterator(table_info->schema, boost::none, {}, table_id);
+  return NewRowIterator(table_info->schema, {}, table_id);
 }
 
 Status Tablet::ApplyRowOperations(
@@ -1072,7 +1071,7 @@ Status Tablet::ApplyRowOperations(
           : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
-    metrics_->rows_inserted->IncrementBy(write_request.write_batch().write_pairs().size());
+    metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
   }
 
   return ApplyOperation(
@@ -2343,7 +2342,7 @@ Status Tablet::BackfillIndexes(
 
   Schema projection(columns, {}, schema()->num_key_columns());
   auto iter =
-      VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
+      VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
   auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
@@ -3473,7 +3472,8 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
         IllegalState,
         "Failed to detect middle key (got \"$0\") for tablet $1 (key_bounds: $2 - $3), this can "
         "happen if post-split tablet wasn't fully compacted after split",
-        middle_key, tablet_id(), key_bounds_.lower, key_bounds_.upper);
+        middle_key_slice.ToDebugHexString(), tablet_id(),
+        Slice(key_bounds_.lower).ToDebugHexString(), Slice(key_bounds_.upper).ToDebugHexString());
   }
   return middle_key;
 }

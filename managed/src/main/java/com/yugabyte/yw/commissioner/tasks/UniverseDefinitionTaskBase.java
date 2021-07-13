@@ -520,7 +520,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be updated.
    */
-  public void createUpdateDiskSizeTasks(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createUpdateDiskSizeTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
@@ -530,6 +530,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeName = node.nodeName;
       // Add device info.
       params.deviceInfo = userIntent.deviceInfo;
+      // Set numVolumes if user did not set it
+      if (params.deviceInfo.numVolumes == null) {
+        params.deviceInfo.numVolumes =
+            Universe.getOrBadRequest(taskParams().universeUUID)
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .deviceInfo
+                .numVolumes;
+      }
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
@@ -541,8 +551,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       task.initialize(params);
       subTaskGroup.addTask(task);
     }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Provisioning);
     subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**

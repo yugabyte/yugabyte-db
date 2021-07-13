@@ -591,6 +591,8 @@ message StartRemoteBootstrapRequestPB {
 
   required bytes tablet_id = 1;
 
+  optional bytes split_parent_tablet_id = 8;
+
   // Identification for the host we are bootstrapping from.
   // TODO: Consider renaming these to bootstrap_source_*.
   required bytes bootstrap_peer_uuid = 2;

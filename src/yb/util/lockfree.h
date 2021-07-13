@@ -14,11 +14,10 @@
 #ifndef YB_UTIL_LOCKFREE_H
 #define YB_UTIL_LOCKFREE_H
 
-#include <boost/atomic.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/atomic.h"
 
 namespace yb {
 
@@ -100,7 +99,7 @@ template <class T>
 class LockFreeStack {
  public:
   LockFreeStack() {
-    CHECK(head_.is_lock_free());
+    CHECK(IsAcceptableAtomicImpl(head_));
   }
 
   void Push(T* value) {

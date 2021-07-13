@@ -465,6 +465,16 @@ std::ostream& operator<<(std::ostream& out, const scoped_refptr<T>& ptr) {
   return out << ptr.get();
 }
 
+template <class T, class U>
+bool operator==(const scoped_refptr<T>& lhs, const scoped_refptr<U>& rhs) {
+  return lhs.get() == rhs.get();
+}
+
+template <class T, class U>
+bool operator!=(const scoped_refptr<T>& lhs, const scoped_refptr<U>& rhs) {
+  return lhs.get() != rhs.get();
+}
+
 #undef INVOKE_REF_COUNTED_DEBUG_HOOK
 
 #endif // YB_GUTIL_REF_COUNTED_H

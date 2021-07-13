@@ -851,57 +851,6 @@ const Status DBImpl::CreateArchivalDirectory() {
   return Status::OK();
 }
 
-void DBImpl::PrintStatistics() {
-  auto dbstats = db_options_.statistics.get();
-  if (dbstats) {
-    RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
-        "STATISTICS:\n %s",
-        dbstats->ToString().c_str());
-  }
-}
-
-void DBImpl::MaybeDumpStats() {
-  if (db_options_.stats_dump_period_sec == 0) return;
-
-  const uint64_t now_micros = env_->NowMicros();
-
-  if (last_stats_dump_time_microsec_ +
-      db_options_.stats_dump_period_sec * 1000000
-      <= now_micros) {
-    // Multiple threads could race in here simultaneously.
-    // However, the last one will update last_stats_dump_time_microsec_
-    // atomically. We could see more than one dump during one dump
-    // period in rare cases.
-    last_stats_dump_time_microsec_ = now_micros;
-
-#ifndef ROCKSDB_LITE
-    const DBPropertyInfo* cf_property_info =
-        GetPropertyInfo(DB::Properties::kCFStats);
-    assert(cf_property_info != nullptr);
-    const DBPropertyInfo* db_property_info =
-        GetPropertyInfo(DB::Properties::kDBStats);
-    assert(db_property_info != nullptr);
-
-    std::string stats;
-    {
-      InstrumentedMutexLock l(&mutex_);
-      for (auto cfd : *versions_->GetColumnFamilySet()) {
-        cfd->internal_stats()->GetStringProperty(
-            *cf_property_info, DB::Properties::kCFStats, &stats);
-      }
-      default_cf_internal_stats_->GetStringProperty(
-          *db_property_info, DB::Properties::kDBStats, &stats);
-    }
-    RLOG(InfoLogLevel::WARN_LEVEL,
-        db_options_.info_log, "------- DUMPING STATS -------");
-    RLOG(InfoLogLevel::WARN_LEVEL,
-        db_options_.info_log, "%s", stats.c_str());
-#endif  // !ROCKSDB_LITE
-
-    PrintStatistics();
-  }
-}
-
 // * Returns the list of live files in 'sst_live'
 // If it's doing full scan:
 // * Returns the list of all files in the filesystem in
@@ -2302,7 +2251,7 @@ Status DBImpl::CompactFilesImpl(
       compact_options, input_files, output_level, version->storage_info(),
       *cfd->GetLatestMutableCFOptions(), output_path_id);
   if (!c) {
-    return STATUS(Aborted, "Another Level 0 compaction is running");
+    return STATUS(Aborted, "Another Level 0 compaction is running or nothing to compact");
   }
   c->SetInputVersion(version);
   // deletion compaction currently not allowed in CompactFiles.
@@ -2349,6 +2298,9 @@ Status DBImpl::CompactFilesImpl(
   Status status;
   {
     mutex_.Unlock();
+    for (auto listener : db_options_.listeners) {
+      listener->OnCompactionStarted();
+    }
     auto file_numbers_holder = compaction_job.Run();
     TEST_SYNC_POINT("CompactFilesImpl:2");
     TEST_SYNC_POINT("CompactFilesImpl:3");
@@ -2776,6 +2728,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
                                    int output_level, uint32_t output_path_id,
                                    const Slice* begin, const Slice* end,
                                    bool exclusive, bool disallow_trivial_move) {
+  TEST_SYNC_POINT("DBImpl::RunManualCompaction");
+
   DCHECK(input_level == ColumnFamilyData::kCompactAllLevels ||
          input_level >= 0);
 
@@ -3019,6 +2973,7 @@ Status DBImpl::WaitForFlushMemTable(ColumnFamilyData* cfd) {
 
 Status DBImpl::EnableAutoCompaction(
     const std::vector<ColumnFamilyHandle*>& column_family_handles) {
+  TEST_SYNC_POINT("DBImpl::EnableAutoCompaction");
   Status s;
   for (auto cf_ptr : column_family_handles) {
     Status status =
@@ -3191,6 +3146,7 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
       ++unscheduled_compactions_;
     }
   }
+  TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
 }
 
 void DBImpl::RecordFlushIOStats() {
@@ -3376,7 +3332,6 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
                                       CompactionTask* compaction_task) {
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
-  MaybeDumpStats();
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
 
   InstrumentedMutexLock l(&mutex_);
@@ -3571,6 +3526,9 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   }
 
   Result<FileNumbersHolder> result = FileNumbersHolder();
+  for (auto listener : db_options_.listeners) {
+    listener->OnCompactionStarted();
+  }
   if (c->deletion_compaction()) {
     // TODO(icanadi) Do we want to honor snapshots here? i.e. not delete old
     // file if there is alive snapshot pointing to it
@@ -5856,6 +5814,11 @@ Status DBImpl::DeleteFile(std::string name) {
       job_context.Clean();
       return STATUS(InvalidArgument, "File in level 0, but not oldest");
     }
+
+    TEST_SYNC_POINT("DBImpl::DeleteFile:DecidedToDelete");
+
+    metadata->being_deleted = true;
+
     edit.SetColumnFamily(cfd->GetID());
     edit.DeleteFile(level, number);
     status = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(),

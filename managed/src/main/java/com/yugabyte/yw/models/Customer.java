@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+
 import com.google.common.base.Joiner;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -22,12 +24,16 @@ import java.util.stream.Collectors;
 import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 @Entity
+@ApiModel(description = "Customers features and Universe UUID.")
 public class Customer extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID uuid = UUID.randomUUID();
 
   public void setUuid(UUID uuid) {
@@ -44,29 +50,43 @@ public class Customer extends Model {
   // Use IDENTITY strategy because `customer.id` is a `bigserial` type; not a sequence.
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @ApiModelProperty(value = "Customer id", accessMode = READ_ONLY)
   private Long id;
 
+  @ApiModelProperty(value = "Customer id", accessMode = READ_ONLY, example = "1")
   public Long getCustomerId() {
     return id;
   }
 
   @Column(length = 15, nullable = false)
   @Constraints.Required
+  @ApiModelProperty(value = "Customer code", example = "admin", required = true)
   public String code;
 
   @Column(length = 256, nullable = false)
   @Constraints.Required
   @Constraints.MinLength(3)
+  @ApiModelProperty(value = "Name of customer", example = "sridhar", required = true)
   public String name;
 
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(
+      value = "Creation time",
+      example = "2021-06-17 15:00:05",
+      accessMode = READ_ONLY)
   public Date creationDate;
 
   @Column(nullable = true, columnDefinition = "TEXT")
+  @ApiModelProperty(value = "Features", accessMode = READ_ONLY)
   private JsonNode features;
 
   @Column(columnDefinition = "TEXT", nullable = false)
+  @ApiModelProperty(
+      value = "Universe UUIDs",
+      accessMode = READ_ONLY,
+      example =
+          "[\"c3595ca7-68a3-47f0-b1b2-1725886d5ed5\", \"9e0bb733-556c-4935-83dd-6b742a2c32e6\"]")
   private String universeUUIDs = "";
 
   public synchronized void addUniverseUUID(UUID universeUUID) {
