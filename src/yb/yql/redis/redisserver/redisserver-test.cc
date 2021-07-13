@@ -307,7 +307,7 @@ class TestRedisService : public RedisTableTestBase {
     req.set_is_compaction(false);
     table_name().SetIntoTableIdentifierPB(req.add_tables());
     master::FlushTablesResponsePB resp;
-    RETURN_NOT_OK(mini_cluster()->leader_mini_master()->master()->flush_manager()->
+    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->flush_manager()->
                   FlushTables(&req, &resp));
 
     master::IsFlushTablesDoneRequestPB wait_req;
@@ -316,8 +316,10 @@ class TestRedisService : public RedisTableTestBase {
 
     for (int k = 0; k < 20; ++k) {
       master::IsFlushTablesDoneResponsePB wait_resp;
-      RETURN_NOT_OK(mini_cluster()->leader_mini_master()->master()->flush_manager()->
-                    IsFlushTablesDone(&wait_req, &wait_resp));
+      RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
+                        ->master()
+                        ->flush_manager()
+                        ->IsFlushTablesDone(&wait_req, &wait_resp));
       if (wait_resp.done()) {
         return Status::OK();
       }

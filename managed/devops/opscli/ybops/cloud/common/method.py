@@ -559,7 +559,7 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
 
-        self._resize_instance(args, host_info)
+        self._resize_instance(args, self._host_info(args, host_info))
 
     def _validate_args(self, args):
         # Make sure "instance_type" exists in args
