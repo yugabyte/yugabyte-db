@@ -20,7 +20,7 @@ menu:
     <a class="section-link icon-offset" href="hasura-1/">
       <div class="head">
         <img class="icon" src="/images/develop/graphql/hasura/hasura.png" aria-hidden="true"/>
-        <div class="title">Building applications with Hasura</div>
+        <div class="title">Build applications with Hasura</div>
       </div>
       <div class="body">
           Use the Hasura GraphQL engine with YugabyteDB to explore using GraphQL to add data and run queries.
