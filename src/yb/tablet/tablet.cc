@@ -1965,7 +1965,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 
   rocksdb::WriteBatch regular_write_batch;
   auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state, data.log_ht,
+      tablet_id(), data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state, data.log_ht,
       &regular_write_batch, intents_db_.get(), nullptr /* intents_write_batch */));
 
   // data.hybrid_time contains transaction commit time.
@@ -1986,8 +1986,9 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(), HybridTime(),
-          nullptr /* regular_write_batch */, intents_db_.get(), &intents_write_batch));
+          tablet_id(), id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(),
+          HybridTime(), nullptr /* regular_write_batch */, intents_db_.get(),
+          &intents_write_batch));
       if (new_apply_state.key.empty()) {
         break;
       }
