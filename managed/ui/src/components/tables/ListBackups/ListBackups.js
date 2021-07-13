@@ -432,7 +432,6 @@ export default class ListBackups extends Component {
             <TableAction
               currentRow={row}
               actionType="stop-backup"
-              onSubmit={() => {}}
               onError={() => this.handleModalSubmit('Stop')}
             />
           </DropdownButton>
