@@ -92,7 +92,7 @@ GET     /customers/:cUUID/universes/:uniUUID/kms/key_ref                       c
 
 # Customer profile API
 GET     /customers                                                             com.yugabyte.yw.controllers.CustomerController.list()
-GET     /customers_data                                                        com.yugabyte.yw.controllers.CustomerController.listWithData()
+GET     /customers_uuids                                                       com.yugabyte.yw.controllers.CustomerController.listUuids()
 GET     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
 PUT     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
@@ -239,6 +239,7 @@ DELETE  /customers/:cUUID/backups                                              c
 
 # Task History API
 GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
+GET    /customers/:cUUID/tasks_list                                            com.yugabyte.yw.controllers.CustomerTaskController.tasksList(cUUID: java.util.UUID, uUUID: java.util.UUID ?= null)
 GET    /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.taskStatus(cUUID: java.util.UUID, tUUID: java.util.UUID)
 POST   /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.retryTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/universes/:uniUUID/tasks                              com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
