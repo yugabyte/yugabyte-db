@@ -264,6 +264,7 @@ public class BackupsController extends AuthenticatedController {
     } catch (InterruptedException e) {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
+    waitForTask(backup.taskUUID);
     backup.transitionState(BackupState.Stopped);
     return YWResults.YWSuccess.withMessage("Successfully stopped the backup process.");
   }

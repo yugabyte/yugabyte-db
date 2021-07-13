@@ -421,7 +421,7 @@ export default class ListBackups extends Component {
             />
           </DropdownButton>
         );
-      } else if (row.status !== 'Failed' && !row.showActions) {
+      } else if (row.status === 'InProgress' && !row.showActions) {
         return (
           <DropdownButton
             className="btn btn-default"
@@ -432,7 +432,6 @@ export default class ListBackups extends Component {
             <TableAction
               currentRow={row}
               actionType="stop-backup"
-              onSubmit={() => {}}
               onError={() => this.handleModalSubmit('Stop')}
             />
           </DropdownButton>
