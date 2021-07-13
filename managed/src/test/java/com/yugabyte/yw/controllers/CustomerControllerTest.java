@@ -65,10 +65,10 @@ public class CustomerControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testListCustomersWithAuth() {
+  public void testListCustomersUuidsWithAuth() {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Result result = route(fakeRequest("GET", rootRoute).cookie(validCookie));
+    Result result = route(fakeRequest("GET", rootRoute + "_uuids").cookie(validCookie));
     assertEquals(OK, result.status());
     ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
     assertEquals(json.get(0).textValue(), customer.uuid.toString());
@@ -78,8 +78,7 @@ public class CustomerControllerTest extends FakeDBApplication {
   public void testListWithDataCustomersWithAuth() {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    System.out.println(rootRoute + "_data");
-    Result result = route(fakeRequest("GET", rootRoute + "_data").cookie(validCookie));
+    Result result = route(fakeRequest("GET", rootRoute).cookie(validCookie));
     assertEquals(OK, result.status());
     ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
     assertEquals(json.get(0).get("uuid").textValue(), customer.uuid.toString());

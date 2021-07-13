@@ -241,6 +241,61 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testTasksListHistory() {
+    String authToken = user.createAuthToken();
+
+    UUID providerUUID = UUID.randomUUID();
+    UUID providerTaskUUID2 =
+        createTaskWithStatus(
+            providerUUID, CustomerTask.TargetType.Provider, Update, "Foo", "Running", 10.0);
+
+    String url = "/api/customers/" + customer.uuid + "/tasks_list";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    assertEquals(OK, result.status());
+    JsonNode universeTasks = Json.parse(contentAsString(result));
+
+    assertTrue(universeTasks.isArray());
+    assertEquals(1, universeTasks.size());
+    JsonNode task = universeTasks.get(0);
+    assertThat(
+        task.get("title").asText(), allOf(notNullValue(), equalTo("Updating Provider : Foo")));
+    assertThat(task.get("percentComplete").asDouble(), allOf(notNullValue(), equalTo(10.0)));
+    assertThat(task.get("status").asText(), allOf(notNullValue(), equalTo("Running")));
+    assertTrue(task.get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
+    assertTrue(task.get("completionTime").isNull());
+    assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Provider")));
+    assertThat(
+        task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(providerUUID.toString())));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testTaskListWithUniverseUUID() {
+    String authToken = user.createAuthToken();
+    Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
+
+    UUID taskUUID1 =
+        createTaskWithStatus(
+            universe.universeUUID,
+            CustomerTask.TargetType.Universe,
+            Create,
+            "Foo",
+            "Running",
+            50.0);
+    createTaskWithStatus(
+        universe1.universeUUID, CustomerTask.TargetType.Universe, Create, "Bar", "Running", 90.0);
+    String url = "/api/customers/" + customer.uuid + "/tasks_list?uUUID=" + universe.universeUUID;
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    assertEquals(OK, result.status());
+    JsonNode universeTasks = Json.parse(contentAsString(result));
+
+    assertTrue(universeTasks.isArray());
+    assertEquals(1, universeTasks.size());
+    assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testTaskCompletionTime() {
     String authToken = user.createAuthToken();
     UUID taskUUID =

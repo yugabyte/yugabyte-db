@@ -478,7 +478,7 @@ class YBUniverse():
             customer_url = '{0}/api/v1/customers'.format(self.base_url)
             data = self.__call_api(customer_url)
             if len(data) == 1:
-                self.customer_uuid = str(data[0])
+                self.customer_uuid = str(data[0].get("uuid"))
             else:
                 raise ValueError('Muliple customer UUID present, Please provide customer UUID')
 
