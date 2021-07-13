@@ -20,20 +20,24 @@ import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverInterface;
 import com.yugabyte.yw.common.alerts.AlertReceiverManager;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.AlertRoute;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,24 +51,38 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class AlertManager {
 
+  @VisibleForTesting static final int NOTIFICATION_REPEAT_AFTER_FAILURE_IN_SECS = 180;
+
   private final EmailHelper emailHelper;
   private final AlertDefinitionGroupService alertDefinitionGroupService;
   private final AlertRouteService alertRouteService;
   private final AlertReceiverManager receiversManager;
+  private final AlertService alertService;
   private final MetricService metricService;
 
   @Inject
   public AlertManager(
       EmailHelper emailHelper,
+      AlertService alertService,
       AlertDefinitionGroupService alertDefinitionGroupService,
       AlertRouteService alertRouteService,
       AlertReceiverManager receiversManager,
       MetricService metricService) {
     this.emailHelper = emailHelper;
+    this.alertService = alertService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
     this.alertRouteService = alertRouteService;
     this.receiversManager = receiversManager;
     this.metricService = metricService;
+  }
+
+  @VisibleForTesting
+  void scheduleAlertNotification(Alert alert) {
+    if ((alert.getNextNotificationTime() == null)
+        && (alert.getState() != State.ACKNOWLEDGED)
+        && (alert.getNotifiedState() != State.ACKNOWLEDGED)) {
+      alert.setNextNotificationTime(new Date());
+    }
   }
 
   /**
@@ -73,20 +91,18 @@ public class AlertManager {
    * @param alert the alert to transition states on
    * @return the alert in a new state
    */
-  public Alert transitionAlert(Alert alert, AlertNotificationReport report) {
+  public Alert transitionAlert(Alert alert) {
     try {
       switch (alert.getState()) {
         case CREATED:
           log.info("Transitioning alert {} to active", alert.getUuid());
-          report.raiseAttempt();
           alert.setState(Alert.State.ACTIVE);
-          sendNotification(alert, report);
+          scheduleAlertNotification(alert);
           break;
         case ACTIVE:
           log.info("Transitioning alert {} to resolved (with email)", alert.getUuid());
-          report.resolveAttempt();
           alert.setState(Alert.State.RESOLVED);
-          sendNotification(alert, report);
+          scheduleAlertNotification(alert);
           break;
         default:
           log.warn(
@@ -97,7 +113,6 @@ public class AlertManager {
 
       alert.save();
     } catch (Exception e) {
-      report.failAttempt();
       log.error("Error transitioning alert state for alert {}", alert.getUuid(), e);
     }
 
@@ -125,7 +140,85 @@ public class AlertManager {
     return Optional.of(route);
   }
 
-  public void sendNotification(Alert alert, AlertNotificationReport report) {
+  @VisibleForTesting
+  boolean sendNotificationForState(Alert alert, State state, AlertNotificationReport report) {
+    boolean result = false;
+    try {
+      result = sendNotification(alert, state, report);
+
+      alert.setNotificationAttemptTime(new Date());
+      if (!result) {
+        alert.setNotificationsFailed(alert.getNotificationsFailed() + 1);
+        // For now using fixed delay before the notification repeat. Later the behavior
+        // can be adjusted using an amount of failed attempts (using progressive value).
+        alert.setNextNotificationTime(
+            Date.from(
+                new Date().toInstant().plusSeconds(NOTIFICATION_REPEAT_AFTER_FAILURE_IN_SECS)));
+        log.trace(
+            "Next time to send notification for alert {} is {}",
+            alert.getUuid(),
+            alert.getNextNotificationTime());
+
+        report.failAttempt();
+      } else {
+        // TODO: No repeats for now. Later should be updated along with the according
+        // parameter introduced in AlertRoute.
+        alert.setNextNotificationTime(null);
+        alert.setNotificationsFailed(0);
+        alert.setNotifiedState(state);
+        log.trace("Notification sent for alert {}", alert.getUuid());
+      }
+      alert.save();
+
+    } catch (Exception e) {
+      report.failAttempt();
+      log.error("Error while sending notification for alert {}", alert.getUuid(), e);
+    }
+    return result;
+  }
+
+  public void sendNotifications() {
+    AlertFilter filter =
+        AlertFilter.builder()
+            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .notificationPending(true)
+            .build();
+    List<Alert> toNotify = alertService.list(filter);
+    if (toNotify.size() == 0) {
+      return;
+    }
+
+    log.debug("Sending notifications, {} alerts to proceed.", toNotify.size());
+    AlertNotificationReport report = new AlertNotificationReport();
+    for (Alert alert : toNotify) {
+      try {
+        if (((alert.getNotifiedState() == null)
+                || (alert.getNotifiedState().ordinal() < State.ACTIVE.ordinal()))
+            && (alert.getState().ordinal() >= State.ACTIVE.ordinal())) {
+          report.raiseAttempt();
+          if (!sendNotificationForState(alert, State.ACTIVE, report)) {
+            continue;
+          }
+        }
+
+        if ((alert.getNotifiedState().ordinal() < State.RESOLVED.ordinal())
+            && (alert.getState() == State.RESOLVED)) {
+          report.resolveAttempt();
+          sendNotificationForState(alert, State.RESOLVED, report);
+        }
+
+      } catch (Exception e) {
+        report.failAttempt();
+        log.error("Error while sending notification for alert {}", alert.getUuid(), e);
+      }
+    }
+    if (!report.isEmpty()) {
+      log.info("{}", report);
+    }
+  }
+
+  private boolean sendNotification(
+      Alert alert, State stateToNotify, AlertNotificationReport report) {
     Customer customer = Customer.get(alert.getCustomerUUID());
 
     boolean atLeastOneSucceeded = false;
@@ -143,7 +236,7 @@ public class AlertManager {
         metricService.setStatusMetric(
             metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s), there is no default route specified.");
-        return;
+        return false;
       }
 
       List<AlertReceiver> defaultReceivers = defaultRoute.getReceiversList();
@@ -156,7 +249,7 @@ public class AlertManager {
             metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s) using default route, "
                 + "there are no recipients configured in the customer's profile.");
-        return;
+        return false;
       }
 
       log.debug("For alert {} no routes/receivers found, using default route.", alert.getUuid());
@@ -165,6 +258,11 @@ public class AlertManager {
       metricService.setOkStatusMetric(
           metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
     }
+
+    // Not going to save the alert, only to use with another state for the
+    // notification.
+    Alert tempAlert = alertService.get(alert.getUuid());
+    tempAlert.setState(stateToNotify);
 
     for (AlertReceiver receiver : receivers) {
       try {
@@ -184,7 +282,7 @@ public class AlertManager {
       try {
         AlertReceiverInterface handler =
             receiversManager.get(AlertUtils.getJsonTypeName(receiver.getParams()));
-        handler.sendNotification(customer, alert, receiver);
+        handler.sendNotification(customer, tempAlert, receiver);
         atLeastOneSucceeded = true;
         setOkReceiverStatusMetric(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS, receiver);
       } catch (Exception e) {
@@ -198,9 +296,8 @@ public class AlertManager {
             "Error sending notification: " + e.getMessage());
       }
     }
-    if (!atLeastOneSucceeded) {
-      report.failAttempt();
-    }
+
+    return atLeastOneSucceeded;
   }
 
   @VisibleForTesting
