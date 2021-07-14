@@ -45,7 +45,8 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--namespace");
       commandArgs.add(namespace);
     } else if (!getNodeDeploymentMode(node, universe).equals(Common.CloudType.unknown)) {
-      AccessKey accessKey = AccessKey.get(providerUUID, cluster.userIntent.accessKeyCode);
+      AccessKey accessKey =
+          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       commandArgs.add("ssh");
       commandArgs.add("--port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());

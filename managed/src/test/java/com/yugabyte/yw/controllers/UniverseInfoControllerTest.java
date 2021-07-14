@@ -13,19 +13,39 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import junitparams.JUnitParamsRunner;
+import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Random;
+import java.util.UUID;
+
+import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
+import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsBytes;
 import static play.test.Helpers.contentAsString;
 
 @RunWith(JUnitParamsRunner.class)
@@ -69,5 +89,63 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     // TODO(API) - Should this be an http error and that too bad request?
     assertBadRequest(result, "foobar");
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDownloadNodeLogs_NodeNotFound() {
+    when(mockShellProcessHandler.run(anyList(), anyMap(), eq(true)))
+        .thenReturn(new ShellResponse());
+
+    Universe u = createUniverse(customer.getCustomerId());
+    String url =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + u.universeUUID
+            + "/dummy_node/download_logs";
+    Result result = assertYWSE(() -> doRequestWithAuthToken("GET", url, authToken));
+    assertNotFound(result, "dummy_node");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  private byte[] createFakeLog(Path path) throws IOException {
+    Random rng = new Random();
+    File file = path.toFile();
+    try (FileWriter out = new FileWriter(file)) {
+      int sz = 1024 * 1024;
+      byte[] arr = new byte[sz];
+      rng.nextBytes(arr);
+      out.write(new String(arr, StandardCharsets.UTF_8));
+    }
+    return FileUtils.readFileToByteArray(file);
+  }
+
+  @Test
+  public void testDownloadNodeLogs() throws IOException {
+    Path logPath =
+        Paths.get(mockAppConfig.getString("yb.storage.path") + "/" + "host-n1-logs.tar.gz");
+    byte[] fakeLog = createFakeLog(logPath);
+    when(mockShellProcessHandler.run(anyList(), anyMap(), eq(true)))
+        .thenReturn(new ShellResponse());
+
+    UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
+    String keyCode = "dummy_code";
+    ui.accessKeyCode = keyCode;
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
+
+    Provider provider = Provider.get(customer.uuid, Common.CloudType.aws).get(0);
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.sshPort = 1223;
+    AccessKey.create(provider.uuid, keyCode, keyInfo);
+
+    String url =
+        "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/host-n1/" + "download_logs";
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+    assertEquals(OK, result.status());
+    byte[] actualContent = contentAsBytes(result, mat).toArray();
+    assertArrayEquals(fakeLog, actualContent);
+    assertAuditEntry(0, customer.uuid);
+    assertFalse(logPath.toFile().exists());
   }
 }
