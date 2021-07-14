@@ -172,7 +172,7 @@ export function registerResponse(response) {
 }
 
 export function validate() {
-  const request = axios.get(`${ROOT_URL}/validate`);
+  const request = axios.get(`${ROOT_URL}/password_policy`);
   return {
     type: VALIDATE,
     payload: request

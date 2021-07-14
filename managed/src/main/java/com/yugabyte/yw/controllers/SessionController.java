@@ -329,7 +329,7 @@ public class SessionController extends Controller {
     }
   }
 
-  public Result validate() {
+  public Result getPasswordPolicy() {
     // PasswordPolicyService passwordPolicyService;
     PasswordPolicyFormData validPolicy = passwordPolicyService.getPasswordPolicyData();
      if (validPolicy != null) {
