@@ -59,6 +59,7 @@ import static play.test.Helpers.contentAsString;
 @RunWith(JUnitParamsRunner.class)
 public class UniverseUiOnlyControllerTest extends UniverseControllerTestBase {
 
+  /** Migrated to {@link UniverseControllerTest#testUniverseFindByName(String, int)} */
   @Test
   @Parameters({
     "FakeUniverse, 0",
@@ -75,6 +76,7 @@ public class UniverseUiOnlyControllerTest extends UniverseControllerTestBase {
     assertAuditEntry(0, customer.uuid);
   }
 
+  /** Migrated to {@link UniverseClustersControllerTest} */
   @Test
   public void testUniverseCreateWithInvalidParams() {
     String url = "/api/customers/" + customer.uuid + "/universes";
@@ -2122,7 +2124,7 @@ public class UniverseUiOnlyControllerTest extends UniverseControllerTestBase {
 
     ObjectNode primaryCluster =
         Json.newObject().put("uuid", fakeClusterUUID.toString()).put("clusterType", "PRIMARY");
-    primaryCluster.set("userIntent", (ObjectNode) userIntentJson);
+    primaryCluster.set("userIntent", userIntentJson);
 
     ArrayNode clustersJsonArray = Json.newArray().add(primaryCluster);
     bodyJson.set("clusters", clustersJsonArray);
