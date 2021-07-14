@@ -100,8 +100,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
-          TaskType.SwamperTargetsFileUpdate,
           TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
@@ -110,8 +110,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
@@ -125,7 +125,6 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
-          TaskType.SwamperTargetsFileUpdate,
           // The following four tasks comes from "MasterInfoUpdateTask" and must be done
           // after tserver is added
           TaskType.AnsibleConfigureServers,
@@ -133,6 +132,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
@@ -150,8 +150,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private void assertStartNodeSequence(

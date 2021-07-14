@@ -1086,6 +1086,7 @@ ApplyTransactionState StoreApplyState(
 }
 
 Result<ApplyTransactionState> PrepareApplyIntentsBatch(
+    const TabletId& tablet_id,
     const TransactionId& transaction_id,
     HybridTime commit_ht,
     const KeyBounds* key_bounds,
@@ -1206,7 +1207,8 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
   }
 
   if (regular_batch) {
-    YB_TRANSACTION_DUMP(ApplyIntents, transaction_id_slice, log_ht, regular_batch->Data());
+    YB_TRANSACTION_DUMP(
+        ApplyIntents, tablet_id, transaction_id_slice, log_ht, regular_batch->Data());
   }
   return ApplyTransactionState {};
 }
