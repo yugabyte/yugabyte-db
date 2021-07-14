@@ -26,6 +26,7 @@ import org.junit.runner.RunWith;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -98,8 +99,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testEmptyUniverseListWithValidUUID() {
-    Result result =
-        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/universes", authToken);
+    Result result = listUniverses();
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
@@ -113,14 +113,37 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
 
-    Result result =
-        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/universes", authToken);
+    Result result = listUniverses();
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     assertValue(json.get(0), "universeUUID", u.universeUUID.toString());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  private Result listUniverses() {
+    return doRequestWithAuthToken(
+        "GET", "/api/customers/" + customer.uuid + "/universes", authToken);
+  }
+
+  @Test
+  @Parameters({
+    "Fake Universe, 0",
+    "Test Universe, 1",
+  })
+  public void testUniverseFindByName(String name, int expected) {
+    UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
+    String findUrl =
+        "/api/customers/" + customer.uuid + "/universes?name=" + URLEncoder.encode(name);
+    Result result = doRequestWithAuthToken("GET", findUrl, authToken);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(expected, json.size());
     assertAuditEntry(0, customer.uuid);
   }
 
