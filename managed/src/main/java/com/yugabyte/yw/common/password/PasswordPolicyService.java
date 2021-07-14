@@ -17,10 +17,6 @@ import com.yugabyte.yw.models.CustomerConfig;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.ValidationError;
-
-import play.mvc.Result;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 import javax.inject.Inject;
@@ -38,8 +34,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class PasswordPolicyService {
-   public static final Logger LOG = LoggerFactory.getLogger(PasswordPolicyService.class);
-
   private static final char[] SPECIAL_CHARACTERS =
       "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".toCharArray();
   private static final String DEFAULT_MIN_LENGTH_PARAM = "yb.pwdpolicy.default_min_length";
