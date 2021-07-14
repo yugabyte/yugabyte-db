@@ -182,6 +182,9 @@ class TabletPeer : public consensus::ConsensusContext,
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
 
+  // Returns whether shutdown started. If shutdown already completed returns true as well.
+  bool IsShutdownStarted() const;
+
   // Check that the tablet is in a SHUTDOWN/NOT_STARTED state.
   CHECKED_STATUS CheckShutdownOrNotStarted() const;
 

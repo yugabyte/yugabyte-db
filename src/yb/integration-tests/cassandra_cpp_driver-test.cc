@@ -299,7 +299,7 @@ class CppCassandraDriverTestIndexMultipleChunksWithLeaderMoves
         ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
             cluster_->master(), cluster_->tablet_server(tserver_id)));
         SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
-        ASSERT_OK(cluster_->EmptyBlacklist(cluster_->master()));
+        ASSERT_OK(cluster_->ClearBlacklist(cluster_->master()));
       }
     });
   }

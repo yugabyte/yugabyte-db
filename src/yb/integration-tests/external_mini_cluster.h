@@ -256,7 +256,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
   // Empty blacklist.
-  CHECKED_STATUS EmptyBlacklist(ExternalMaster* master);
+  CHECKED_STATUS ClearBlacklist(ExternalMaster* master);
 
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but

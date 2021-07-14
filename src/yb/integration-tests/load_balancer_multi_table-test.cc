@@ -394,7 +394,7 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   // Remove TS 2 from leader blacklist so that leader load gets transferred
   // to TS2 in the presenece of a DEAD TS1.
   LOG(INFO) << "Emptying blacklist";
-  ASSERT_OK(external_mini_cluster()->EmptyBlacklist(
+  ASSERT_OK(external_mini_cluster()->ClearBlacklist(
       external_mini_cluster()->master()));
 
   WaitForLoadBalanceCompletion();
