@@ -885,7 +885,7 @@ Status ExternalMiniCluster::AddTServerToLeaderBlacklist(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::EmptyBlacklist(
+Status ExternalMiniCluster::ClearBlacklist(
     ExternalMaster* master) {
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
