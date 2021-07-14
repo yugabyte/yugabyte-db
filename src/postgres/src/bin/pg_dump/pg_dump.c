@@ -1066,7 +1066,7 @@ help(const char *progname)
 	printf(_("  -w, --no-password        never prompt for password\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  --role=ROLENAME          do SET ROLE before dump\n"));
-	printf(_("  -m, --masters=IPS        YugaByte Master hosts IP addresses\n"));
+	printf(_("  -m, --masters=HOST:PORT  comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
