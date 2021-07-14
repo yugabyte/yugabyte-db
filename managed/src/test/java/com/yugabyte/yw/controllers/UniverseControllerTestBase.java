@@ -76,15 +76,15 @@ public class UniverseControllerTestBase extends WithApplication {
   protected YBClientService mockService;
   protected YBClient mockClient;
   protected ApiHelper mockApiHelper;
-  private CallHome mockCallHome;
+  protected CallHome mockCallHome;
   protected CustomerConfig s3StorageConfig;
-  private EncryptionAtRestManager mockEARManager;
+  protected EncryptionAtRestManager mockEARManager;
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
   protected YcqlQueryExecutor mockYcqlQueryExecutor;
-  private ShellProcessHandler mockShellProcessHandler;
+  protected ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
-  private AlertConfigurationWriter mockAlertConfigurationWriter;
+  protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected Config mockRuntimeConfig;
 
   @Override
