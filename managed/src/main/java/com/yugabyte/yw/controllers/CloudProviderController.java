@@ -42,7 +42,7 @@ public class CloudProviderController extends AuthenticatedController {
    *
    * @return JSON response of newly created provider
    */
-  @ApiOperation(value = "createCloudProvider", nickname = "createCloudProvider")
+  @ApiOperation(value = "UI_ONLY", nickname = "createCloudProvider", hidden = true)
   public Result create(UUID customerUUID) throws IOException {
     JsonNode reqBody = maybeMassageRequestConfig(request().body().asJson());
     CloudProviderFormData cloudProviderFormData =

@@ -92,10 +92,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   private Result createProvider(JsonNode bodyJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
-        "POST",
-        "/api/customers/" + customer.uuid + "/providers1",
-        user.createAuthToken(),
-        bodyJson);
+        "POST", "/api/customers/" + customer.uuid + "/providers", user.createAuthToken(), bodyJson);
   }
 
   private Result createKubernetesProvider(JsonNode bodyJson) {
