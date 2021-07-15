@@ -543,48 +543,6 @@ class UpdateDiskMethod(AbstractInstancesMethod):
         self.cloud.expand_file_system(args, ssh_options)
 
 
-class ChangeInstanceTypeMethod(AbstractInstancesMethod):
-    """Superclass for resizing the instances (instance type) in the given pattern.
-    """
-
-    def __init__(self, base_command):
-        super(ChangeInstanceTypeMethod, self).__init__(base_command, "change_instance_type")
-
-    def prepare(self):
-        super(ChangeInstanceTypeMethod, self).prepare()
-
-    def callback(self, args):
-        self._validate_args(args)
-        host_info = self.cloud.get_host_info(args)
-        if not host_info:
-            raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
-
-        self._resize_instance(args, host_info)
-
-    def _validate_args(self, args):
-        # Make sure "instance_type" exists in args
-        if args.instance_type is None:
-            raise YBOpsRuntimeError("instance_type not defined. Please define your intended type"
-                                    " using --instance_type argument")
-
-    def _resize_instance(self, args, host_info):
-        logging.info("Stopping instance {}".format(args.search_pattern))
-        self.cloud.stop_instance(host_info)
-        logging.info('Instance {} is stopped'.format(args.search_pattern))
-
-        try:
-            # Change instance type
-            self._change_instance_type(args, host_info)
-            logging.info('Instance {}\'s type changed to {}'
-                         .format(args.search_pattern, args.instance_type))
-        except Exception as e:
-            raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
-                                    .format(repr(e)))
-        finally:
-            self.cloud.start_instance(host_info, int(args.custom_ssh_port))
-            logging.info('Instance {} is started'.format(args.search_pattern))
-
-
 class CronCheckMethod(AbstractInstancesMethod):
     """Superclass for checking cronjob status on specified node.
     """
@@ -638,15 +596,11 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
         self.parser.add_argument('--use_custom_client_certs', action="store_true")
-        self.parser.add_argument('--use_custom_server_certs', action="store_true")
         self.parser.add_argument('--rotating_certs', action="store_true")
         self.parser.add_argument('--adding_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
-        self.parser.add_argument('--server_root_cert')
-        self.parser.add_argument('--server_node_cert')
-        self.parser.add_argument('--server_node_key')
         self.parser.add_argument('--client_root_cert_path')
         self.parser.add_argument('--client_node_cert_path')
         self.parser.add_argument('--client_node_key_path')
@@ -755,15 +709,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.node_key_path is not None:
             self.extra_vars["node_key_path"] = args.node_key_path.strip()
 
-        if args.server_root_cert is not None:
-            self.extra_vars["server_root_cert"] = args.server_root_cert.strip()
-
-        if args.server_node_cert is not None:
-            self.extra_vars["server_node_cert"] = args.server_node_cert.strip()
-
-        if args.server_node_key is not None:
-            self.extra_vars["server_node_key"] = args.server_node_key.strip()
-
         if args.client_root_cert_path is not None:
             self.extra_vars["client_root_cert_path"] = args.client_root_cert_path.strip()
 
@@ -837,14 +782,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 self.cloud.compare_root_certs(self.extra_vars, ssh_options)
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
             self.cloud.copy_certs(self.extra_vars, ssh_options)
-        if args.use_custom_server_certs:
-            logging.info("Copying custom certificates to {}.".format(args.search_pattern))
-            self.cloud.copy_server_certs(self.extra_vars, ssh_options)
-        if ((args.clientRootCA_cert and args.clientRootCA_cert is not None)
-                or (args.rootCA_cert and args.rootCA_key is not None)):
-            logging.info("Creating and copying over client TLS certificate to {}".format(
-                args.search_pattern))
-            self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+        else:
+            if ((args.clientRootCA_cert and args.clientRootCA_cert is not None)
+                    or (args.rootCA_cert and args.rootCA_key is not None)):
+                logging.info("Creating and copying over client TLS certificate to {}".format(
+                    args.search_pattern))
+                self.cloud.generate_client_cert(self.extra_vars, ssh_options)
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(

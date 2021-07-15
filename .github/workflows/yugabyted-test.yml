@@ -6,14 +6,12 @@ on:
       - master
     paths:
       - '**/yugabyted*'
-      - '!docs/**'
 
   pull_request:
     branches:
       - master
     paths:
       - '**/yugabyted*'
-      - '!docs/**'
 
 jobs:
   yugabyted-test:

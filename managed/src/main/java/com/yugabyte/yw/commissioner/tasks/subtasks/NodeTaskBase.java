@@ -10,25 +10,24 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import play.api.Play;
 import play.libs.Json;
 
-import javax.inject.Inject;
-
 public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
-  private final NodeManager nodeManager;
+  public static final Logger LOG = LoggerFactory.getLogger(NodeTaskBase.class);
 
-  @Inject
-  protected NodeTaskBase(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies);
-    this.nodeManager = nodeManager;
-  }
+  private NodeManager nodeManager;
 
   public NodeManager getNodeManager() {
     return nodeManager;
@@ -37,6 +36,12 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   @Override
   protected NodeTaskParams taskParams() {
     return (NodeTaskParams) taskParams;
+  }
+
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    this.nodeManager = Play.current().injector().instanceOf(NodeManager.class);
   }
 
   @Override

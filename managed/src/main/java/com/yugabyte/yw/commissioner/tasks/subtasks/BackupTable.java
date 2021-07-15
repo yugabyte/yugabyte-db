@@ -12,25 +12,23 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
+import play.api.Play;
 import play.libs.Json;
 
-import javax.inject.Inject;
-
-import java.util.List;
 import java.util.Map;
 
-@Slf4j
 public class BackupTable extends AbstractTaskBase {
 
-  @Inject
-  public BackupTable(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  Backup backup;
+
+  public BackupTable(Backup backup) {
+    this.backup = backup;
   }
 
   @Override
@@ -38,16 +36,18 @@ public class BackupTable extends AbstractTaskBase {
     return (BackupTableParams) taskParams;
   }
 
+  private TableManager tableManager;
+
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    tableManager = Play.current().injector().instanceOf(TableManager.class);
+  }
+
   @Override
   public void run() {
-    Backup backup = taskParams().backup;
     if (backup == null) {
-      List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
-      if (backups.size() == 1) {
-        backup = backups.get(0);
-      } else {
-        throw new RuntimeException("Unable to fetch backup info");
-      }
+      backup = Backup.fetchByTaskUUID(userTaskUUID);
     }
 
     try {
@@ -59,11 +59,11 @@ public class BackupTable extends AbstractTaskBase {
             ShellResponse response = tableManager.createBackup(backupParams);
             JsonNode jsonNode = Json.parse(response.message);
             if (response.code != 0 || jsonNode.has("error")) {
-              log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+              LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
 
               throw new RuntimeException(response.message);
             } else {
-              log.info("[" + getName() + "] STDOUT: " + response.message);
+              LOG.info("[" + getName() + "] STDOUT: " + response.message);
             }
           }
 
@@ -72,20 +72,20 @@ public class BackupTable extends AbstractTaskBase {
           ShellResponse response = tableManager.createBackup(taskParams());
           JsonNode jsonNode = Json.parse(response.message);
           if (response.code != 0 || jsonNode.has("error")) {
-            log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+            LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
             backup.transitionState(Backup.BackupState.Failed);
             throw new RuntimeException(response.message);
           } else {
-            log.info("[" + getName() + "] STDOUT: " + response.message);
+            LOG.info("[" + getName() + "] STDOUT: " + response.message);
             backup.transitionState(Backup.BackupState.Completed);
           }
         }
       } else {
-        log.info("Skipping table {}:{}", taskParams().getKeyspace(), taskParams().getTableName());
+        LOG.info("Skipping table {}:{}", taskParams().getKeyspace(), taskParams().getTableName());
         backup.transitionState(Backup.BackupState.Skipped);
       }
     } catch (Exception e) {
-      log.error("Errored out with: " + e);
+      LOG.error("Errored out with: " + e);
       backup.transitionState(Backup.BackupState.Failed);
       throw new RuntimeException(e);
     }

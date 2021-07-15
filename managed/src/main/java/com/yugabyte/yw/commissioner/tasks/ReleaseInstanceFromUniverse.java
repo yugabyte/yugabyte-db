@@ -10,32 +10,31 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.models.NodeInstance;
 
-import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 // Allows the removal of the instance from a universe. That node is already not part of the
 // universe and is in Removed state.
-@Slf4j
 public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
-
-  @Inject
-  protected ReleaseInstanceFromUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(ReleaseInstanceFromUniverse.class);
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -44,7 +43,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-    log.info(
+    LOG.info(
         "Started {} task for node {} in univ uuid={}",
         getName(),
         taskParams().nodeName,
@@ -62,7 +61,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
-        log.error(msg);
+        LOG.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -74,7 +73,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
                 + "is in "
                 + currentNode.state
                 + ", so cannot be released.";
-        log.error(msg);
+        LOG.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -129,7 +128,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
@@ -142,6 +141,6 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 }

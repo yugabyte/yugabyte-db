@@ -12,8 +12,7 @@ import time
 import logging
 
 REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
-DEFAULT_UPSTREAM = 'origin'
-DEFAULT_BASE_BRANCH = '{0}/master'.format(DEFAULT_UPSTREAM)
+DEFAULT_BASE_BRANCH = 'origin/master'
 CONFIG_FILE_PATH = '~/.yb_remote_build.json'
 
 
@@ -182,7 +181,7 @@ def load_profile(args, profile_name="default_profile"):
                     args.remote_path, cur_dir, json.dumps(substitution))
                 break
 
-    for arg_name in ['host', 'remote_path', 'branch', 'upstream']:
+    for arg_name in ['host', 'remote_path', 'branch']:
         if getattr(args, arg_name) is None:
             setattr(args, arg_name, profile.get(arg_name))
     if args.build_args is None:
@@ -190,7 +189,7 @@ def load_profile(args, profile_name="default_profile"):
     args.build_args += profile.get('extra_args', [])
 
 
-def sync_changes(host, branch, remote_path, wait_for_ssh, upstream):
+def sync_changes(host, branch, remote_path, wait_for_ssh):
     """
     Push local changes to a remote server.
 
@@ -242,7 +241,8 @@ def sync_changes(host, branch, remote_path, wait_for_ssh, upstream):
             'cd {0}'.format(escaped_remote_path),
             'git checkout -- .',
             'git clean -f .',
-            'git fetch {0}'.format(upstream),
+            'git checkout master',
+            'git pull',
             'git checkout {0}'.format(commit)
         ])
         remote_communicate(host, remote_command)

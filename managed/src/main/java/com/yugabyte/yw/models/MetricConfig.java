@@ -4,9 +4,6 @@ package com.yugabyte.yw.models;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import play.libs.Json;
 
@@ -20,9 +17,6 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
-
-@ApiModel(description = "Metric config")
 @Entity
 public class MetricConfig extends Model {
   public static class Layout {
@@ -41,12 +35,11 @@ public class MetricConfig extends Model {
   @Transient public String metric;
   @Transient public String function;
   @Transient public String range;
-  @Transient public Map<String, String> filters = new HashMap<>();
+  @Transient public JsonNode filters;
   @Transient public String group_by;
-  @Transient public Layout layout = new Layout();
+  @Transient public JsonNode layout;
   @Transient public String operator;
 
-  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_ONLY)
   @Id
   @Column(length = 100)
   private String config_key;
@@ -59,8 +52,6 @@ public class MetricConfig extends Model {
     this.config_key = key;
   }
 
-  // TODO : update this field once json cleanup is done.
-  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_WRITE)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode config;
@@ -78,11 +69,17 @@ public class MetricConfig extends Model {
   static final Pattern specialFilterPattern = Pattern.compile("[*|+$]");
 
   public Map<String, String> getFilters() {
-    return this.getConfig().filters;
+    if (this.getConfig().filters != null) {
+      return Json.fromJson(this.getConfig().filters, Map.class);
+    }
+    return new HashMap<>();
   }
 
   public Layout getLayout() {
-    return this.getConfig().layout;
+    if (this.getConfig().layout != null) {
+      return Json.fromJson(this.getConfig().layout, Layout.class);
+    }
+    return new Layout();
   }
 
   public Map<String, String> getQueries(Map<String, String> additionalFilters, int queryRangeSecs) {

@@ -10,23 +10,17 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.params.KubernetesClusterInitParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
-import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.commissioner.tasks.params.KubernetesClusterInitParams;
 
-import javax.inject.Inject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 public class KubernetesProvision extends CloudTaskBase {
-
-  @Inject
-  protected KubernetesProvision(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(KubernetesProvision.class);
 
   @Override
   protected KubernetesClusterInitParams taskParams() {
@@ -44,10 +38,10 @@ public class KubernetesProvision extends CloudTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 
   public void createKubernetesInitTask(KubernetesCommandExecutor.CommandType commandType) {

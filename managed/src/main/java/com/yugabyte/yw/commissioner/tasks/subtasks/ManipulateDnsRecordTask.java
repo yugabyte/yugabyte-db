@@ -10,31 +10,26 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-@Slf4j
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import play.api.Play;
+
 public class ManipulateDnsRecordTask extends UniverseTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(ManipulateDnsRecordTask.class);
 
-  private final DnsManager dnsManager;
-
-  @Inject
-  protected ManipulateDnsRecordTask(
-      BaseTaskDependencies baseTaskDependencies, DnsManager dnsManager) {
-    super(baseTaskDependencies);
-    this.dnsManager = dnsManager;
-  }
+  private DnsManager dnsManager;
 
   public static class Params extends UniverseTaskParams {
     public DnsManager.DnsCommandType type;
@@ -42,6 +37,12 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
     public String hostedZoneId;
     public String domainNamePrefix;
     public Boolean isForceDelete;
+  }
+
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    this.dnsManager = Play.current().injector().instanceOf(DnsManager.class);
   }
 
   @Override
@@ -69,7 +70,7 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
       if (taskParams().type != DnsManager.DnsCommandType.Delete || !taskParams().isForceDelete) {
         throw e;
       } else {
-        log.info(
+        LOG.info(
             "Ignoring error in dns record deletion for {} due to isForceDelete being set.",
             taskParams().domainNamePrefix,
             e);

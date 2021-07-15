@@ -330,7 +330,7 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
 
 // Verifies that a set of expected rows (key, value) is present in the tablet.
 void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
-  auto iter = tablet_peer_->tablet()->NewRowIterator(schema);
+  auto iter = tablet_peer_->tablet()->NewRowIterator(schema, boost::none);
   ASSERT_OK(iter);
 
   int count = 0;

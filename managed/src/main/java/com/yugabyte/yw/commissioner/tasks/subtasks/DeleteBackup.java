@@ -13,25 +13,19 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
-import lombok.extern.slf4j.Slf4j;
+import play.api.Play;
 import play.libs.Json;
 
-import javax.inject.Inject;
 import java.util.List;
 import java.util.UUID;
 
-@Slf4j
 public class DeleteBackup extends AbstractTaskBase {
-
-  @Inject
-  public DeleteBackup(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
 
   public static class Params extends AbstractTaskParams {
     public UUID customerUUID;
@@ -42,13 +36,21 @@ public class DeleteBackup extends AbstractTaskBase {
     return (Params) taskParams;
   }
 
+  private TableManager tableManager;
+
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    tableManager = Play.current().injector().instanceOf(TableManager.class);
+  }
+
   @Override
   public void run() {
     Backup backup = Backup.get(params().customerUUID, params().backupUUID);
     if (backup.state != Backup.BackupState.Completed) {
       // TODO: Allow deletion of InProgress backups. But not sure if backend supports it
       //  and may not be worth the effort.
-      log.error("Cannot delete backup in any other state other than completed.");
+      LOG.error("Cannot delete backup in any other state other than completed.");
       return;
     }
     try {
@@ -62,7 +64,7 @@ public class DeleteBackup extends AbstractTaskBase {
         return;
       }
     } catch (Exception ex) {
-      log.error(
+      LOG.error(
           "Unexpected error in DeleteBackup {}. We will ignore the error and Mark the "
               + "backup as failed to be deleted and remove it from scheduled cleanup.",
           params().backupUUID,
@@ -92,14 +94,14 @@ public class DeleteBackup extends AbstractTaskBase {
     ShellResponse response = tableManager.deleteBackup(backupTableParams);
     JsonNode jsonNode = Json.parse(response.message);
     if (response.code != 0 || jsonNode.has("error")) {
-      log.error(
+      LOG.error(
           "Delete Backup failed for {}. Response code={}, hasError={}.",
           backupTableParams.storageLocation,
           response.code,
           jsonNode.has("error"));
       return false;
     } else {
-      log.info("[" + getName() + "] STDOUT: " + response.message);
+      LOG.info("[" + getName() + "] STDOUT: " + response.message);
       return true;
     }
   }

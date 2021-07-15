@@ -321,8 +321,7 @@ extern ObjectAddress TypeCreate(Oid newTypeOid,
 		   int32 typeMod,
 		   int32 typNDims,
 		   bool typeNotNull,
-		   Oid typeCollation,
-		   bool ybRelationIsShared);
+		   Oid typeCollation);
 
 extern void GenerateTypeDependencies(Oid typeObjectId,
 						 Form_pg_type typeForm,
@@ -331,9 +330,7 @@ extern void GenerateTypeDependencies(Oid typeObjectId,
 						 char relationKind, /* only for relation rowtypes */
 						 bool isImplicitArray,
 						 bool isDependentType,
-						 bool rebuild,
-						 bool ybRelationIsSystem,
-						 bool ybRelationIsShared);
+						 bool rebuild);
 
 extern void RenameTypeInternal(Oid typeOid, const char *newTypeName,
 				   Oid typeNamespace);

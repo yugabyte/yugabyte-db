@@ -153,6 +153,17 @@ class StorageConfiguration extends Component {
     };
 
     if (values.type === 'update') {
+      this.setState({
+        editView: {
+          ...this.state.editView,
+          [props.activeTab]: false
+        },
+        listView: {
+          ...this.state.listView,
+          [props.activeTab]: true
+        }
+      });
+
       return this.props
         .editCustomerConfig({
           type: 'STORAGE',
@@ -165,16 +176,6 @@ class StorageConfiguration extends Component {
           if (getPromiseState(this.props.editConfig).isSuccess()) {
             this.props.reset();
             this.props.fetchCustomerConfigs();
-            this.setState({
-              editView: {
-                ...this.state.editView,
-                [props.activeTab]: false
-              },
-              listView: {
-                ...this.state.listView,
-                [props.activeTab]: true
-              }
-            });
           } else if (getPromiseState(this.props.editConfig).isError()) {
             throw new SubmissionError(this.props.editConfig.error);
           }

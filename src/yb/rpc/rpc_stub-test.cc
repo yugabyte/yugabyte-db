@@ -330,7 +330,8 @@ TEST_F(RpcStubTest, TestRespondDeferred) {
 TEST_F(RpcStubTest, TestDefaultCredentialsPropagated) {
   CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
 
-  string expected = ASSERT_RESULT(GetLoggedInUser());
+  string expected;
+  ASSERT_OK(GetLoggedInUser(&expected));
 
   RpcController controller;
   WhoAmIRequestPB req;

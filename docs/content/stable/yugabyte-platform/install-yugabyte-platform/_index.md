@@ -29,7 +29,7 @@ showAsideToc: true
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prepare-environment/aws/">
+    <a class="section-link icon-offset" href="prepare-environment/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
         <div class="title">Prepare the environment</div>
@@ -41,7 +41,7 @@ showAsideToc: true
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-software/default/">
+    <a class="section-link icon-offset" href="install-software/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install software</div>

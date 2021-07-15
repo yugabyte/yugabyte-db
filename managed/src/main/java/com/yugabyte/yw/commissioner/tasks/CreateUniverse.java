@@ -10,7 +10,16 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Set;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.yb.Common;
+import org.yb.client.YBClient;
+
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
@@ -23,26 +32,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-import org.yb.Common;
-import org.yb.client.YBClient;
 
-import javax.inject.Inject;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
-@Slf4j
 public class CreateUniverse extends UniverseDefinitionTaskBase {
-
-  @Inject
-  protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
 
   @Override
   public void run() {
-    log.info("Started {} task.", getName());
+    LOG.info("Started {} task.", getName());
     try {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
@@ -185,14 +181,14 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 
   private void checkIfNodesExist(Universe universe) {

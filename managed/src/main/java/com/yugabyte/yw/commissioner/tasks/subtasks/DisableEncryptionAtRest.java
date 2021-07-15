@@ -10,21 +10,24 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
+import play.api.Play;
 
-import javax.inject.Inject;
-
-@Slf4j
 public class DisableEncryptionAtRest extends AbstractTaskBase {
 
-  @Inject
-  protected DisableEncryptionAtRest(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(DisableEncryptionAtRest.class);
+
+  // The YB client.
+  public YBClientService ybService = null;
+
+  // Timeout for failing to respond to pings.
+  private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
   public static class Params extends EncryptionAtRestKeyParams {}
 
@@ -34,18 +37,24 @@ public class DisableEncryptionAtRest extends AbstractTaskBase {
   }
 
   @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    ybService = Play.current().injector().instanceOf(YBClientService.class);
+  }
+
+  @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
-      log.info("Running {}: hostPorts={}.", getName(), hostPorts);
+      LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
       client.disableEncryptionAtRestInMemory();
       universe.incrementVersion();
     } catch (Exception e) {
-      log.error("{} hit error : {}", getName(), e.getMessage());
+      LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, hostPorts);

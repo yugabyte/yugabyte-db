@@ -39,8 +39,6 @@ const TableId kPgYbCatalogVersionTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgYbCatalogVersionTableOid);
 const TableId kPgTablespaceTableId =
     GetPgsqlTableId(kTemplate1Oid, kPgTablespaceTableOid);
-const string kPgSequencesDataNamespaceId =
-  GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 
 

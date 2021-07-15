@@ -26,4 +26,4 @@ set -euo pipefail
 set_sanitizer_runtime_options
 
 # Invoke the actual yb-ctl script.
-python3 "$YB_SRC_ROOT"/scripts/installation/bin/yb-ctl "$@"
+"$YB_SRC_ROOT"/scripts/installation/bin/yb-ctl "$@"

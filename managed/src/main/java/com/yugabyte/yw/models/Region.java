@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Query;
 import io.ebean.*;
@@ -13,10 +14,7 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 import javax.persistence.*;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static io.ebean.Ebean.*;
@@ -31,6 +29,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
         "Region within a given provider. Typically this will map to a "
             + "single cloud provider region")
 public class Region extends Model {
+  public static final String SECURITY_GROUP_KEY = "sg_id";
+  private static final String VNET_KEY = "vnet";
 
   @Id
   @ApiModelProperty(value = "Region uuid", accessMode = READ_ONLY)
@@ -72,7 +72,7 @@ public class Region extends Model {
 
   @OneToMany(cascade = CascadeType.ALL)
   @JsonManagedReference("region-zones")
-  public List<AvailabilityZone> zones;
+  public Set<AvailabilityZone> zones;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
@@ -87,50 +87,44 @@ public class Region extends Model {
     this.active = active;
   }
 
-  static class RegionDetails {
-    public String sg_id; // Security group ID.
-    public String vnet; // Vnet key.
-  }
-
   @DbJson
   @Column(columnDefinition = "TEXT")
-  public RegionDetails details;
+  @JsonIgnore
+  public JsonNode details;
 
   public void setSecurityGroupId(String securityGroupId) {
     if (details == null) {
-      details = new RegionDetails();
+      details = Json.newObject();
     }
-    details.sg_id = securityGroupId;
-    save();
+    ((ObjectNode) details).put(SECURITY_GROUP_KEY, securityGroupId);
   }
 
   public String getSecurityGroupId() {
     if (details != null) {
-      String sgNode = details.sg_id;
-      return sgNode == null || sgNode.isEmpty() ? null : sgNode;
+      JsonNode sgNode = details.get(SECURITY_GROUP_KEY);
+      return sgNode == null || sgNode.isNull() ? null : sgNode.asText();
     }
     return null;
   }
 
   public void setVnetName(String vnetName) {
     if (details == null) {
-      details = new RegionDetails();
+      details = Json.newObject();
     }
-    details.vnet = vnetName;
-    save();
+    ((ObjectNode) details).put(VNET_KEY, vnetName);
   }
 
   public String getVnetName() {
     if (details != null) {
-      String vnetNode = details.vnet;
-      return vnetNode == null || vnetNode.isEmpty() ? null : vnetNode;
+      JsonNode vnetNode = details.get(VNET_KEY);
+      return vnetNode == null || vnetNode.isNull() ? null : vnetNode.asText();
     }
     return null;
   }
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  private Map<String, String> config;
+  public JsonNode config;
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
@@ -138,8 +132,7 @@ public class Region extends Model {
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
-    this.config = currConfig;
-    this.save();
+    this.config = Json.toJson(currConfig);
   }
 
   @JsonProperty("config")
@@ -152,7 +145,7 @@ public class Region extends Model {
     if (this.config == null) {
       return new HashMap<>();
     } else {
-      return this.config;
+      return Json.fromJson(this.config, Map.class);
     }
   }
 
@@ -240,6 +233,9 @@ public class Region extends Model {
   /**
    * Fetch Regions with the minimum zone count and having a valid yb server image.
    *
+   * @param customerUUID
+   * @param providerUUID
+   * @param minZoneCount
    * @return List of PlacementRegion
    */
   public static List<Region> fetchValidRegions(

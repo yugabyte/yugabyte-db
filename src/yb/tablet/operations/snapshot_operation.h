@@ -43,6 +43,8 @@ class SnapshotOperation :
         tserver::TabletSnapshotOpRequestPB::UNKNOWN : request()->operation();
   }
 
+  CHECKED_STATUS Apply(int64_t leader_term);
+
   // Returns the snapshot directory, based on the tablet's top directory for all snapshots, and any
   // overrides for the snapshot directory this operation might have.
   Result<std::string> GetSnapshotDir() const;
@@ -59,7 +61,6 @@ class SnapshotOperation :
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
   CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
   CHECKED_STATUS DoAborted(const Status& status) override;
-  CHECKED_STATUS Apply(int64_t leader_term);
 
   void AddedAsPending() override;
   void RemovedFromPending() override;

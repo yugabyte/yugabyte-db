@@ -16,7 +16,6 @@
 
 #include <memory>
 
-#include "yb/common/entity_ids_types.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/master/master.pb.h"
 
@@ -63,10 +62,6 @@ YQLDatabase GetDatabaseType(const PB& ns) {
 
 YQLDatabase GetDatabaseTypeForTable(const TableType table_type);
 TableType GetTableTypeForDatabase(const YQLDatabase database_type);
-
-Result<bool> TableMatchesIdentifier(const TableId& id,
-                                    const SysTablesEntryPB& table,
-                                    const TableIdentifierPB& table_identifier);
 
 } // namespace master
 } // namespace yb

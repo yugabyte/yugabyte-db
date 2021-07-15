@@ -40,10 +40,7 @@ class NodeConnectModal extends Component {
     let accessCommand = null;
     let accessTitle = null;
 
-    if (
-      (isEmptyObject(nodeIPs) || currentRow.cloudInfo.cloud !== 'kubernetes') &&
-      !getPromiseState(accessKeys).isSuccess()
-    ) {
+    if (isEmptyObject(nodeIPs) || !getPromiseState(accessKeys).isSuccess()) {
       return <MenuItem>{label}</MenuItem>;
     }
 
@@ -55,7 +52,7 @@ class NodeConnectModal extends Component {
     if (currentRow.cloudInfo.cloud === 'kubernetes') {
       accessTitle = 'Access your pod';
       const podNamespace = currentRow.privateIP.split(".")[2];
-      accessCommand = `kubectl exec -it -n ${podNamespace} ${currentRow.name.split('_')[0]} -- sh`;
+      accessCommand = `kubectl exec -it -n ${podNamespace} ${currentRow.name} -- sh`;
     } else {
       accessTitle = 'Access your node';
       const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];

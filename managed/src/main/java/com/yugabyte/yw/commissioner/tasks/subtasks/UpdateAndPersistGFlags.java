@@ -10,7 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import java.util.Map;
+
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -18,18 +19,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
-import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 public class UpdateAndPersistGFlags extends UniverseTaskBase {
-
-  @Inject
-  protected UpdateAndPersistGFlags(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(UpdateAndPersistGFlags.class);
 
   // Parameters for setting and persisting universe gflags.
   public static class Params extends UniverseTaskParams {
@@ -49,7 +44,7 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      log.info("Running {}", getName());
+      LOG.info("Running {}", getName());
 
       // Create the update lambda.
       UniverseUpdater updater =
@@ -60,7 +55,7 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
               // If this universe is not being updated, fail the request.
               if (!universeDetails.updateInProgress) {
                 String msg = "UserUniverse " + taskParams().universeUUID + " is not being updated.";
-                log.error(msg);
+                LOG.error(msg);
                 throw new RuntimeException(msg);
               }
 
@@ -81,7 +76,7 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
       saveUniverseDetails(updater);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      log.warn(msg, e.getMessage());
+      LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.google.inject.Inject;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
 import com.yugabyte.yw.forms.YWResults;
@@ -26,16 +28,14 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZoneController.class);
 
+  @Inject ValidatingFormFactory formFactory;
+
   /**
    * GET endpoint for listing availability zones
    *
    * @return JSON response with availability zone's
    */
-  @ApiOperation(
-      value = "listAZ",
-      response = AvailabilityZone.class,
-      responseContainer = "List",
-      nickname = "listOfAZ")
+  @ApiOperation(value = "listAZ", response = AvailabilityZone.class, responseContainer = "List")
   public Result list(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
@@ -49,11 +49,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
    *
    * @return JSON response of newly created region(s)
    */
-  @ApiOperation(
-      value = "createAZ",
-      response = AvailabilityZone.class,
-      responseContainer = "Map",
-      nickname = "createAZ")
+  @ApiOperation(value = "createAZ", response = AvailabilityZone.class, responseContainer = "Map")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "azFormData",
@@ -85,7 +81,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @param azUUID AvailabilityZone UUID
    * @return JSON response on whether or not delete region was successful or not.
    */
-  @ApiOperation(value = "deleteAZ", response = YWResults.YWSuccess.class, nickname = "deleteAZ")
+  @ApiOperation(value = "deleteAZ", response = Object.class)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);

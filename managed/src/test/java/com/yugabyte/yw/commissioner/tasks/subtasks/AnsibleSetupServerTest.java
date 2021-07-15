@@ -2,17 +2,23 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import org.junit.Test;
 
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   private AnsibleSetupServer.Params createUniverse(
@@ -35,7 +41,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithAirGapOption() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-    AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+    AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.airGapInstall = true;
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
@@ -47,7 +53,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithPasswordlessOptionDisabled() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-    AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+    AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.passwordlessSudoAccess = false;
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
@@ -59,7 +65,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithPasswordlessOptionEnabled() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-    AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+    AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.passwordlessSudoAccess = true;
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
@@ -71,7 +77,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithSkipProvision() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-    AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+    AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.skipProvisioning = true;
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
@@ -83,7 +89,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithoutSkipProvision() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-    AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+    AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.skipProvisioning = false;
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
@@ -95,7 +101,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   @Test
   public void testOnPremProviderWithMultipleAccessKeys() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-    AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+    AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
     AccessKey.create(params.getProvider().uuid, "demo-key-2", keyInfo);
@@ -108,7 +114,7 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   public void testAllProvidersWithAccessKey() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
     for (Common.CloudType cloudType : Common.CloudType.values()) {
-      AnsibleSetupServer ansibleSetupServer = AbstractTaskBase.createTask(AnsibleSetupServer.class);
+      AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       AnsibleSetupServer.Params params = createUniverse(cloudType, keyInfo);
       ansibleSetupServer.initialize(params);

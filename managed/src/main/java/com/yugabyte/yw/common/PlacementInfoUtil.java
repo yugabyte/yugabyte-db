@@ -379,15 +379,12 @@ public class PlacementInfoUtil {
     if (taskParams.universeUUID == null) {
       taskParams.universeUUID = UUID.randomUUID();
     } else {
-      universe =
-          Universe.maybeGet(taskParams.universeUUID)
-              .orElseGet(
-                  () -> {
-                    LOG.info(
-                        "Universe with UUID {} not found, configuring new universe.",
-                        taskParams.universeUUID);
-                    return null;
-                  });
+      try {
+        universe = Universe.getOrBadRequest(taskParams.universeUUID);
+      } catch (Exception e) {
+        LOG.info(
+            "Universe with UUID {} not found, configuring new universe.", taskParams.universeUUID);
+      }
     }
 
     String universeName =

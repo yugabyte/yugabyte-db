@@ -39,7 +39,6 @@
 #include "yb/yql/pggate/type_mapping.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -490,8 +489,6 @@ class PgApiImpl {
     std::unique_ptr<rpc::SecureContext> security_context;
     std::unique_ptr<rpc::Messenger> messenger;
   };
-
-  void ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
 
  private:
   // Control variables.

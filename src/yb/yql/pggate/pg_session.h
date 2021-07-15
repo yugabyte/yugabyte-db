@@ -267,10 +267,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return runner.Flush();
   }
 
-  // Smart driver functions.
-  // -------------
-  CHECKED_STATUS ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
-
   //------------------------------------------------------------------------------------------------
   // Access functions.
   // TODO(neil) Need to double check these code later.

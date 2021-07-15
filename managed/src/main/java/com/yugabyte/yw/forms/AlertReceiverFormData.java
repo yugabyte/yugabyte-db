@@ -12,7 +12,5 @@ public class AlertReceiverFormData {
 
   public UUID alertReceiverUUID;
 
-  @Constraints.Required() public String name;
-
   @Constraints.Required() public AlertReceiverParams params;
 }

@@ -57,8 +57,7 @@ class DocDBRocksDBUtil {
   rocksdb::DB* intents_db();
   DocDB doc_db() { return { rocksdb(), intents_db(), &KeyBounds::kNoBounds }; }
 
-  CHECKED_STATUS InitCommonRocksDBOptionsForTests();
-  CHECKED_STATUS InitCommonRocksDBOptionsForBulkLoad();
+  CHECKED_STATUS InitCommonRocksDBOptions();
 
   const rocksdb::WriteOptions& write_options() const { return write_options_; }
 

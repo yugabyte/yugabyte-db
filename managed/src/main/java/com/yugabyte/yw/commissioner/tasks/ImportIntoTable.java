@@ -2,21 +2,15 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.BulkImportParams;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.inject.Inject;
-
-@Slf4j
 public class ImportIntoTable extends UniverseTaskBase {
 
-  @Inject
-  protected ImportIntoTable(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(ImportIntoTable.class);
 
   @Override
   protected BulkImportParams taskParams() {
@@ -44,13 +38,13 @@ public class ImportIntoTable extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done and successful. This will allow future edits and
       // updates to the universe to happen.
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 }

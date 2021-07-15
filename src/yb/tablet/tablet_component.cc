@@ -16,14 +16,13 @@
 namespace yb {
 namespace tablet {
 
-Result<Tablet::ScopedRWOperationPauses> TabletComponent::StartShutdownRocksDBs(
-    DisableFlushOnShutdown disable_flush_on_shutdown) {
-  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown);
+ScopedRWOperationPause TabletComponent::PauseReadWriteOperations() {
+  return tablet_.PauseReadWriteOperations();
 }
 
-CHECKED_STATUS TabletComponent::CompleteShutdownRocksDBs(
-    Destroy destroy, Tablet::ScopedRWOperationPauses* ops_pauses) {
-  return tablet_.CompleteShutdownRocksDBs(destroy, ops_pauses);
+Status TabletComponent::ShutdownRocksDBs(
+    Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown) {
+  return tablet_.ShutdownRocksDBs(destroy, disable_flush_on_shutdown);
 }
 
 Status TabletComponent::OpenRocksDBs() {
@@ -39,7 +38,7 @@ RaftGroupMetadata& TabletComponent::metadata() const {
 }
 
 RWOperationCounter& TabletComponent::pending_op_counter() const {
-  return tablet_.pending_non_abortable_op_counter_;
+  return tablet_.pending_op_counter_;
 }
 
 rocksdb::DB& TabletComponent::regular_db() const {

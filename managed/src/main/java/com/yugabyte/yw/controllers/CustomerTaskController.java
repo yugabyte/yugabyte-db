@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
@@ -16,7 +14,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.swagger.annotations.*;
 import io.ebean.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,13 +22,11 @@ import play.mvc.Result;
 
 import java.util.*;
 
-@Api(
-    value = "Customer Task",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerTaskController extends AuthenticatedController {
 
+  @Inject Commissioner commissioner;
+
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
-  @Inject private Commissioner commissioner;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
 
@@ -134,7 +129,6 @@ public class CustomerTaskController extends AuthenticatedController {
     return taskListMap;
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -142,7 +136,6 @@ public class CustomerTaskController extends AuthenticatedController {
     return YWResults.withData(taskList);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -151,8 +144,7 @@ public class CustomerTaskController extends AuthenticatedController {
     return YWResults.withData(taskList);
   }
 
-  @ApiOperation(value = "Status of task", responseContainer = "Map", response = Object.class)
-  public Result taskStatus(UUID customerUUID, UUID taskUUID) {
+  public Result status(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
 
@@ -160,7 +152,6 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "Get failed sub task", responseContainer = "Map", response = Object.class)
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -171,7 +162,6 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "Retry task", response = UniverseResp.class)
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customer.uuid, taskUUID);

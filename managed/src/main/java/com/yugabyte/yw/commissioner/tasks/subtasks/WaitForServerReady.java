@@ -10,19 +10,22 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.forms.UpgradeParams;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
+import org.yb.tserver.Tserver.TabletServerErrorPB;
 
-import javax.inject.Inject;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
+import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.forms.UpgradeParams;
 
-@Slf4j
+import play.api.Play;
+
 public class WaitForServerReady extends ServerSubTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(WaitForServerReady.class);
 
   // Time to wait (in millisec) during each iteration of server readiness check.
   private static final int WAIT_EACH_ATTEMPT_MS = 1000;
@@ -32,11 +35,6 @@ public class WaitForServerReady extends ServerSubTaskBase {
 
   // Maximum total wait time for the rpc to return 0 not-running tablets (10min).
   private static final int MAX_TOTAL_WAIT_MS = 600000;
-
-  @Inject
-  protected WaitForServerReady(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
 
   // Parameters for wait task.
   public static class Params extends ServerSubTaskParams {
@@ -87,12 +85,12 @@ public class WaitForServerReady extends ServerSubTaskBase {
         response = client.isServerReady(hp, isTserverTask);
 
         if (response.hasError()) {
-          log.info("Response has error {} after iters={}.", response.errorMessage(), numIters);
+          LOG.info("Response has error {} after iters={}.", response.errorMessage(), numIters);
           break;
         }
 
         if (response.getNumNotRunningTablets() == 0) {
-          log.info(
+          LOG.info(
               "{} on node {} ready after iters={}.",
               taskParams().serverType,
               taskParams().nodeName,
@@ -101,7 +99,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
         }
 
         if (numIters > (MAX_TOTAL_WAIT_MS / WAIT_EACH_ATTEMPT_MS)) {
-          log.info(
+          LOG.info(
               "Timing out after iters={}. {} tablets not running, out of {}.",
               numIters,
               response.getNumNotRunningTablets(),
@@ -110,7 +108,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
         }
 
         if (numIters % LOG_EVERY_NUM_ITERS == 0) {
-          log.info(
+          LOG.info(
               "{} on node {} not ready after iters={}, {} tablets not running out of {}.",
               taskParams().serverType,
               taskParams().nodeName,
@@ -124,7 +122,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
     } catch (Exception e) {
       // There is no generic mechanism from proto/rpc to check if an older server does not have
       // this rpc implemented. So, we just sleep for remaining time on any such error.
-      log.info("{} hit exception '{}' after {} iters.", getName(), e.getMessage(), numIters);
+      LOG.info("{} hit exception '{}' after {} iters.", getName(), e.getMessage(), numIters);
     }
 
     // Sleep for the remaining portion of user specified time, if any.

@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -43,9 +42,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private final KubernetesManager kubernetesManager;
 
   @Inject
-  protected KubernetesWaitForPod(
-      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
-    super(baseTaskDependencies);
+  public KubernetesWaitForPod(KubernetesManager kubernetesManager) {
     this.kubernetesManager = kubernetesManager;
   }
 

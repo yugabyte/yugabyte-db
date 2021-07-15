@@ -67,7 +67,7 @@ activate_virtualenv
 
 (
   set -x
-  "$PYTHON_EXECUTABLE" $(which ansible-galaxy) install \
+  "$PYTHON_EXECUTABLE" $(which ansible-galaxy) \
       --role-file="$role_file" \
-      --roles-path=./third-party/roles $force
+      --roles-path=./third-party/roles install $force
 )

@@ -1,16 +1,16 @@
 ---
 title: JSON Support
 headerTitle: JSON Support
-linkTitle: JSON support
+linkTitle: JSON Support
 description: JSON Support in YugabyteDB.
 headcontent: JSON Support in YugabyteDB.
 image: <div class="icon"><i class="fas fa-file-invoice"></i></div>
 menu:
   stable:
-    name: JSON support
+    name: JSON Support
     identifier: explore-json-support-2-ycql
     parent: explore
-    weight: 260
+    weight: 232
 isTocNested: true
 showAsideToc: true
 ---
@@ -43,10 +43,10 @@ The JSON data type supported in YCQL is `jsonb`. The JSON functionality in YCQL 
 You need a YugabyteDB cluster to run through the steps below. If do not have a YugabyteDB cluster, you can create one on your local machine as shown below.
 
 ```sh
-$ ./bin/yugabyted start
+$ ./bin/yb-ctl create
 ```
 
-Connect to the cluster using `ycqlsh` to run through the examples below.
+Connect to the cluster using `ysqlsh` to run through the examples below.
 
 ```sh
 $ ./bin/ycqlsh
@@ -79,7 +79,7 @@ INSERT INTO store.books (id, details) VALUES
 
 ## 2. Query JSON documents
 
-You can list all the row inserted using the command below.
+Let us list all the rows we inserted using the command below.
 
 ```sql
 ycqlsh> SELECT * FROM store.books;
@@ -246,12 +246,7 @@ ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
 {{< note title="Note" >}}
-JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. Upsert on non-leaf properties is not supported presently.
+JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. We do not support upsert on non-leaf properties.
 {{< /note >}}
 
-## 5. Clean up (Optional)
-Optionally, you can shut down the local cluster you created earlier.
 
-```sh
-$ ./bin/yugabyted destroy
-```

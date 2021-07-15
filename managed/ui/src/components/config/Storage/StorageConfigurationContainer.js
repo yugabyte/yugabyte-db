@@ -16,21 +16,6 @@ import {
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 import { toast } from 'react-toastify';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
-
-const customerConfigToasterHandler = (errorMessageObject) => {
-  isNonEmptyObject(errorMessageObject)
-    ? Object.keys(errorMessageObject).forEach((errorKey) => {
-        toast.error(
-          <ul>
-            {errorMessageObject[errorKey].map((error) => (
-              <li>{error}</li>
-            ))}
-          </ul>
-        );
-      })
-    : toast.error(errorMessageObject);
-};
 
 const mapStateToProps = (state) => {
   return {
@@ -50,8 +35,17 @@ const mapDispatchToProps = (dispatch) => {
         if (response.error) {
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
-            customerConfigToasterHandler(errorMessageObject);
-          
+          errorMessageObject instanceof Object
+            ? Object.keys(errorMessageObject).forEach((errorKey) => {
+                toast.error(
+                  <ul>
+                    {errorMessageObject[errorKey].map((error) => (
+                      <li>{error}</li>
+                    ))}
+                  </ul>
+                );
+              })
+            : toast.error(errorMessageObject);
         } else {
           toast.success('Successfully added the backup configuration.');
         }
@@ -65,14 +59,6 @@ const mapDispatchToProps = (dispatch) => {
 
     editCustomerConfig: (config) => {
       return dispatch(editCustomerConfig(config)).then((response) => {
-        if (response.error) {
-          const errorMessageObject =
-            response.payload?.response?.data?.error || response.payload.message;
-            customerConfigToasterHandler(errorMessageObject);
-          
-        } else {
-          toast.success('Successfully updated the backup configuration.');
-        }
         return dispatch(editCustomerConfigResponse(response.payload));
       });
     },
@@ -98,8 +84,6 @@ const mapDispatchToProps = (dispatch) => {
     }
   };
 };
-
-
 
 const storageConfigForm = reduxForm({
   form: 'storageConfigForm',

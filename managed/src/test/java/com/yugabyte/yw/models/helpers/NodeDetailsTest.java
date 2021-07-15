@@ -48,13 +48,12 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.ToggleTls);
     activeStates.add(NodeDetails.NodeState.Live);
     activeStates.add(NodeDetails.NodeState.Stopping);
-    activeStates.add(NodeDetails.NodeState.Resizing);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (activeStates.contains(state)) {
-        assertTrue("Node is inactive unexpectedly. State: " + state, nd.isActive());
+        assertTrue(nd.isActive());
       } else {
-        assertFalse("Node is active unexpectedly. State: " + state, nd.isActive());
+        assertFalse(nd.isActive());
       }
     }
   }

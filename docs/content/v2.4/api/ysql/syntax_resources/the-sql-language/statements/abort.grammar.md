@@ -1,3 +1,0 @@
-```
-abort ::= ABORT [ TRANSACTION | WORK ]
-```

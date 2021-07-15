@@ -10,29 +10,36 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
 
-import javax.inject.Inject;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
-@Slf4j
+import play.api.Play;
+
 public abstract class ServerSubTaskBase extends AbstractTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(ServerSubTaskBase.class);
 
-  @Inject
-  protected ServerSubTaskBase(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  // The YB client.
+  public YBClientService ybService = null;
 
   @Override
   protected ServerSubTaskParams taskParams() {
     return (ServerSubTaskParams) taskParams;
+  }
+
+  @Override
+  public void initialize(ITaskParams params) {
+    super.initialize(params);
+    ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 
   @Override
@@ -74,7 +81,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
   public void checkParams() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterAddresses = universe.getMasterAddresses();
-    log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
+    LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
       throw new IllegalArgumentException(

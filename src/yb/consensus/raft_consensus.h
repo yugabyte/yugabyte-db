@@ -42,7 +42,6 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
-#include "yb/common/entity_ids_types.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_peers.h"
@@ -182,8 +181,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::string peer_uuid() const override;
 
   std::string tablet_id() const override;
-
-  const TabletId& split_parent_tablet_id() const override;
 
   ConsensusStatePB ConsensusState(
       ConsensusConfigType type,
@@ -723,8 +720,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<MonoDelta> TEST_delay_update_{MonoDelta::kZero};
 
   std::atomic<uint64_t> majority_num_sst_files_{0};
-
-  const TabletId split_parent_tablet_id_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

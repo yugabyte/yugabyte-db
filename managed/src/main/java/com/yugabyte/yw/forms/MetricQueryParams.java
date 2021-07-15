@@ -6,26 +6,15 @@ import play.data.validation.Constraints;
 
 import java.util.List;
 
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
-@ApiModel(value = "Metrics", description = "Metrics details")
 public class MetricQueryParams {
-  @Constraints.Required()
-  @ApiModelProperty(value = "metrics", required = true)
-  private List<String> metrics;
+  @Constraints.Required() private List<String> metrics;
 
-  @Constraints.Required()
-  @ApiModelProperty(value = "Start time", required = true)
-  private Long start;
+  @Constraints.Required() private Long start;
 
-  @ApiModelProperty(value = "End time")
   private Long end;
 
-  @ApiModelProperty(value = "Node prefix")
   private String nodePrefix;
 
-  @ApiModelProperty(value = "Node name")
   private String nodeName;
 
   public List<String> getMetrics() {

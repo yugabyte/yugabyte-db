@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -20,9 +19,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.HashSet;
 
@@ -32,13 +29,7 @@ import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
  * Class contains the tasks to start a node in a given universe. It starts the tserver process and
  * the master process if needed.
  */
-@Slf4j
 public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
-
-  @Inject
-  protected StartNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -54,7 +45,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      log.info(
+      LOG.info(
           "Start Node with name {} from universe {}",
           taskParams().nodeName,
           taskParams().universeUUID);
@@ -62,7 +53,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
-        log.error(msg);
+        LOG.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -70,7 +61,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       taskParams().placementUuid = currentNode.placementUuid;
       if (!instanceExists(taskParams())) {
         String msg = "No instance exists for " + taskParams().nodeName;
-        log.error(msg);
+        LOG.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -150,7 +141,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       // Reset the state, on any failure, so that the actions can be retried.
       if (currentNode != null) {
         setNodeState(taskParams().nodeName, currentNode.state);
@@ -159,6 +150,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
     } finally {
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 }

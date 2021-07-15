@@ -7,7 +7,7 @@ menu:
   stable:
     parent: build-apps
     name: Java
-    identifier: java-3
+    identifier: java-2
     weight: 550
 type: page
 isTocNested: true
@@ -19,12 +19,6 @@ showAsideToc: true
     <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
-    </a>
-  </li>
-  <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC SSL/TLS
     </a>
   </li>
   <li >
@@ -74,7 +68,7 @@ There are a number of options that can be customized in the properties file loca
 ## Build the application
 
 ```sh
-$ cd orm-examples/java/spring
+$ cd ./java/spring
 ```
 
 ```sh
@@ -139,7 +133,7 @@ $ curl \
 $ ./bin/ysqlsh
 ```
 
-```output
+```
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -152,7 +146,7 @@ List the tables created by the app.
 yugabyte=# \d
 ```
 
-```output
+```
 List of relations
  Schema |          Name           |   Type   |  Owner
 --------+-------------------------+----------+----------
@@ -172,7 +166,7 @@ Note the 4 tables and 3 sequences in the list above.
 yugabyte=# SELECT count(*) FROM users;
 ```
 
-```output
+```
  count
 -------
      2
@@ -183,7 +177,7 @@ yugabyte=# SELECT count(*) FROM users;
 yugabyte=# SELECT count(*) FROM products;
 ```
 
-```output
+```
  count
 -------
      2
@@ -194,7 +188,7 @@ yugabyte=# SELECT count(*) FROM products;
 yugabyte=# SELECT count(*) FROM orders;
 ```
 
-```output
+```
  count
 -------
      2
@@ -205,7 +199,7 @@ yugabyte=# SELECT count(*) FROM orders;
 yugabyte=# SELECT * FROM orderline;
 ```
 
-```output
+```
  order_id                             | product_id | units 
 --------------------------------------+------------+-------
  45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2

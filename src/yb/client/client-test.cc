@@ -32,9 +32,8 @@
 
 #include <algorithm>
 #include <functional>
-#include <regex>
-#include <set>
 #include <thread>
+#include <set>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -538,7 +537,7 @@ class ClientTestForceMasterLookup :
   }
 
 
-  void PerformManyLookups(const std::shared_ptr<YBTable>& table, bool point_lookup) {
+  void PerformManyLookups(const std::shared_ptr<const YBTable>& table, bool point_lookup) {
     for (int i = 0; i < kNumIterations; i++) {
       if (point_lookup) {
           auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
@@ -1084,10 +1083,9 @@ TEST_F(ClientTest, TestWriteTimeout) {
         << "unexpected status: " << flush_status.status.ToString();
     auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
-    ASSERT_TRUE(std::regex_match(
-        error->status().ToString(),
-        std::regex(".*GetTableLocations \\{.*\\} failed: timed out after deadline expired.*")))
-        << error->status().ToString();
+    ASSERT_STR_CONTAINS(error->status().ToString(),
+        strings::Substitute("GetTableLocations($0, hash_code: NaN, 0, 1) failed: "
+            "timed out after deadline expired", client_table_->name().ToString()));
   }
 
   LOG(INFO) << "Time out the actual write on the tablet server";
@@ -2130,66 +2128,25 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
     ASSERT_OK(ts->WaitStarted());
   }
 
-  TestThreadHolder thread_holder;
-  std::mutex idle_threads_mutex;
-  std::vector<CountDownLatch*> idle_threads;
-  std::atomic<int> running_threads{0};
-
-  while (!thread_holder.stop_flag().load()) {
-    CountDownLatch* latch;
-    {
-      std::lock_guard<std::mutex> lock(idle_threads_mutex);
-      if (!idle_threads.empty()) {
-        latch = idle_threads.back();
-        idle_threads.pop_back();
-      } else {
-        latch = nullptr;
-      }
-    }
-    if (latch) {
-      latch->CountDown();
-    } else {
-      auto num_threads = ++running_threads;
-      LOG(INFO) << "Start " << num_threads << " thread";
-      thread_holder.AddThreadFunctor([this, &idle_threads, &idle_threads_mutex,
-                                      &stop = thread_holder.stop_flag(), &running_threads]() {
-        CountDownLatch latch(1);
-        while (!stop.load()) {
-          CheckRowCount(client_table_);
-          latch.Reset(1);
-          {
-            std::lock_guard<std::mutex> lock(idle_threads_mutex);
-            idle_threads.push_back(&latch);
-          }
-          latch.Wait();
-        }
-        --running_threads;
-      });
-      std::this_thread::sleep_for(10ms);
-    }
+  bool stop = false;
+  vector<scoped_refptr<yb::Thread> > threads;
+  int t = 0;
+  while (!stop) {
+    scoped_refptr<yb::Thread> thread;
+    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", t++),
+                                 &CheckRowCount, std::cref(client_table_), &thread));
+    threads.push_back(thread);
 
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
       scoped_refptr<Counter> counter = METRIC_rpcs_queue_overflow.Instantiate(
           cluster_->mini_tablet_server(i)->server()->metric_entity());
-      if (counter->value() > 0) {
-        thread_holder.stop_flag().store(true, std::memory_order_release);
-        break;
-      }
+      stop = counter->value() > 0;
     }
   }
 
-  while (running_threads.load() > 0) {
-    LOG(INFO) << "Left to stop " << running_threads.load() << " threads";
-    {
-      std::lock_guard<std::mutex> lock(idle_threads_mutex);
-      while (!idle_threads.empty()) {
-        idle_threads.back()->CountDown(1);
-        idle_threads.pop_back();
-      }
-    }
-    std::this_thread::sleep_for(10ms);
+  for (const scoped_refptr<yb::Thread>& thread : threads) {
+    thread->Join();
   }
-  thread_holder.JoinAll();
 }
 
 TEST_F(ClientTest, TestReadFromFollower) {

@@ -10,21 +10,15 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
-
-@Slf4j
 public class SetNodeState extends NodeTaskBase {
 
-  @Inject
-  protected SetNodeState(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(SetNodeState.class);
 
   public static class Params extends NodeTaskParams {
     public NodeDetails.NodeState state;
@@ -47,7 +41,7 @@ public class SetNodeState extends NodeTaskBase {
   @Override
   public void run() {
     try {
-      log.info(
+      LOG.info(
           "Updating node {} state to {} in universe {}.",
           taskParams().nodeName,
           taskParams().state,

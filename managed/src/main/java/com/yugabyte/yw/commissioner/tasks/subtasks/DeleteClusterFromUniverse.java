@@ -10,23 +10,19 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import java.util.UUID;
+
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
-import java.util.UUID;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 public class DeleteClusterFromUniverse extends UniverseTaskBase {
-
-  @Inject
-  protected DeleteClusterFromUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(DeleteClusterFromUniverse.class);
 
   public static class Params extends UniverseTaskParams {
     // The cluster we are removing from above universe.
@@ -51,7 +47,7 @@ public class DeleteClusterFromUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      log.info("Running {}", getName());
+      LOG.info("Running {}", getName());
       // Create the update lambda.
       Universe.UniverseUpdater updater =
           new Universe.UniverseUpdater() {
@@ -65,10 +61,10 @@ public class DeleteClusterFromUniverse extends UniverseTaskBase {
             }
           };
       saveUniverseDetails(updater);
-      log.info("Delete cluster {} done.", taskParams().clusterUUID);
+      LOG.info("Delete cluster {} done.", taskParams().clusterUUID);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      log.warn(msg, e.getMessage());
+      LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

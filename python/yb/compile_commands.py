@@ -7,10 +7,7 @@ import json
 import re
 import subprocess
 
-from typing import List, Dict, Set, Union, Any, Optional
-
-# TODO: add types to yugabyte_pycommon and remove "type: ignore" here.
-from yugabyte_pycommon import WorkDirContext  # type: ignore
+from yugabyte_pycommon import WorkDirContext
 
 from yb.common_util import (
     YB_SRC_ROOT,
@@ -19,54 +16,43 @@ from yb.common_util import (
     get_absolute_path_aliases
 )
 
+
 # We build PostgreSQL code in a separate directory (postgres_build) rsynced from the source tree to
 # support out-of-source builds. Then, after generating the compilation commands, we rewrite them
 # to work with original files (in src/postgres) so that clangd can use them.
 
-# We create multiple directories under $BUILD_ROOT/compile_commands and put a single file named
-# compile_commands.json in each directory. This structure is needed due to some quirks of clangd and
-# clangd-indexer.
+# The "combined compilation commands" file contains all compilation commands for C++ code and
+# PostgreSQL C code. This is the file that is symlinked in the YugabyteDB source root directory and
+# used with Clangd. These commands are post-processed.
+COMBINED_POSTPROCESSED_COMPILE_COMMANDS_FILE_NAME = 'combined_compile_commands.json'
 
-# The directory names listed below vary across two dimensions:
-# - YB. vs. PostgreSQL vs. combined.
-# - Raw vs. postprocessed. "Postprocessed" means paths are rewritten to refer to the source
-#   directory.
-
-COMBINED_POSTPROCESSED_DIR_NAME = 'combined_postprocessed'
-PG_POSTPROCESSED_DIR_NAME = 'pg_postprocessed'
-YB_POSTPROCESSED_DIR_NAME = 'yb_postprocessed'
-
-COMBINED_RAW_DIR_NAME = 'combined_raw'
-YB_RAW_DIR_NAME = 'yb_raw'
-PG_RAW_DIR_NAME = 'pg_raw'
+# The same as above but without postprocessing, just concatenated from C++ and Postgres C
+# compile_commands.json files.
+COMBINED_RAW_COMPILE_COMMANDS_FILE_NAME = 'combined_raw_compile_commands.json'
 
 
-def create_compile_commands_symlink(actual_file_path: str) -> None:
-    new_link_path = os.path.join(YB_SRC_ROOT, 'compile_commands.json')
+def create_compile_commands_symlink(combined_compile_commands_path, build_type):
+    dest_link_path = os.path.join(YB_SRC_ROOT, 'compile_commands.json')
+    if build_type != 'compilecmds':
+        logging.info("Not creating a symlink at %s for build type %s",
+                     dest_link_path, build_type)
+        return
 
-    if (not os.path.exists(new_link_path) or
-            not os.path.islink(new_link_path) or
-            os.path.realpath(new_link_path) != os.path.realpath(actual_file_path)):
+    if (not os.path.exists(dest_link_path) or
+            os.path.realpath(dest_link_path) != os.path.realpath(combined_compile_commands_path)):
+        if os.path.exists(dest_link_path):
+            logging.info("Removing the old file/link at %s", dest_link_path)
+            os.remove(dest_link_path)
 
-        # os.path.exists may return false if the link exists and points to a nonexistent file.
-        if os.path.exists(new_link_path) or os.path.islink(new_link_path):
-            logging.info("Removing the old file/link at %s", new_link_path)
-            os.remove(new_link_path)
-
-        where_link_points = os.path.relpath(
-            os.path.realpath(actual_file_path),
-            os.path.realpath(os.path.dirname(new_link_path)))
-        try:
-            os.symlink(where_link_points, new_link_path)
-        except Exception as e:
-            logging.exception(
-                f"Error creating a symbolic link pointing to {where_link_points} "
-                f"named {new_link_path}.")
-            raise e
-        logging.info(f"Created symlink at {new_link_path} pointing to {where_link_points}")
+        os.symlink(
+            os.path.relpath(
+                os.path.realpath(combined_compile_commands_path),
+                os.path.realpath(YB_SRC_ROOT)),
+            dest_link_path)
+        logging.info("Created symlink at %s", dest_link_path)
 
 
-def get_include_path_arg(include_path: str) -> str:
+def get_include_path_arg(include_path):
     return '-I%s' % include_path
 
 
@@ -75,20 +61,11 @@ class IncludePathRewriter:
     Rewrites include paths in a compilation command line so that they refer to sources in
     src/postgres, not to rsynced sources in build/.../postgres_build.
     """
-    original_working_directory: str
-    new_working_directory: str
-    already_added_include_paths: Set[str]
-    original_include_paths: List[str]
-    additional_postgres_include_paths: List[str]
-    build_root: str
-    postgres_install_dir_include_realpath: str
-    new_args: List[str]
-
     def __init__(
             self,
-            original_working_directory: str,
-            new_working_directory: str,
-            build_root: str) -> None:
+            original_working_directory,
+            new_working_directory,
+            build_root):
         self.original_working_directory = original_working_directory
         self.new_working_directory = new_working_directory
         self.already_added_include_paths = set()
@@ -99,12 +76,12 @@ class IncludePathRewriter:
             os.path.join(self.build_root, 'postgres', 'include'))
         self.new_args = []
 
-    def remember_original_include_path(self, original_include_path: str) -> None:
+    def remember_original_include_path(self, original_include_path):
         if (original_include_path not in self.already_added_include_paths and
                 original_include_path not in self.original_include_paths):
             self.original_include_paths.append(original_include_path)
 
-    def check_for_postgres_installed_include_path(self, include_path: str) -> None:
+    def check_for_postgres_installed_include_path(self, include_path):
         assert os.path.isabs(include_path)
         if (not self.additional_postgres_include_paths and
                 os.path.realpath(include_path) == self.postgres_install_dir_include_realpath):
@@ -119,10 +96,10 @@ class IncludePathRewriter:
                     self.build_root, 'postgres_build', 'interfaces', 'libpq')
             ])
 
-    def append_include_path_arg(self, include_path: str) -> None:
+    def append_include_path_arg(self, include_path):
         self.new_args.append(get_include_path_arg(include_path))
 
-    def append_new_absolute_include_path(self, new_absolute_include_path: str) -> None:
+    def append_new_absolute_include_path(self, new_absolute_include_path):
         assert os.path.isabs(new_absolute_include_path)
         self.append_include_path_arg(new_absolute_include_path)
 
@@ -131,7 +108,7 @@ class IncludePathRewriter:
         self.already_added_include_paths.add(os.path.abspath(new_absolute_include_path))
         self.already_added_include_paths.add(os.path.realpath(new_absolute_include_path))
 
-    def handle_include_path(self, include_path: str) -> None:
+    def handle_include_path(self, include_path):
         if os.path.isabs(include_path):
             # This is already an absolute path, append it as is.
             self.check_for_postgres_installed_include_path(include_path)
@@ -149,7 +126,7 @@ class IncludePathRewriter:
         new_include_path = os.path.realpath(os.path.join(self.new_working_directory, include_path))
         self.append_new_absolute_include_path(new_include_path)
 
-    def rewrite(self, args: List[str]) -> List[str]:
+    def rewrite(self, args):
         for arg in args:
             if not arg.startswith('-I'):
                 self.new_args.append(arg)
@@ -164,22 +141,7 @@ class IncludePathRewriter:
 
 
 class CompileCommandProcessor:
-    build_root: str
-    pg_build_root: str
-    pg_build_root_aliases: List[str]
-    postgres_src_root: str
-    extra_args: List[str]
-
-    # For some files, we specify the original directory containing the file (located inside the
-    # build directory) as an include directory, because the code might need to include some
-    # auto-generated files from there.
-    add_original_dir_to_path_for_files: Set[str]
-
-    def __init__(
-            self,
-            build_root: str,
-            extra_args: List[str],
-            add_original_dir_to_path_for_files: Set[str]) -> None:
+    def __init__(self, build_root):
         self.build_root = build_root
 
         self.pg_build_root = os.path.join(build_root, 'postgres_build')
@@ -187,11 +149,7 @@ class CompileCommandProcessor:
 
         self.postgres_src_root = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
 
-        self.extra_args = extra_args
-
-        self.add_original_dir_to_path_for_files = add_original_dir_to_path_for_files
-
-    def postprocess_compile_command(self, compile_command_item: Dict[str, Any]) -> Dict[str, Any]:
+    def postprocess_compile_command(self, compile_command_item):
         original_working_directory = compile_command_item['directory']
         if 'command' in compile_command_item:
             if 'arguments' in compile_command_item:
@@ -207,13 +165,6 @@ class CompileCommandProcessor:
                 json.dumps(compile_command_item))
         file_path = compile_command_item['file']
 
-        file_path_is_absolute = os.path.isabs(file_path)
-
-        if file_path_is_absolute:
-            original_abs_file_path = file_path
-        else:
-            original_abs_file_path = os.path.join(original_working_directory, file_path)
-
         new_working_directory = original_working_directory
         for pg_build_root_alias in self.pg_build_root_aliases:
             # Some files only exist in the postgres build directory. We don't switch the work
@@ -222,7 +173,7 @@ class CompileCommandProcessor:
                 corresponding_src_dir = os.path.join(
                     self.postgres_src_root,
                     os.path.relpath(original_working_directory, pg_build_root_alias))
-                if (file_path_is_absolute or
+                if (os.path.isabs(file_path) or
                         os.path.isfile(os.path.join(corresponding_src_dir, file_path))):
                     new_working_directory = corresponding_src_dir
                     break
@@ -235,9 +186,6 @@ class CompileCommandProcessor:
                 new_working_directory,
                 self.build_root,
             ).rewrite(arguments)
-
-        if os.path.basename(file_path) in self.add_original_dir_to_path_for_files:
-            new_args.append(f'-I{os.path.dirname(original_abs_file_path)}')
 
         # Replace the compiler path in compile_commands.json according to user preferences.
         compiler_basename = os.path.basename(new_args[0])
@@ -262,11 +210,11 @@ class CompileCommandProcessor:
         return {
             'directory': new_working_directory,
             'file': new_file_path,
-            'arguments': new_args + self.extra_args
+            'arguments': new_args
         }
 
 
-def filter_compile_commands(input_path: str, output_path: str, file_name_regex_str: str) -> None:
+def filter_compile_commands(input_path, output_path, file_name_regex_str):
     compiled_re = re.compile(file_name_regex_str)
     input_cmds = read_json_file(input_path)
     output_cmds = [
@@ -279,9 +227,3 @@ def filter_compile_commands(input_path: str, output_path: str, file_name_regex_s
     write_json_file(
         output_cmds, output_path,
         description_for_log="filtered compilation commands file")
-
-
-def get_compile_commands_file_path(
-        build_root: str,
-        subdir_name: str) -> str:
-    return os.path.join(build_root, 'compile_commands', subdir_name, 'compile_commands.json')

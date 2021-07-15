@@ -22,6 +22,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
+import play.data.FormFactory;
 import play.mvc.Result;
 
 import java.io.File;
@@ -39,6 +40,8 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   @Inject private PlatformReplicationManager replicationManager;
 
+  @Inject private FormFactory formFactory;
+
   public Result startPeriodicBackup(UUID configUUID) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
@@ -47,7 +50,11 @@ public class PlatformReplicationController extends AuthenticatedController {
       }
 
       Form<PlatformBackupFrequencyFormData> formData =
-          formFactory.getFormDataOrBadRequest(PlatformBackupFrequencyFormData.class);
+          formFactory.form(PlatformBackupFrequencyFormData.class).bindFromRequest();
+
+      if (formData.hasErrors()) {
+        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+      }
 
       if (!config.get().isLocalLeader()) {
         return ApiResponse.error(BAD_REQUEST, "This platform instance is not a leader");

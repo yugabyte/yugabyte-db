@@ -42,6 +42,8 @@ extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
 extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid);
 
+extern bool YBCIsDatabaseColocated(Oid dboid);
+
 /*  Tablegroup Functions ------------------------------------------------------------------------ */
 
 extern void YBCCreateTablegroup(Oid grpoid);
@@ -84,6 +86,8 @@ extern YBCPgStatement YBCPrepareAlterTable(List** subcmds,
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
+
+extern bool YBCIsTableColocated(Oid dboid, Oid relationId);
 
 extern int32_t YBCAnalyzeTable(Relation rel);
 

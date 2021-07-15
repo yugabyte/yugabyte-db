@@ -10,25 +10,20 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.inject.Inject;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Slf4j
 public class BackupUniverse extends UniverseTaskBase {
 
-  @Inject
-  protected BackupUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(BackupUniverse.class);
 
   @Override
   protected BackupTableParams taskParams() {
@@ -69,7 +64,7 @@ public class BackupUniverse extends UniverseTaskBase {
           restoreKeysParams.storageConfigUUID = taskParams().storageConfigUUID;
           restoreKeysParams.kmsConfigUUID = taskParams().kmsConfigUUID;
           restoreKeysParams.actionType = BackupTableParams.ActionType.RESTORE_KEYS;
-          createTableBackupTask(restoreKeysParams).setSubTaskGroupType(groupType);
+          createTableBackupTask(restoreKeysParams, null).setSubTaskGroupType(groupType);
 
           // Restore universe keys backup file for encryption at rest
           createEncryptedUniverseKeyRestoreTask(taskParams()).setSubTaskGroupType(groupType);
@@ -78,7 +73,7 @@ public class BackupUniverse extends UniverseTaskBase {
         throw new RuntimeException("Invalid backup action type: " + taskParams().actionType);
       }
 
-      createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
+      createTableBackupTask(taskParams(), null).setSubTaskGroupType(groupType);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -100,7 +95,7 @@ public class BackupUniverse extends UniverseTaskBase {
         unlockUniverseForUpdate();
       }
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
@@ -112,6 +107,6 @@ public class BackupUniverse extends UniverseTaskBase {
       }
     }
 
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 }

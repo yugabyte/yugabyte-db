@@ -370,8 +370,7 @@ set_real_build_root_path() {
     real_build_root_path="$BUILD_ROOT"
   fi
 
-  real_build_root_path=$( cd "$real_build_root_path" && pwd )
-  readonly real_build_root_path
+  readonly real_build_root_path=$( cd "$real_build_root_path" && pwd )
 }
 
 ensure_build_root_is_set() {
@@ -1256,13 +1255,7 @@ detect_brew() {
     return
   fi
   if is_linux; then
-    local cpu_type
-    cpu_type=$( uname --processor )
-    if [[ $cpu_type == "x86_64" ]]; then
-      detect_linuxbrew
-    else
-      disable_linuxbrew
-    fi
+    detect_linuxbrew
   fi
 }
 
@@ -2100,7 +2093,7 @@ check_python_script_syntax() {
 }
 
 run_shellcheck() {
-  local scripts_to_check=(
+  scripts_to_check=(
     yb_build.sh
     build-support/find_linuxbrew.sh
     build-support/common-build-env.sh
@@ -2112,10 +2105,7 @@ run_shellcheck() {
   pushd "$YB_SRC_ROOT"
   local script_path
   for script_path in "${scripts_to_check[@]}"; do
-    # We skip errors 2030 and 2031 that say that a variable has been modified in a subshell and that
-    # the modification is local to the subshell. Seeing a lot of false positivies for these with
-    # the version 0.7.2 of Shellcheck.
-    ( set -x; shellcheck --external-sources --exclude=2030,2031 --shell=bash "$script_path" )
+    ( set -x; shellcheck -x "$script_path" )
   done
   popd
 }
@@ -2141,7 +2131,7 @@ activate_virtualenv() {
       # function might not even be present in our current shell. This is necessary because otherwise
       # the --user installation below will fail.
       set +eu
-      # shellcheck disable=SC1090,SC1091
+      # shellcheck disable=SC1090
       . "$VIRTUAL_ENV/bin/activate"
       deactivate
       set -eu
@@ -2158,7 +2148,7 @@ activate_virtualenv() {
   fi
 
   set +u
-  # shellcheck disable=SC1090,SC1091
+  # shellcheck disable=SC1090
   . "$virtualenv_dir"/bin/activate
   set -u
   local pip_no_cache=""

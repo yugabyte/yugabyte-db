@@ -20,8 +20,8 @@
 // This file is an internal atomic implementation for compiler-based
 // ThreadSanitizer. Use base/atomicops.h instead.
 
-#ifndef YB_GUTIL_ATOMICOPS_INTERNALS_TSAN_H
-#define YB_GUTIL_ATOMICOPS_INTERNALS_TSAN_H
+#ifndef BASE_ATOMICOPS_INTERNALS_TSAN_H_
+#define BASE_ATOMICOPS_INTERNALS_TSAN_H_
 
 // Workaround for Chromium BASE_EXPORT definition
 #ifndef BASE_EXPORT
@@ -228,9 +228,9 @@ inline void MemoryBarrier() {
 inline void PauseCPU() {
 }
 
-}  // namespace subtle
+}  // namespace base::subtle
 }  // namespace base
 
 #undef ATOMICOPS_COMPILER_BARRIER
 
-#endif  // YB_GUTIL_ATOMICOPS_INTERNALS_TSAN_H
+#endif  // BASE_ATOMICOPS_INTERNALS_TSAN_H_

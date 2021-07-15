@@ -11,19 +11,16 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.NetworkManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.api.Play;
 
-import javax.inject.Inject;
-
 public class CloudSetup extends CloudTaskBase {
-  @Inject
-  protected CloudSetup(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(CloudRegionSetup.class);
 
   public static class Params extends CloudTaskParams {
     public String customPayload;

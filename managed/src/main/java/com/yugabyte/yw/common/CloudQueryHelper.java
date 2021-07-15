@@ -12,20 +12,20 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
 import javax.inject.Singleton;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import play.libs.Json;
 
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
@@ -33,6 +33,7 @@ public class CloudQueryHelper extends DevopsBase {
 
   private static final String YB_CLOUD_COMMAND_TYPE = "query";
   private static final String DEFAULT_IMAGE_KEY = "default_image";
+  private static final String DEFAULT_VNET_KEY = "vnet";
 
   @Override
   protected String getCommandType() {
@@ -40,13 +41,13 @@ public class CloudQueryHelper extends DevopsBase {
   }
 
   public JsonNode currentHostInfo(Common.CloudType cloudType, List<String> metadataTypes) {
-    List<String> commandArgs = new ArrayList<>();
+    List<String> commandArgs = new ArrayList<String>();
     if (metadataTypes != null) {
       commandArgs.add("--metadata_types");
       commandArgs.addAll(metadataTypes);
     }
     return parseShellResponse(
-        execCommand(null, null, cloudType, "current-host", commandArgs, new ArrayList<>()),
+        execCommand(null, null, cloudType, "current-host", commandArgs, new ArrayList<String>()),
         "current-host");
   }
 
@@ -78,7 +79,7 @@ public class CloudQueryHelper extends DevopsBase {
 
   public JsonNode getZones(UUID regionUUID, String destVpcId, String customPayload) {
     Region region = Region.get(regionUUID);
-    List<String> commandArgs = new ArrayList<>();
+    List<String> commandArgs = new ArrayList<String>();
     if (destVpcId != null && !destVpcId.isEmpty()) {
       commandArgs.add("--dest_vpc_id");
       commandArgs.add(destVpcId);
@@ -117,7 +118,7 @@ public class CloudQueryHelper extends DevopsBase {
    * }
    */
   public JsonNode getInstanceTypes(List<Region> regionList, String customPayload) {
-    List<String> commandArgs = new ArrayList<>();
+    List<String> commandArgs = new ArrayList<String>();
     commandArgs.add("--regions");
     regionList.forEach(region -> commandArgs.add(region.code));
     if (customPayload != null && !customPayload.isEmpty()) {
@@ -128,20 +129,21 @@ public class CloudQueryHelper extends DevopsBase {
   }
 
   public JsonNode getMachineImages(UUID providerUUID, Region region) {
-    List<String> commandArgs = new ArrayList<>();
+    List<String> commandArgs = new ArrayList<String>();
     commandArgs.add("--regions");
     commandArgs.add(region.code);
     return execAndParseCommandCloud(providerUUID, "ami", commandArgs);
   }
 
   public JsonNode queryVpcs(UUID regionUUID) {
-    List<String> commandArgs = new ArrayList<>();
+    List<String> commandArgs = new ArrayList<String>();
     return execAndParseCommandRegion(regionUUID, "vpc", commandArgs);
   }
 
   public String getDefaultImage(Region region) {
     String defaultImage = null;
 
+    ObjectNode customPayload = Json.newObject();
     JsonNode result = queryVpcs(region.uuid);
 
     JsonNode regionInfo = result.get(region.code);
@@ -155,17 +157,16 @@ public class CloudQueryHelper extends DevopsBase {
   }
 
   public JsonNode queryVnet(UUID regionUUID) {
-    List<String> commandArgs = new ArrayList<>();
+    List<String> commandArgs = new ArrayList<String>();
     return execAndParseCommandRegion(regionUUID, "vnet", commandArgs);
   }
 
-  public String getVnetOrFail(Region region) {
+  public String getVnet(Region region) {
     JsonNode result = queryVnet(region.uuid);
 
     JsonNode regionVnet = result.get(region.code);
     if (regionVnet == null) {
-      throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Could not get vnet for region: " + region.code);
+      throw new RuntimeException("Could not get vnet for region: " + region.code);
     }
     return regionVnet.asText();
   }

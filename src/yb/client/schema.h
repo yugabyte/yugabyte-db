@@ -72,6 +72,10 @@ class TsAdminClient;
 namespace client {
 
 namespace internal {
+class GetTableSchemaRpc;
+class GetColocatedTabletSchemaRpc;
+class LookupRpc;
+class WriteRpc;
 
 const Schema& GetSchema(const YBSchema& schema);
 Schema& GetSchema(YBSchema* schema);

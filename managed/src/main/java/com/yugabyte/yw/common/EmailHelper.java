@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -264,7 +265,7 @@ public class EmailHelper {
    * @param separators
    * @return
    */
-  public static List<String> splitEmails(String emails, String separators) {
+  public static Collection<String> splitEmails(String emails, String separators) {
     List<String> result = new ArrayList<>();
     int startPosition = 0;
     int currPosition = 0;

@@ -10,37 +10,30 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // Tracks the read only cluster create intent within an existing universe.
-@Slf4j
 public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
-
-  @Inject
-  protected ReadOnlyClusterCreate(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(ReadOnlyClusterCreate.class);
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
       // Create the task list sequence.
@@ -62,7 +55,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // There should be no masters in read only clusters.
       if (!PlacementInfoUtil.getMastersToProvision(readOnlyNodes).isEmpty()) {
         String errMsg = "Cannot have master nodes in read-only cluster.";
-        log.error(errMsg + "Nodes : " + readOnlyNodes);
+        LOG.error(errMsg + "Nodes : " + readOnlyNodes);
         throw new IllegalArgumentException(errMsg);
       }
 
@@ -71,7 +64,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
       if (nodesToProvision.isEmpty()) {
         String errMsg = "Cannot have empty nodes to provision in read-only cluster.";
-        log.error(errMsg);
+        LOG.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
 
@@ -142,13 +135,13 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 }

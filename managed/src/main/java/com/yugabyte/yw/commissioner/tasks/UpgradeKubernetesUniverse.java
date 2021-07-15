@@ -10,30 +10,25 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
 import java.util.UUID;
 
-@Slf4j
 public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
-
-  @Inject
-  protected UpgradeKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(UpgradeKubernetesUniverse.class);
 
   public static class Params extends UpgradeParams {}
 
@@ -71,7 +66,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       switch (taskParams().taskType) {
         case Software:
-          log.info(
+          LOG.info(
               "Upgrading software version to {} in universe {}",
               taskParams().ybSoftwareVersion,
               universe.name);
@@ -82,7 +77,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
               .setSubTaskGroupType(getTaskSubGroupType());
           break;
         case GFlags:
-          log.info("Upgrading GFlags in universe {}", universe.name);
+          LOG.info("Upgrading GFlags in universe {}", universe.name);
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
 
@@ -97,7 +92,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error={}.", getName(), t);
+      LOG.error("Error executing task {} with error={}.", getName(), t);
 
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // If the task failed, we don't want the loadbalancer to be disabled,
@@ -110,7 +105,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     } finally {
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 
   private SubTaskGroupType getTaskSubGroupType() {

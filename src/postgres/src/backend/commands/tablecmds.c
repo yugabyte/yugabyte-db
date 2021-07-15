@@ -120,10 +120,9 @@
 #include "utils/tqual.h"
 #include "utils/typcache.h"
 
-/* YB includes. */
-#include "catalog/pg_authid.h"
+/*  YB includes. */
 #include "catalog/pg_database.h"
-#include "commands/dbcommands.h"
+
 #include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
@@ -569,10 +568,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	Oid			ofTypeId;
 	ObjectAddress address;
 
-	/* YB variables. */
-	Oid			rowTypeId = InvalidOid;
-	bool		relisshared = false;
-
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
 	 * parser should have done this already).
@@ -642,60 +637,11 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 						   get_tablespace_name(tablespaceId));
 	}
 
+	/* In all cases disallow placing user relations in pg_global */
 	if (tablespaceId == GLOBALTABLESPACE_OID)
-	{
-		if (IsYugaByteEnabled())
-		{
-			if (!IsYsqlUpgrade)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("shared relations cannot be created outside of YSQL upgrade")));
-			else if (!IsSystemNamespace(namespaceId))
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("shared relations can only be created in pg_catalog")));
-			else if (stmt->partbound)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("shared relations can not be partitioned")));
-
-			relisshared = true;
-
-			/*
-			 * If not superuser, ensure having CREATE privileges over template1 -
-			 * this is where DocDB would actually store the shared relation.
-			 */
-			if (!superuser())
-			{
-				AclResult	aclresult;
-
-				aclresult = pg_database_aclcheck(TemplateDbOid, GetUserId(), ACL_CREATE);
-
-				if (aclresult != ACLCHECK_OK)
-					aclcheck_error(aclresult, OBJECT_DATABASE,
-								   get_database_name(TemplateDbOid));
-			}
-
-			/*
-			 * We actually need a lot more checks - e.g. that shared relation
-			 * is not temporary, does not have tablegroup, etc.
-			 * But since this is needed for YSQL upgrade only, we more or less
-			 * assume "user" knows what he's doing.
-			 */
-		}
-		else
-		{
-			/* In all cases disallow placing user relations in pg_global */
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("only shared relations can be placed in pg_global tablespace")));
-		}
-	}
-
-	if (IsYsqlUpgrade && relkind == RELKIND_VIEW && IsSystemNamespace(namespaceId))
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("creating system views during YSQL upgrade is not yet supported")));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("only shared relations can be placed in pg_global tablespace")));
 
 	/*
 	 * Select tablegroup to use. If not specified, InvalidOid.
@@ -751,9 +697,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	/* Identify user ID that will own the table */
 	if (!OidIsValid(ownerId))
-		ownerId = (IsYugaByteEnabled() && IsYsqlUpgrade && IsSystemNamespace(namespaceId))
-					? BOOTSTRAP_SUPERUSERID
-					: GetUserId();
+		ownerId = GetUserId();
 
 	/*
 	 * Parse and validate reloptions, if any.
@@ -879,12 +823,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			attr->attidentity = colDef->identity;
 	}
 
-	/* Handles WITH (table_oid = x). */
+	/* Check for WITH (table_oid = x). */
 	relationId = GetTableOidFromRelOptions(
 		stmt->options, tablespaceId, stmt->relation->relpersistence);
-
-	/* Handles WITH (row_type_oid = x). */
-	rowTypeId = GetRowTypeOidFromRelOptions(stmt->options);
 
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
@@ -895,7 +836,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  namespaceId,
 										  tablespaceId,
 										  relationId,
-										  rowTypeId,
+										  InvalidOid,
 										  ofTypeId,
 										  ownerId,
 										  descriptor,
@@ -903,7 +844,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 													  old_constraints),
 										  relkind,
 										  stmt->relation->relpersistence,
-										  relisshared,
+										  false,
 										  false,
 										  localHasOids,
 										  parentOidCount,
@@ -926,9 +867,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		CheckIsYBSupportedRelationByKind(relkind);
 		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId, tablegroupId, tablespaceId);
 	}
-
-	/* For testing purposes, user might ask us to fail a DLL. */
-	YBTestFailDdlIfRequested();
 
 	/*
 	 * Open the new relation and acquire exclusive lock on it.  This isn't
@@ -5790,8 +5728,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	ReleaseSysCache(typeTuple);
 
-	InsertPgAttributeTuple(attrdesc, &attribute, NULL,
-		((Form_pg_class) GETSTRUCT(reltup))->relisshared && !IsBootstrapProcessingMode());
+	InsertPgAttributeTuple(attrdesc, &attribute, NULL);
 
 	heap_close(attrdesc, RowExclusiveLock);
 
@@ -7588,13 +7525,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	constr = RelationGetDescr(*mutable_rel)->constr;
 
-	/*
-	 * Recreating a table will change its OID, which is not tolerable
-	 * for system tables.
-	 */
-	if (IsCatalogRelation(*mutable_rel))
-		elog(ERROR, "cannot add a primary key to a system table");
-
 	if ((*mutable_rel)->rd_partkey != NULL || (*mutable_rel)->rd_rel->relispartition)
 		elog(ERROR, "adding primary key to a partitioned table "
 		            "is not yet implemented");
@@ -7776,7 +7706,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	create_stmt->constraints = lappend(create_stmt->constraints, pk_constr);
 
 	/*
-	 * Create an altered table and open it.
+	 * Create an altered table (under a different name for now) and open it.
 	 */
 	address = DefineRelation(create_stmt,
 	                         RELKIND_RELATION,
@@ -7975,18 +7905,18 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		RenameRelation(rename_stmt);
 		CommandCounterIncrement();
 
-		/* The tablegroup attribute of a table is not a reloption at syntax level
-		 * but it is recorded as a reloption by DefineIndex (which makes a special
-		 * case only for "tablegroup" to convert it to a reloption). As a result,
-		 * if the old table has a tablegroup, then every index on the old table
-		 * including the dummy pkey index has also stored a reloption for the
+		/* The tablegroup attribute of a table is not a reloption at syntax level 
+		 * but it is recorded as a reloption by DefineIndex (which makes a special 
+		 * case only for "tablegroup" to convert it to a reloption). As a result, 
+		 * if the old table has a tablegroup, then every index on the old table 
+		 * including the dummy pkey index has also stored a reloption for the 
 		 * tablegroup when DefineIndex was called for it.
 		 *
 		 * When generateClonedIndexStmt is called to make a new index statement, it
 		 * will have cloned the old index's reloptions, which includes the special
 		 * reloption for "tablegroup".
 		 *
-		 * Next we will call DefineIndex for each cloned index statement. DefineIndex
+		 * Next we will call DefineIndex for each cloned index statement. DefineIndex 
 		 * will again make a special case for "tablegroup" and convert "tablegroup"
 		 * to another reloption. This means that the new index statement gets two
 		 * "tablegroup" reloption instances and caused postgres error:
@@ -10233,7 +10163,7 @@ validateForeignKeyConstraint(char *conname,
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
-		FunctionCallInfoData fcinfo;
+		LOCAL_FCINFO(fcinfo, 0);
 		TriggerData trigdata;
 
 		/*
@@ -10241,7 +10171,7 @@ validateForeignKeyConstraint(char *conname,
 		 *
 		 * No parameters are passed, but we do set a context
 		 */
-		MemSet(&fcinfo, 0, sizeof(fcinfo));
+		MemSet(fcinfo, 0, SizeForFunctionCallInfo(0));
 
 		/*
 		 * We assume RI_FKey_check_ins won't look at flinfo...
@@ -10255,9 +10185,9 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigtuplebuf = scan->rs_cbuf;
 		trigdata.tg_newtuplebuf = InvalidBuffer;
 
-		fcinfo.context = (Node *) &trigdata;
+		fcinfo->context = (Node *) &trigdata;
 
-		RI_FKey_check_ins(&fcinfo);
+		RI_FKey_check_ins(fcinfo);
 	}
 
 	heap_endscan(scan);

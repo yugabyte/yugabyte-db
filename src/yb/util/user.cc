@@ -32,60 +32,54 @@
 
 #include "yb/util/user.h"
 
+#include <sys/types.h>
+#include <errno.h>
 #include <pwd.h>
+#include <unistd.h>
 
-#include <boost/algorithm/string/trim.hpp>
+#include <string>
+
+#include <glog/logging.h>
 
 #include "yb/util/errno.h"
 #include "yb/util/malloc.h"
-#include "yb/util/subprocess.h"
+#include "yb/util/status.h"
 
 using std::string;
 
 namespace yb {
 
-namespace {
+Status GetLoggedInUser(string* user_name) {
+  DCHECK(user_name != nullptr);
 
-Result<std::string> DoGetLoggedInUser() {
-  std::string result;
-  RETURN_NOT_OK(Subprocess::Call({"whoami"}, &result));
-  boost::trim(result);
-  return result;
-}
+  struct passwd pwd;
+  struct passwd *result;
 
-Result<std::string> GetLoggedInUserFallback() {
-  static auto result = DoGetLoggedInUser();
-  return result;
-}
-
-} // namespace
-
-Result<std::string> GetLoggedInUser() {
   size_t bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
   if (bufsize == -1) {  // Value was indeterminate.
     bufsize = 16384;    // Should be more than enough, per the man page.
   }
 
-  std::unique_ptr<char[], FreeDeleter> buf(static_cast<char*>(malloc(bufsize)));
+  std::unique_ptr<char[], FreeDeleter> buf(static_cast<char *>(malloc(bufsize)));
   if (buf.get() == nullptr) {
     return STATUS(RuntimeError, "Malloc failed", Errno(errno));
   }
-
-  struct passwd pwd;
-  struct passwd *result;
 
   auto uid = getuid();
   int ret = getpwuid_r(uid, &pwd, buf.get(), bufsize, &result);
   if (result == nullptr) {
     if (ret == 0) {
-      return GetLoggedInUserFallback();
+      return STATUS_FORMAT(
+          NotFound, "Current logged-in user $0 not found! This is an unexpected error.", uid);
     } else {
       // Errno in ret
       return STATUS(RuntimeError, "Error calling getpwuid_r()", Errno(ret));
     }
   }
 
-  return pwd.pw_name;
+  *user_name = pwd.pw_name;
+
+  return Status::OK();
 }
 
 } // namespace yb

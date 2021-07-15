@@ -18,11 +18,6 @@ showAsideToc: true
 ## Step 1. Build the source
 
 * First, clone [the YugabyteDB GitHub repo](https://github.com/yugabyte/yugabyte-db).
-
-```bash
-git clone https://github.com/yugabyte/yugabyte-db.git
-```
-
 * Next, [build the source code](../build-from-src).
 * Optionally, you may want to [run the unit tests](../run-unit-tests).
 
@@ -36,7 +31,7 @@ You should now make you change, recompile the code and test out your change.
 
 {{< note title="Note" >}}
 
-You should read the [code style guide](../coding-style).
+You should read the [code style guide](https://goo.gl/Hkt5BU). This is mostly based on [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
 
 {{< /note >}}
 

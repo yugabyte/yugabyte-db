@@ -12,9 +12,6 @@ import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,9 +24,6 @@ import java.util.stream.Collectors;
 
 import static java.lang.Math.abs;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
-
-@ApiModel(description = "Backup with a status, expiry and backup configs")
 @Entity
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
@@ -56,40 +50,27 @@ public class Backup extends Model {
     FailedToDelete,
   }
 
-  @ApiModelProperty(value = "Backup uuid", accessMode = READ_ONLY)
-  @Id
-  public UUID backupUUID;
+  @Id public UUID backupUUID;
 
-  @ApiModelProperty(
-      value = "Customer UUID of the backup which it belongs to",
-      accessMode = READ_WRITE)
   @Column(nullable = false)
   public UUID customerUUID;
 
-  @ApiModelProperty(value = "State of the backup", example = "DELETED", accessMode = READ_ONLY)
   @Column(nullable = false)
   public BackupState state;
 
-  @ApiModelProperty(value = "Details of the backup", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
   private BackupTableParams backupInfo;
 
-  @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
   @Column(unique = true)
   public UUID taskUUID;
 
-  @ApiModelProperty(
-      value = "Schedule UUID if this backup is taken from scheduling it",
-      accessMode = READ_WRITE)
-  @Column
-  private UUID scheduleUUID;
+  @Column private UUID scheduleUUID;
 
   public UUID getScheduleUUID() {
     return scheduleUUID;
   }
 
-  @ApiModelProperty(value = "Expiry time of the backup", accessMode = READ_WRITE)
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
@@ -229,8 +210,8 @@ public class Backup extends Model {
     return find.query().where().idEq(backupUUID).eq("customer_uuid", customerUUID).findOne();
   }
 
-  public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
-    return Backup.find.query().where().eq("task_uuid", taskUUID).findList();
+  public static Backup fetchByTaskUUID(UUID taskUUID) {
+    return Backup.find.query().where().eq("task_uuid", taskUUID).findOne();
   }
 
   public static Map<Customer, List<Backup>> getExpiredBackups() {

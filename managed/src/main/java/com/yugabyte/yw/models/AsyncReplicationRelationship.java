@@ -12,15 +12,6 @@ import javax.persistence.*;
 import java.util.List;
 import java.util.UUID;
 
-@Table(
-    uniqueConstraints =
-        @UniqueConstraint(
-            columnNames = {
-              "source_universe_uuid",
-              "source_table_id",
-              "target_universe_uuid",
-              "target_table_id"
-            }))
 @Entity
 public class AsyncReplicationRelationship extends Model {
 
@@ -41,7 +32,7 @@ public class AsyncReplicationRelationship extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  public String sourceTableID;
+  public UUID sourceTableUUID;
 
   @ManyToOne
   @Constraints.Required
@@ -50,7 +41,7 @@ public class AsyncReplicationRelationship extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  public String targetTableID;
+  public UUID targetTableUUID;
 
   @Constraints.Required
   @Column(nullable = false)
@@ -58,16 +49,16 @@ public class AsyncReplicationRelationship extends Model {
 
   public static AsyncReplicationRelationship create(
       Universe sourceUniverse,
-      String sourceTableID,
+      UUID sourceTableUUID,
       Universe targetUniverse,
-      String targetTableID,
+      UUID targetTableUUID,
       boolean active) {
     AsyncReplicationRelationship relationship = new AsyncReplicationRelationship();
     relationship.uuid = UUID.randomUUID();
     relationship.sourceUniverse = sourceUniverse;
-    relationship.sourceTableID = sourceTableID;
+    relationship.sourceTableUUID = sourceTableUUID;
     relationship.targetUniverse = targetUniverse;
-    relationship.targetTableID = targetTableID;
+    relationship.targetTableUUID = targetTableUUID;
     relationship.active = active;
     relationship.save();
     return relationship;
@@ -79,26 +70,16 @@ public class AsyncReplicationRelationship extends Model {
 
   public static AsyncReplicationRelationship get(
       UUID sourceUniverseUUID,
-      String sourceTableID,
+      UUID sourceTableUUID,
       UUID targetUniverseUUID,
-      String targetTableID) {
+      UUID targetTableUUID) {
     return find.query()
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
-        .eq("source_table_id", sourceTableID)
+        .eq("source_table_uuid", sourceTableUUID)
         .eq("target_universe_uuid", targetUniverseUUID)
-        .eq("target_table_id", targetTableID)
+        .eq("target_table_uuid", targetTableUUID)
         .findOne();
-  }
-
-  public static List<AsyncReplicationRelationship> getByTargetUniverseUUID(
-      UUID targetUniverseUUID) {
-    return find.query().where().eq("target_universe_uuid", targetUniverseUUID).findList();
-  }
-
-  public static List<AsyncReplicationRelationship> getBySourceUniverseUUID(
-      UUID sourceUniverseUUID) {
-    return find.query().where().eq("source_universe_uuid", sourceUniverseUUID).findList();
   }
 
   public static boolean delete(UUID asyncReplicationRelationshipUUID) {
@@ -115,9 +96,9 @@ public class AsyncReplicationRelationship extends Model {
     return Json.newObject()
         .put("uuid", uuid.toString())
         .put("sourceUniverseUUID", sourceUniverse.universeUUID.toString())
-        .put("sourceTableID", sourceTableID)
+        .put("sourceTableUUID", sourceTableUUID.toString())
         .put("targetUniverseUUID", targetUniverse.universeUUID.toString())
-        .put("targetTableID", targetTableID)
+        .put("targetTableUUID", targetTableUUID.toString())
         .put("active", active);
   }
 
@@ -127,12 +108,12 @@ public class AsyncReplicationRelationship extends Model {
         + uuid
         + ", sourceUniverseUUID="
         + sourceUniverse.universeUUID
-        + ", sourceTableID="
-        + sourceTableID
+        + ", sourceTableUUID="
+        + sourceTableUUID
         + ", targetUniverseUUID="
         + targetUniverse.universeUUID
-        + ", targetTableID="
-        + targetTableID
+        + ", targetTableUUID="
+        + targetTableUUID
         + ", active="
         + active
         + "]";

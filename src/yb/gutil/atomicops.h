@@ -62,8 +62,8 @@
 // The intent is eventually to put all of these routines in namespace
 // base::subtle
 
-#ifndef YB_GUTIL_ATOMICOPS_H
-#define YB_GUTIL_ATOMICOPS_H
+#ifndef THREAD_ATOMICOPS_H_
+#define THREAD_ATOMICOPS_H_
 
 #include <stdint.h>
 
@@ -98,8 +98,6 @@
 #include "yb/gutil/atomicops-internals-powerpc.h"
 #elif defined(OS_WINDOWS)
 #include "yb/gutil/atomicops-internals-windows.h"
-#elif defined(__GNUC__) && defined(__aarch64__)
-#include "yb/gutil/atomicops-internals-arm64.h"
 #else
 #error You need to implement atomic operations for this architecture
 #endif
@@ -217,7 +215,7 @@ inline AtomicWord Release_Load(volatile const AtomicWord* ptr) {
       reinterpret_cast<volatile const AtomicWordCastType*>(ptr));
 }
 
-}  // namespace subtle
+}  // namespace base::subtle
 }  // namespace base
 #endif  // AtomicWordCastType
 
@@ -286,7 +284,7 @@ void Release_Store(volatile Atomic64* ptr, Atomic64 value);
 Atomic64 NoBarrier_Load(volatile const Atomic64* ptr);
 Atomic64 Acquire_Load(volatile const Atomic64* ptr);
 Atomic64 Release_Load(volatile const Atomic64* ptr);
-}  // namespace subtle
+}  // namespace base::subtle
 }  // namespace base
 
 void MemoryBarrier();
@@ -386,4 +384,4 @@ inline base::subtle::Atomic64 Release_Load(
   return base::subtle::Release_Load(ptr);
 }
 
-#endif  // YB_GUTIL_ATOMICOPS_H
+#endif  // THREAD_ATOMICOPS_H_

@@ -103,9 +103,9 @@ class FilteringIterator : public InternalIterator {
         break;
       }
       if (!backward) {
-        iterator_->Next();
+        Next();
       } else {
-        iterator_->Prev();
+        Prev();
       }
     }
   }

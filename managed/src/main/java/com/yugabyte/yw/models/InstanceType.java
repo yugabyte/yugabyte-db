@@ -12,9 +12,6 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
 import io.ebean.annotation.EnumValue;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -26,11 +23,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
 
-@ApiModel(description = "Instance type model which holds the information about the instance.")
 @Entity
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
@@ -102,9 +96,6 @@ public class InstanceType extends Model {
     idKey.instanceTypeCode = code;
   }
 
-  @ApiModelProperty(
-      value = "indiacates whether this instance is active or not",
-      accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "boolean default true")
   private Boolean active = true;
@@ -117,17 +108,14 @@ public class InstanceType extends Model {
     this.active = active;
   }
 
-  @ApiModelProperty(value = "Number of cores in an instance", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "float")
   public Double numCores;
 
-  @ApiModelProperty(value = "Memory size of an instance", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "float")
   public Double memSizeGB;
 
-  @ApiModelProperty(value = "Extra details about instance json", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT")
   private String instanceTypeDetailsJson;
 

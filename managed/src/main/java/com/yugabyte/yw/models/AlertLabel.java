@@ -11,20 +11,13 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.models.helpers.UniqueKeyListValue;
 import io.ebean.Model;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
 
 import javax.persistence.*;
 import java.util.Objects;
 
 @Entity
-@Data
-@EqualsAndHashCode(callSuper = false)
-@ToString
-public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> {
+public class AlertLabel extends Model {
 
   @EmbeddedId private AlertLabelKey key;
 
@@ -34,8 +27,6 @@ public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> 
   @ManyToOne
   @MapsId("alert")
   @JsonIgnore
-  @EqualsAndHashCode.Exclude
-  @ToString.Exclude
   private Alert alert;
 
   public AlertLabel() {
@@ -53,8 +44,8 @@ public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> 
     setAlert(definition);
   }
 
-  public String getName() {
-    return key.getName();
+  public Alert getAlert() {
+    return alert;
   }
 
   public void setAlert(Alert alert) {
@@ -62,15 +53,37 @@ public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> 
     key.setAlertUUID(alert.getUuid());
   }
 
-  @Override
-  @JsonIgnore
-  public boolean keyEquals(AlertLabel other) {
-    return Objects.equals(getName(), other.getName());
+  public String getName() {
+    return key.getName();
+  }
+
+  public void setName(String name) {
+    key.setName(name);
+  }
+
+  public String getValue() {
+    return value;
+  }
+
+  public void setValue(String value) {
+    this.value = value;
   }
 
   @Override
-  @JsonIgnore
-  public boolean valueEquals(AlertLabel other) {
-    return keyEquals(other) && Objects.equals(getValue(), other.getValue());
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    AlertLabel label = (AlertLabel) o;
+    return Objects.equals(key, label.key) && Objects.equals(value, label.value);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(key, value);
+  }
+
+  @Override
+  public String toString() {
+    return "AlertLabel{" + "key=" + key + ", value=" + value + '}';
   }
 }

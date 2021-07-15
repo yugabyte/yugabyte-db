@@ -45,7 +45,7 @@ FunctorThreadPoolTask<F, StrandTask>* MakeFunctorStrandTask(F&& f) {
 class Strand : public ThreadPoolTask {
  public:
   explicit Strand(ThreadPool* thread_pool);
-  virtual ~Strand();
+  virtual ~Strand() = default;
 
   void Enqueue(StrandTask* task);
 

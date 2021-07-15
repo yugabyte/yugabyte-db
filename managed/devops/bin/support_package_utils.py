@@ -102,9 +102,9 @@ def handle_ssh_universe(args):
     tar_file_name = client.node_name + "-support_package.tar.gz"
 
     cmd = ['tar', '-czvf', tar_file_name, '-h', '-C',
-           args.yb_home_dir, 'tserver/logs/yb-tserver.INFO']
+           args.yb_home_dir, 'tserver/logs']
     if args.is_master:
-        cmd += ['-h', '-C', args.yb_home_dir, 'master/logs/yb-master.INFO']
+        cmd += ['-h', '-C', args.yb_home_dir, 'master/logs']
 
     client.exec_command(cmd)
     sftp_client = client.get_sftp_client()
@@ -120,8 +120,8 @@ def handle_k8s_universe(args):
     cmd = ['tar', '-czvf', '-', '-h', '-C',
            args.yb_home_dir]
     if args.is_master:
-        cmd += ['master/logs/yb-master.INFO']
+        cmd += ['master/logs']
     else:
-        cmd += ['tserver/logs/yb-tserver.INFO']
+        cmd += ['tserver/logs']
     file = open(args.target_local_file, "w+")
     client.exec_command(cmd, file)

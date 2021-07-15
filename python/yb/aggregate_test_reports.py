@@ -77,14 +77,16 @@ import json
 import logging
 import os
 import sys
-import yugabyte_pycommon  # type: ignore
+import yugabyte_pycommon
 
-from json.decoder import JSONDecodeError
+# for python2/3 compatibility
+try:
+    from json.decoder import JSONDecodeError
+except ImportError:
+    JSONDecodeError = ValueError
 
-from typing import List, Dict, Optional, Any, Tuple, Set, cast, Callable
 
-
-def is_test_failure(report: Dict[str, Any]) -> bool:
+def is_test_failure(report):
     for key in ['num_errors', 'num_failures']:
         value = report.get(key, 0)
         if value > 0:
@@ -92,17 +94,17 @@ def is_test_failure(report: Dict[str, Any]) -> bool:
     return False
 
 
-def is_test_skipped(report: Dict[str, Any]) -> bool:
+def is_test_skipped(report):
     return report.get('num_skipped', 0) > 0 or report.get('status') == 'notrun'
 
 
-def get_zero_one_counter(report: Dict[str, Any], key: str) -> int:
+def get_zero_one_counter(report, key):
     if report.get(key, 0) == 0:
         return 0
     return 1
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args():
     parser = argparse.ArgumentParser(
         description=__doc__)
     parser.add_argument(
@@ -126,21 +128,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def get_test_set(
-        all_test_reports: List[Dict[str, Any]],
-        predicate: Callable[[Dict[str, Any]], bool]) -> List[Tuple[str, str]]:
+def get_test_set(all_test_reports, predicate):
     return sorted(set([
-        (cast(str, report["class_name"]), cast(str, report["test_name"]))
+        (report["class_name"], report["test_name"])
         for report in all_test_reports if predicate(report)
     ]))
 
 
-def add_counters(dest: Dict[str, int], src: Dict[str, int]) -> None:
+def add_counters(dest, src):
     for k in src:
         dest[k] = dest.get(k, 0) + src[k]
 
 
-def aggregate_test_reports(args: argparse.Namespace) -> None:
+def aggregate_test_reports(args):
     all_test_reports = []
     failure_reports = []
     errors = []
@@ -164,8 +164,8 @@ def aggregate_test_reports(args: argparse.Namespace) -> None:
 
     logging.info("Collected %d test report files", len(all_test_reports))
 
-    totals: Dict[str, int] = {}
-    by_language: Dict[str, Dict[str, int]] = {}
+    totals = {}
+    by_language = {}
     for test_report in all_test_reports:
         tests_run_delta = 0
         tests_skipped_delta = 0
@@ -224,11 +224,7 @@ def aggregate_test_reports(args: argparse.Namespace) -> None:
     logging.info("Stats:\n%s", json.dumps(top_level_details, indent=2))
 
 
-def main() -> None:
+if __name__ == '__main__':
     yugabyte_pycommon.init_logging()
     args = parse_args()
-    aggregate_test_reports(args)
-
-
-if __name__ == '__main__':
-    main()
+    aggregate_test_reports(args),

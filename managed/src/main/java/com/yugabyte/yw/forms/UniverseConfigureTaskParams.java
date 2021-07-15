@@ -22,7 +22,7 @@ public class UniverseConfigureTaskParams extends UniverseDefinitionTaskParams {
   public enum ClusterOperationType {
     CREATE,
     EDIT,
-    DELETE // This is never used
+    DELETE
   }
 
   public static class Converter extends BaseConverter<UniverseConfigureTaskParams> {}

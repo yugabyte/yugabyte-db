@@ -19,7 +19,6 @@
 #include "access/session.h"
 #include "access/xact.h"
 #include "access/xlog.h"
-#include "catalog/pg_enum.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "commands/async.h"
@@ -71,7 +70,6 @@
 #define PARALLEL_KEY_ENTRYPOINT				UINT64CONST(0xFFFFFFFFFFFF0009)
 #define PARALLEL_KEY_SESSION_DSM			UINT64CONST(0xFFFFFFFFFFFF000A)
 #define PARALLEL_KEY_REINDEX_STATE			UINT64CONST(0xFFFFFFFFFFFF000B)
-#define PARALLEL_KEY_ENUMBLACKLIST          UINT64CONST(0xFFFFFFFFFFFF000D)
 
 /* Fixed-size parallel state. */
 typedef struct FixedParallelState
@@ -217,7 +215,6 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	Size		asnaplen = 0;
 	Size		tstatelen = 0;
 	Size		reindexlen = 0;
-	Size        enumblacklistlen = 0;
 	Size		segsize = 0;
 	int			i;
 	FixedParallelState *fps;
@@ -230,9 +227,7 @@ InitializeParallelDSM(ParallelContext *pcxt)
 
 	/* Allow space to store the fixed-size parallel state. */
 	shm_toc_estimate_chunk(&pcxt->estimator, sizeof(FixedParallelState));
-	enumblacklistlen = EstimateEnumBlacklistSpace();
-	shm_toc_estimate_chunk(&pcxt->estimator, enumblacklistlen);
-	shm_toc_estimate_keys(&pcxt->estimator, 2);
+	shm_toc_estimate_keys(&pcxt->estimator, 1);
 
 	/*
 	 * Normally, the user will have requested at least one worker process, but
@@ -347,7 +342,6 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		char	   *error_queue_space;
 		char	   *session_dsm_handle_space;
 		char	   *entrypointstate;
-		char	   *enumblacklistspace;
 		Size		lnamelen;
 
 		/* Serialize shared libraries we have loaded. */
@@ -390,12 +384,6 @@ InitializeParallelDSM(ParallelContext *pcxt)
 		reindexspace = shm_toc_allocate(pcxt->toc, reindexlen);
 		SerializeReindexState(reindexlen, reindexspace);
 		shm_toc_insert(pcxt->toc, PARALLEL_KEY_REINDEX_STATE, reindexspace);
-
-		/* Serialize enum blacklist state. */
-		enumblacklistspace = shm_toc_allocate(pcxt->toc, enumblacklistlen);
-		SerializeEnumBlacklist(enumblacklistspace, enumblacklistlen);
-		shm_toc_insert(pcxt->toc, PARALLEL_KEY_ENUMBLACKLIST,
-					   enumblacklistspace);
 
 		/* Allocate space for worker information. */
 		pcxt->worker = palloc0(sizeof(ParallelWorkerInfo) * pcxt->nworkers);
@@ -1229,7 +1217,6 @@ ParallelWorkerMain(Datum main_arg)
 	char	   *asnapspace;
 	char	   *tstatespace;
 	char	   *reindexspace;
-	char       *enumblacklistspace;
 	StringInfoData msgbuf;
 	char	   *session_dsm_handle_space;
 
@@ -1415,11 +1402,6 @@ ParallelWorkerMain(Datum main_arg)
 	 */
 	InitializingParallelWorker = false;
 	EnterParallelMode();
-
-	/* Restore enum blacklist. */
-	enumblacklistspace = shm_toc_lookup(toc, PARALLEL_KEY_ENUMBLACKLIST,
-										false);
-	RestoreEnumBlacklist(enumblacklistspace);
 
 	/*
 	 * Time to do the real work: invoke the caller-supplied code.

@@ -8,11 +8,12 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+
+import java.lang.reflect.InvocationTargetException;
+
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.lang.reflect.InvocationTargetException;
 
 public class AlertUtils {
   public static final Logger LOG = LoggerFactory.getLogger(AlertUtils.class);
@@ -22,21 +23,21 @@ public class AlertUtils {
 
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE =
-      "{{ $labels.definition_name }} Alert for {{ $labels.target_name }} "
-          + "is {{ $labels.alert_state }}.";
+      "{{ $labels.definition_name }} for {{ $labels.universe_name }} is {{ $labels.alert_state }}.";
 
   /**
    * Returns the alert notification title according to the template stored in the alert receiver or
    * default one. Also does all the necessary substitutions using labels from the alert.
    *
-   * @param alert Alert
-   * @param receiver Alert Receiver
+   * @param alert
+   * @param receiver
    * @return the notification title
+   * @throws YWServiceException if a customer with such UUID is not found
    */
   public static String getNotificationTitle(Alert alert, AlertReceiver receiver) {
     String template = receiver.getParams().titleTemplate;
     if (StringUtils.isEmpty(template)) {
-      Customer customer = Customer.getOrBadRequest(alert.getCustomerUUID());
+      Customer customer = Customer.getOrBadRequest(alert.customerUUID);
       return String.format(DEFAULT_ALERT_NOTIFICATION_TITLE, customer.getTag());
     }
     return alertSubstitutions(alert, template);
@@ -58,7 +59,7 @@ public class AlertUtils {
   public static String getNotificationText(Alert alert, AlertReceiver receiver) {
     String template = receiver.getParams().textTemplate;
     if (StringUtils.isEmpty(template)) {
-      if (alert.getDefinitionUuid() == null) {
+      if (alert.getDefinitionUUID() == null) {
         return getDefaultNotificationText(alert);
       }
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
@@ -68,11 +69,16 @@ public class AlertUtils {
 
   @VisibleForTesting
   static String getDefaultNotificationText(Alert alert) {
-    String targetType = alert.getLabelValue(KnownAlertLabels.TARGET_TYPE);
-    String targetName = alert.getLabelValue(KnownAlertLabels.TARGET_NAME);
+    String universeName = alert.getLabelValue(KnownAlertLabels.UNIVERSE_NAME);
+    if (StringUtils.isNotEmpty(universeName)) {
+      return String.format(
+          "Common failure for universe '%s', state: %s\nFailure details:\n\n%s",
+          universeName, alert.getState().getAction(), alert.message);
+    }
+    Customer customer = Customer.getOrBadRequest(alert.customerUUID);
     return String.format(
-        "Common failure for %s '%s', state: %s\nFailure details:\n\n%s",
-        targetType, targetName, alert.getState().getAction(), alert.getMessage());
+        "Common failure for customer '%s', state: %s\nFailure details:\n\n%s",
+        customer.name, alert.getState().getAction(), alert.message);
   }
 
   public static Class<?> getAlertParamsClass(AlertReceiver.TargetType targetType) {

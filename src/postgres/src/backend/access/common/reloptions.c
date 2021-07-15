@@ -377,20 +377,7 @@ static relopt_int intRelOpts[] =
 			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
 			AccessExclusiveLock
 		},
-		InvalidOid,
-		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
-		INT_MAX
-	},
-	{
-		{
-			"row_type_oid",
-			"Postgres type oid for the new row type defined for this relation.",
-			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
-			AccessExclusiveLock
-		},
-		InvalidOid,
-		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
-		INT_MAX
+		InvalidOid, FirstNormalObjectId, INT_MAX
 	},
 	/* list terminator */
 	{{NULL}}
@@ -1440,9 +1427,8 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, vacuum_cleanup_index_scale_factor)},
 		{"colocated", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, colocated)},
-		{"tablegroup", RELOPT_TYPE_INT, offsetof(StdRdOptions, tablegroup_oid)},
+		{"tablegroup", RELOPT_TYPE_INT, offsetof(StdRdOptions, tablegroup)},
 		{"table_oid", RELOPT_TYPE_INT, offsetof(StdRdOptions, table_oid)},
-		{"row_type_oid", RELOPT_TYPE_INT, offsetof(StdRdOptions, row_type_oid)},
 	};
 
 	options = parseRelOptions(reloptions, validate, kind, &numoptions);

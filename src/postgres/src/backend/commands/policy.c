@@ -17,7 +17,6 @@
 #include "access/htup.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
-#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -445,9 +444,10 @@ RemoveRoleFromObjectPolicy(Oid roleid, Oid classid, Oid policy_id)
 	Oid			relid;
 	Relation	rel;
 	ArrayType  *policy_roles;
+	int			num_roles;
 	Datum		roles_datum;
 	bool		attr_isnull;
-	bool		keep_policy = true;
+	bool		noperm = true;
 
 	Assert(classid == PolicyRelationId);
 
@@ -500,20 +500,31 @@ RemoveRoleFromObjectPolicy(Oid roleid, Oid classid, Oid policy_id)
 
 	policy_roles = DatumGetArrayTypePCopy(roles_datum);
 
+	/* We should be removing exactly one entry from the roles array */
+	num_roles = ARR_DIMS(policy_roles)[0] - 1;
+
+	Assert(num_roles >= 0);
+
 	/* Must own relation. */
-	if (!pg_class_ownercheck(relid, GetUserId()))
+	if (pg_class_ownercheck(relid, GetUserId()))
+		noperm = false;			/* user is allowed to modify this policy */
+	else
 		ereport(WARNING,
 				(errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED),
 				 errmsg("role \"%s\" could not be removed from policy \"%s\" on \"%s\"",
 						GetUserNameFromId(roleid, false),
 						NameStr(((Form_pg_policy) GETSTRUCT(tuple))->polname),
 						RelationGetRelationName(rel))));
-	else
+
+	/*
+	 * If multiple roles exist on this policy, then remove the one we were
+	 * asked to and leave the rest.
+	 */
+	if (!noperm && num_roles > 0)
 	{
 		int			i,
 					j;
 		Oid		   *roles = (Oid *) ARR_DATA_PTR(policy_roles);
-		int			num_roles = ARR_DIMS(policy_roles)[0];
 		Datum	   *role_oids;
 		char	   *qual_value;
 		Node	   *qual_expr;
@@ -587,22 +598,16 @@ RemoveRoleFromObjectPolicy(Oid roleid, Oid classid, Oid policy_id)
 		else
 			with_check_qual = NULL;
 
-		/*
-		 * Rebuild the roles array, without any mentions of the target role.
-		 * Ordinarily there'd be exactly one, but we must cope with duplicate
-		 * mentions, since CREATE/ALTER POLICY historically have allowed that.
-		 */
+		/* Rebuild the roles array to then update the pg_policy tuple with */
 		role_oids = (Datum *) palloc(num_roles * sizeof(Datum));
-		for (i = 0, j = 0; i < num_roles; i++)
-		{
+		for (i = 0, j = 0; i < ARR_DIMS(policy_roles)[0]; i++)
+			/* Copy over all of the roles which are not the one being removed */
 			if (roles[i] != roleid)
 				role_oids[j++] = ObjectIdGetDatum(roles[i]);
-		}
-		num_roles = j;
 
-		/* If any roles remain, update the policy entry. */
-		if (num_roles > 0)
-		{
+		/* We should have only removed the one role */
+		Assert(j == num_roles);
+
 		/* This is the array for the new tuple */
 		role_ids = construct_array(role_oids, num_roles, OIDOID,
 								   sizeof(Oid), true, 'i');
@@ -657,17 +662,8 @@ RemoveRoleFromObjectPolicy(Oid roleid, Oid classid, Oid policy_id)
 
 		heap_freetuple(new_tuple);
 
-		/* Make updates visible */
-		CommandCounterIncrement();
-
 		/* Invalidate Relation Cache */
 		CacheInvalidateRelcache(rel);
-		}
-		else
-		{
-			/* No roles would remain, so drop the policy instead */
-			keep_policy = false;
-		}
 	}
 
 	/* Clean up. */
@@ -677,7 +673,7 @@ RemoveRoleFromObjectPolicy(Oid roleid, Oid classid, Oid policy_id)
 
 	heap_close(pg_policy_rel, RowExclusiveLock);
 
-	return keep_policy;
+	return (noperm || num_roles > 0);
 }
 
 /*

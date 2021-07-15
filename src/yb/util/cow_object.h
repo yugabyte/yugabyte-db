@@ -261,7 +261,7 @@ class CowWriteLock {
   }
 
   // Obtain the mutable data.
-  State* mutable_data() const {
+  State* mutable_data() {
     return cow_->mutable_dirty();
   }
 

@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: platform-high-availability
     parent: manage-deployments
-    weight: 40
+    weight: 41
 isTocNested: true
 showAsideToc: true
 ---

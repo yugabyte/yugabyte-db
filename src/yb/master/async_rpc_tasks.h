@@ -251,8 +251,6 @@ class RetryingTSRpcTask : public MonitoredTask {
   std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
 };
 
-using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
-
 // RetryingTSRpcTask subclass which always retries the same tablet server,
 // identified by its UUID.
 class RetrySpecificTSRpcTask : public RetryingTSRpcTask {

@@ -10,22 +10,16 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
-
-@Slf4j
 public class SetUniverseKey extends UniverseTaskBase {
-
-  @Inject
-  protected SetUniverseKey(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(SetUniverseKey.class);
 
   @Override
   protected EncryptionAtRestKeyParams taskParams() {
@@ -34,7 +28,7 @@ public class SetUniverseKey extends UniverseTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task.", getName());
+    LOG.info("Started {} task.", getName());
     try {
       checkUniverseVersion();
       // Create the task list sequence.
@@ -57,13 +51,13 @@ public class SetUniverseKey extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 }

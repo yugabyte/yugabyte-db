@@ -20,16 +20,11 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
@@ -56,6 +51,8 @@ public class HealthChecker {
   public static final String kUnivNameLabel = "univ_name";
   public static final String kCheckLabel = "check_name";
   public static final String kNodeLabel = "node";
+
+  @VisibleForTesting static final String ALERT_ERROR_CODE = "HEALTH_CHECKER_FAILURE";
 
   private static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
 
@@ -84,7 +81,7 @@ public class HealthChecker {
 
   private final EmailHelper emailHelper;
 
-  private final AlertService alertService;
+  private final AlertManager alertManager;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
@@ -105,7 +102,7 @@ public class HealthChecker {
       CollectorRegistry promRegistry,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
-      AlertService alertService,
+      AlertManager alertManager,
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle) {
     this.actorSystem = actorSystem;
@@ -115,7 +112,7 @@ public class HealthChecker {
     this.promRegistry = promRegistry;
     this.healthCheckerReport = healthCheckerReport;
     this.emailHelper = emailHelper;
-    this.alertService = alertService;
+    this.alertManager = alertManager;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.lifecycle = lifecycle;
     this.executor = this.createExecutor();
@@ -131,7 +128,7 @@ public class HealthChecker {
       HealthManager healthManager,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
-      AlertService alertService,
+      AlertManager alertManager,
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle) {
     this(
@@ -142,7 +139,7 @@ public class HealthChecker {
         CollectorRegistry.defaultRegistry,
         healthCheckerReport,
         emailHelper,
-        alertService,
+        alertManager,
         runtimeConfigFactory,
         lifecycle);
   }
@@ -224,13 +221,7 @@ public class HealthChecker {
             durationMs);
 
         if (!hasErrors) {
-          AlertFilter filter =
-              AlertFilter.builder()
-                  .customerUuid(c.getUuid())
-                  .errorCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-                  .label(KnownAlertLabels.TARGET_UUID, u.universeUUID.toString())
-                  .build();
-          alertService.markResolved(filter);
+          alertManager.resolveAlerts(c.uuid, u.universeUUID, ALERT_ERROR_CODE);
         }
 
       } catch (Exception e) {
@@ -340,15 +331,16 @@ public class HealthChecker {
   }
 
   private void createAlert(Customer c, Universe u, String details) {
-    Alert alert =
-        new Alert()
-            .setCustomerUUID(c.getUuid())
-            .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
-            .setMessage(details)
-            .setSendEmail(true)
-            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alertService.save(alert);
+    Alert.create(
+        c.uuid,
+        u.universeUUID,
+        Alert.TargetType.UniverseType,
+        ALERT_ERROR_CODE,
+        "Warning",
+        details,
+        true,
+        null,
+        Collections.emptyList());
   }
 
   static class CheckSingleUniverseParams {

@@ -357,16 +357,6 @@ public class UniverseTest extends FakeDBApplication {
     assertTrue(regionsNode.isArray());
     assertEquals(3, regionsNode.size());
     assertNull(universeJson.get("dnsName"));
-
-    JsonNode targetAsyncReplicationRelationshipsNode =
-        universeJson.get("universeDetails").get("targetAsyncReplicationRelationships");
-    assertTrue(targetAsyncReplicationRelationshipsNode.isArray());
-    assertEquals(0, targetAsyncReplicationRelationshipsNode.size());
-
-    JsonNode sourceAsyncReplicationRelationshipsNode =
-        universeJson.get("universeDetails").get("sourceAsyncReplicationRelationships");
-    assertTrue(sourceAsyncReplicationRelationshipsNode.isArray());
-    assertEquals(0, sourceAsyncReplicationRelationshipsNode.size());
   }
 
   @Test
@@ -447,70 +437,6 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode masterGFlags = clusterJson.get("userIntent").get("masterGFlags");
     assertThat(masterGFlags, is(notNullValue()));
     assertEquals(0, masterGFlags.size());
-  }
-
-  @Test
-  public void testSourceUniverseToJsonWithAsyncReplicationRelationships() {
-    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
-    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
-
-    AsyncReplicationRelationship.create(source, "sourceTableID", target, "targetTableID", false);
-
-    JsonNode sourceUniverseDetailsJson =
-        Json.toJson(new UniverseResp(source)).get("universeDetails");
-
-    JsonNode targetAsyncReplicationRelationshipsJson =
-        sourceUniverseDetailsJson.get("targetAsyncReplicationRelationships");
-    assertTrue(targetAsyncReplicationRelationshipsJson.isArray());
-    assertEquals(0, targetAsyncReplicationRelationshipsJson.size());
-
-    JsonNode sourceAsyncReplicationRelationshipsJson =
-        sourceUniverseDetailsJson.get("sourceAsyncReplicationRelationships");
-    assertTrue(sourceAsyncReplicationRelationshipsJson.isArray());
-    assertEquals(1, sourceAsyncReplicationRelationshipsJson.size());
-
-    JsonNode asyncReplicationRelationshipJson = sourceAsyncReplicationRelationshipsJson.get(0);
-    assertEquals(
-        source.universeUUID.toString(),
-        asyncReplicationRelationshipJson.get("sourceUniverseUUID").asText());
-    assertEquals("sourceTableID", asyncReplicationRelationshipJson.get("sourceTableID").asText());
-    assertEquals(
-        target.universeUUID.toString(),
-        asyncReplicationRelationshipJson.get("targetUniverseUUID").asText());
-    assertEquals("targetTableID", asyncReplicationRelationshipJson.get("targetTableID").asText());
-    assertFalse(asyncReplicationRelationshipJson.get("active").asBoolean());
-  }
-
-  @Test
-  public void testTargetUniverseToJsonWithAsyncReplicationRelationships() {
-    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
-    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
-
-    AsyncReplicationRelationship.create(source, "sourceTableID", target, "targetTableID", false);
-
-    JsonNode targetUniverseDetailsJson =
-        Json.toJson(new UniverseResp(target)).get("universeDetails");
-
-    JsonNode sourceAsyncReplicationRelationshipsJson =
-        targetUniverseDetailsJson.get("sourceAsyncReplicationRelationships");
-    assertTrue(sourceAsyncReplicationRelationshipsJson.isArray());
-    assertEquals(0, sourceAsyncReplicationRelationshipsJson.size());
-
-    JsonNode targetAsyncReplicationRelationshipsJson =
-        targetUniverseDetailsJson.get("targetAsyncReplicationRelationships");
-    assertTrue(targetAsyncReplicationRelationshipsJson.isArray());
-    assertEquals(1, targetAsyncReplicationRelationshipsJson.size());
-
-    JsonNode asyncReplicationRelationshipJson = targetAsyncReplicationRelationshipsJson.get(0);
-    assertEquals(
-        target.universeUUID.toString(),
-        asyncReplicationRelationshipJson.get("targetUniverseUUID").asText());
-    assertEquals("targetTableID", asyncReplicationRelationshipJson.get("targetTableID").asText());
-    assertEquals(
-        source.universeUUID.toString(),
-        asyncReplicationRelationshipJson.get("sourceUniverseUUID").asText());
-    assertEquals("sourceTableID", asyncReplicationRelationshipJson.get("sourceTableID").asText());
-    assertFalse(asyncReplicationRelationshipJson.get("active").asBoolean());
   }
 
   @Test
@@ -816,8 +742,11 @@ public class UniverseTest extends FakeDBApplication {
 
   private AsyncReplicationRelationship setupAsyncReplicationRelationship(
       Universe source, Universe target) {
+    UUID sourceTableUUID = UUID.randomUUID();
+    UUID targetTableUUID = UUID.randomUUID();
+
     return AsyncReplicationRelationship.create(
-        source, "sourceTableID", target, "targetTableID", false);
+        source, sourceTableUUID, target, targetTableUUID, false);
   }
 
   @Test
@@ -829,8 +758,7 @@ public class UniverseTest extends FakeDBApplication {
     source.refresh();
 
     assertEquals(1, source.sourceAsyncReplicationRelationships.size());
-    assertEquals(
-        relationship, source.sourceAsyncReplicationRelationships.stream().findFirst().orElse(null));
+    assertEquals(relationship, source.sourceAsyncReplicationRelationships.get(0));
 
     assertTrue(source.targetAsyncReplicationRelationships.isEmpty());
   }
@@ -844,8 +772,7 @@ public class UniverseTest extends FakeDBApplication {
     target.refresh();
 
     assertEquals(1, target.targetAsyncReplicationRelationships.size());
-    assertEquals(
-        relationship, target.targetAsyncReplicationRelationships.stream().findFirst().orElse(null));
+    assertEquals(relationship, target.targetAsyncReplicationRelationships.get(0));
 
     assertTrue(target.sourceAsyncReplicationRelationships.isEmpty());
   }

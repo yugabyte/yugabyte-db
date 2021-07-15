@@ -14,7 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -28,13 +28,11 @@ import java.util.UUID;
 @Api(value = "Provider1", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderApiController extends AuthenticatedController {
 
-  @Inject private CloudProviderHandler cloudProviderHandler;
+  @Inject private ValidatingFormFactory formFactory;
 
-  @ApiOperation(
-      value = "listProvider",
-      response = Provider.class,
-      responseContainer = "List",
-      nickname = "getListOfProviders")
+  @Inject private CloudProviderService cloudProviderService;
+
+  @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
   public Result list(UUID customerUUID) {
     return YWResults.withData(Provider.getAll(customerUUID));
   }
@@ -45,15 +43,12 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    cloudProviderHandler.delete(customer, provider);
+    cloudProviderService.delete(customer, provider);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
-  @ApiOperation(
-      value = "createProvider",
-      response = YWResults.YWTask.class,
-      nickname = "createProviders")
+  @ApiOperation(value = "createProvider", response = YWResults.YWTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateProviderRequest",
@@ -66,7 +61,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.customerUUID = customerUUID;
     Provider providerEbean =
-        cloudProviderHandler.createProvider(
+        cloudProviderService.createProvider(
             customer,
             Common.CloudType.valueOf(reqProvider.code),
             reqProvider.name,
@@ -75,7 +70,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
     CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
 
-    UUID taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
+    UUID taskUUID = cloudProviderService.bootstrap(customer, providerEbean, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
     return new YWResults.YWTask(taskUUID, providerEbean.uuid).asResult();
   }

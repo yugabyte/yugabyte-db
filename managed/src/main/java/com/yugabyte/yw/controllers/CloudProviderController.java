@@ -10,7 +10,7 @@ import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -29,7 +29,9 @@ import java.util.UUID;
 
 @Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderController extends AuthenticatedController {
-  @Inject private CloudProviderHandler cloudProviderHandler;
+  @Inject private CloudProviderService cloudProviderService;
+
+  @Inject private ValidatingFormFactory formFactory;
 
   @Inject private AWSInitializer awsInitializer;
 
@@ -42,13 +44,12 @@ public class CloudProviderController extends AuthenticatedController {
    *
    * @return JSON response of newly created provider
    */
-  @ApiOperation(value = "createCloudProvider", nickname = "createCloudProvider")
   public Result create(UUID customerUUID) throws IOException {
     JsonNode reqBody = maybeMassageRequestConfig(request().body().asJson());
     CloudProviderFormData cloudProviderFormData =
         formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
     Provider provider =
-        cloudProviderHandler.createProvider(
+        cloudProviderService.createProvider(
             Customer.getOrBadRequest(customerUUID),
             cloudProviderFormData.code,
             cloudProviderFormData.name,
@@ -65,7 +66,7 @@ public class CloudProviderController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, KubernetesProviderFormData.class);
 
     Provider provider =
-        cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
+        cloudProviderService.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
     auditService().createAuditEntry(ctx(), request(), requestBody);
     return YWResults.withData(provider);
   }
@@ -79,7 +80,7 @@ public class CloudProviderController extends AuthenticatedController {
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
+    return YWResults.withData(cloudProviderService.suggestedKubernetesConfigs());
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
@@ -93,7 +94,7 @@ public class CloudProviderController extends AuthenticatedController {
       return YWResults.withData(providerList.get(0));
     }
 
-    Provider newProvider = cloudProviderHandler.setupNewDockerProvider(customer);
+    Provider newProvider = cloudProviderService.setupNewDockerProvider(customer);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.withData(newProvider);
   }
@@ -116,7 +117,7 @@ public class CloudProviderController extends AuthenticatedController {
     JsonNode requestBody = request().body().asJson();
     CloudBootstrap.Params taskParams =
         formFactory.getFormDataOrBadRequest(requestBody, CloudBootstrap.Params.class);
-    UUID taskUUID = cloudProviderHandler.bootstrap(customer, provider, taskParams);
+    UUID taskUUID = cloudProviderService.bootstrap(customer, provider, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
     return new YWResults.YWTask(taskUUID).asResult();
   }
@@ -137,7 +138,7 @@ public class CloudProviderController extends AuthenticatedController {
     */
   }
 
-  @ApiOperation(value = "editProvider", response = Provider.class, nickname = "editProvider")
+  @ApiOperation(value = "editProvider", response = Provider.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "edit provider form data",
@@ -150,7 +151,7 @@ public class CloudProviderController extends AuthenticatedController {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     EditProviderRequest editProviderReq =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
-    cloudProviderHandler.editProvider(provider, editProviderReq);
+    cloudProviderService.editProvider(provider, editProviderReq);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
     return YWResults.withData(provider);
   }

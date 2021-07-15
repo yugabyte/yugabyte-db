@@ -25,13 +25,10 @@ preflight_provision_check() {
 
   # Check for internet access.
   if [[ "$airgap" = false ]]; then
-    # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
-    # --preserve-status flag will maintain the exit code of the "/dev/tcp" command.
-    HOST="yugabyte.com"
-    PORT=443
-
+    # Send 3 packets with 3 second timeout and return success if any succeed. Do not send
+    # multiple packets at once since ping will return an error if any packet fails.
     for i in 1 2 3; do
-      timeout 3 bash -c "cat < /dev/null > /dev/tcp/${HOST}/${PORT}" --preserve-status && break
+      ping -c 1 -W 3 www.yugabyte.com && break
     done
     update_result_json_with_rc "Internet Connection" "$?"
   fi

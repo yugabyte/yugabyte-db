@@ -27,14 +27,14 @@ public class AlertTemplateSubstitutor<T extends AlertLabelsProvider>
             String labelName = key.replace(LABELS_PREFIX, "");
             String labelValue = instance.getLabelValue(labelName);
             if (labelValue == null) {
-              LOG.trace("Label {} not found in object {}", labelName, instance.getUuid());
-              return "{{ " + key + " }}";
+              LOG.warn("Label {} not found in object {}", labelName, instance.getUuid());
+              return "";
             }
 
             return labelValue;
           }
-          LOG.trace("Unexpected placeholder {} in object {}", key, instance.getUuid());
-          return "{{ " + key + " }}";
+          LOG.warn("Unexpected placeholder {} in object {}", key, instance.getUuid());
+          return "";
         });
   }
 }

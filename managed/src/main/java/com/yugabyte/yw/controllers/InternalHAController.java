@@ -13,7 +13,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -21,6 +20,8 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.data.Form;
+import play.data.FormFactory;
 import play.libs.Files;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -40,11 +41,10 @@ public class InternalHAController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(InternalHAController.class);
 
   private final PlatformReplicationManager replicationManager;
-  private final ValidatingFormFactory formFactory;
+  private final FormFactory formFactory;
 
   @Inject
-  InternalHAController(
-      PlatformReplicationManager replicationManager, ValidatingFormFactory formFactory) {
+  InternalHAController(PlatformReplicationManager replicationManager, FormFactory formFactory) {
     this.replicationManager = replicationManager;
     this.formFactory = formFactory;
   }
@@ -178,8 +178,11 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
-      DemoteInstanceFormData formData =
-          formFactory.getFormDataOrBadRequest(DemoteInstanceFormData.class).get();
+      Form<DemoteInstanceFormData> formData =
+          formFactory.form(DemoteInstanceFormData.class).bindFromRequest();
+      if (formData.hasErrors()) {
+        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+      }
 
       Optional<PlatformInstance> localInstance = config.get().getLocal();
 
@@ -203,7 +206,7 @@ public class InternalHAController extends Controller {
       }
 
       // Demote the local instance.
-      replicationManager.demoteLocalInstance(localInstance.get(), formData.leader_address);
+      replicationManager.demoteLocalInstance(localInstance.get(), formData.get().leader_address);
 
       return YWResults.withData(localInstance);
     } catch (Exception e) {

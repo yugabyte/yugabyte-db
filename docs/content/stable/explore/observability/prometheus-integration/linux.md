@@ -1,7 +1,7 @@
 ---
 title: Prometheus Integration
 headerTitle: Prometheus Integration
-linkTitle: Prometheus Integration
+linkTitle: Prometheus Integration 
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   stable:
@@ -44,9 +44,9 @@ showAsideToc: true
 -->
 </ul>
 
-You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
+You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted) cluster management utility.
+This tutorial uses the [yb-ctl](../../../admin/yb-ctl) local cluster management utility.
 
 ## Prerequisite
 
@@ -57,29 +57,16 @@ Prometheus is installed on your local machine. If you have not done so already, 
 
 ## 1. Create universe
 
-Start a new local three-node universe with a replication factor of `3`.
+If you have a previously running local universe, destroy it using the following.
 
 ```sh
-$ ./bin/yugabyted start \
-                  --base_dir=node-1 \
-                  --listen=127.0.0.1 \
-                  --tserver_flags="start_redis_proxy=true"
+$ ./bin/yb-ctl destroy
 ```
 
-```sh
-$ ./bin/yugabyted start \
-                  --base_dir=node-2 \
-                  --listen=127.0.0.2 \
-                  --join=127.0.0.1 \
-                  --tserver_flags="start_redis_proxy=true"
-```
+Start a new local YugabyteDB cluster - this will create a three-node universe with a replication factor of `3`.
 
 ```sh
-$ ./bin/yugabyted start \
-                  --base_dir=node-3 \
-                  --listen=127.0.0.3 \
-                  --join=127.0.0.1 \
-                  --tserver_flags="start_redis_proxy=true"
+$ ./bin/yb-ctl create --rf 3
 ```
 
 ## 2. Run the YugabyteDB workload generator
@@ -87,7 +74,7 @@ $ ./bin/yugabyted start \
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.2/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.1/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the `CassandraKeyValue` workload application in a separate shell.
@@ -171,7 +158,7 @@ Go to the directory where Prometheus is installed and start the Prometheus serve
 $ ./prometheus --config.file=yugabytedb.yml
 ```
 
-Open the Prometheus UI at <http://localhost:9090> and then navigate to the Targets page under Status.
+Open the Prometheus UI at http://localhost:9090 and then navigate to the Targets page under Status.
 
 ![Prometheus Targets](/images/ce/prom-targets.png)
 
@@ -191,7 +178,7 @@ sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
-> Write IOPS
+>  Write IOPS
 
 ```sh
 sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
@@ -224,20 +211,8 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 Optionally, you can shut down the local cluster created in Step 1.
 
 ```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=node-1
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=node-2
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=node-3
+$ ./bin/yb-ctl destroy
 ```
 
 ## What's next?
-
 You can [setup Grafana](https://prometheus.io/docs/visualization/grafana/) and import the [YugabyteDB dashboard](https://grafana.com/grafana/dashboards/12620 "YugabyteDB dashboard on grafana.com") for better visualization of the metrics being collected by Prometheus.

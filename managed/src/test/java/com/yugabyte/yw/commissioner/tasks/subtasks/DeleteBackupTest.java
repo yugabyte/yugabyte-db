@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -53,7 +52,7 @@ public class DeleteBackupTest extends FakeDBApplication {
     params.backupUUID = backup.backupUUID;
     params.customerUUID = defaultCustomer.uuid;
 
-    DeleteBackup deleteBackupTask = AbstractTaskBase.createTask(DeleteBackup.class);
+    DeleteBackup deleteBackupTask = new DeleteBackup();
     deleteBackupTask.initialize(params);
     deleteBackupTask.run();
 
@@ -73,7 +72,7 @@ public class DeleteBackupTest extends FakeDBApplication {
     shellResponse.code = 0;
     when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
 
-    DeleteBackup deleteBackupTask = AbstractTaskBase.createTask(DeleteBackup.class);
+    DeleteBackup deleteBackupTask = new DeleteBackup();
     deleteBackupTask.initialize(params);
     deleteBackupTask.run();
 
@@ -94,7 +93,7 @@ public class DeleteBackupTest extends FakeDBApplication {
     shellResponse.code = 22;
     when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
 
-    DeleteBackup deleteBackupTask = AbstractTaskBase.createTask(DeleteBackup.class);
+    DeleteBackup deleteBackupTask = new DeleteBackup();
     deleteBackupTask.initialize(params);
     deleteBackupTask.run();
 
@@ -115,7 +114,7 @@ public class DeleteBackupTest extends FakeDBApplication {
     shellResponse.code = 22;
     when(mockTableManager.deleteBackup(any())).thenThrow(new RuntimeException("expected"));
 
-    DeleteBackup deleteBackupTask = AbstractTaskBase.createTask(DeleteBackup.class);
+    DeleteBackup deleteBackupTask = new DeleteBackup();
     deleteBackupTask.initialize(params);
     deleteBackupTask.run();
 

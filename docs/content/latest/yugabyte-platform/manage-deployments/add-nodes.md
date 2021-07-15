@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: add-nodes
     parent: manage-deployments
-    weight: 20
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -23,11 +22,16 @@ import play.libs.Json;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.*;
+
+import com.google.common.base.Strings;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudBootstrapTest extends CommissionerBaseTest {
@@ -100,7 +104,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     } else if (expectedProviderCode.equals("gcp")) {
       verify(mockGCPInitializer, times(1)).initialize(defaultCustomer.uuid, provider.uuid);
     } else {
-      fail("Only support AWS and GCP for now.");
+      // Only support AWS and GCP for now.
+      assertNotNull(null);
     }
     // TODO(bogdan): do we want a different handling here?
     String customPayload = Json.stringify(Json.toJson(taskParams));
@@ -112,7 +117,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       String regionName = entry.getKey();
       CloudBootstrap.Params.PerRegionMetadata metadata = entry.getValue();
       // Expected region.
-      assertTrue(expectedRegions.contains(regionName));
+      assertNotNull(expectedRegions.contains(regionName));
       Region r = Region.getByCode(provider, regionName);
       assertNotNull(r);
       // Check AccessKey info.
@@ -149,7 +154,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(false));
       }
       // Check AZ info.
-      List<AvailabilityZone> zones = r.zones;
+      Set<AvailabilityZone> zones = r.zones;
       assertNotNull(zones);
       if (customAzMapping) {
         assertEquals(metadata.azToSubnetIds.size(), zones.size());

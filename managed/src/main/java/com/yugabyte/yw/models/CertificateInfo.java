@@ -8,9 +8,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
 import io.ebean.*;
 import io.ebean.annotation.*;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -37,9 +34,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static play.mvc.Http.Status.*;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
 
-@ApiModel(description = "Certificate used by the universe to send sensitive information")
 @Entity
 public class CertificateInfo extends Model {
 
@@ -48,84 +43,43 @@ public class CertificateInfo extends Model {
     SelfSigned,
 
     @EnumValue("CustomCertHostPath")
-    CustomCertHostPath,
-
-    @EnumValue("CustomServerCert")
-    CustomServerCert
+    CustomCertHostPath
   }
 
-  public static class CustomServerCertInfo {
-    public String serverCert;
-    public String serverKey;
-
-    public CustomServerCertInfo() {
-      this.serverCert = null;
-      this.serverKey = null;
-    }
-
-    public CustomServerCertInfo(String serverCert, String serverKey) {
-      this.serverCert = serverCert;
-      this.serverKey = serverKey;
-    }
-  }
-
-  @ApiModelProperty(value = "Certificate uuid", accessMode = READ_ONLY)
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
   public UUID uuid;
 
-  @ApiModelProperty(
-      value = "Customer UUID of the backup which it belongs to",
-      accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   public UUID customerUUID;
 
-  @ApiModelProperty(
-      value = "Certificate label",
-      example = "yb-admin-example",
-      accessMode = READ_WRITE)
   @Column(unique = true)
   public String label;
 
-  @ApiModelProperty(value = "Certificate created date", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   public Date startDate;
 
-  @ApiModelProperty(value = "Expiry date of the Certificate", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   public Date expiryDate;
 
-  @ApiModelProperty(
-      value = "Private key path",
-      example = "/opt/yugaware/..../example.key.pem",
-      accessMode = READ_WRITE)
   @Column(nullable = true)
   public String privateKey;
 
-  @ApiModelProperty(
-      value = "Certificate path",
-      example = "/opt/yugaware/certs/.../ca.root.cert",
-      accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   public String certificate;
 
-  @ApiModelProperty(
-      value = "Type of the certificate",
-      example = "SelfSigned",
-      accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   public CertificateInfo.Type certType;
 
-  @ApiModelProperty(value = "Checksome of a cert file", accessMode = READ_ONLY)
   @Column(nullable = true)
   public String checksum;
 
@@ -136,15 +90,11 @@ public class CertificateInfo extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Details about the Certificate", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
   public JsonNode customCertInfo;
 
   public CertificateParams.CustomCertInfo getCustomCertInfo() {
-    if (this.certType != CertificateInfo.Type.CustomCertHostPath) {
-      return null;
-    }
     if (this.customCertInfo != null) {
       return Json.fromJson(this.customCertInfo, CertificateParams.CustomCertInfo.class);
     }
@@ -156,16 +106,6 @@ public class CertificateInfo extends Model {
     this.checkEditable(certUUID, customerUUID);
     this.customCertInfo = Json.toJson(certInfo);
     this.save();
-  }
-
-  public CustomServerCertInfo getCustomServerCertInfo() {
-    if (this.certType != CertificateInfo.Type.CustomServerCert) {
-      return null;
-    }
-    if (this.customCertInfo != null) {
-      return Json.fromJson(this.customCertInfo, CustomServerCertInfo.class);
-    }
-    return null;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateInfo.class);
@@ -212,29 +152,6 @@ public class CertificateInfo extends Model {
     cert.certificate = certificate;
     cert.certType = Type.CustomCertHostPath;
     cert.customCertInfo = Json.toJson(customCertInfo);
-    cert.checksum = Util.getFileChecksum(certificate);
-    cert.save();
-    return cert;
-  }
-
-  public static CertificateInfo create(
-      UUID uuid,
-      UUID customerUUID,
-      String label,
-      Date startDate,
-      Date expiryDate,
-      String certificate,
-      CustomServerCertInfo customServerCertInfo)
-      throws IOException, NoSuchAlgorithmException {
-    CertificateInfo cert = new CertificateInfo();
-    cert.uuid = uuid;
-    cert.customerUUID = customerUUID;
-    cert.label = label;
-    cert.startDate = startDate;
-    cert.expiryDate = expiryDate;
-    cert.certificate = certificate;
-    cert.certType = Type.CustomServerCert;
-    cert.customCertInfo = Json.toJson(customServerCertInfo);
     cert.checksum = Util.getFileChecksum(certificate);
     cert.save();
     return cert;
@@ -301,17 +218,11 @@ public class CertificateInfo extends Model {
     return true;
   }
 
-  @ApiModelProperty(
-      value = "Indicates whether the Certificate is in use or not",
-      accessMode = READ_ONLY)
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
     return Universe.existsCertificate(this.uuid, this.customerUUID);
   }
 
-  @ApiModelProperty(
-      value = "Associated universe details of the Certificate",
-      accessMode = READ_ONLY)
   public ArrayNode getUniverseDetails() {
     Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
     return Util.getUniverseDetails(universes);

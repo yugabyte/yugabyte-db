@@ -2,15 +2,15 @@
 title: Indexes and Constraints
 headerTitle: Indexes and Constraints
 linkTitle: Indexes and Constraints
-description: Indexes and constraints in YSQL
-headcontent: Indexes and constraints in YSQL
+description: Indexes and Constraints in YSQL
+headcontent: Indexes and Constraints in YSQL
 aliases:
 image: /images/section_icons/explore/monitoring.png
 menu:
   latest:
     identifier: explore-indexes-constraints
     parent: explore
-    weight: 245
+    weight: 800
 ---
 
 
@@ -35,9 +35,9 @@ menu:
         <div class="title">Constraints</div>
       </div>
       <div class="body">
-          Define primary and foreign keys; check values based on various criteria.
+          Use constraints.
       </div>
     </a>
   </div>
-
+  
 </div>

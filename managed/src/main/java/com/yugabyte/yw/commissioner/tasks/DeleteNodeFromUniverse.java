@@ -10,22 +10,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
-
-@Slf4j
 public class DeleteNodeFromUniverse extends UniverseTaskBase {
-
-  @Inject
-  protected DeleteNodeFromUniverse(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -41,7 +31,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      log.info(
+      LOG.info(
           "Delete Node with name {} from universe {}",
           taskParams().nodeName,
           taskParams().universeUUID);
@@ -53,11 +43,11 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
       unlockUniverseForUpdate();
     }
-    log.info("Finished {} task.", getName());
+    LOG.info("Finished {} task.", getName());
   }
 }

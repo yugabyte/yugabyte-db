@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -62,7 +61,7 @@ public class UniverseSetTlsParamsTest extends FakeDBApplication {
     params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
     params.allowInsecure = allowInsecure;
     params.rootCA = rootCA;
-    UniverseSetTlsParams task = AbstractTaskBase.createTask(UniverseSetTlsParams.class);
+    UniverseSetTlsParams task = new UniverseSetTlsParams();
     task.initialize(params);
     return task;
   }

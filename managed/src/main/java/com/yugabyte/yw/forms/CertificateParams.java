@@ -33,11 +33,4 @@ public class CertificateParams {
   }
 
   public CustomCertInfo customCertInfo;
-
-  public static class CustomServerCertData {
-    public String serverCertContent;
-    public String serverKeyContent;
-  }
-
-  public CustomServerCertData customServerCertData;
 }

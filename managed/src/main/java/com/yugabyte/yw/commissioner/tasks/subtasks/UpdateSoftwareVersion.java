@@ -10,24 +10,20 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import java.util.UUID;
+
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import lombok.extern.slf4j.Slf4j;
 
-import javax.inject.Inject;
-
-@Slf4j
 public class UpdateSoftwareVersion extends UniverseTaskBase {
-
-  @Inject
-  protected UpdateSoftwareVersion(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(UpdateSoftwareVersion.class);
 
   // Parameters for marking universe update as a success.
   public static class Params extends UniverseTaskParams {
@@ -47,7 +43,7 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      log.info("Running {}", getName());
+      LOG.info("Running {}", getName());
 
       // Create the update lambda.
       UniverseUpdater updater =
@@ -59,7 +55,7 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
               if (!universeDetails.updateInProgress) {
                 String errMsg =
                     "UserUniverse " + taskParams().universeUUID + " is not being edited.";
-                log.error(errMsg);
+                LOG.error(errMsg);
                 throw new RuntimeException(errMsg);
               }
               universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion =
@@ -76,7 +72,7 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
 
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      log.warn(msg, e.getMessage());
+      LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

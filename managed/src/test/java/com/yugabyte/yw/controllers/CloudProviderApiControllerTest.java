@@ -204,7 +204,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Region region = new Region();
     region.name = "region1";
     region.provider = provider;
-    region.code = "region1";
     provider.regions = ImmutableList.of(region);
     createProviderTest(provider, ImmutableList.of(), UUID.randomUUID());
   }

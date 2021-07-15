@@ -16,7 +16,7 @@ menu:
 
 <div class="row">
     <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="aws/cloudformation/">
+    <a class="section-link icon-offset" href="aws/">
       <div class="head">
         <div class="icon">
           <i class="icon-aws"></i>
@@ -30,7 +30,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gcp/terraform/">
+    <a class="section-link icon-offset" href="gcp/">
       <div class="head">
         <div class="icon">
           <i class="icon-google"></i>
@@ -44,7 +44,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="azure/azure-arm/">
+    <a class="section-link icon-offset" href="azure/">
       <div class="head">
         <div class="icon">
           <i class="icon-azure"></i>

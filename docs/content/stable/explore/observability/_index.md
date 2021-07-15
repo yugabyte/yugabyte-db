@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: explore-observability
     parent: explore
-    weight: 310
+    weight: 800
 ---
 
 <div class="row">

@@ -11,8 +11,6 @@
 package com.yugabyte.yw.models;
 
 import io.ebean.*;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -30,39 +28,30 @@ import java.util.UUID;
 
 import javax.persistence.EmbeddedId;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-
 @Entity
 // @IdClass(KmsHistoryId.class)
-@ApiModel(description = "KMS History.")
 public class KmsHistory extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsHistory.class);
 
   public static final int SCHEMA_VERSION = 1;
 
-  @EmbeddedId
-  @ApiModelProperty(value = "KMS history UUID", accessMode = READ_ONLY)
-  public KmsHistoryId uuid;
+  @EmbeddedId public KmsHistoryId uuid;
 
   @Constraints.Required
   @Temporal(TemporalType.TIMESTAMP)
   @Column(nullable = false)
-  @ApiModelProperty(value = "Timestamp of KMS history", accessMode = READ_ONLY)
   public Date timestamp;
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Version of KMS history", accessMode = READ_ONLY)
   public int version;
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Config UUID", accessMode = READ_ONLY)
   public UUID configUuid;
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "KMS is active or not", accessMode = READ_ONLY)
   public boolean active;
 
   public static final Finder<KmsHistoryId, KmsHistory> find =

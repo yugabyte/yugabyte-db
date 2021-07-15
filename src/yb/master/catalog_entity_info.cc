@@ -295,10 +295,6 @@ bool TableInfo::is_running() const {
   return LockForRead()->is_running();
 }
 
-bool TableInfo::is_deleted() const {
-  return LockForRead()->is_deleted();
-}
-
 string TableInfo::ToString() const {
   return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
@@ -652,8 +648,7 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
-         l->namespace_id() != kPgSequencesDataNamespaceId;
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated();
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {

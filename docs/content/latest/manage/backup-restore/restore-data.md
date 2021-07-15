@@ -41,14 +41,14 @@ To restore databases using the `ysqlsh` shell:
 $ ./bin/ysqlsh
 ```
 
-```output
+```
 ysqlsh (11.2-YB-2.0.9.0-b0)
 Type "help" for help.
 
 yugabyte=#
 ```
 
-1. At the `ysqlsh` shell prompt, run the following `\i` command:
+2. At the `ysqlsh` shell prompt, run the following `\i` command.
 
 ```plpgsql
 yugabyte=# \i <db-sql-script>

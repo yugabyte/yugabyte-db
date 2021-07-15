@@ -10,7 +10,10 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.*;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
@@ -19,20 +22,19 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.ApiModel;
-import play.libs.Json;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import play.libs.Json;
+
 public class CloudBootstrap extends CloudTaskBase {
-  @Inject
-  protected CloudBootstrap(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
+  public static final Logger LOG = LoggerFactory.getLogger(CloudBootstrap.class);
 
   @ApiModel("CloudBootstrapParams")
   public static class Params extends CloudTaskParams {
@@ -178,7 +180,7 @@ public class CloudBootstrap extends CloudTaskBase {
     CloudSetup.Params params = new CloudSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.customPayload = Json.stringify(Json.toJson(taskParams()));
-    CloudSetup task = createTask(CloudSetup.class);
+    CloudSetup task = new CloudSetup();
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -194,7 +196,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.metadata = metadata;
     params.destVpcId = taskParams().destVpcId;
 
-    CloudRegionSetup task = createTask(CloudRegionSetup.class);
+    CloudRegionSetup task = new CloudRegionSetup();
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -211,7 +213,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.sshUser = taskParams().sshUser;
     params.sshPort = taskParams().sshPort;
     params.airGapInstall = taskParams().airGapInstall;
-    CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
+    CloudAccessKeySetup task = new CloudAccessKeySetup();
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -222,7 +224,7 @@ public class CloudBootstrap extends CloudTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("Create Cloud initializer task", executor);
     CloudInitializer.Params params = new CloudInitializer.Params();
     params.providerUUID = taskParams().providerUUID;
-    CloudInitializer task = createTask(CloudInitializer.class);
+    CloudInitializer task = new CloudInitializer();
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);

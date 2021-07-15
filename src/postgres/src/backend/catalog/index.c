@@ -116,7 +116,7 @@ static TupleDesc ConstructTupleDescriptor(Relation heapRelation,
 						 Oid *classObjectId);
 static void InitializeAttributeOids(Relation indexRelation,
 						int numatts, Oid indexoid);
-static void AppendAttributeTuples(Relation indexRelation, int numatts, bool yb_relisshared);
+static void AppendAttributeTuples(Relation indexRelation, int numatts);
 static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					Oid parentIndexId,
 					IndexInfo *indexInfo,
@@ -127,8 +127,7 @@ static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					bool isexclusion,
 					bool immediate,
 					bool isvalid,
-					bool isready,
-					bool yb_relisshared);
+					bool isready);
 static void index_update_stats(Relation rel,
 				   bool hasindex,
 				   double reltuples);
@@ -556,7 +555,7 @@ InitializeAttributeOids(Relation indexRelation,
  * ----------------------------------------------------------------
  */
 static void
-AppendAttributeTuples(Relation indexRelation, int numatts, bool yb_relisshared)
+AppendAttributeTuples(Relation indexRelation, int numatts)
 {
 	Relation	pg_attribute;
 	CatalogIndexState indstate;
@@ -586,7 +585,7 @@ AppendAttributeTuples(Relation indexRelation, int numatts, bool yb_relisshared)
 		Assert(attr->attnum == i + 1);
 		Assert(attr->attcacheoff == -1);
 
-		InsertPgAttributeTuple(pg_attribute, attr, indstate, yb_relisshared);
+		InsertPgAttributeTuple(pg_attribute, attr, indstate);
 	}
 
 	CatalogCloseIndexes(indstate);
@@ -612,8 +611,7 @@ UpdateIndexRelation(Oid indexoid,
 					bool isexclusion,
 					bool immediate,
 					bool isvalid,
-					bool isready,
-					bool yb_relisshared)
+					bool isready)
 {
 	int2vector *indkey;
 	oidvector  *indcollation;
@@ -707,7 +705,7 @@ UpdateIndexRelation(Oid indexoid,
 	/*
 	 * insert the tuple into the pg_index catalog
 	 */
-	YBCatalogTupleInsert(pg_index, tuple, yb_relisshared && !IsBootstrapProcessingMode());
+	CatalogTupleInsert(pg_index, tuple);
 
 	/*
 	 * close the relation and free the tuple
@@ -861,11 +859,8 @@ index_create(Relation heapRelation,
 	/*
 	 * We cannot allow indexing a shared relation after initdb (because
 	 * there's no way to make the entry in other databases' pg_class).
-	 *
-	 * YB NOTE:
-	 * Not totally true anymore, we're using a hacky way to do that.
 	 */
-	if (shared_relation && !IsBootstrapProcessingMode() && !IsYsqlUpgrade)
+	if (shared_relation && !IsBootstrapProcessingMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("shared indexes cannot be created after initdb")));
@@ -951,12 +946,6 @@ index_create(Relation heapRelation,
 			indexRelationId = binary_upgrade_next_index_pg_class_oid;
 			binary_upgrade_next_index_pg_class_oid = InvalidOid;
 		}
-		else if (IsYBRelation(heapRelation) && IsCatalogRelation(heapRelation))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("system index must have an explicit OID")));
-		}
 		else
 		{
 			indexRelationId =
@@ -1021,20 +1010,6 @@ index_create(Relation heapRelation,
 	indexRelation->rd_rel->relispartition = OidIsValid(parentIndexRelid);
 
 	/*
-	 * At this point, reloptions no longer affects the index
-	 * creation process, the only remaining use for them is to be
-	 * stored in pg_class.
-	 *
-	 * For YSQL upgrade, we want system indexes to not have
-	 * reloptions stored to imitate BKI processing, so we can safely
-	 * remove them now.
-	 */
-	if (IsCatalogRelation(heapRelation) && IsYsqlUpgrade)
-	{
-		reloptions = (Datum) 0;
-	}
-
-	/*
 	 * store index's pg_class entry
 	 */
 	InsertPgClassTuple(pg_class, indexRelation,
@@ -1056,7 +1031,7 @@ index_create(Relation heapRelation,
 	/*
 	 * append ATTRIBUTE tuples for the index
 	 */
-	AppendAttributeTuples(indexRelation, indexInfo->ii_NumIndexAttrs, shared_relation);
+	AppendAttributeTuples(indexRelation, indexInfo->ii_NumIndexAttrs);
 
 	/* ----------------
 	 *	  update pg_index
@@ -1072,8 +1047,7 @@ index_create(Relation heapRelation,
 						isprimary, is_exclusion,
 						(constr_flags & INDEX_CONSTR_CREATE_DEFERRABLE) == 0,
 						!concurrent && !invalid,
-						!concurrent,
-						shared_relation);
+						!concurrent);
 
 	/*
 	 * Register relcache invalidation on the indexes' heap relation, to
@@ -1098,10 +1072,6 @@ index_create(Relation heapRelation,
 	 *
 	 * During bootstrap we can't register any dependencies, and we don't try
 	 * to make a constraint either.
-	 *
-	 * YB NOTE:
-	 * For system relations, we only need to record a pin dependency,
-	 * nothing else.
 	 */
 	if (!IsBootstrapProcessingMode())
 	{
@@ -1112,137 +1082,130 @@ index_create(Relation heapRelation,
 		myself.objectId = indexRelationId;
 		myself.objectSubId = 0;
 
-		if (IsYBRelation(heapRelation) && IsCatalogRelation(heapRelation))
+		if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
 		{
-			YBRecordPinDependency(&myself, shared_relation);
+			char		constraintType;
+			ObjectAddress localaddr;
+
+			if (isprimary)
+				constraintType = CONSTRAINT_PRIMARY;
+			else if (indexInfo->ii_Unique)
+				constraintType = CONSTRAINT_UNIQUE;
+			else if (is_exclusion)
+				constraintType = CONSTRAINT_EXCLUSION;
+			else
+			{
+				elog(ERROR, "constraint must be PRIMARY, UNIQUE or EXCLUDE");
+				constraintType = 0; /* keep compiler quiet */
+			}
+
+			localaddr = index_constraint_create(heapRelation,
+												indexRelationId,
+												parentConstraintId,
+												indexInfo,
+												indexRelationName,
+												constraintType,
+												constr_flags,
+												allow_system_table_mods,
+												is_internal);
+			if (constraintId)
+				*constraintId = localaddr.objectId;
 		}
 		else
 		{
-			if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
+			bool		have_simple_col = false;
+			DependencyType deptype;
+
+			deptype = OidIsValid(parentIndexRelid) ? DEPENDENCY_INTERNAL_AUTO : DEPENDENCY_AUTO;
+
+			/* Create auto dependencies on simply-referenced columns */
+			for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
 			{
-				char		constraintType;
-				ObjectAddress localaddr;
-
-				if (isprimary)
-					constraintType = CONSTRAINT_PRIMARY;
-				else if (indexInfo->ii_Unique)
-					constraintType = CONSTRAINT_UNIQUE;
-				else if (is_exclusion)
-					constraintType = CONSTRAINT_EXCLUSION;
-				else
-				{
-					elog(ERROR, "constraint must be PRIMARY, UNIQUE or EXCLUDE");
-					constraintType = 0; /* keep compiler quiet */
-				}
-
-				localaddr = index_constraint_create(heapRelation,
-													indexRelationId,
-													parentConstraintId,
-													indexInfo,
-													indexRelationName,
-													constraintType,
-													constr_flags,
-													allow_system_table_mods,
-													is_internal);
-				if (constraintId)
-					*constraintId = localaddr.objectId;
-			}
-			else
-			{
-				bool		have_simple_col = false;
-				DependencyType deptype;
-
-				deptype = OidIsValid(parentIndexRelid) ? DEPENDENCY_INTERNAL_AUTO : DEPENDENCY_AUTO;
-
-				/* Create auto dependencies on simply-referenced columns */
-				for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
-				{
-					if (indexInfo->ii_IndexAttrNumbers[i] != 0)
-					{
-						referenced.classId = RelationRelationId;
-						referenced.objectId = heapRelationId;
-						referenced.objectSubId = indexInfo->ii_IndexAttrNumbers[i];
-
-						recordDependencyOn(&myself, &referenced, deptype);
-
-						have_simple_col = true;
-					}
-				}
-
-				/*
-				 * If there are no simply-referenced columns, give the index an
-				 * auto dependency on the whole table.  In most cases, this will
-				 * be redundant, but it might not be if the index expressions and
-				 * predicate contain no Vars or only whole-row Vars.
-				 */
-				if (!have_simple_col)
+				if (indexInfo->ii_IndexAttrNumbers[i] != 0)
 				{
 					referenced.classId = RelationRelationId;
 					referenced.objectId = heapRelationId;
-					referenced.objectSubId = 0;
+					referenced.objectSubId = indexInfo->ii_IndexAttrNumbers[i];
 
 					recordDependencyOn(&myself, &referenced, deptype);
+
+					have_simple_col = true;
 				}
 			}
 
-			/* Store dependency on parent index, if any */
-			if (OidIsValid(parentIndexRelid))
+			/*
+			 * If there are no simply-referenced columns, give the index an
+			 * auto dependency on the whole table.  In most cases, this will
+			 * be redundant, but it might not be if the index expressions and
+			 * predicate contain no Vars or only whole-row Vars.
+			 */
+			if (!have_simple_col)
 			{
 				referenced.classId = RelationRelationId;
-				referenced.objectId = parentIndexRelid;
+				referenced.objectId = heapRelationId;
 				referenced.objectSubId = 0;
 
-				recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL_AUTO);
+				recordDependencyOn(&myself, &referenced, deptype);
 			}
+		}
 
-			/* Store dependency on collations */
-			/* The default collation is pinned, so don't bother recording it */
-			for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
+		/* Store dependency on parent index, if any */
+		if (OidIsValid(parentIndexRelid))
+		{
+			referenced.classId = RelationRelationId;
+			referenced.objectId = parentIndexRelid;
+			referenced.objectSubId = 0;
+
+			recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL_AUTO);
+		}
+
+		/* Store dependency on collations */
+		/* The default collation is pinned, so don't bother recording it */
+		for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
+		{
+			if (OidIsValid(collationObjectId[i]) &&
+				collationObjectId[i] != DEFAULT_COLLATION_OID)
 			{
-				if (OidIsValid(collationObjectId[i]) &&
-					collationObjectId[i] != DEFAULT_COLLATION_OID)
-				{
-					referenced.classId = CollationRelationId;
-					referenced.objectId = collationObjectId[i];
-					referenced.objectSubId = 0;
-
-					recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
-				}
-			}
-
-			/* Store dependency on operator classes */
-			for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
-			{
-				referenced.classId = OperatorClassRelationId;
-				referenced.objectId = classObjectId[i];
+				referenced.classId = CollationRelationId;
+				referenced.objectId = collationObjectId[i];
 				referenced.objectSubId = 0;
 
 				recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 			}
-
-			/* Store dependencies on anything mentioned in index expressions */
-			if (indexInfo->ii_Expressions)
-			{
-				recordDependencyOnSingleRelExpr(&myself,
-												(Node *) indexInfo->ii_Expressions,
-												heapRelationId,
-												DEPENDENCY_NORMAL,
-												DEPENDENCY_AUTO, false);
-			}
-
-			/* Store dependencies on anything mentioned in predicate */
-			if (indexInfo->ii_Predicate)
-			{
-				recordDependencyOnSingleRelExpr(&myself,
-												(Node *) indexInfo->ii_Predicate,
-												heapRelationId,
-												DEPENDENCY_NORMAL,
-												DEPENDENCY_AUTO, false);
-			}
-
-			/* Store dependency on tablespace */
-			recordDependencyOnTablespace(RelationRelationId, indexRelationId, tableSpaceId);
 		}
+
+		/* Store dependency on operator classes */
+		for (i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
+		{
+			referenced.classId = OperatorClassRelationId;
+			referenced.objectId = classObjectId[i];
+			referenced.objectSubId = 0;
+
+			recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		}
+
+		/* Store dependencies on anything mentioned in index expressions */
+		if (indexInfo->ii_Expressions)
+		{
+			recordDependencyOnSingleRelExpr(&myself,
+											(Node *) indexInfo->ii_Expressions,
+											heapRelationId,
+											DEPENDENCY_NORMAL,
+											DEPENDENCY_AUTO, false);
+		}
+
+		/* Store dependencies on anything mentioned in predicate */
+		if (indexInfo->ii_Predicate)
+		{
+			recordDependencyOnSingleRelExpr(&myself,
+											(Node *) indexInfo->ii_Predicate,
+											heapRelationId,
+											DEPENDENCY_NORMAL,
+											DEPENDENCY_AUTO, false);
+		}
+
+		/* Store dependency on tablespace */
+		recordDependencyOnTablespace(RelationRelationId, indexRelationId, tableSpaceId);
 	}
 	else
 	{
@@ -1570,8 +1533,6 @@ index_drop(Oid indexId, bool concurrent)
 	LOCKTAG		heaplocktag;
 	LOCKMODE	lockmode;
 
-	bool		yb_shared_update;
-
 	/*
 	 * To drop an index safely, we must grab exclusive lock on its parent
 	 * table.  Exclusive lock on the index alone is insufficient because
@@ -1594,8 +1555,6 @@ index_drop(Oid indexId, bool concurrent)
 	lockmode = concurrent ? ShareUpdateExclusiveLock : AccessExclusiveLock;
 	userHeapRelation = heap_open(heapId, lockmode);
 	userIndexRelation = index_open(indexId, lockmode);
-
-	yb_shared_update = userHeapRelation->rd_rel->relisshared;
 
 	/*
 	 * We might still have open queries using it in our own session, which the
@@ -1657,7 +1616,7 @@ index_drop(Oid indexId, bool concurrent)
 		/*
 		 * Mark index invalid by updating its pg_index entry
 		 */
-		index_set_state_flags(indexId, INDEX_DROP_CLEAR_VALID, yb_shared_update);
+		index_set_state_flags(indexId, INDEX_DROP_CLEAR_VALID);
 
 		/*
 		 * Invalidate the relcache for the table, so that after this commit
@@ -1724,7 +1683,7 @@ index_drop(Oid indexId, bool concurrent)
 		 * and indislive, then wait till nobody could be using it at all
 		 * anymore.
 		 */
-		index_set_state_flags(indexId, INDEX_DROP_SET_DEAD, yb_shared_update);
+		index_set_state_flags(indexId, INDEX_DROP_SET_DEAD);
 
 		/*
 		 * Invalidate the relcache for the table, so that after this commit
@@ -2315,8 +2274,7 @@ index_update_stats(Relation rel,
 	 */
 	if (dirty)
 	{
-		heap_inplace_update(pg_class, tuple,
-							rd_rel->relisshared && !IsBootstrapProcessingMode());
+		heap_inplace_update(pg_class, tuple);
 		/* the above sends a cache inval message */
 	}
 	else
@@ -3653,8 +3611,7 @@ validate_index_heapscan(Relation heapRelation,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
-						 indexInfo,
-						 false /* yb_shared_insert */);
+						 indexInfo);
 
 			state->tups_inserted += 1;
 			continue;
@@ -3812,8 +3769,7 @@ validate_index_heapscan(Relation heapRelation,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
-						 indexInfo,
-						 false /* yb_shared_insert */);
+						 indexInfo);
 
 			state->tups_inserted += 1;
 		}
@@ -3849,7 +3805,7 @@ validate_index_heapscan(Relation heapRelation,
  * instead.
  */
 void
-index_set_state_flags(Oid indexId, IndexStateFlagsAction action, bool yb_shared_update)
+index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 {
 	Relation	pg_index;
 	HeapTuple	indexTuple;
@@ -3917,7 +3873,7 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action, bool yb_shared_
 	}
 
 	/* ... and write it back in-place */
-	heap_inplace_update(pg_index, indexTuple, yb_shared_update);
+	heap_inplace_update(pg_index, indexTuple);
 
 	heap_close(pg_index, RowExclusiveLock);
 }

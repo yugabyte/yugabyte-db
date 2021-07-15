@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.models.Customer;
 import org.junit.Before;
 import play.Application;
@@ -28,7 +27,6 @@ public class NodeTaskBaseTest extends WithApplication {
   Commissioner mockCommissioner;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
-  protected AlertConfigurationWriter mockAlertConfigurationWriter;
 
   @Before
   public void setUp() {
@@ -41,7 +39,6 @@ public class NodeTaskBaseTest extends WithApplication {
     mockCommissioner = mock(Commissioner.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
-    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -49,7 +46,6 @@ public class NodeTaskBaseTest extends WithApplication {
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
 }
