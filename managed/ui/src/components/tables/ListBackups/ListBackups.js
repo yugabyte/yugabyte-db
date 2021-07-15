@@ -273,7 +273,7 @@ export default class ListBackups extends Component {
   };
 
   handleModalSubmit = (type, data) => {
-    const taskUUID = data.taskUUID;
+    const taskUUID = data?.taskUUID || null;
     this.setState({
       taskUUID,
       showAlert: true,
