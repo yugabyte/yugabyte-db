@@ -15,8 +15,8 @@ import {
   updatePassword,
   updatePasswordSuccess,
   updatePasswordFailure,
-  validate,
-  validateResponse
+  fetchPasswordPolicy,
+  fetchPasswordPolicyResponse
 } from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
@@ -53,9 +53,9 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     validateRegistration: () => {
-      dispatch(validate()).then((response) => {
+      dispatch(fetchPasswordPolicy()).then((response) => {
         if (response.payload.status === 200) {
-          dispatch(validateResponse(response.payload));
+          dispatch(fetchPasswordPolicyResponse(response.payload));
         }
       });
     },

@@ -2,8 +2,8 @@
 
 import RegisterForm from './RegisterForm';
 import { register, registerResponse, 
-  validate, 
-  validateResponse 
+  fetchPasswordPolicy, 
+  fetchPasswordPolicyResponse 
 } from '../../../../actions/customers';
 import { connect } from 'react-redux';
 
@@ -19,9 +19,9 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     validateRegistration: () => {
-      dispatch(validate()).then((response) => {
+      dispatch(fetchPasswordPolicy()).then((response) => {
         if (response.payload.status === 200) {
-          dispatch(validateResponse(response.payload));
+          dispatch(fetchPasswordPolicyResponse(response.payload));
         }
       });
     },

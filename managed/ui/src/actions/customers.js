@@ -14,8 +14,8 @@ export const REGISTER = 'REGISTER';
 export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
 
 // Validate Customer registration
-export const VALIDATE = 'VALIDATE';
-export const VALIDATE_RESPONSE = 'VALIDATE_RESPONSE';
+export const FETCH_PASSWORD_POLICY = 'FETCH_PASSWORD_POLICY';
+export const FETCH_PASSWORD_POLICY_RESPONSE = 'FETCH_PASSWORD_POLICY_RESPONSE';
 
 // Sign In Customer
 export const LOGIN = 'LOGIN';
@@ -171,17 +171,17 @@ export function registerResponse(response) {
   };
 }
 
-export function validate() {
+export function fetchPasswordPolicy() {
   const request = axios.get(`${ROOT_URL}/password_policy`);
   return {
-    type: VALIDATE,
+    type: FETCH_PASSWORD_POLICY,
     payload: request
   };
 }
 
-export function validateResponse(response) {
+export function fetchPasswordPolicyResponse(response) {
   return {
-    type: VALIDATE_RESPONSE,
+    type: FETCH_PASSWORD_POLICY_RESPONSE,
     payload: response
   };
 }
