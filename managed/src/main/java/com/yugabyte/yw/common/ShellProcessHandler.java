@@ -19,12 +19,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.common.Util;
 
 @Singleton
 public class ShellProcessHandler {
@@ -50,6 +53,15 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description) {
+    return run(command, extraEnvVars, logCmdOutput, description, null);
+  }
+
+  public ShellResponse run(
+      List<String> command,
+      Map<String, String> extraEnvVars,
+      boolean logCmdOutput,
+      String description,
+      UUID uuid) {
     ProcessBuilder pb = new ProcessBuilder(command);
     Map envVars = pb.environment();
     if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
@@ -89,6 +101,10 @@ public class ShellProcessHandler {
           tempErrorFile.getAbsolutePath());
 
       Process process = pb.start();
+      if (uuid != null) {
+        Util.setPID(uuid, process);
+      }
+      // TimeUnit.MINUTES.sleep(5);
       waitForProcessExit(process, tempOutputFile, tempErrorFile);
       try (FileInputStream outputInputStream = new FileInputStream(tempOutputFile);
           InputStreamReader outputReader = new InputStreamReader(outputInputStream);
@@ -159,6 +175,10 @@ public class ShellProcessHandler {
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
     return run(command, extraEnvVars, true /*logCommandOutput*/);
+  }
+
+  public ShellResponse run(List<String> command, Map<String, String> extraEnvVars, UUID uuid) {
+    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid);
   }
 
   public ShellResponse run(

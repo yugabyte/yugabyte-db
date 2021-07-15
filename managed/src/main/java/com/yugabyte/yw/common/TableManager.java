@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static com.yugabyte.yw.common.TableManager.CommandSubType.*;
 
@@ -79,10 +80,15 @@ public class TableManager extends DevopsBase {
     BackupTableParams backupTableParams;
     Customer customer;
     CustomerConfig customerConfig;
+    UUID uuid = null;
 
     switch (subType) {
       case BACKUP:
         backupTableParams = (BackupTableParams) taskParams;
+        // TODO : backup params should have backup UUID but bunch of tests failing. Fix the tests
+        // and remove this.
+        uuid = backupTableParams.backup != null ? backupTableParams.backup.backupUUID : null;
+
         commandArgs.add("--parallelism");
         commandArgs.add(Integer.toString(backupTableParams.parallelism));
         if (userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
@@ -223,6 +229,9 @@ public class TableManager extends DevopsBase {
     }
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    if (subType == BACKUP && uuid != null) {
+      return shellProcessHandler.run(commandArgs, extraVars, uuid);
+    }
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 

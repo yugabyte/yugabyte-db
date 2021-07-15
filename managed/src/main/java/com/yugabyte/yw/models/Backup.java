@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.helpers.TaskType;
 
@@ -28,6 +29,7 @@ import java.util.stream.Collectors;
 import static java.lang.Math.abs;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @ApiModel(description = "Backup with a status, expiry and backup configs")
 @Entity
@@ -54,6 +56,9 @@ public class Backup extends Model {
     // Complete or partial failure to delete
     @EnumValue("FailedToDelete")
     FailedToDelete,
+
+    @EnumValue("Stopped")
+    Stopped,
   }
 
   @ApiModelProperty(value = "Backup uuid", accessMode = READ_ONLY)
@@ -225,8 +230,17 @@ public class Backup extends Model {
         .collect(Collectors.toList());
   }
 
+  @Deprecated
   public static Backup get(UUID customerUUID, UUID backupUUID) {
     return find.query().where().idEq(backupUUID).eq("customer_uuid", customerUUID).findOne();
+  }
+
+  public static Backup getOrBadRequest(UUID customerUUID, UUID backupUUID) {
+    Backup backup = get(customerUUID, backupUUID);
+    if (backup == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid customer/backup UUID");
+    }
+    return backup;
   }
 
   public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
