@@ -1361,7 +1361,7 @@ DefineIndex(Oid relationId,
 	/*
 	 * Update the pg_index row to mark the index as ready for inserts.
 	 */
-	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY, relIsShared);
+	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
 
 	elog(LOG, "committing pg_index tuple with indisready=true");
 	/*
@@ -1389,7 +1389,7 @@ DefineIndex(Oid relationId,
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
 	 */
-	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_VALID, relIsShared);
+	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_VALID);
 
 	/*
 	 * The pg_index update will cause backends (including this one) to update
