@@ -1570,8 +1570,6 @@ index_drop(Oid indexId, bool concurrent)
 	LOCKTAG		heaplocktag;
 	LOCKMODE	lockmode;
 
-	bool		yb_shared_update;
-
 	/*
 	 * To drop an index safely, we must grab exclusive lock on its parent
 	 * table.  Exclusive lock on the index alone is insufficient because
@@ -1594,8 +1592,6 @@ index_drop(Oid indexId, bool concurrent)
 	lockmode = concurrent ? ShareUpdateExclusiveLock : AccessExclusiveLock;
 	userHeapRelation = heap_open(heapId, lockmode);
 	userIndexRelation = index_open(indexId, lockmode);
-
-	yb_shared_update = userHeapRelation->rd_rel->relisshared;
 
 	/*
 	 * We might still have open queries using it in our own session, which the
@@ -1657,7 +1653,7 @@ index_drop(Oid indexId, bool concurrent)
 		/*
 		 * Mark index invalid by updating its pg_index entry
 		 */
-		index_set_state_flags(indexId, INDEX_DROP_CLEAR_VALID, yb_shared_update);
+		index_set_state_flags(indexId, INDEX_DROP_CLEAR_VALID);
 
 		/*
 		 * Invalidate the relcache for the table, so that after this commit
@@ -1724,7 +1720,7 @@ index_drop(Oid indexId, bool concurrent)
 		 * and indislive, then wait till nobody could be using it at all
 		 * anymore.
 		 */
-		index_set_state_flags(indexId, INDEX_DROP_SET_DEAD, yb_shared_update);
+		index_set_state_flags(indexId, INDEX_DROP_SET_DEAD);
 
 		/*
 		 * Invalidate the relcache for the table, so that after this commit
@@ -3835,28 +3831,17 @@ validate_index_heapscan(Relation heapRelation,
  * index_set_state_flags - adjust pg_index state flags
  *
  * This is used during CREATE/DROP INDEX CONCURRENTLY to adjust the pg_index
- * flags that denote the index's state.  Because the update is not
- * transactional and will not roll back on error, this must only be used as
- * the last step in a transaction that has not made any transactional catalog
- * updates!
+ * flags that denote the index's state.
  *
- * Note that heap_inplace_update does send a cache inval message for the
+ * Note that CatalogTupleUpdate() sends a cache invalidation message for the
  * tuple, so other sessions will hear about the update as soon as we commit.
- *
- * NB: In releases prior to PostgreSQL 9.4, the use of a non-transactional
- * update here would have been unsafe; now that MVCC rules apply even for
- * system catalog scans, we could potentially use a transactional update here
- * instead.
  */
 void
-index_set_state_flags(Oid indexId, IndexStateFlagsAction action, bool yb_shared_update)
+index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 {
 	Relation	pg_index;
 	HeapTuple	indexTuple;
 	Form_pg_index indexForm;
-
-	/* Assert that current xact hasn't done any transactional updates */
-	Assert(GetTopTransactionIdIfAny() == InvalidTransactionId);
 
 	/* Open pg_index and fetch a writable copy of the index's tuple */
 	pg_index = heap_open(IndexRelationId, RowExclusiveLock);
@@ -3916,8 +3901,8 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action, bool yb_shared_
 			break;
 	}
 
-	/* ... and write it back in-place */
-	heap_inplace_update(pg_index, indexTuple, yb_shared_update);
+ 	/* ... and update it */
+ 	CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
 
 	heap_close(pg_index, RowExclusiveLock);
 }
