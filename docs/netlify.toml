@@ -6,6 +6,7 @@
 
 [context.deploy-preview.environment]
   HUGO_VERSION = "0.84.4"
+  NODE_VERSION = "14"
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.84.4"
@@ -55,6 +56,13 @@
 [[redirects]]
   from = "/:version/releases/*"
   to = "/latest/releases/:splat"
+  force = true
+
+# Troubleshooting should point to latest
+
+[[redirects]]
+  from = "/:version/troubleshoot/*"
+  to = "/latest/troubleshoot/:splat"
   force = true
 
 # Stable quick-starts need defaults,
