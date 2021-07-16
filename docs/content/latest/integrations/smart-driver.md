@@ -18,7 +18,7 @@ The following are the key features of JDBC Smart Driver:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
 
-  The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and automatically gathering information about the state of each node (added, started, stopped, removed).
+  The driver package includes a `YBClusterAwareDataSource` class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
 
 - It is **topology-aware**, wich is essential for geographically-distributed applications.
 
@@ -36,7 +36,7 @@ To get the driver from Maven, add the following lines to your Maven project:
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.2.7-yb-5</version>
+  <version>42.2.7-5-beta.1</version>
 </dependency>
 ```
 
@@ -56,21 +56,30 @@ To build the driver locally, follow this procedure:
    mvn clean install -DskipTests
    ```
 
+   If you encounter a GPG key error, you can avoid it by using the following command instead:
+
+   ```sh
+   mvn clean install -DskipTests -Dgpg.skip
+   ```
+
 3. Add the following lines to your Maven project:
 
    ```properties
    <dependency>
        <groupId>com.yugabyte</groupId>
        <artifactId>jdbc-yugabytedb</artifactId>
-       <version>42.2.7-yb-5-SNAPSHOT</version>
+       <version>42.2.7-yb-5-beta.1</version>
    </dependency> 
    ```
 
 ## Using the Smart Driver
 
-Load balancing is performed using the following connection properties:
+Cluster-aware load balancing is performed using the following connection property:
 
 - `load-balance`, which is disabled by default. You can enable it by setting its value to `true`.
+
+Topology-aware load balancing requires the following connection property in addition to `load-balance`:
+
 - `topology-keys`, which accepts a comma separated geo-location values. You can specify the geo-location as cloud:region:zone.
 
 To use the Smart Driver, specify the following:
