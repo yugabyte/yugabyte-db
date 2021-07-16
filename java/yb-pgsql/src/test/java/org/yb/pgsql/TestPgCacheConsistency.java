@@ -194,21 +194,6 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   }
 
   @Test
-  public void testNoDDLRetry() throws Exception {
-    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
-         Connection connection2 = getConnectionBuilder().withTServer(1).connect();
-         Statement statement1 = connection1.createStatement();
-         Statement statement2 = connection2.createStatement()) {
-      // Create a table with connection 1.
-      statement1.execute("CREATE TABLE a(id int primary key)");
-      statement1.execute("ALTER TABLE a ADD b int");
-      // Create a table with connection 2 (should fail)
-      runInvalidQuery(statement2, "CREATE TABLE b(id int primary key)",
-          "Catalog Version Mismatch");
-    }
-  }
-
-  @Test
   public void testVersionMismatchWithoutRetry() throws Exception {
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();

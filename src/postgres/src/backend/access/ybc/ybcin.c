@@ -128,9 +128,15 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	buildstate.isprimary = index->rd_index->indisprimary;
 	buildstate.index_tuples = 0;
 	buildstate.is_backfill = false;
-	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
-									 &buildstate, NULL);
-
+	/*
+	 * Primary key index is an implicit part of the base table in Yugabyte.
+	 * We don't need to scan the base table to build a primary key index. (#8024)
+	 */
+	if (!index->rd_index->indisprimary)
+	{
+		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true,
+										 ybcinbuildCallback, &buildstate, NULL);
+	}
 	/*
 	 * Return statistics
 	 */
@@ -181,15 +187,40 @@ ybcinbuildempty(Relation index)
 
 bool
 ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
-			IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo)
+			IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo, bool sharedInsert)
 {
 	if (!index->rd_index->indisprimary)
-		YBCExecuteInsertIndex(index,
-							  values,
-							  isnull,
-							  ybctid,
-							  false /* is_backfill */,
-							  NULL /* read_time */);
+	{
+		if (sharedInsert)
+		{
+			if (!IsYsqlUpgrade)
+				elog(ERROR, "shared insert cannot be done outside of YSQL upgrade");
+
+			YB_FOR_EACH_DB(pg_db_tuple)
+			{
+				Oid dboid = HeapTupleGetOid(pg_db_tuple);
+				/*
+				 * Since this is a catalog index, we assume it exists in all databases.
+				 * YB doesn't use PG locks so it's okay not to take them.
+				 */
+				YBCExecuteInsertIndexForDb(dboid,
+										   index,
+										   values,
+										   isnull,
+										   ybctid,
+										   false /* is_backfill */,
+										   NULL /* read_time */);
+			}
+			YB_FOR_EACH_DB_END;
+		}
+		else
+			YBCExecuteInsertIndex(index,
+								  values,
+								  isnull,
+								  ybctid,
+								  false /* is_backfill */,
+								  NULL /* read_time */);
+	}
 
 	return index->rd_index->indisunique ? true : false;
 }
@@ -294,8 +325,7 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 	}
 
 	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation, scan->xs_want_itup,
-																	 nscankeys, scankey);
-	ybScan->index = scan->indexRelation;
+	                                 nscankeys, scankey, scan->yb_scan_plan);
 	scan->opaque = ybScan;
 }
 

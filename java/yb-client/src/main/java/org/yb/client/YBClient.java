@@ -499,14 +499,17 @@ public class YBClient implements AutoCloseable {
    * @return Master leader uuid on success, null otherwise.
    */
   private String waitAndGetLeaderMasterUUID(long timeoutMs) throws Exception {
+    LOG.info("Waiting for master leader (timeout: " + timeoutMs + " ms)");
     long start = System.currentTimeMillis();
-
     // Retry till we get a valid UUID (or timeout) for the new leader.
     do {
       String leaderUuid = getLeaderMasterUUID();
 
+      long elapsedTimeMs = System.currentTimeMillis() - start;
       // Done if we got a valid one.
       if (leaderUuid != null) {
+        LOG.info("Fininshed waiting for master leader in " + elapsedTimeMs + " ms. Leader UUID: " +
+                 leaderUuid);
         return leaderUuid;
       }
 
@@ -821,6 +824,18 @@ public class YBClient implements AutoCloseable {
     boolean get() throws Exception;
   }
 
+  private class TableDoesNotExistCondition implements Condition {
+    private String nameFilter;
+    public TableDoesNotExistCondition(String nameFilter) {
+      this.nameFilter = nameFilter;
+    }
+    @Override
+    public boolean get() throws Exception {
+      ListTablesResponse tl = getTablesList(nameFilter);
+      return tl.getTablesList().isEmpty();
+    }
+  }
+
   /**
    * Checks the ping of the given ip and port.
    */
@@ -862,6 +877,27 @@ public class YBClient implements AutoCloseable {
       return !resp.hasError();
     }
   }
+
+  /**
+   * Checks whether the LoadBalancer is currently running.
+   */
+  private class LoadBalancerActiveCondition implements Condition {
+    public LoadBalancerActiveCondition() {
+    }
+    @Override
+    public boolean get() throws Exception {
+      try {
+        IsLoadBalancerIdleResponse resp = getIsLoadBalancerIdle();
+      } catch (MasterErrorException e) {
+        // TODO (deepthi.srinivasan) Instead of writing if-else
+        // with Exceptions, find a way to receive the error code
+        // neatly.
+        return e.toString().contains("LOAD_BALANCER_RECENTLY_ACTIVE");
+      }
+      return false;
+    }
+  }
+
 
   private class AreLeadersOnPreferredOnlyCondition implements Condition {
     @Override
@@ -997,6 +1033,16 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+  * Wait for the Load Balancer to become active.
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the load balancer is currently running.
+  */
+  public boolean waitForLoadBalancerActive(final long timeoutMs) {
+    Condition loadBalancerActiveCondition = new LoadBalancerActiveCondition();
+    return waitForCondition(loadBalancerActiveCondition, timeoutMs);
+  }
+
+  /**
   * Wait for the tablet load to be balanced by master leader.
   * @param timeoutMs the amount of time, in MS, to wait
   * @return true if the master leader does not return any error balance check.
@@ -1105,6 +1151,11 @@ public class YBClient implements AutoCloseable {
           final HostAndPort hp, String tableId) throws Exception{
     Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp, tableId);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public boolean waitForTableRemoval(final long timeoutMs, String name) {
+    Condition TableDoesNotExistCondition = new TableDoesNotExistCondition(name);
+    return waitForCondition(TableDoesNotExistCondition, timeoutMs);
   }
 
   /**

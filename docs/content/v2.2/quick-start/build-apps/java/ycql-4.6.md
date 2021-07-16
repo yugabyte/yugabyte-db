@@ -37,17 +37,10 @@ showAsideToc: true
   <li>
     <a href="/v2.2/quick-start/build-apps/java/ycql-4.6" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6) [BETA]
+      YCQL (4.6)
     </a>
   </li>
 </ul>
-
-{{< note title="Note" >}}
-
-The Yugabyte Java Driver for YCQL used in this tutorial is currently a release candidate and is not recommended yet for production environments.
-
-{{< /note >}}
-
 ## Maven
 
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:

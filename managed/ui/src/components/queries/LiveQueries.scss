@@ -52,7 +52,7 @@
 
       div {
         height: auto;
-      }      
+      }
 
       .slow-time-filter {
         input {
@@ -101,7 +101,7 @@
     z-index: 9999;
     top: 0;
     right: 0;
-    border-left: 1px solid $YB_BACKGROUND;
+    border-left: 1px solid darken($YB_BACKGROUND, 10%);
     max-height: 100%;
     transition: right 0.5s ease-in-out;
 
@@ -112,19 +112,21 @@
       .side-panel__icon--close {
         position: absolute;
         top: 0;
-        left: 20px;
-        padding: 10px 0;
+        right: 20px;
+        padding: 20px 0;
         cursor: pointer;
+
+        .fa {
+          font-size: 20px;
+        }
       }
 
       .side-panel__title {
-        padding-top: 35px;
+        padding: 20px 20px 20px 30px;
         color: $YB_ORANGE;
-        border-bottom: 4px solid $YB_ORANGE;
+        border-bottom: 1px solid darken($YB_BACKGROUND, 10%);
         flex: 1 0 33%;
-        max-width: 200px;
-        text-align: center;
-        padding-bottom: 16px;
+        text-align: left;
         font-weight: 700;
       }
     }
@@ -140,11 +142,11 @@
         padding: 5px 10px;
         border: 1px solid $YB_GRAY_BORDER;
         border-radius: 7px;
-        
+
         pre {
-          white-space: pre-wrap;       /* Since CSS 2.1 */
-          white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
-          word-wrap: break-word;       /* Internet Explorer 5.5+ */
+          white-space: pre-wrap; /* Since CSS 2.1 */
+          white-space: -moz-pre-wrap; /* Mozilla, since 1999 */
+          word-wrap: break-word; /* Internet Explorer 5.5+ */
         }
       }
 
@@ -153,6 +155,8 @@
 
         li {
           display: flex;
+          border-bottom: 1px solid darken($YB_BACKGROUND, 10%);
+          padding: 7px 0 3px 0;
 
           span {
             margin-left: auto;
@@ -186,7 +190,7 @@
       width: 100%;
     }
   }
-  
+
   @keyframes shrinkBody {
     from {
       width: 100%;
@@ -196,7 +200,7 @@
     }
   }
 
-  .content-panel .container > .body {
+  .content-panel .container > .body.show-table {
     padding: 80px 45px 25px 45px;
     width: calc(100% - 260px);
 
@@ -224,7 +228,6 @@
     }
   }
 
-
   &__table {
     .react-bs-table-bordered {
       padding-top: 15px;
@@ -251,7 +254,6 @@
     }
   }
 
-  
   @keyframes slideout {
     0% {
       height: 360px;
@@ -315,7 +317,7 @@
       transform: 0;
       opacity: 1;
     }
-    100% {      
+    100% {
       height: 360px;
     }
   }
@@ -349,7 +351,7 @@
     min-width: 200px;
     height: 360px;
     box-shadow: 0 0.12em 2px rgba(35, 35, 41, 0.05), 0 0.5em 10px rgba(35, 35, 41, 0.07);
-    
+
     ul {
       margin: 0;
       padding: 0;
@@ -359,7 +361,7 @@
       animation: 1s ease-in 0s forwards slideout;
 
       &:hover {
-        color: #FFF;
+        color: #fff;
         background-color: rgb(50, 41, 101);
       }
 
@@ -385,8 +387,12 @@
   }
 
   @keyframes fadein {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   .left-panel-fab {
@@ -399,16 +405,16 @@
     color: inherit;
     display: flex;
     overflow: hidden;
-    opacity: 0;    
+    opacity: 0;
     box-shadow: 0 0.12em 2px rgba(35, 35, 41, 0.05), 0 0.5em 10px rgba(35, 35, 41, 0.07);
     position: absolute;
     // transform: translate(-176px, -46px);
     z-index: 50;
     top: 0;
     left: 179px;
-    
+
     &:hover {
-      color: #FFF;
+      color: #fff;
       background-color: rgb(50, 41, 101);
     }
 
@@ -505,6 +511,7 @@
         padding: 5px 15px;
         cursor: pointer;
       }
+      li.active,
       li:hover {
         background: rgba(0, 0, 0, 0.05);
       }
@@ -534,12 +541,23 @@
 
   &__table {
     .toolbar-container {
-  
       .search-bar-container {
         div {
           height: auto;
         }
       }
+    }
+  }
+
+  &__actions {
+    grid-column-start: 4;
+    position: relative;
+    display: inline-flex;
+
+    .btn-default {
+      height: 40px;
+      margin-top: 20px;
+      margin-right: 20px;
     }
   }
 }

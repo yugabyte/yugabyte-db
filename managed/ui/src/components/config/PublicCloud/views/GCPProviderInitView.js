@@ -171,7 +171,7 @@ class GCPProviderInitView extends Component {
   };
 
   render() {
-    const { handleSubmit, configuredProviders, submitting } = this.props;
+    const { handleSubmit, configuredProviders, submitting, isBack, onBack } = this.props;
     if (getPromiseState(configuredProviders).isLoading()) {
       return <YBLoading />;
     }
@@ -352,6 +352,14 @@ class GCPProviderInitView extends Component {
               btnClass={'btn btn-default save-btn'}
               btnType="submit"
             />
+            {isBack && (
+              <YBButton
+                onClick={onBack}
+                btnText="Back"
+                btnClass="btn btn-default"
+                disabled={submitting}
+              />
+            )}
           </div>
         </form>
       </div>

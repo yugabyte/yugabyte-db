@@ -3,7 +3,6 @@
 --
 -- Based on "alter_generic" test.
 -- The following sections are missing as they are not supported yet:
--- * ALTER FUNCTION / AGGREGATE
 -- * ALTER CONVERSION
 -- * ALTER FOREIGN DATA
 -- * ALTER LANGUAGE
@@ -24,6 +23,121 @@ CREATE SCHEMA alt_nsp1;
 CREATE SCHEMA alt_nsp2;
 GRANT ALL ON SCHEMA alt_nsp1, alt_nsp2 TO public;
 SET search_path = alt_nsp1, public;
+--
+-- Function and Aggregate
+--
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 + 1';
+CREATE FUNCTION alt_func2(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 - 1';
+CREATE AGGREGATE alt_agg1 (
+  sfunc1 = int4pl, basetype = int4, stype1 = int4, initcond = 0
+);
+CREATE AGGREGATE alt_agg2 (
+  sfunc1 = int4mi, basetype = int4, stype1 = int4, initcond = 0
+);
+ALTER AGGREGATE alt_func1(int) RENAME TO alt_func3;  -- failed (not aggregate)
+ERROR:  ALTER AGGREGATE not supported yet
+LINE 1: ALTER AGGREGATE alt_func1(int) RENAME TO alt_func3;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+ALTER AGGREGATE alt_func1(int) OWNER TO regress_alter_generic_user3;  -- failed (not aggregate)
+ERROR:  function alt_func1(integer) is not an aggregate
+ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;  -- failed (not aggregate)
+ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
+LINE 1: ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+ALTER FUNCTION alt_func1(int) RENAME TO alt_func2;  -- failed (name conflict)
+ERROR:  function alt_func2(integer) already exists in schema "alt_nsp1"
+ALTER FUNCTION alt_func1(int) RENAME TO alt_func3;  -- OK
+ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ERROR:  must be member of role "regress_alter_generic_user2"
+ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user3;  -- OK
+ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp1;  -- OK, already there
+ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp2;  -- OK
+ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg2;   -- failed (name conflict)
+ERROR:  ALTER AGGREGATE not supported yet
+LINE 1: ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg2;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg3;   -- OK
+ERROR:  ALTER AGGREGATE not supported yet
+LINE 1: ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg3;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ERROR:  must be member of role "regress_alter_generic_user2"
+ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- OK
+ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- OK
+ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
+LINE 1: ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 + 2';
+CREATE FUNCTION alt_func2(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 - 2';
+CREATE AGGREGATE alt_agg1 (
+  sfunc1 = int4pl, basetype = int4, stype1 = int4, initcond = 100
+);
+ERROR:  function "alt_agg1" already exists with same argument types
+CREATE AGGREGATE alt_agg2 (
+  sfunc1 = int4mi, basetype = int4, stype1 = int4, initcond = -100
+);
+ERROR:  function "alt_agg2" already exists with same argument types
+ALTER FUNCTION alt_func3(int) RENAME TO alt_func4;	-- failed (not owner)
+ERROR:  must be owner of function alt_func3
+ALTER FUNCTION alt_func1(int) RENAME TO alt_func4;	-- OK
+ALTER FUNCTION alt_func3(int) OWNER TO regress_alter_generic_user2;	-- failed (not owner)
+ERROR:  must be owner of function alt_func3
+ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user3;	-- failed (no role membership)
+ERROR:  must be member of role "regress_alter_generic_user3"
+ALTER FUNCTION alt_func3(int) SET SCHEMA alt_nsp2;      -- failed (not owner)
+ERROR:  must be owner of function alt_func3
+ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp2;	-- failed (name conflicts)
+ERROR:  function alt_func2(integer) already exists in schema "alt_nsp2"
+ALTER AGGREGATE alt_agg3(int) RENAME TO alt_agg4;   -- failed (not owner)
+ERROR:  ALTER AGGREGATE not supported yet
+LINE 1: ALTER AGGREGATE alt_agg3(int) RENAME TO alt_agg4;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg4;   -- OK
+ERROR:  ALTER AGGREGATE not supported yet
+LINE 1: ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg4;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+ALTER AGGREGATE alt_agg3(int) OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ERROR:  aggregate alt_agg3(integer) does not exist
+ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;  -- failed (not owner)
+ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
+LINE 1: ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- failed (name conflict)
+ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
+LINE 1: ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+RESET SESSION AUTHORIZATION;
+SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
+  FROM pg_proc p, pg_namespace n, pg_authid a
+  WHERE p.pronamespace = n.oid AND p.proowner = a.oid
+    AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
+  ORDER BY nspname, proname;
+ nspname  |  proname  | prorettype | prokind |           rolname
+----------+-----------+------------+---------+-----------------------------
+ alt_nsp1 | alt_agg1  | integer    | a       | regress_alter_generic_user1
+ alt_nsp1 | alt_agg2  | integer    | a       | regress_alter_generic_user3
+ alt_nsp1 | alt_func2 | integer    | f       | regress_alter_generic_user2
+ alt_nsp1 | alt_func3 | integer    | f       | regress_alter_generic_user1
+ alt_nsp1 | alt_func4 | integer    | f       | regress_alter_generic_user2
+ alt_nsp2 | alt_func2 | integer    | f       | regress_alter_generic_user3
+(6 rows)
+
 --
 -- Operator
 --
@@ -51,7 +165,7 @@ SELECT n.nspname, oprname, a.rolname,
   WHERE o.oprnamespace = n.oid AND o.oprowner = a.oid
     AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
   ORDER BY nspname, oprname;
- nspname  | oprname |           rolname           | oprleft | oprright | oprcode 
+ nspname  | oprname |           rolname           | oprleft | oprright | oprcode
 ----------+---------+-----------------------------+---------+----------+---------
  alt_nsp1 | @+@     | regress_alter_generic_user3 | integer | integer  | int4pl
  alt_nsp1 | @-@     | regress_alter_generic_user2 | integer | integer  | int4mi
@@ -97,7 +211,7 @@ SELECT nspname, opfname, amname, rolname
     AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
 	AND NOT opfname LIKE 'alt_opc%'
   ORDER BY nspname, opfname;
- nspname  | opfname  | amname |           rolname           
+ nspname  | opfname  | amname |           rolname
 ----------+----------+--------+-----------------------------
  alt_nsp1 | alt_opf2 | hash   | regress_alter_generic_user2
  alt_nsp1 | alt_opf3 | hash   | regress_alter_generic_user1
@@ -285,9 +399,9 @@ DROP OPERATOR FAMILY alt_opf18 USING btree;
 ---
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA alt_nsp1 CASCADE;
-NOTICE:  drop cascades to 14 other objects
+NOTICE:  drop cascades to 19 other objects
 DROP SCHEMA alt_nsp2 CASCADE;
-NOTICE:  drop cascades to 2 other objects
+NOTICE:  drop cascades to 3 other objects
 DROP USER regress_alter_generic_user1;
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;

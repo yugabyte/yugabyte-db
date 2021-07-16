@@ -12,39 +12,22 @@
 //
 package org.yb.clientent;
 
-import org.yb.client.*;
-
-import java.util.*;
-
-import com.google.protobuf.ByteString;
-
-import org.junit.Ignore;
-import org.junit.Test;
-import org.junit.BeforeClass;
-import org.junit.runner.RunWith;
-
-import org.yb.Schema;
-import org.yb.ColumnSchema;
-import org.yb.YBTestRunner;
-import org.yb.master.Master;
-import org.yb.minicluster.MiniYBCluster;
-
-import org.yb.util.Timeouts;
-
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
-
-import static org.yb.AssertionWrappers.assertTrue;
+import java.util.Map;
+import java.util.TreeMap;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.client.AsyncYBClient;
+import org.yb.client.TestUtils;
+import org.yb.client.TestYBClient;
+import org.yb.client.YBClient;
+import org.yb.util.Timeouts;
 import static org.yb.AssertionWrappers.assertFalse;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSSLClient extends TestYBClient {
-  private static final String PLACEMENT_CLOUD = "testCloud";
-  private static final String PLACEMENT_REGION = "testRegion";
-  private static final String PLACEMENT_ZONE = "testZone";
-  private static final String LIVE_TS = "live";
-  private static final String READ_ONLY_TS = "readOnly";
-  private static final String READ_ONLY_NEW_TS = "readOnlyNew";
 
   public enum TestMode {
     TLS, MUTUAL_TLS_NO_CLIENT_VERIFY, MUTUAL_TLS_CLIENT_VERIFY
@@ -56,30 +39,25 @@ public class TestSSLClient extends TestYBClient {
     certFile = String.format("%s/%s", certsDir(), "ca.crt");
     useIpWithCertificate = true;
 
-    String certDirs = String.format("--certs_dir=%s", certsDir());
-
-    List<String> flagsToAdd = new LinkedList<String>(Arrays.asList(
-        "--use_node_to_node_encryption=true", "--use_client_to_server_encryption=true",
-        "--allow_insecure_connections=false", certDirs));
+    Map<String, String> flags = new TreeMap<>();
+    flags.put("certs_dir", certsDir());
+    flags.put("use_node_to_node_encryption", "true");
+    flags.put("use_client_to_server_encryption", "true");
+    flags.put("allow_insecure_connections", "false");
 
     // If not basic TLS, set-up the client certs.
     if (mode != TestMode.TLS) {
       clientCertFile = String.format("%s/%s", certsDir(), "node.127.0.0.100.crt");
       clientKeyFile = String.format("%s/%s", certsDir(), "node.127.0.0.100.key");
-      flagsToAdd.add("--node_to_node_encryption_use_client_certificates=true");
+      flags.put("node_to_node_encryption_use_client_certificates", "true");
     }
     // If verify client hostname mode, set the correct host for the client.
     if (mode == TestMode.MUTUAL_TLS_CLIENT_VERIFY) {
       clientHost = "127.0.0.100";
-      flagsToAdd.add("--verify_client_endpoint=true");
+      flags.put("verify_client_endpoint", "true");
     }
 
-    List<List<String>> tserverArgs = new ArrayList<List<String>>();
-    tserverArgs.add(flagsToAdd);
-    tserverArgs.add(flagsToAdd);
-    tserverArgs.add(flagsToAdd);
-
-    createMiniCluster(3, flagsToAdd, tserverArgs);
+    createMiniCluster(3, 3, flags, flags);
   }
 
   /**
@@ -96,6 +74,32 @@ public class TestSSLClient extends TestYBClient {
 
     AsyncYBClient aClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
                             .sslCertFile(certFile)
+                            .build();
+    myClient = new YBClient(aClient);
+    myClient.waitForMasterLeader(Timeouts.adjustTimeoutSecForBuildType(10000));
+    myClient.close();
+    myClient = null;
+  }
+
+  /**
+   * Test to check that client connection succeeds when provided a file with
+   * multiple root certs.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testClientMultiCertificate() throws Exception {
+    LOG.info("Starting testClientMultiCertificate");
+
+    setup(TestMode.TLS);
+
+    YBClient myClient = null;
+    // The mutliCA cert has two different root certs, with the first entry in the file
+    // being the pseudo root, which is not the one the server certs have been signed
+    // with.
+    String multiCA = String.format("%s/%s", certsDir(), "multiCA.crt");
+
+    AsyncYBClient aClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
+                            .sslCertFile(multiCA)
                             .build();
     myClient = new YBClient(aClient);
     myClient.waitForMasterLeader(Timeouts.adjustTimeoutSecForBuildType(10000));

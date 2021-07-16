@@ -58,7 +58,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
@@ -651,7 +650,7 @@ class MemoryStatisticsCollectingBufferAllocator : public BufferAllocator {
   virtual void FreeInternal(Buffer* buffer) override;
 
   BufferAllocator* delegate_;
-  gscoped_ptr<MemoryStatisticsCollectorInterface>
+  std::unique_ptr<MemoryStatisticsCollectorInterface>
       memory_stats_collector_;
 };
 
@@ -773,7 +772,7 @@ class OwningThreadSafeBufferAllocator
   virtual ~OwningThreadSafeBufferAllocator() {}
 
  private:
-  gscoped_ptr<DelegateAllocatorType> delegate_owned_;
+  std::unique_ptr<DelegateAllocatorType> delegate_owned_;
 };
 
 class ThreadSafeMemoryLimit

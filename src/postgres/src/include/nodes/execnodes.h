@@ -835,7 +835,7 @@ typedef struct SetExprState
 	 * (by InitFunctionCallInfoData) if func.fn_oid is valid.  It also saves
 	 * argument values between calls, when setArgsValid is true.
 	 */
-	FunctionCallInfo fcinfo;
+	FunctionCallInfoData fcinfo_data;
 } SetExprState;
 
 /* ----------------

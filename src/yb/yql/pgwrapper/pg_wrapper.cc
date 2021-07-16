@@ -174,6 +174,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   while (std::getline(conf_file, line)) {
     lines.push_back(line);
   }
+  conf_file.close();
 
   if (!FLAGS_ysql_pg_conf_csv.empty()) {
     RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &lines));
@@ -251,8 +252,10 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
 
   // Add comments to the hba config file noting the internally hardcoded config line.
   if (!FLAGS_ysql_disable_index_backfill) {
-    lines.push_back("# Internal configuration:");
-    lines.push_back("# local all postgres yb-tserver-key");
+    lines.insert(lines.begin(), {
+          "# Internal configuration:",
+          "# local all postgres yb-tserver-key",
+        });
   }
 
   const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");
@@ -327,21 +330,16 @@ Status PgWrapper::Start() {
           << EXPR_VALUE_FOR_LOG(conf_.force_disable_log_file) << ": "
           << EXPR_VALUE_FOR_LOG(log_to_file);
 
-  // Configure UNIX domain socket.
+  // Configure UNIX domain socket for index backfill tserver-postgres communication and for
+  // Yugabyte Platform backups.
   argv.push_back("-k");
-  if (FLAGS_ysql_disable_index_backfill) {
-    // Disable listening on a UNIX domain socket.
-    argv.push_back("");
-  } else {
-    // Set up a unix domain socket for index backfill tserver-postgres communication.
-    const std::string& socket_dir = PgDeriveSocketDir(conf_.listen_addresses);
-    RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
-    argv.push_back(socket_dir);
+  const std::string& socket_dir = PgDeriveSocketDir(conf_.listen_addresses);
+  RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
+  argv.push_back(socket_dir);
 
-    // Also tighten permissions on the socket.
-    argv.push_back("-c");
-    argv.push_back("unix_socket_permissions=0700");
-  }
+  // Also tighten permissions on the socket.
+  argv.push_back("-c");
+  argv.push_back("unix_socket_permissions=0700");
 
   if (log_to_file) {
     argv.push_back("-c");
@@ -400,13 +398,15 @@ Status PgWrapper::InitDb(bool yb_enabled) {
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   SetCommonEnv(&initdb_subprocess, yb_enabled);
-  int exit_code = 0;
+  int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
-  RETURN_NOT_OK(initdb_subprocess.Wait(&exit_code));
-  if (exit_code != 0) {
+  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
+  if (status != 0) {
+    SCHECK(WIFEXITED(status), InternalError,
+           Format("$0 did not exit normally", initdb_program_path));
     return STATUS_FORMAT(RuntimeError, "$0 failed with exit code $1",
                          initdb_program_path,
-                         exit_code);
+                         WEXITSTATUS(status));
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
@@ -578,8 +578,25 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
       LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
       // If process does not exist, system may return "process does not exist" or
       // "operation not permitted" error. Ignore those errors.
-      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
-        return STATUS(RuntimeError, "Unable to kill", Errno(errno));
+      postmaster_pid_file.close();
+      bool postgres_found = true;
+      string cmdline = "";
+#ifdef __linux__
+      string cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
+      std::ifstream postmaster_cmd_file;
+      postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
+      if (postmaster_cmd_file.good()) {
+        postmaster_cmd_file >> cmdline;
+        postgres_found = cmdline.find("/postgres") != std::string::npos;
+        postmaster_cmd_file.close();
+      }
+#endif
+      if (postgres_found) {
+        if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
+          return STATUS(RuntimeError, "Unable to kill", Errno(errno));
+        }
+      } else {
+        LOG(WARNING) << "Didn't find postgres in " << cmdline;
       }
     }
     ignore_result(Env::Default()->DeleteFile(postmaster_pid_filename));

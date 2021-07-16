@@ -25,6 +25,7 @@ namespace yb {
 // Warning contains stack trace of thread that created this tracker.
 class LongOperationTracker {
  public:
+  LongOperationTracker() = default;
   LongOperationTracker(const char* message, MonoDelta duration);
   ~LongOperationTracker();
 

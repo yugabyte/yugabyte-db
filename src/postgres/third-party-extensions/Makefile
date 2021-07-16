@@ -1,4 +1,4 @@
-DIRS = pg_hint_plan 
+DIRS = pg_hint_plan orafce
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)
 CLEANDIRS = $(DIRS:%=clean-%)
@@ -9,10 +9,10 @@ $(BUILDDIRS):
 	$(MAKE) -C $(@:build-%=%)
 
 clean: $(CLEANDIRS)
-$(CLEANDIRS): 
+$(CLEANDIRS):
 	$(MAKE) -C $(@:clean-%=%) clean
 
-install: $(INSTALLDIRS) all
+install: $(INSTALLDIRS)
 $(INSTALLDIRS):
 	$(MAKE) -C $(@:install-%=%) install
 

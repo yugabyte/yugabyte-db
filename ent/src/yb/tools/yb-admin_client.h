@@ -15,6 +15,7 @@
 
 #include "../../../../src/yb/tools/yb-admin_client.h"
 
+#include "yb/common/snapshot.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
@@ -24,6 +25,10 @@
 namespace yb {
 namespace tools {
 namespace enterprise {
+
+// Flags for list_snapshot command.
+YB_DEFINE_ENUM(ListSnapshotsFlag, (SHOW_DETAILS)(NOT_SHOW_RESTORED)(SHOW_DELETED)(JSON));
+using ListSnapshotsFlags = EnumBitSet<ListSnapshotsFlag>;
 
 class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   typedef yb::tools::ClusterAdminClient super;
@@ -35,12 +40,21 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(init_master_addrs, timeout) {}
 
   // Snapshot operations.
-  CHECKED_STATUS ListSnapshots(bool show_details, bool show_restored, bool show_deleted);
+  CHECKED_STATUS ListSnapshots(const ListSnapshotsFlags& flags);
   CHECKED_STATUS CreateSnapshot(const std::vector<client::YBTableName>& tables,
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
   CHECKED_STATUS CreateNamespaceSnapshot(const TypedNamespaceName& ns);
-  CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);
+  Result<rapidjson::Document> ListSnapshotRestorations(
+      const TxnSnapshotRestorationId& restoration_id);
+  Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
+                                                     MonoDelta interval, MonoDelta retention);
+  Result<rapidjson::Document> ListSnapshotSchedules(const SnapshotScheduleId& schedule_id);
+  Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
+  Result<rapidjson::Document> RestoreSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+  CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id,
+                                 HybridTime timestamp);
   CHECKED_STATUS DeleteSnapshot(const std::string& snapshot_id);
 
   CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,
@@ -87,12 +101,16 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                           const std::vector<TableId>& add_tables,
                                           const std::vector<TableId>& remove_tables);
 
+  CHECKED_STATUS WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
+
   CHECKED_STATUS SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
 
   CHECKED_STATUS BootstrapProducer(const std::vector<TableId>& table_id);
 
  private:
+  Result<TxnSnapshotId> SuitableSnapshotId(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);
 
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
 

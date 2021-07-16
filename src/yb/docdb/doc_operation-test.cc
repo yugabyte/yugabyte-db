@@ -13,6 +13,7 @@
 
 #include <thread>
 
+#include "yb/common/common.pb.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -106,8 +107,9 @@ class DocOperationTest : public DocDBTestBase {
                const HybridTime& hybrid_time = HybridTime::kMax,
                const TransactionOperationContextOpt& txn_op_context =
                    kNonTransactionalOperationContext) {
+    IndexMap index_map;
     QLWriteOperation ql_write_op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
-                                 IndexMap(), nullptr /* unique_index_key_schema */, txn_op_context);
+                                 index_map, nullptr /* unique_index_key_schema */, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
@@ -477,7 +479,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   DocRowwiseIterator iter(schema, schema, kNonTransactionalOperationContext,
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
-  ASSERT_OK(iter.Init());
+  ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
   ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 
   // Now verify row exists even with one valid column.
@@ -521,9 +523,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   // Now verify row exists as long as liveness system column exists.
   doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(101)), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
-                                 PrimitiveValue::SystemColumnId(
-                                     SystemColumnIds::kLivenessColumn)),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue::kLivenessColumn),
                          Value(PrimitiveValue(ValueType::kNullLow)),
                          HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),

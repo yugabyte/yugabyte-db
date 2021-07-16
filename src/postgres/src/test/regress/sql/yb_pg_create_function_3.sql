@@ -6,7 +6,7 @@
 
 -- All objects made in this test are in temp_func_test schema
 
--- CREATE USER regress_unpriv_user;
+CREATE USER regress_unpriv_user;
 
 CREATE SCHEMA temp_func_test;
 GRANT ALL ON SCHEMA temp_func_test TO public;
@@ -100,22 +100,19 @@ SELECT proname, proleakproof FROM pg_proc
        WHERE oid in ('functest_E_1'::regproc,
                      'functest_E_2'::regproc) ORDER BY proname;
 
--- TODO(dmitry) Reseting of session authorization causes error on all next functions,
--- uncomment when it will be fixed
-
 -- it takes superuser privilege to turn on leakproof, but not to turn off
--- ALTER FUNCTION functest_E_1(int) OWNER TO regress_unpriv_user;
--- ALTER FUNCTION functest_E_2(int) OWNER TO regress_unpriv_user;
+ALTER FUNCTION functest_E_1(int) OWNER TO regress_unpriv_user;
+ALTER FUNCTION functest_E_2(int) OWNER TO regress_unpriv_user;
 
--- SET SESSION AUTHORIZATION regress_unpriv_user;
--- SET search_path TO temp_func_test, public;
--- ALTER FUNCTION functest_E_1(int) NOT LEAKPROOF;
--- ALTER FUNCTION functest_E_2(int) LEAKPROOF;
+SET SESSION AUTHORIZATION regress_unpriv_user;
+SET search_path TO temp_func_test, public;
+ALTER FUNCTION functest_E_1(int) NOT LEAKPROOF;
+ALTER FUNCTION functest_E_2(int) LEAKPROOF;
 
--- CREATE FUNCTION functest_E_3(int) RETURNS bool LANGUAGE 'sql'
---        LEAKPROOF AS 'SELECT $1 < 200';	-- fail
+CREATE FUNCTION functest_E_3(int) RETURNS bool LANGUAGE 'sql'
+       LEAKPROOF AS 'SELECT $1 < 200';	-- fail
 
--- RESET SESSION AUTHORIZATION;
+RESET SESSION AUTHORIZATION;
 
 --
 -- CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT

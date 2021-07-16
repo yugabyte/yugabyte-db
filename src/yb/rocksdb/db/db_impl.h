@@ -169,10 +169,12 @@ class DBImpl : public DB {
   using DB::SetOptions;
   Status SetOptions(
       ColumnFamilyHandle* column_family,
-      const std::unordered_map<std::string, std::string>& options_map) override;
+      const std::unordered_map<std::string, std::string>& options_map,
+      bool dump_options = true) override;
 
   // Set whether DB should be flushed on shutdown.
   void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
+  void StartShutdown() override;
 
   using DB::NumberLevels;
   virtual int NumberLevels(ColumnFamilyHandle* column_family) override;
@@ -512,12 +514,6 @@ class DBImpl : public DB {
                                    const CompactionJobStats& job_stats,
                                    int job_id);
 
-  void NewThreadStatusCfInfo(ColumnFamilyData* cfd) const;
-
-  void EraseThreadStatusCfInfo(ColumnFamilyData* cfd) const;
-
-  void EraseThreadStatusDbInfo() const;
-
   Status WriteImpl(const WriteOptions& options, WriteBatch* updates,
                    WriteCallback* callback);
 
@@ -632,6 +628,8 @@ class DBImpl : public DB {
 
   uint64_t GetCurrentVersionSstFilesUncompressedSize() override;
 
+  std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() override;
+
   uint64_t GetCurrentVersionDataSstFilesSize() override;
 
   uint64_t GetCurrentVersionNumSSTFiles() override;
@@ -640,11 +638,6 @@ class DBImpl : public DB {
 
   // Updates stats_ object with SST files size metrics.
   void SetSSTFileTickers();
-
-  void PrintStatistics();
-
-  // dump rocksdb.stats to LOG
-  void MaybeDumpStats();
 
   // Return the minimum empty level that could hold the total data in the
   // input level. Return the input level, if such level could not be found.
@@ -688,6 +681,8 @@ class DBImpl : public DB {
   bool HasFilesChangedListener() const;
 
   void FilesChanged();
+
+  bool IsShuttingDown() { return shutting_down_.load(std::memory_order_acquire); }
 
   struct TaskPriorityChange {
     size_t task_serial_no;
@@ -987,7 +982,7 @@ class DBImpl : public DB {
   int64_t last_flush_at_tick_ = 0;
 
   // Whether DB should be flushed on shutdown.
-  bool disable_flush_on_shutdown_ = false;
+  std::atomic<bool> disable_flush_on_shutdown_{false};
 
   mutable std::mutex files_changed_listener_mutex_;
 

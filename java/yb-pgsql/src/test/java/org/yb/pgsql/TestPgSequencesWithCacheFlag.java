@@ -10,24 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 package org.yb.pgsql;
+
+import static org.yb.AssertionWrappers.*;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.yb.util.YBTestRunnerNonTsanOnly;
-
-import java.sql.*;
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
@@ -1203,7 +1207,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testDefaultCacheOption() throws Exception {
 
-    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=0");
+    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "0");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1216,7 +1220,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testLowerThanDefaultCacheFlagValue() throws Exception {
 
-    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=5");
+    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "5");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1229,7 +1233,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testCacheFlagValueLessThanCacheOption() throws Exception {
 
-    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=5");
+    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "5");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1242,7 +1246,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testCacheFlagValueHigherThanCacheOption() throws Exception {
 
-    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=150");
+    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "150");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1255,7 +1259,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testChangeOfCacheFlagValue() throws Exception {
 
-    int tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=5");
+    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "5");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1264,7 +1268,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       assertOneRow(statement, "SELECT last_value from s1", 5);
     }
 
-    tserver = spawnTServerWithFlags("--ysql_sequence_cache_minval=3");
+    tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "3");
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
         Statement statement = connection.createStatement()) {
@@ -1283,13 +1287,5 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
         statement.execute("SELECT nextval('s2')");
         assertOneRow(statement, "SELECT last_value from s2", 3);
       }
-  }
-
-  private static int spawnTServerWithFlags(String... flags) throws Exception {
-    List<String> tserverArgs = new ArrayList<>(BasePgSQLTest.tserverArgs);
-    tserverArgs.addAll(Arrays.asList(flags));
-    int tserver = miniCluster.getNumTServers();
-    miniCluster.startTServer(tserverArgs);
-    return tserver;
   }
 }

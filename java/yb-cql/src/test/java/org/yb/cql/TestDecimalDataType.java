@@ -31,9 +31,13 @@ import java.util.TreeSet;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestDecimalDataType extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDecimalDataType.class);
+
   private String getRandomVarInt(boolean withSign, int length) {
     String digits = "0123456789";
     final Random random = new Random();
@@ -771,7 +775,7 @@ public class TestDecimalDataType extends BaseCQLTest {
                 .bind(hashDecimal);
         ResultSet selectResult = session.execute(selectStmt);
         List<Row> rows = selectResult.all();
-        assertEquals(hashDecimal, rows.get(0).getDecimal(0));
+        assertTrue(hashDecimal.compareTo(rows.get(0).getDecimal(0)) == 0);
 
         final String dropStmt = "DROP TABLE test_decimal;";
         session.execute(dropStmt);

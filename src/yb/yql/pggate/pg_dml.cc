@@ -57,10 +57,6 @@ PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
 PgDml::~PgDml() {
 }
 
-Status PgDml::ClearBinds() {
-  return STATUS(NotSupported, "Clearing binds for prepared statement is not yet implemented");
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::AppendTarget(PgExpr *target) {
@@ -161,9 +157,6 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
     }
   }
 
-  // Link the expression and protobuf. During execution, expr will write result to the pb.
-  RETURN_NOT_OK(attr_value->PrepareForRead(this, bind_pb));
-
   // Link the given expression "attr_value" with the allocated protobuf. Note that except for
   // constants and place_holders, all other expressions can be setup just one time during prepare.
   // Examples:
@@ -183,7 +176,7 @@ Status PgDml::UpdateBindPBs() {
   for (const auto &entry : expr_binds_) {
     PgsqlExpressionPB *expr_pb = entry.first;
     PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->Eval(this, expr_pb));
+    RETURN_NOT_OK(attr_value->Eval(expr_pb));
   }
 
   return Status::OK();
@@ -239,7 +232,7 @@ Status PgDml::UpdateAssignPBs() {
   for (const auto &entry : expr_assigns_) {
     PgsqlExpressionPB *expr_pb = entry.first;
     PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->Eval(this, expr_pb));
+    RETURN_NOT_OK(attr_value->Eval(expr_pb));
   }
 
   return Status::OK();

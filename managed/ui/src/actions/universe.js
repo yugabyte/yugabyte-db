@@ -210,9 +210,12 @@ export function resetUniverseList() {
   };
 }
 
-export function deleteUniverse(universeUUID, isForceDelete) {
+export function deleteUniverse(universeUUID, isForceDelete, isDeleteBackups) {
   const customerUUID = localStorage.getItem('customerId');
-  const deleteRequestPayload = { isForceDelete: isForceDelete };
+  const deleteRequestPayload = {
+    isForceDelete,
+    isDeleteBackups
+  };
   const request = axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`, {
     params: deleteRequestPayload
   });
@@ -499,7 +502,7 @@ export function resetMasterLeader() {
 
 export function checkIfUniverseExists(universeName) {
   const customerUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find/${universeName}`;
+  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find?name=${universeName}`;
   const request = axios.get(requestUrl);
   return {
     type: CHECK_IF_UNIVERSE_EXISTS,
@@ -700,20 +703,38 @@ export function fetchSlowQueries(universeUUID, cancelFn) {
   return request;
 }
 
-export function createAlertDefinition(universeUUID, data) {
+export function resetSlowQueries(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/alert_definitions`;
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
+  return axios.delete(endpoint);
+}
+
+export function getAlertDefinitionTemplates(filter) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_templates`;
+  return axios.post(endpoint, filter).then(resp => resp.data);
+}
+
+export function getAlertDefinitionGroups(filter) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_groups/list`;
+  return axios.post(endpoint, filter).then(resp => resp.data);
+}
+
+export function createAlertDefinitionGroup(data) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_groups`;
   return axios.post(endpoint, data);
 }
 
-export function getAlertDefinition(universeUUID, alertName) {
+export function updateAlertDefinitionGroup(data) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${universeUUID}/${alertName}`;
-  return axios.get(endpoint).then(resp => resp.data);
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definition_groups/${data.uuid}`;
+  return axios.put(endpoint, data);
 }
 
-export function updateAlertDefinition(alertDefinitionUUID, data) {
+export function downloadLogs(universeUUID, nodeName) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
-  return axios.put(endpoint, data);
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/${nodeName}/download_logs`;
+  window.open(endpoint, '_blank');
 }

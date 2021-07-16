@@ -72,6 +72,8 @@ class TableHandle {
 
   CHECKED_STATUS Open(const YBTableName& table_name, YBClient* client);
 
+  CHECKED_STATUS Reopen();
+
   std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const;
 
   std::shared_ptr<YBqlWriteOp> NewInsertOp() const {
@@ -180,6 +182,7 @@ class TableIterator : public std::iterator<
   bool ExecuteOps();
   void Move();
   void HandleError(const Status& status);
+  bool IsFlushStatusOkOrHandleErrors(FlushStatus flush_status);
 
   const TableHandle* table_;
   std::vector<YBqlReadOpPtr> ops_;

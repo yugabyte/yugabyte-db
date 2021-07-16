@@ -15,6 +15,8 @@
 #ifndef YB_YQL_PGGATE_PG_DML_H_
 #define YB_YQL_PGGATE_PG_DML_H_
 
+#include <boost/unordered_map.hpp>
+
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_doc_op.h"
@@ -45,16 +47,13 @@ class PgDml : public PgStatement {
   // - For a secondary-index-scan, this bind specify the value of the secondary key which is used to
   //   query a row.
   // - For a primary-index-scan, this bind specify the value of the keys of the table.
-  virtual CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+  CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
 
   // Bind the whole table.
   CHECKED_STATUS BindTable();
 
   // Assign an expression to a column.
   CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);
-
-  // This function is not yet working and might not be needed.
-  virtual CHECKED_STATUS ClearBinds();
 
   // Process the secondary index request if it is nested within this statement.
   Result<bool> ProcessSecondaryIndexRequest(const PgExecParameters *exec_params);
@@ -175,7 +174,7 @@ class PgDml : public PgStatement {
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
   bool ybctid_bind_ = false;
-  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
+  boost::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // Used for colocated TRUNCATE that doesn't bind any columns.

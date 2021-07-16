@@ -25,11 +25,16 @@ import static org.yb.AssertionWrappers.*;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.util.RandomNumberUtil;
 import org.yb.util.SanitizerUtil;
 
 @RunWith(value=YBTestRunner.class)
 public class TestKeyspace extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestKeyspace.class);
+
   public void setupTable(String test_table) throws Exception {
     LOG.info("Create & setup table: " + test_table);
     super.setupTable(test_table, 2 /* num_rows */);

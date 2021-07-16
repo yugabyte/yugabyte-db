@@ -29,8 +29,6 @@ SELECT typname FROM pg_type WHERE typname LIKE '%enum_type';
 
 SELECT 'moo'::enum_type;
 
--- Following should error
-CREATE TABLE enum_table_indexed (a enum_type PRIMARY KEY, b BOOLEAN);
 CREATE TABLE enum_table (a enum_type, b BOOLEAN);
 INSERT INTO enum_table (a) VALUES ('baa');
 INSERT INTO enum_table (a, b) VALUES ('caw', FALSE);

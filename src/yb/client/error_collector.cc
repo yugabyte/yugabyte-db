@@ -34,6 +34,7 @@
 
 #include "yb/client/error.h"
 #include "yb/client/client.h"
+#include "yb/client/yb_op.h"
 
 namespace yb {
 namespace client {
@@ -45,6 +46,8 @@ ErrorCollector::ErrorCollector() {
 ErrorCollector::~ErrorCollector() {}
 
 void ErrorCollector::AddError(std::unique_ptr<YBError> error) {
+  LOG_IF(DFATAL, error->status().ok())
+      << "Unexpected to add OK status as error for: " << error->failed_op().ToString();
   std::lock_guard<simple_spinlock> l(mutex_);
   errors_.push_back(std::move(error));
 }

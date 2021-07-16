@@ -41,7 +41,6 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
@@ -156,6 +155,8 @@ class FsManager {
   // ==========================================================================
   //  on-disk path
   // ==========================================================================
+  std::set<std::string> GetFsRootDirs() const;
+
   std::vector<std::string> GetDataRootDirs() const;
 
   std::vector<std::string> GetWalRootDirs() const;
@@ -291,7 +292,7 @@ class FsManager {
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
 
-  gscoped_ptr<InstanceMetadataPB> metadata_;
+  std::unique_ptr<InstanceMetadataPB> metadata_;
 
   bool initted_;
 

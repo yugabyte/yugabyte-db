@@ -1,4 +1,3 @@
-//--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -13,14 +12,16 @@
 //
 //
 // Entry to SQL module. It takes SQL statements and uses the given YBClient to execute them. Each
-// QLProcessor runs on one and only one thread, so all function in SQL modules don't need to be
-// thread-safe.
+// QLProcessor runs on one and only one thread.
+// Notably, this does NOT apply to Reschedule implementation methods, which are called from
+// different ExecContexts, so non-thread-safe fields should not be referenced there.
 //--------------------------------------------------------------------------------------------------
 #ifndef YB_YQL_CQL_QL_QL_PROCESSOR_H_
 #define YB_YQL_CQL_QL_QL_PROCESSOR_H_
 
 #include "yb/client/callbacks.h"
 
+#include "yb/yql/cql/ql/ql_fwd.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/yql/cql/ql/sem/analyzer.h"
@@ -47,6 +48,7 @@ class QLMetrics {
   scoped_refptr<yb::Histogram> ql_insert_;
   scoped_refptr<yb::Histogram> ql_update_;
   scoped_refptr<yb::Histogram> ql_delete_;
+  scoped_refptr<yb::Histogram> ql_use_;
   scoped_refptr<yb::Histogram> ql_others_;
   scoped_refptr<yb::Histogram> ql_transaction_;
 
@@ -95,6 +97,7 @@ class QLProcessor : public Rescheduler {
 
   bool NeedReschedule() override { return true; }
   void Reschedule(rpc::ThreadPoolTask* task) override;
+  CoarseTimePoint GetDeadline() const override;
 
   // Check whether the current user has the required permissions for the parser tree node.
   CHECKED_STATUS CheckNodePermissions(const TreeNode* tnode);
@@ -116,6 +119,9 @@ class QLProcessor : public Rescheduler {
   QLMetrics* const ql_metrics_;
 
   ThreadSafeObjectPool<Parser>* parser_pool_;
+
+  // Whether the execution was rescheduled.
+  std::atomic<IsRescheduled> is_rescheduled_{IsRescheduled::kFalse};
 
  private:
   friend class QLTestBase;

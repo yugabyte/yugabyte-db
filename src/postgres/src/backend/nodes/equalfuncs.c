@@ -1664,6 +1664,7 @@ _equalDropdbStmt(const DropdbStmt *a, const DropdbStmt *b)
 {
 	COMPARE_STRING_FIELD(dbname);
 	COMPARE_SCALAR_FIELD(missing_ok);
+	COMPARE_NODE_FIELD(options);
 
 	return true;
 }
@@ -2567,7 +2568,6 @@ _equalIndexElem(const IndexElem *a, const IndexElem *b)
 	COMPARE_NODE_FIELD(opclass);
 	COMPARE_SCALAR_FIELD(ordering);
 	COMPARE_SCALAR_FIELD(nulls_ordering);
-	COMPARE_NODE_FIELD(yb_name_list);
 
 	return true;
 }

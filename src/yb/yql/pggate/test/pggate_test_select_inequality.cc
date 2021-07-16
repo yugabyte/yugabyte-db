@@ -45,7 +45,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "val", ++col_count,
                                                DataType::STRING, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
-  CommitTransaction();
+
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
@@ -78,6 +78,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     for (r = 0; r < r_count; r++) {
       // LOG(INFO) << "inserting " << *pg_stmt;
       // Insert row.
+      BeginTransaction();
       CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
       CommitTransaction();
 
@@ -88,14 +89,15 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
       // Update the constant expresions to insert the next row.
       // TODO(neil) When we support binds, we can also call UpdateBind here.
       string h_str = strings::Substitute("$0", h);
-      YBCPgUpdateConstText(expr_id, h_str.c_str(), false);
-      YBCPgUpdateConstInt8(expr_r1, r, false);
+      CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_id, h_str.c_str(), false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt8(expr_r1, r, false));
       string val = strings::Substitute("$0-$1", h, r);
-      YBCPgUpdateConstText(expr_val, val.c_str(), false);
+      CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_val, val.c_str(), false));
     }
   }
 
   // Insert last row.
+  BeginTransaction();
   CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
   CommitTransaction();
 
@@ -108,11 +110,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // Specify the selected expressions.
   YBCPgExpr colref;
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT to select a specific row.
@@ -129,7 +131,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, expr_r1_A, expr_r1_B));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
+  BeginTransaction();
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
@@ -138,7 +141,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   YBCPgSysColumns syscols;
   for (int i = A; i <= B; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data));
     if (!has_data) {
       break;
     }
@@ -166,6 +169,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
+  CommitTransaction();
 
   pg_stmt = nullptr;
 
@@ -175,11 +179,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                   NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT to select a specific row.
@@ -195,7 +199,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, expr_r1_A, nullptr));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
+  BeginTransaction();
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
   // Fetching rows and check their contents.
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
@@ -203,7 +208,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   select_row_count = 0;
   for (int i = A; i <= B; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data));
     if (!has_data) {
       break;
     }
@@ -231,6 +236,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
+  CommitTransaction();
 
   pg_stmt = nullptr;
 
@@ -240,11 +246,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                   NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT to select a specific row.
@@ -260,7 +266,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, nullptr, expr_r1_B));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
+  BeginTransaction();
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
   // Fetching rows and check their contents.
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
@@ -268,7 +275,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   select_row_count = 0;
   for (int i = A; i <= B; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data));
     if (!has_data) {
       break;
     }
@@ -296,6 +303,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
+  CommitTransaction();
 
   pg_stmt = nullptr;
 
@@ -305,11 +313,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                   NULL /* prepare_params */, &pg_stmt));
 
   // Specify the selected expressions.
-  YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
-  YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref);
+  CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Set partition and range columns for SELECT to select a specific row.
@@ -327,7 +335,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, expr_r1_A, expr_r1_B));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
+  BeginTransaction();
+  CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
 
   // Fetching rows and check their contents.
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
@@ -335,7 +344,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   select_row_count = 0;
   for (int i = A; i <= B; i++) {
     bool has_data = false;
-    YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data);
+    CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, &syscols, &has_data));
     if (!has_data) {
       break;
     }
@@ -363,6 +372,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     CHECK_EQ(selected_val, expected_val);
   }
   CHECK_EQ(select_row_count, B - A + 1) << "Unexpected row count";
+  CommitTransaction();
 
   pg_stmt = nullptr;
 }

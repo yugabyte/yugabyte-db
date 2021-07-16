@@ -12,25 +12,25 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import play.api.Play;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
+import javax.inject.Inject;
+
+import java.util.List;
 import java.util.Map;
 
-
+@Slf4j
 public class BackupTable extends AbstractTaskBase {
 
-  Backup backup;
-
-  public BackupTable(Backup backup) {
-    this.backup = backup;
+  @Inject
+  public BackupTable(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override
@@ -38,22 +38,20 @@ public class BackupTable extends AbstractTaskBase {
     return (BackupTableParams) taskParams;
   }
 
-  private TableManager tableManager;
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    tableManager = Play.current().injector().instanceOf(TableManager.class);
-  }
-
   @Override
   public void run() {
+    Backup backup = taskParams().backup;
     if (backup == null) {
-      backup = Backup.fetchByTaskUUID(userTaskUUID);
+      List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
+      if (backups.size() == 1) {
+        backup = backups.get(0);
+      } else {
+        throw new RuntimeException("Unable to fetch backup info");
+      }
     }
 
     try {
-      Universe universe = Universe.get(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Map<String, String> config = universe.getConfig();
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         if (taskParams().backupList != null) {
@@ -61,11 +59,11 @@ public class BackupTable extends AbstractTaskBase {
             ShellResponse response = tableManager.createBackup(backupParams);
             JsonNode jsonNode = Json.parse(response.message);
             if (response.code != 0 || jsonNode.has("error")) {
-              LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+              log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
 
               throw new RuntimeException(response.message);
             } else {
-              LOG.info("[" + getName() + "] STDOUT: " + response.message);
+              log.info("[" + getName() + "] STDOUT: " + response.message);
             }
           }
 
@@ -74,20 +72,20 @@ public class BackupTable extends AbstractTaskBase {
           ShellResponse response = tableManager.createBackup(taskParams());
           JsonNode jsonNode = Json.parse(response.message);
           if (response.code != 0 || jsonNode.has("error")) {
-            LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+            log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
             backup.transitionState(Backup.BackupState.Failed);
             throw new RuntimeException(response.message);
           } else {
-            LOG.info("[" + getName() + "] STDOUT: " + response.message);
+            log.info("[" + getName() + "] STDOUT: " + response.message);
             backup.transitionState(Backup.BackupState.Completed);
           }
         }
       } else {
-        LOG.info("Skipping table {}:{}", taskParams().keyspace, taskParams().tableName);
+        log.info("Skipping table {}:{}", taskParams().getKeyspace(), taskParams().getTableName());
         backup.transitionState(Backup.BackupState.Skipped);
       }
     } catch (Exception e) {
-      LOG.error("Errored out with: " + e);
+      log.error("Errored out with: " + e);
       backup.transitionState(Backup.BackupState.Failed);
       throw new RuntimeException(e);
     }

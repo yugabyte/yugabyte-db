@@ -18,7 +18,8 @@ const mapStateToProps = (state) => {
     customerConfigs: state.customer.configs,
     configList: state.cloud.authConfig,
     visibleModal: state.modal.visibleModal,
-    deleteConfig: state.customer.deleteConfig
+    deleteConfig: state.customer.deleteConfig,
+    modal: state.modal
   };
 };
 
@@ -34,13 +35,20 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(fetchAuthConfigList()).then((response) =>
         dispatch(fetchAuthConfigListResponse(response.payload))
       )
-      .catch(() => toast.error('Error occured while fetching config.'));
+      .catch(() => toast.error('Error occurred while fetching config.'));
     },
 
     setKMSConfig: (provider, body) => {
       return dispatch(createKMSProviderConfig(provider, body))
-        .then((response) => {
-          return dispatch(createKMSProviderConfigResponse(response.payload)).then(
+        .then?.((response) => {
+          if (response.error) {
+            const errorMessage =
+              response.payload?.response?.data?.error || response.payload.message;
+            toast.error(errorMessage);
+          } else {
+            toast.success('Successfully added the configuration');
+          }
+          return dispatch(createKMSProviderConfigResponse(response.payload)).then?.(
             () => toast.success('Successfully added the configuration')
           );
         })
@@ -57,7 +65,7 @@ const mapDispatchToProps = (dispatch) => {
           toast.warn('Warning: Deleting configuration returned unsuccessful response.');
         })
         .catch((err) => {
-          console.error(err)
+          console.error(err);
         });
     }
   };

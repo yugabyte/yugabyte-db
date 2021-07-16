@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 
-
 public class NodeInstanceTest extends FakeDBApplication {
   private Provider provider;
   private Region region;
@@ -24,7 +23,7 @@ public class NodeInstanceTest extends FakeDBApplication {
   public void setUp() {
     provider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
   }
 
   private NodeInstance createNode() {

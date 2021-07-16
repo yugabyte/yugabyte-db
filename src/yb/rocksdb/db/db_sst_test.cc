@@ -631,7 +631,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     Options options = CurrentOptions();
     options.disable_auto_compactions = true;
     options.compression = is_compressed ? kSnappyCompression : kNoCompression;
-    auto stats = rocksdb::CreateDBStatistics();
+    auto stats = rocksdb::CreateDBStatisticsForTests();
     options.statistics = stats;
     DestroyAndReopen(options);
     // Generate 5 files in L0
@@ -763,7 +763,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     Options options = CurrentOptions();
     options.disable_auto_compactions = true;
     options.compression = is_compressed ? kSnappyCompression : kNoCompression;
-    auto stats = rocksdb::CreateDBStatistics();
+    auto stats = rocksdb::CreateDBStatisticsForTests();
     options.statistics = stats;
     DestroyAndReopen(options);
     // Generate 5 files in L0

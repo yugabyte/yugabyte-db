@@ -41,14 +41,26 @@
 #include "yb/common/index.h"
 #include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace master {
+
+// Drive usage information on a current replica of a tablet.
+// This allows us to look at individual resource usage per replica of a tablet.
+struct TabletReplicaDriveInfo {
+  std::string ts_path;
+  uint64 sst_files_size = 0;
+  uint64 wal_files_size = 0;
+  uint64 uncompressed_sst_file_size = 0;
+  bool may_have_orphaned_post_split_data = true;
+};
 
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
@@ -64,9 +76,13 @@ struct TabletReplica {
   // relevant, for example.
   bool should_disable_lb_move = false;
 
+  TabletReplicaDriveInfo drive_info;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
+
+  void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
 
   bool IsStale() const;
 
@@ -93,26 +109,15 @@ struct Persistent {
   DataEntryPB pb;
 };
 
-// This class is used to manage locking of the persistent metadata returned from the
-// MetadataCowWrapper objects.
-template <class MetadataClass>
-class MetadataLock : public CowLock<typename MetadataClass::cow_state> {
- public:
-  typedef CowLock<typename MetadataClass::cow_state> super;
-  MetadataLock(MetadataClass* info, typename super::LockMode mode)
-      : super(DCHECK_NOTNULL(info)->mutable_metadata(), mode) {}
-  MetadataLock(const MetadataClass* info, typename super::LockMode mode)
-      : super(&(DCHECK_NOTNULL(info))->metadata(), mode) {}
-};
-
 // This class is a base wrapper around accessors for the persistent proto data, through CowObject.
 // The locks are taken on subclasses of this class, around the object returned from metadata().
 template <class PersistentDataEntryPB>
 class MetadataCowWrapper {
  public:
   // Type declaration for use in the Lock classes.
-  typedef PersistentDataEntryPB cow_state;
-  typedef MetadataLock<MetadataCowWrapper<PersistentDataEntryPB>> lock_type;
+  typedef PersistentDataEntryPB CowState;
+  typedef CowWriteLock<CowState> WriteLock;
+  typedef CowReadLock<CowState> ReadLock;
 
   // This method should return the id to be written into the sys_catalog id column.
   virtual const std::string& id() const = 0;
@@ -128,12 +133,24 @@ class MetadataCowWrapper {
   const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
   CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
 
-  std::unique_ptr<lock_type> LockForRead() const {
-    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::READ));
+  ReadLock LockForRead() const {
+    return ReadLock(&metadata());
   }
 
-  std::unique_ptr<lock_type> LockForWrite() {
-    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::WRITE));
+  WriteLock LockForWrite() {
+    return WriteLock(mutable_metadata());
+  }
+
+  const auto& old_pb() const {
+    return metadata_.state().pb;
+  }
+
+  const auto& new_pb() const {
+    return metadata_.dirty().pb;
+  }
+
+  static auto type() {
+    return CowState::type();
   }
 
  protected:
@@ -154,6 +171,15 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
            pb.state() == SysTabletsEntryPB::DELETED;
   }
 
+  bool is_hidden() const {
+    return pb.hide_hybrid_time() != 0;
+  }
+
+  bool ListedAsHidden() const {
+    // Tablet was hidden, but not yet deleted (to avoid resending delete for it).
+    return is_hidden() && !is_deleted();
+  }
+
   bool is_colocated() const {
     return pb.colocated();
   }
@@ -163,9 +189,6 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
   // The change will only be visible after Commit().
   void set_state(SysTabletsEntryPB::State state, const std::string& msg);
 };
-
-class TableInfo;
-typedef scoped_refptr<TableInfo> TableInfoPtr;
 
 typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 
@@ -204,9 +227,14 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
   std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
+  Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
+
+  // Updates a replica in replica_locations_ map if it exists.
+  void UpdateReplicaDriveInfo(const std::string& ts_uuid,
+                              const TabletReplicaDriveInfo& drive_info);
 
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
@@ -247,7 +275,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   friend class LeaderChangeReporter;
 
   ~TabletInfo();
-  TSDescriptor* GetLeaderUnlocked() const;
+  TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
+  CHECKED_STATUS GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -258,16 +287,16 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // The last time the replica locations were updated.
   // Also set when the Master first attempts to create the tablet.
-  MonoTime last_update_time_;
+  MonoTime last_update_time_ GUARDED_BY(lock_);
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  std::shared_ptr<ReplicaMap> replica_locations_;
+  std::shared_ptr<ReplicaMap> replica_locations_ GUARDED_BY(lock_);
 
   // Reported schema version (in-memory only).
-  std::unordered_map<TableId, uint32_t> reported_schema_version_ = {};
+  std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
 
-  LeaderStepDownFailureTimes leader_stepdown_failure_times_;
+  LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 
   std::atomic<bool> initiated_election_{false};
 
@@ -296,6 +325,22 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
+  bool visible_to_client() const {
+    return is_running() && !is_hidden();
+  }
+
+  bool is_hiding() const {
+    return pb.hide_state() == SysTablesEntryPB::HIDING;
+  }
+
+  bool is_hidden() const {
+    return pb.hide_state() == SysTablesEntryPB::HIDDEN;
+  }
+
+  bool started_hiding() const {
+    return is_hiding() || is_hidden();
+  }
+
   // Return the table's name.
   const TableName& name() const {
     return pb.name();
@@ -314,6 +359,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
   const SchemaPB& schema() const {
     return pb.schema();
   }
+
+  const std::string& indexed_table_id() const;
+
+  bool is_index() const;
 
   SchemaPB* mutable_schema() {
     return pb.mutable_schema();
@@ -338,6 +387,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const TableName name() const;
 
   bool is_running() const;
+  bool is_deleted() const;
 
   std::string ToString() const override;
   std::string ToStringWithState() const;
@@ -353,7 +403,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   virtual const std::string& id() const override { return table_id_; }
 
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
-  const std::string indexed_table_id() const;
+  std::string indexed_table_id() const;
 
   bool is_index() const {
     return !indexed_table_id().empty();
@@ -396,6 +446,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get all tablets of the table.
   void GetAllTablets(TabletInfos *ret) const;
 
+  bool HasTablets() const;
+
   // Get the tablet of the table.  The table must be colocated.
   TabletInfoPtr GetColocatedTablet() const;
 
@@ -404,6 +456,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if all tablets of the table are deleted.
   bool AreAllTabletsDeleted() const;
+
+  // Returns true if all tablets of the table are deleted or hidden.
+  bool AreAllTabletsHidden() const;
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
@@ -414,9 +469,22 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return is_backfilling_;
   }
 
-  void SetIsBackfilling(bool flag) {
+  CHECKED_STATUS SetIsBackfilling();
+
+  void ClearIsBackfilling() {
     std::lock_guard<decltype(lock_)> l(lock_);
-    is_backfilling_ = flag;
+    is_backfilling_ = false;
+  }
+
+  boost::optional<TabletId> AreAllTabletsRunning() const {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    for (const auto& tablet_it : tablet_map_) {
+      const auto& table = tablet_it.second;
+      if (table->LockForRead().data().pb.state() != SysTabletsEntryPB::RUNNING) {
+        return table->tablet_id();
+      }
+    }
+    return boost::none;
   }
 
   // Returns true if an "Alter" operation is in-progress.
@@ -433,7 +501,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool HasTasks() const;
   bool HasTasks(MonitoredTask::Type type) const;
   void AddTask(std::shared_ptr<MonitoredTask> task);
-  void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+
+  // Returns true if no running tasks left.
+  bool RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+
   void AbortTasks();
   void AbortTasksAndClose();
   void WaitTasksCompletion();
@@ -458,8 +529,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  void AddTabletUnlocked(TabletInfo* tablet);
+  void AddTabletUnlocked(TabletInfo* tablet) REQUIRES_SHARED(lock_);
   void AbortTasksAndCloseIfRequested(bool close);
+
+  std::string LogPrefix() const {
+    return ToString() + ": ";
+  }
 
   const TableId table_id_;
 
@@ -468,7 +543,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
   typedef std::map<std::string, TabletInfo *> TabletInfoMap;
-  TabletInfoMap tablet_map_;
+  TabletInfoMap tablet_map_ GUARDED_BY(lock_);
 
   // Protects tablet_map_ and pending_tasks_.
   mutable rw_spinlock lock_;
@@ -482,7 +557,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
-  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
+  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
@@ -523,7 +598,7 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
   mutable simple_spinlock lock_;
 
   typedef std::unordered_set<TabletKey, boost::hash<TabletKey>> TabletSet;
-  TabletSet tablet_set_;
+  TabletSet tablet_set_ GUARDED_BY(lock_);
 };
 
 // The data related to a namespace which is persisted on disk.
@@ -601,7 +676,7 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
 
   // Protects table_set_.
   mutable simple_spinlock lock_;
-  std::unordered_set<TableId> table_set_;
+  std::unordered_set<TableId> table_set_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TablegroupInfo);
 };
@@ -748,10 +823,33 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(SysConfigInfo);
 };
 
+class DdlLogEntry {
+ public:
+  // time - when DDL operation was started.
+  // table_id - modified table id.
+  // table - what table was modified during DDL.
+  // action - string description of DDL.
+  DdlLogEntry(
+      HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
+      const std::string& action);
+
+  static SysRowEntry::Type type() {
+    return SysRowEntry::DDL_LOG_ENTRY;
+  }
+
+  std::string id() const;
+
+  // Used by sys catalog writer. It requires 2 protobuf to check whether entry was actually changed.
+  const DdlLogEntryPB& new_pb() const;
+  const DdlLogEntryPB& old_pb() const;
+
+ protected:
+  DdlLogEntryPB pb_;
+};
+
 // Convenience typedefs.
 // Table(t)InfoMap ordered for deterministic locking.
 typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
-typedef std::map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;

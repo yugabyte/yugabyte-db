@@ -21,7 +21,7 @@ try:
     from builtins import RuntimeError
 except Exception as e:
     from exceptions import RuntimeError
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import tz
 from multiprocessing import Pool
 from six import string_types, PY2, PY3
@@ -32,7 +32,8 @@ YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
 YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
-VM_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
+VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
+VM_CLIENT_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt")
 K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
@@ -147,7 +148,7 @@ class Report:
 def check_output(cmd, env):
     try:
         timeout = CMD_TIMEOUT_SEC
-        command = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE, env=env)
+        command = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
         while command.poll() is None and timeout > 0:
             time.sleep(1)
             timeout -= 1
@@ -157,7 +158,10 @@ def check_output(cmd, env):
             return 'Error executing command {}: timeout occurred'.format(cmd)
 
         output, stderr = command.communicate()
-        return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
+        if not stderr:
+            return output.decode('utf-8').encode("ascii", "ignore").decode("ascii")
+        else:
+            return 'Error executing command {}: {}'.format(cmd, stderr)
     except subprocess.CalledProcessError as e:
         return 'Error executing command {}: {}'.format(
             cmd, e.output.decode("utf-8").encode("ascii", "ignore"))
@@ -191,13 +195,14 @@ class NodeChecker():
 
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
-                 ssl_protocol):
+                 root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
         self.enable_tls_client = enable_tls_client
+        self.root_and_client_root_ca_same = root_and_client_root_ca_same
         self.ssl_protocol = ssl_protocol
         # TODO: best way to do mark that this is a k8s deployment?
         self.is_k8s = ssh_port == 0 and not self.identity_file
@@ -211,6 +216,7 @@ class NodeChecker():
         self.ysql_port = ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
+        self.enable_ysql_auth = enable_ysql_auth
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name)
@@ -252,7 +258,7 @@ class NodeChecker():
         return output
 
     def get_disk_utilization(self):
-        remote_cmd = 'df -h'
+        remote_cmd = 'df -hl 2>/dev/null'
         return self._remote_check_output(remote_cmd)
 
     def check_disk_utilization(self):
@@ -329,6 +335,13 @@ class NodeChecker():
         remote_cmd = "ps -C {} -o etimes=".format(process)
         return self._remote_check_output(remote_cmd).strip()
 
+    def get_uptime_in_dhms(self, uptime):
+        dtime = timedelta(seconds=int(uptime))
+        d = {"days": dtime.days}
+        d["hours"], rem = divmod(dtime.seconds, 3600)
+        d["minutes"], d["seconds"] = divmod(rem, 60)
+        return "{days} days {hours} hours {minutes} minutes {seconds} seconds".format(**d)
+
     def check_uptime_for_process(self, process):
         logging.info("Checking uptime for {} process {}".format(self.node, process))
         e = self._new_entry("Uptime", process)
@@ -344,9 +357,11 @@ class NodeChecker():
                 (int(time.time()) - self.start_time_ms / 1000 <= RECENT_FAILURE_THRESHOLD_SEC)
             # Server went down recently.
             if int(uptime) <= RECENT_FAILURE_THRESHOLD_SEC and not recent_operation:
-                return e.fill_and_return_entry(['Uptime: {} seconds'.format(uptime)], True)
+                return e.fill_and_return_entry(['Uptime: {} seconds ({})'.format(
+                    uptime, self.get_uptime_in_dhms(uptime))], True)
             else:
-                return e.fill_and_return_entry(['Uptime: {} seconds'.format(uptime)], False)
+                return e.fill_and_return_entry(['Uptime: {} seconds ({})'.format(
+                    uptime, self.get_uptime_in_dhms(uptime))], False)
         elif not uptime:
             return e.fill_and_return_entry(['Process is not running'], True)
         else:
@@ -390,7 +405,12 @@ class NodeChecker():
         cqlsh = '{}/bin/cqlsh'.format(YB_TSERVER_DIR)
         remote_cmd = '{} {} {} -e "SHOW HOST"'.format(cqlsh, self.node, self.ycql_port)
         if self.enable_tls_client:
-            cert_file = K8S_CERT_FILE_PATH if self.is_k8s else VM_CERT_FILE_PATH
+            if self.is_k8s:
+                cert_file = K8S_CERT_FILE_PATH
+            elif self.root_and_client_root_ca_same:
+                cert_file = VM_ROOT_CERT_FILE_PATH
+            else:
+                cert_file = VM_CLIENT_ROOT_CERT_FILE_PATH
             protocols = re.split('\\W+', self.ssl_protocol or "")
             ssl_version = DEFAULT_SSL_VERSION
             for protocol in protocols:
@@ -405,8 +425,8 @@ class NodeChecker():
         output = self._remote_check_output(remote_cmd).strip()
 
         errors = []
-        if not (output.startswith('Connected to local cluster at {}:{}'
-                                  .format(self.node, self.ycql_port)) or
+        if not ('Connected to local cluster at {}:{}'
+                .format(self.node, self.ycql_port) in output or
                 "AuthenticationFailed('Remote end requires authentication.'" in output):
             errors = [output]
         return e.fill_and_return_entry(errors, len(errors) > 0)
@@ -430,20 +450,72 @@ class NodeChecker():
         e = self._new_entry("Connectivity with ysqlsh")
 
         ysqlsh = '{}/bin/ysqlsh'.format(YB_TSERVER_DIR)
-        if not self.enable_tls_client:
-            user = "postgres"
-            remote_cmd = r'echo "\conninfo" | {} -h {} -p {} -U {}'.format(
-                ysqlsh, self.node, self.ysql_port, user)
-        else:
-            user = "yugabyte"
-            remote_cmd = r'echo "\conninfo" | {} -h {} -p {} -U {} {}'.format(
-                ysqlsh, self.node, self.ysql_port, user, '"sslmode=require"')
-
+        port_args = "-p {}".format(self.ysql_port)
+        host = self.node
         errors = []
+        # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
+        # that we can circumvent md5 authentication (assumption made:
+        # "local all yugabyte trust" is in the hba file)
+        if self.enable_ysql_auth:
+            socket_fds_output = self._remote_check_output("ls /tmp/.yb.*/.s.PGSQL.*").strip()
+            socket_fds = socket_fds_output.split()
+            if ("Error" not in socket_fds_output) and len(socket_fds):
+                host = os.path.dirname(socket_fds[0])
+                port_args = ""
+            else:
+                errors = ["Could not find local socket"]
+                return e.fill_and_return_entry(errors, True)
+
+        if not self.enable_tls_client:
+            remote_cmd = "{} -h {} {} -U yugabyte -c \"\conninfo\"".format(
+                ysqlsh, host, port_args)
+        else:
+            remote_cmd = "{} -h {} {} -U yugabyte {} -c \"\conninfo\"".format(
+                ysqlsh, host, port_args, '"sslmode=require"')
+
         output = self._remote_check_output(remote_cmd).strip()
-        if not (output.startswith('You are connected to database "{}"'.format(user)) or
-                "Password for user {}:".format(user)):
+        if not (output.startswith('You are connected to database')):
             errors = [output]
+        return e.fill_and_return_entry(errors, len(errors) > 0)
+
+    def check_clock_skew(self):
+        logging.info("Checking clock synchronization on node {}".format(self.node))
+        e = self._new_entry("Clock synchronization")
+        errors = []
+
+        remote_cmd = "timedatectl status"
+        output = self._remote_check_output(remote_cmd).strip()
+
+        clock_re = re.match(r'((.|\n)*)((NTP enabled: )|(NTP service: )|(Network time on: )|' +
+                            r'(systemd-timesyncd\.service active: ))(.*)$', output, re.MULTILINE)
+        if clock_re:
+            ntp_enabled_answer = clock_re.group(8)
+        else:
+            return e.fill_and_return_entry(["Error getting NTP state - incorrect answer format"],
+                                           True)
+
+        if ntp_enabled_answer not in ("yes", "active"):
+            if ntp_enabled_answer in ("no", "inactive"):
+                return e.fill_and_return_entry(["NTP disabled"], True)
+
+            return e.fill_and_return_entry(["Error getting NTP state {}"
+                                            .format(ntp_enabled_answer)], True)
+
+        clock_re = re.match(r'((.|\n)*)((NTP synchronized: )|(System clock synchronized: ))(.*)$',
+                            output, re.MULTILINE)
+        if clock_re:
+            ntp_synchronized_answer = clock_re.group(6)
+        else:
+            return e.fill_and_return_entry([
+                "Error getting NTP synchronization state - incorrect answer format"], True)
+
+        if ntp_synchronized_answer != "yes":
+            if ntp_synchronized_answer == "no":
+                errors = ["NTP desynchronized"]
+            else:
+                errors = ["Error getting NTP synchronization state {}"
+                          .format(ntp_synchronized_answer)]
+
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
 
@@ -542,6 +614,7 @@ class Cluster():
         self.identity_file = data["identityFile"]
         self.ssh_port = data["sshPort"]
         self.enable_tls_client = data["enableTlsClient"]
+        self.root_and_client_root_ca_same = data['rootAndClientRootCASame']
         self.master_nodes = data["masterNodes"]
         self.tserver_nodes = data["tserverNodes"]
         self.yb_version = data["ybSoftwareVersion"]
@@ -552,6 +625,7 @@ class Cluster():
         self.ycql_port = data["ycqlPort"]
         self.enable_yedis = data["enableYEDIS"]
         self.redis_port = data["redisPort"]
+        self.enable_ysql_auth = data["enableYSQLAuth"]
 
 
 class UniverseDefinition():
@@ -571,6 +645,8 @@ def main():
                         help='Potential start time of the universe, to prevent uptime confusion.')
     parser.add_argument('--retry_interval_secs', type=int, required=False, default=30,
                         help='Time to wait between retries of failed checks.')
+    parser.add_argument('--check_clock', action="store_true",
+                        help='Include NTP synchronization check into actions.')
     args = parser.parse_args()
     if args.cluster_payload is not None:
         universe = UniverseDefinition(args.cluster_payload)
@@ -590,7 +666,8 @@ def main():
                 checker = NodeChecker(
                         node, node_name, c.identity_file, c.ssh_port,
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
-                        c.ycql_port, c.redis_port, c.enable_tls_client, c.ssl_protocol)
+                        c.ycql_port, c.redis_port, c.enable_tls_client,
+                        c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth)
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(
@@ -611,6 +688,8 @@ def main():
                 coordinator.add_check(checker, "check_disk_utilization")
                 coordinator.add_check(checker, "check_for_core_files")
                 coordinator.add_check(checker, "check_file_descriptors")
+                if args.check_clock:
+                    coordinator.add_check(checker, "check_clock_skew")
 
         entries = coordinator.run()
         for e in entries:

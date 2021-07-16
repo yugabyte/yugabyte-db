@@ -57,13 +57,11 @@
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/perf_context.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/snapshot.h"
 #include "yb/rocksdb/sst_file_writer.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/thread_status.h"
 #include "yb/rocksdb/wal_filter.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
@@ -85,10 +83,17 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/mock_env.h"
-#include "yb/util/string_util.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
+
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/priority_thread_pool.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
 #include "yb/util/tsan_util.h"
+
+DECLARE_bool(use_priority_thread_pool_for_compactions);
+DECLARE_bool(use_priority_thread_pool_for_flushes);
 
 namespace rocksdb {
 
@@ -387,7 +392,7 @@ TEST_F(DBTest, CompactedDB) {
 TEST_F(DBTest, IndexAndFilterBlocksOfNewTableAddedToCache) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   BlockBasedTableOptions table_options;
   table_options.cache_index_and_filter_blocks = true;
   table_options.filter_policy.reset(NewBloomFilterPolicy(20));
@@ -438,7 +443,7 @@ TEST_F(DBTest, IndexAndFilterBlocksOfNewTableAddedToCache) {
 TEST_F(DBTest, ParanoidFileChecks) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.level0_file_num_compaction_trigger = 2;
   options.paranoid_file_checks = true;
   BlockBasedTableOptions table_options;
@@ -972,7 +977,7 @@ TEST_F(DBTest, NonBlockingIteration) {
   do {
     ReadOptions non_blocking_opts, regular_opts;
     Options options = CurrentOptions();
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     non_blocking_opts.read_tier = kBlockCacheTier;
     CreateAndReopenWithCF({"pikachu"}, options);
     // write one kv to the database.
@@ -1035,7 +1040,7 @@ TEST_F(DBTest, ManagedNonBlockingIteration) {
   do {
     ReadOptions non_blocking_opts, regular_opts;
     Options options = CurrentOptions();
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     non_blocking_opts.read_tier = kBlockCacheTier;
     non_blocking_opts.managed = true;
     CreateAndReopenWithCF({"pikachu"}, options);
@@ -1373,7 +1378,7 @@ TEST_F(DBTest, IterReseek) {
   Options options = CurrentOptions(options_override);
   options.max_sequential_skip_in_iterations = 3;
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -2072,7 +2077,7 @@ TEST_F(DBTest, CompressedCache) {
   for (int iter = 0; iter < 4; iter++) {
     Options options;
     options.write_buffer_size = 64*1024;        // small write buffer
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     options = CurrentOptions(options);
 
     BlockBasedTableOptions table_options;
@@ -4466,7 +4471,7 @@ TEST_F(DBTest, GroupCommitTest) {
     Options options = CurrentOptions();
     options.env = env_;
     env_->log_write_slowdown_.store(100);
-    options.statistics = rocksdb::CreateDBStatistics();
+    options.statistics = rocksdb::CreateDBStatisticsForTests();
     Reopen(options);
 
     // Start threads
@@ -5691,442 +5696,6 @@ TEST_F(DBTest, DynamicMemtableOptions) {
 }
 #endif  // ROCKSDB_LITE
 
-#if ROCKSDB_USING_THREAD_STATUS
-namespace {
-void VerifyOperationCount(Env* env, ThreadStatus::OperationType op_type,
-                          int expected_count) {
-  int op_count = 0;
-  std::vector<ThreadStatus> thread_list;
-  ASSERT_OK(env->GetThreadList(&thread_list));
-  for (auto thread : thread_list) {
-    if (thread.operation_type == op_type) {
-      op_count++;
-    }
-  }
-  ASSERT_EQ(op_count, expected_count);
-}
-}  // namespace
-
-TEST_F(DBTest, GetThreadStatus) {
-  Options options;
-  options.env = env_;
-  options.enable_thread_tracking = true;
-  TryReopen(options);
-
-  std::vector<ThreadStatus> thread_list;
-  Status s = env_->GetThreadList(&thread_list);
-
-  for (int i = 0; i < 2; ++i) {
-    // repeat the test with differet number of high / low priority threads
-    const int kTestCount = 3;
-    const unsigned int kHighPriCounts[kTestCount] = {3, 2, 5};
-    const unsigned int kLowPriCounts[kTestCount] = {10, 15, 3};
-    for (int test = 0; test < kTestCount; ++test) {
-      // Change the number of threads in high / low priority pool.
-      env_->SetBackgroundThreads(kHighPriCounts[test], Env::HIGH);
-      env_->SetBackgroundThreads(kLowPriCounts[test], Env::LOW);
-      // Wait to ensure the all threads has been registered
-      env_->SleepForMicroseconds(100000);
-      s = env_->GetThreadList(&thread_list);
-      ASSERT_OK(s);
-      unsigned int thread_type_counts[ThreadStatus::NUM_THREAD_TYPES];
-      memset(thread_type_counts, 0, sizeof(thread_type_counts));
-      for (auto thread : thread_list) {
-        ASSERT_LT(thread.thread_type, ThreadStatus::NUM_THREAD_TYPES);
-        thread_type_counts[thread.thread_type]++;
-      }
-      // Verify the total number of threades
-      ASSERT_EQ(
-          thread_type_counts[ThreadStatus::HIGH_PRIORITY] +
-              thread_type_counts[ThreadStatus::LOW_PRIORITY],
-          kHighPriCounts[test] + kLowPriCounts[test]);
-      // Verify the number of high-priority threads
-      ASSERT_EQ(
-          thread_type_counts[ThreadStatus::HIGH_PRIORITY],
-          kHighPriCounts[test]);
-      // Verify the number of low-priority threads
-      ASSERT_EQ(
-          thread_type_counts[ThreadStatus::LOW_PRIORITY],
-          kLowPriCounts[test]);
-    }
-    if (i == 0) {
-      // repeat the test with multiple column families
-      CreateAndReopenWithCF({"pikachu", "about-to-remove"}, options);
-      env_->GetThreadStatusUpdater()->TEST_VerifyColumnFamilyInfoMap(
-          handles_, true);
-    }
-  }
-  db_->DropColumnFamily(handles_[2]);
-  delete handles_[2];
-  handles_.erase(handles_.begin() + 2);
-  env_->GetThreadStatusUpdater()->TEST_VerifyColumnFamilyInfoMap(
-      handles_, true);
-  Close();
-  env_->GetThreadStatusUpdater()->TEST_VerifyColumnFamilyInfoMap(
-      handles_, true);
-}
-
-TEST_F(DBTest, DisableThreadStatus) {
-  Options options;
-  options.env = env_;
-  options.enable_thread_tracking = false;
-  TryReopen(options);
-  CreateAndReopenWithCF({"pikachu", "about-to-remove"}, options);
-  // Verify non of the column family info exists
-  env_->GetThreadStatusUpdater()->TEST_VerifyColumnFamilyInfoMap(
-      handles_, false);
-}
-
-TEST_F(DBTest, ThreadStatusFlush) {
-  Options options;
-  options.env = env_;
-  options.write_buffer_size = 100000;  // Small write buffer
-  options.enable_thread_tracking = true;
-  options = CurrentOptions(options);
-
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
-      {"FlushJob::FlushJob()", "DBTest::ThreadStatusFlush:1"},
-      {"DBTest::ThreadStatusFlush:2",
-       "FlushJob::LogAndNotifyTableFileCreation()"},
-  });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
-
-  CreateAndReopenWithCF({"pikachu"}, options);
-  VerifyOperationCount(env_, ThreadStatus::OP_FLUSH, 0);
-
-  ASSERT_OK(Put(1, "foo", "v1"));
-  ASSERT_EQ("v1", Get(1, "foo"));
-  VerifyOperationCount(env_, ThreadStatus::OP_FLUSH, 0);
-
-  uint64_t num_running_flushes = 0;
-  db_->GetIntProperty(DB::Properties::kNumRunningFlushes, &num_running_flushes);
-  ASSERT_EQ(num_running_flushes, 0);
-
-  Put(1, "k1", std::string(100000, 'x'));  // Fill memtable
-  Put(1, "k2", std::string(100000, 'y'));  // Trigger flush
-
-  // The first sync point is to make sure there's one flush job
-  // running when we perform VerifyOperationCount().
-  TEST_SYNC_POINT("DBTest::ThreadStatusFlush:1");
-  VerifyOperationCount(env_, ThreadStatus::OP_FLUSH, 1);
-  db_->GetIntProperty(DB::Properties::kNumRunningFlushes, &num_running_flushes);
-  ASSERT_EQ(num_running_flushes, 1);
-  // This second sync point is to ensure the flush job will not
-  // be completed until we already perform VerifyOperationCount().
-  TEST_SYNC_POINT("DBTest::ThreadStatusFlush:2");
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-}
-
-TEST_P(DBTestWithParam, ThreadStatusSingleCompaction) {
-  const int kTestKeySize = 16;
-  const int kTestValueSize = 984;
-  const int kEntrySize = kTestKeySize + kTestValueSize;
-  const int kEntriesPerBuffer = 100;
-  Options options;
-  options.create_if_missing = true;
-  options.write_buffer_size = kEntrySize * kEntriesPerBuffer;
-  options.compaction_style = kCompactionStyleLevel;
-  options.target_file_size_base = options.write_buffer_size;
-  options.max_bytes_for_level_base = options.target_file_size_base * 2;
-  options.max_bytes_for_level_multiplier = 2;
-  options.compression = kNoCompression;
-  options = CurrentOptions(options);
-  options.env = env_;
-  options.enable_thread_tracking = true;
-  const int kNumL0Files = 4;
-  options.level0_file_num_compaction_trigger = kNumL0Files;
-  options.max_subcompactions = max_subcompactions_;
-
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
-      {"DBTest::ThreadStatusSingleCompaction:0", "DBImpl::BGWorkCompaction"},
-      {"CompactionJob::Run():Start", "DBTest::ThreadStatusSingleCompaction:1"},
-      {"DBTest::ThreadStatusSingleCompaction:2", "CompactionJob::Run():End"},
-  });
-  for (int tests = 0; tests < 2; ++tests) {
-    DestroyAndReopen(options);
-    rocksdb::SyncPoint::GetInstance()->ClearTrace();
-    rocksdb::SyncPoint::GetInstance()->EnableProcessing();
-
-    Random rnd(301);
-    // The Put Phase.
-    for (int file = 0; file < kNumL0Files; ++file) {
-      for (int key = 0; key < kEntriesPerBuffer; ++key) {
-        ASSERT_OK(Put(ToString(key + file * kEntriesPerBuffer),
-                      RandomString(&rnd, kTestValueSize)));
-      }
-      Flush();
-    }
-    // This makes sure a compaction won't be scheduled until
-    // we have done with the above Put Phase.
-    uint64_t num_running_compactions = 0;
-    db_->GetIntProperty(DB::Properties::kNumRunningCompactions,
-                        &num_running_compactions);
-    ASSERT_EQ(num_running_compactions, 0);
-    TEST_SYNC_POINT("DBTest::ThreadStatusSingleCompaction:0");
-    ASSERT_GE(NumTableFilesAtLevel(0),
-              options.level0_file_num_compaction_trigger);
-
-    // This makes sure at least one compaction is running.
-    TEST_SYNC_POINT("DBTest::ThreadStatusSingleCompaction:1");
-
-    if (options.enable_thread_tracking) {
-      // expecting one single L0 to L1 compaction
-      VerifyOperationCount(env_, ThreadStatus::OP_COMPACTION, 1);
-    } else {
-      // If thread tracking is not enabled, compaction count should be 0.
-      VerifyOperationCount(env_, ThreadStatus::OP_COMPACTION, 0);
-    }
-    db_->GetIntProperty(DB::Properties::kNumRunningCompactions,
-                        &num_running_compactions);
-    ASSERT_EQ(num_running_compactions, 1);
-    // TODO(yhchiang): adding assert to verify each compaction stage.
-    TEST_SYNC_POINT("DBTest::ThreadStatusSingleCompaction:2");
-
-    // repeat the test with disabling thread tracking.
-    options.enable_thread_tracking = false;
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-  }
-}
-
-TEST_P(DBTestWithParam, PreShutdownManualCompaction) {
-  Options options = CurrentOptions();
-  options.max_background_flushes = 0;
-  options.max_subcompactions = max_subcompactions_;
-  CreateAndReopenWithCF({"pikachu"}, options);
-
-  // iter - 0 with 7 levels
-  // iter - 1 with 3 levels
-  for (int iter = 0; iter < 2; ++iter) {
-    MakeTables(3, "p", "q", 1);
-    ASSERT_EQ("1,1,1", FilesPerLevel(1));
-
-    // Compaction range falls before files
-    Compact(1, "", "c");
-    ASSERT_EQ("1,1,1", FilesPerLevel(1));
-
-    // Compaction range falls after files
-    Compact(1, "r", "z");
-    ASSERT_EQ("1,1,1", FilesPerLevel(1));
-
-    // Compaction range overlaps files
-    Compact(1, "p1", "p9");
-    ASSERT_EQ("0,0,1", FilesPerLevel(1));
-
-    // Populate a different range
-    MakeTables(3, "c", "e", 1);
-    ASSERT_EQ("1,1,2", FilesPerLevel(1));
-
-    // Compact just the new range
-    Compact(1, "b", "f");
-    ASSERT_EQ("0,0,2", FilesPerLevel(1));
-
-    // Compact all
-    MakeTables(1, "a", "z", 1);
-    ASSERT_EQ("1,0,2", FilesPerLevel(1));
-    CancelAllBackgroundWork(db_);
-    db_->CompactRange(CompactRangeOptions(), handles_[1], nullptr, nullptr);
-    ASSERT_EQ("1,0,2", FilesPerLevel(1));
-
-    if (iter == 0) {
-      options = CurrentOptions();
-      options.max_background_flushes = 0;
-      options.num_levels = 3;
-      options.create_if_missing = true;
-      DestroyAndReopen(options);
-      CreateAndReopenWithCF({"pikachu"}, options);
-    }
-  }
-}
-
-TEST_F(DBTest, PreShutdownFlush) {
-  Options options = CurrentOptions();
-  options.max_background_flushes = 0;
-  CreateAndReopenWithCF({"pikachu"}, options);
-  ASSERT_OK(Put(1, "key", "value"));
-  CancelAllBackgroundWork(db_);
-  Status s =
-      db_->CompactRange(CompactRangeOptions(), handles_[1], nullptr, nullptr);
-  ASSERT_TRUE(s.IsShutdownInProgress());
-}
-
-TEST_P(DBTestWithParam, PreShutdownMultipleCompaction) {
-  const int kTestKeySize = 16;
-  const int kTestValueSize = 984;
-  const int kEntrySize = kTestKeySize + kTestValueSize;
-  const int kEntriesPerBuffer = 40;
-  const int kNumL0Files = 4;
-
-  const int kHighPriCount = 3;
-  const int kLowPriCount = 5;
-  env_->SetBackgroundThreads(kHighPriCount, Env::HIGH);
-  env_->SetBackgroundThreads(kLowPriCount, Env::LOW);
-
-  Options options;
-  options.create_if_missing = true;
-  options.write_buffer_size = kEntrySize * kEntriesPerBuffer;
-  options.compaction_style = kCompactionStyleLevel;
-  options.target_file_size_base = options.write_buffer_size;
-  options.max_bytes_for_level_base =
-      options.target_file_size_base * kNumL0Files;
-  options.compression = kNoCompression;
-  options = CurrentOptions(options);
-  options.env = env_;
-  options.enable_thread_tracking = true;
-  options.level0_file_num_compaction_trigger = kNumL0Files;
-  options.max_bytes_for_level_multiplier = 2;
-  options.max_background_compactions = kLowPriCount;
-  options.level0_stop_writes_trigger = 1 << 10;
-  options.level0_slowdown_writes_trigger = 1 << 10;
-  options.max_subcompactions = max_subcompactions_;
-
-  TryReopen(options);
-  Random rnd(301);
-
-  std::vector<ThreadStatus> thread_list;
-  // Delay both flush and compaction
-  rocksdb::SyncPoint::GetInstance()->LoadDependency(
-      {{"FlushJob::FlushJob()", "CompactionJob::Run():Start"},
-       {"CompactionJob::Run():Start",
-        "DBTest::PreShutdownMultipleCompaction:Preshutdown"},
-        {"CompactionJob::Run():Start",
-        "DBTest::PreShutdownMultipleCompaction:VerifyCompaction"},
-       {"DBTest::PreShutdownMultipleCompaction:Preshutdown",
-        "CompactionJob::Run():End"},
-       {"CompactionJob::Run():End",
-        "DBTest::PreShutdownMultipleCompaction:VerifyPreshutdown"}});
-
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
-
-  // Make rocksdb busy
-  int key = 0;
-  // check how many threads are doing compaction using GetThreadList
-  int operation_count[ThreadStatus::NUM_OP_TYPES] = {0};
-  for (int file = 0; file < 16 * kNumL0Files; ++file) {
-    for (int k = 0; k < kEntriesPerBuffer; ++k) {
-      ASSERT_OK(Put(ToString(key++), RandomString(&rnd, kTestValueSize)));
-    }
-
-    Status s = env_->GetThreadList(&thread_list);
-    for (auto thread : thread_list) {
-      operation_count[thread.operation_type]++;
-    }
-
-    // Speed up the test
-    if (operation_count[ThreadStatus::OP_FLUSH] > 1 &&
-        operation_count[ThreadStatus::OP_COMPACTION] >
-            0.6 * options.max_background_compactions) {
-      break;
-    }
-    if (file == 15 * kNumL0Files) {
-      TEST_SYNC_POINT("DBTest::PreShutdownMultipleCompaction:Preshutdown");
-    }
-  }
-
-  TEST_SYNC_POINT("DBTest::PreShutdownMultipleCompaction:Preshutdown");
-  ASSERT_GE(operation_count[ThreadStatus::OP_COMPACTION], 1);
-  CancelAllBackgroundWork(db_);
-  TEST_SYNC_POINT("DBTest::PreShutdownMultipleCompaction:VerifyPreshutdown");
-  dbfull()->TEST_WaitForCompact();
-  // Record the number of compactions at a time.
-  for (int i = 0; i < ThreadStatus::NUM_OP_TYPES; ++i) {
-    operation_count[i] = 0;
-  }
-  Status s = env_->GetThreadList(&thread_list);
-  for (auto thread : thread_list) {
-    operation_count[thread.operation_type]++;
-  }
-  ASSERT_EQ(operation_count[ThreadStatus::OP_COMPACTION], 0);
-}
-
-TEST_P(DBTestWithParam, PreShutdownCompactionMiddle) {
-  const int kTestKeySize = 16;
-  const int kTestValueSize = 984;
-  const int kEntrySize = kTestKeySize + kTestValueSize;
-  const int kEntriesPerBuffer = 40;
-  const int kNumL0Files = 4;
-
-  const int kHighPriCount = 3;
-  const int kLowPriCount = 5;
-  env_->SetBackgroundThreads(kHighPriCount, Env::HIGH);
-  env_->SetBackgroundThreads(kLowPriCount, Env::LOW);
-
-  Options options;
-  options.create_if_missing = true;
-  options.write_buffer_size = kEntrySize * kEntriesPerBuffer;
-  options.compaction_style = kCompactionStyleLevel;
-  options.target_file_size_base = options.write_buffer_size;
-  options.max_bytes_for_level_base =
-      options.target_file_size_base * kNumL0Files;
-  options.compression = kNoCompression;
-  options = CurrentOptions(options);
-  options.env = env_;
-  options.enable_thread_tracking = true;
-  options.level0_file_num_compaction_trigger = kNumL0Files;
-  options.max_bytes_for_level_multiplier = 2;
-  options.max_background_compactions = kLowPriCount;
-  options.level0_stop_writes_trigger = 1 << 10;
-  options.level0_slowdown_writes_trigger = 1 << 10;
-  options.max_subcompactions = max_subcompactions_;
-
-  TryReopen(options);
-  Random rnd(301);
-
-  std::vector<ThreadStatus> thread_list;
-  // Delay both flush and compaction
-  rocksdb::SyncPoint::GetInstance()->LoadDependency(
-      {{"DBTest::PreShutdownCompactionMiddle:Preshutdown",
-        "CompactionJob::Run():Inprogress"},
-        {"CompactionJob::Run():Start",
-        "DBTest::PreShutdownCompactionMiddle:VerifyCompaction"},
-       {"CompactionJob::Run():Inprogress", "CompactionJob::Run():End"},
-       {"CompactionJob::Run():End",
-        "DBTest::PreShutdownCompactionMiddle:VerifyPreshutdown"}});
-
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
-
-  // Make rocksdb busy
-  int key = 0;
-  // check how many threads are doing compaction using GetThreadList
-  int operation_count[ThreadStatus::NUM_OP_TYPES] = {0};
-  for (int file = 0; file < 16 * kNumL0Files; ++file) {
-    for (int k = 0; k < kEntriesPerBuffer; ++k) {
-      ASSERT_OK(Put(ToString(key++), RandomString(&rnd, kTestValueSize)));
-    }
-
-    Status s = env_->GetThreadList(&thread_list);
-    for (auto thread : thread_list) {
-      operation_count[thread.operation_type]++;
-    }
-
-    // Speed up the test
-    if (operation_count[ThreadStatus::OP_FLUSH] > 1 &&
-        operation_count[ThreadStatus::OP_COMPACTION] >
-            0.6 * options.max_background_compactions) {
-      break;
-    }
-    if (file == 15 * kNumL0Files) {
-      TEST_SYNC_POINT("DBTest::PreShutdownCompactionMiddle:VerifyCompaction");
-    }
-  }
-
-  ASSERT_GE(operation_count[ThreadStatus::OP_COMPACTION], 1);
-  CancelAllBackgroundWork(db_);
-  TEST_SYNC_POINT("DBTest::PreShutdownCompactionMiddle:Preshutdown");
-  TEST_SYNC_POINT("DBTest::PreShutdownCompactionMiddle:VerifyPreshutdown");
-  dbfull()->TEST_WaitForCompact();
-  // Record the number of compactions at a time.
-  for (int i = 0; i < ThreadStatus::NUM_OP_TYPES; ++i) {
-    operation_count[i] = 0;
-  }
-  Status s = env_->GetThreadList(&thread_list);
-  for (auto thread : thread_list) {
-    operation_count[thread.operation_type]++;
-  }
-  ASSERT_EQ(operation_count[ThreadStatus::OP_COMPACTION], 0);
-}
-
-#endif  // ROCKSDB_USING_THREAD_STATUS
-
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, FlushOnDestroy) {
   WriteOptions wo;
@@ -6623,7 +6192,7 @@ TEST_F(DBTest, DynamicMiscOptions) {
   options.create_if_missing = true;
   options.max_sequential_skip_in_iterations = 16;
   options.compression = kNoCompression;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   DestroyAndReopen(options);
 
   auto assert_reseek_count = [this, &options](int key_start, int num_reseek) {
@@ -6678,7 +6247,7 @@ TEST_F(DBTest, L0L1L2AndUpHitCounter) {
   options.max_write_buffer_number = 2;
   options.max_background_compactions = 8;
   options.max_background_flushes = 8;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   CreateAndReopenWithCF({"mypikachu"}, options);
 
   int numkeys = 20000;
@@ -6753,30 +6322,11 @@ TEST_F(DBTest, EncodeDecompressedBlockSizeTest) {
 TEST_F(DBTest, MutexWaitStatsDisabledByDefault) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   CreateAndReopenWithCF({"pikachu"}, options);
   const uint64_t kMutexWaitDelay = 100;
-  ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT,
-                                       kMutexWaitDelay);
   ASSERT_OK(Put("hello", "rocksdb"));
   ASSERT_EQ(TestGetTickerCount(options, DB_MUTEX_WAIT_MICROS), 0);
-  ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT, 0);
-}
-
-TEST_F(DBTest, MutexWaitStats) {
-  Options options = CurrentOptions();
-  options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
-  options.statistics->stats_level_ = StatsLevel::kAll;
-  CreateAndReopenWithCF({"pikachu"}, options);
-  const uint64_t kMutexWaitDelay = 100;
-  ThreadStatusUtil::TEST_SetStateDelay(
-      ThreadStatus::STATE_MUTEX_WAIT, kMutexWaitDelay);
-  ASSERT_OK(Put("hello", "rocksdb"));
-  ASSERT_GE(TestGetTickerCount(
-            options, DB_MUTEX_WAIT_MICROS), kMutexWaitDelay);
-  ThreadStatusUtil::TEST_SetStateDelay(
-      ThreadStatus::STATE_MUTEX_WAIT, 0);
 }
 
 TEST_F(DBTest, CloseSpeedup) {
@@ -6865,7 +6415,7 @@ TEST_F(DBTest, MergeTestTime) {
   this->env_->no_sleep_ = true;
   Options options;
   options = CurrentOptions(options);
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.merge_operator.reset(new DelayedMergeOperator(this));
   DestroyAndReopen(options);
 
@@ -6895,9 +6445,6 @@ TEST_F(DBTest, MergeTestTime) {
 
   ASSERT_EQ(1, count);
   ASSERT_EQ(2000000, TestGetTickerCount(options, MERGE_OPERATION_TOTAL_TIME));
-#if ROCKSDB_USING_THREAD_STATUS
-  ASSERT_GT(TestGetTickerCount(options, FLUSH_WRITE_BYTES), 0);
-#endif  // ROCKSDB_USING_THREAD_STATUS
   this->env_->time_elapse_only_sleep_ = false;
 }
 
@@ -6907,7 +6454,7 @@ TEST_P(DBTestWithParam, MergeCompactionTimeTest) {
   Options options;
   options = CurrentOptions(options);
   options.compaction_filter_factory = std::make_shared<KeepFilterFactory>();
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.merge_operator.reset(new DelayedMergeOperator(this));
   options.compaction_style = kCompactionStyleUniversal;
   options.max_subcompactions = max_subcompactions_;
@@ -6929,7 +6476,7 @@ TEST_P(DBTestWithParam, FilterCompactionTimeTest) {
       std::make_shared<DelayFilterFactory>(this);
   options.disable_auto_compactions = true;
   options.create_if_missing = true;
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.max_subcompactions = max_subcompactions_;
   options = CurrentOptions(options);
   DestroyAndReopen(options);
@@ -7605,7 +7152,7 @@ TEST_F(DBTest, FailWhenCompressionNotSupportedTest) {
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, RowCache) {
   Options options = CurrentOptions();
-  options.statistics = rocksdb::CreateDBStatistics();
+  options.statistics = rocksdb::CreateDBStatisticsForTests();
   options.row_cache = NewLRUCache(8192);
   DestroyAndReopen(options);
 
@@ -8953,11 +8500,59 @@ TEST_F(DBTest, WalFilterTestWithChangeBatchExtraKeys) {
 }
 #endif  // ROCKSDB_LITE
 
+// Test for https://github.com/yugabyte/yugabyte-db/issues/8919.
+// Schedules flush after CancelAllBackgroundWork call.
+TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
+  FLAGS_use_priority_thread_pool_for_compactions = true;
+  constexpr auto kMaxBackgroundCompactions = 1;
+  constexpr auto kWriteBufferSize = 64_KB;
+  constexpr auto kValueSize = 2_KB;
+
+  for (const auto use_priority_thread_pool_for_flushes : {false, true}) {
+    LOG(INFO) << "use_priority_thread_pool_for_flushes: " << use_priority_thread_pool_for_flushes;
+    FLAGS_use_priority_thread_pool_for_flushes = use_priority_thread_pool_for_flushes;
+
+    yb::PriorityThreadPool thread_pool(kMaxBackgroundCompactions);
+    Options options = CurrentOptions();
+    options.create_if_missing = true;
+    options.priority_thread_pool_for_compactions_and_flushes = &thread_pool;
+    options.compression = kNoCompression;
+    options.write_buffer_size = kWriteBufferSize;
+    options.arena_block_size = kValueSize;
+    options.log_prefix = yb::Format(
+        "TEST_use_priority_thread_pool_for_flushes_$0: ", use_priority_thread_pool_for_flushes);
+    options.info_log_level = InfoLogLevel::INFO_LEVEL;
+    options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
+
+    DestroyAndReopen(options);
+
+    WriteOptions wo;
+    wo.disableWAL = true;
+
+    LOG(INFO) << "Writing data...";
+    Random rnd(301);
+    int key = 0;
+    while (key * kValueSize < kWriteBufferSize) {
+      ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
+    }
+
+    db_->SetDisableFlushOnShutdown(true);
+    CancelAllBackgroundWork(db_);
+
+    // Write one more key, that should trigger scheduling flush.
+    ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
+    LOG(INFO) << "Writing data - done";
+
+    Close();
+  }
+}
+
 }  // namespace rocksdb
 
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  google::ParseCommandLineNonHelpFlags(&argc, &argv, /* remove_flags */ true);
   return RUN_ALL_TESTS();
 }

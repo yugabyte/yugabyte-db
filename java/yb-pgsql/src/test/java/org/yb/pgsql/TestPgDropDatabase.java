@@ -25,8 +25,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.client.TestUtils;
-import org.yb.pgsql.cleaners.ClusterCleaner;
-import org.yb.pgsql.cleaners.DatabaseCleaner;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import com.google.common.net.HostAndPort;
@@ -38,13 +36,6 @@ public class TestPgDropDatabase extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
-  }
-
-  @Override
-  protected List<ClusterCleaner> getCleaners() {
-    List<ClusterCleaner> cleaners = super.getCleaners();
-    cleaners.add(0, new DatabaseCleaner());
-    return cleaners;
   }
 
   public void createDatabaseObjects(Connection cxn) throws Exception {

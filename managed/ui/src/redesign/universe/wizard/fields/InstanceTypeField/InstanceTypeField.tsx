@@ -11,7 +11,21 @@ import { CloudType, InstanceType } from '../../../../helpers/dtos';
 import { InstanceConfigFormValue } from '../../steps/instance/InstanceConfig';
 import { WizardContext } from '../../UniverseWizard';
 import { ControllerRenderProps } from '../../../../helpers/types';
+import { translate } from '../../../../uikit/I18n/I18n';
 import './InstanceTypeField.scss';
+
+export const AZURE_INSTANCE_TYPE_GROUPS = {
+  'B-Series': /^standard_b.+/i,
+  'D-Series': /^standard_d.+/i,
+  'E-Series': /^standard_e.+/i,
+  'F-Series': /^standard_f.+/i,
+  'GS-Series': /^standard_gs.+/i,
+  'H-Series': /^standard_h.+/i,
+  'L-Series': /^standard_l.+/i,
+  'M-Series': /^standard_m.+/i,
+  'N-Series': /^standard_n.+/i,
+  'P-Series': /^standard_p.+/i
+};
 
 const getOptionLabel = (option: InstanceType): string => {
   let result = option.instanceTypeCode;
@@ -34,7 +48,10 @@ const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): GroupType<Insta
       case CloudType.gcp:
         return instanceTypeCode.split('-')[0]; // n1-standard-1 --> n1
       case CloudType.azu:
-        return instanceTypeCode.split('_')[1]; // Standard_NV24s_v3 --> NV24s
+        for (const [groupName, regexp] of Object.entries(AZURE_INSTANCE_TYPE_GROUPS)) {
+          if (regexp.test(instanceTypeCode)) return groupName;
+        }
+        return translate('Other');
       default:
         return '';
     }

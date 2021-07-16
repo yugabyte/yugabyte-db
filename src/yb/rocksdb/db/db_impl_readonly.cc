@@ -171,10 +171,6 @@ Status DB::OpenForReadOnly(
   impl->mutex_.Unlock();
   if (s.ok()) {
     *dbptr = impl;
-    for (auto* h : *handles) {
-      impl->NewThreadStatusCfInfo(
-          reinterpret_cast<ColumnFamilyHandleImpl*>(h)->cfd());
-    }
   } else {
     for (auto h : *handles) {
       delete h;

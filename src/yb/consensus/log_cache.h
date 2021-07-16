@@ -38,9 +38,9 @@
 #include <vector>
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 
 #include "yb/util/async_util.h"
@@ -54,11 +54,6 @@ namespace yb {
 
 class MetricEntity;
 class MemTracker;
-
-namespace log {
-class Log;
-class LogReader;
-} // namespace log
 
 namespace consensus {
 
@@ -79,7 +74,7 @@ struct ReadOpsResult {
 class LogCache {
  public:
   LogCache(const scoped_refptr<MetricEntity>& metric_entity,
-           const scoped_refptr<log::Log>& log,
+           const log::LogPtr& log,
            const std::shared_ptr<MemTracker>& server_tracker,
            const std::string& local_uuid,
            const std::string& tablet_id);
@@ -172,7 +167,7 @@ class LogCache {
 
   CHECKED_STATUS FlushIndex();
 
-  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
+  Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
@@ -218,9 +213,9 @@ class LogCache {
     int64_t last_idx_in_batch = -1;
   };
 
-  Result<PrepareAppendResult> PrepareAppendOperations(const ReplicateMsgs& msgs);
+  PrepareAppendResult PrepareAppendOperations(const ReplicateMsgs& msgs);
 
-  scoped_refptr<log::Log> const log_;
+  log::LogPtr const log_;
 
   // The UUID of the local peer.
   const std::string local_uuid_;

@@ -69,6 +69,7 @@
 #include "yb/util/random.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/thread.h"
@@ -467,7 +468,8 @@ Status Log::Open(const LogOptions &options,
                  const std::string& peer_uuid,
                  const Schema& schema,
                  uint32_t schema_version,
-                 const scoped_refptr<MetricEntity>& metric_entity,
+                 const scoped_refptr<MetricEntity>& table_metric_entity,
+                 const scoped_refptr<MetricEntity>& tablet_metric_entity,
                  ThreadPool* append_thread_pool,
                  ThreadPool* allocation_thread_pool,
                  int64_t cdc_min_replicated_index,
@@ -486,7 +488,8 @@ Status Log::Open(const LogOptions &options,
                                      peer_uuid,
                                      schema,
                                      schema_version,
-                                     metric_entity,
+                                     table_metric_entity,
+                                     tablet_metric_entity,
                                      append_thread_pool,
                                      allocation_thread_pool,
                                      create_new_segment));
@@ -502,7 +505,8 @@ Log::Log(
     string peer_uuid,
     const Schema& schema,
     uint32_t schema_version,
-    const scoped_refptr<MetricEntity>& metric_entity,
+    const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* append_thread_pool,
     ThreadPool* allocation_thread_pool,
     CreateNewSegment create_new_segment)
@@ -525,13 +529,14 @@ Log::Log(
       bytes_durable_wal_write_mb_(options_.bytes_durable_wal_write_mb),
       sync_disabled_(false),
       allocation_state_(kAllocationNotStarted),
-      metric_entity_(metric_entity),
+      table_metric_entity_(table_metric_entity),
+      tablet_metric_entity_(tablet_metric_entity),
       on_disk_size_(0),
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
       create_new_segment_at_start_(create_new_segment) {
   set_wal_retention_secs(options.retention_secs);
-  if (metric_entity_) {
-    metrics_.reset(new LogMetrics(metric_entity_));
+  if (table_metric_entity_ && tablet_metric_entity_) {
+    metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
   }
 }
 
@@ -546,7 +551,8 @@ Status Log::Init() {
                                 tablet_id_,
                                 wal_dir_,
                                 peer_uuid_,
-                                metric_entity_.get(),
+                                table_metric_entity_.get(),
+                                tablet_metric_entity_.get(),
                                 &reader_));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
@@ -559,6 +565,15 @@ Status Log::Init() {
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
     LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
+
+    // In case where TServer process reboots, we need to reload the wal file size into the metric,
+    // otherwise we do nothing
+    if (metrics_ && metrics_->wal_size->value() == 0) {
+      std::for_each(segments.begin(), segments.end(),
+                    [this](const auto& segment) {
+                    this->metrics_->wal_size->IncrementBy(segment->file_size());});
+    }
+
   }
 
   if (durable_wal_write_) {
@@ -597,11 +612,18 @@ Status Log::CloseCurrentSegment() {
                       << ": " << footer_builder_.ShortDebugString();
 
   footer_builder_.set_close_timestamp_micros(GetCurrentTimeMicros());
-  return active_segment_->WriteFooterAndClose(footer_builder_);
+
+  auto status = active_segment_->WriteFooterAndClose(footer_builder_);
+
+  if (status.ok() && metrics_) {
+      metrics_->wal_size->IncrementBy(active_segment_->Size());
+  }
+  return status;
 }
 
 Status Log::RollOver() {
   SCOPED_LATENCY_METRIC(metrics_, roll_latency);
+  RSTATUS_DCHECK(active_segment_, InternalError, "Called RollOver without active segment.");
 
   // Check if any errors have occurred during allocation
   RETURN_NOT_OK(allocation_status_.Get());
@@ -620,7 +642,7 @@ Status Log::RollOver() {
   return Status::OK();
 }
 
-Status Log::Reserve(LogEntryTypePB type,
+void Log::Reserve(LogEntryTypePB type,
                     LogEntryBatchPB* entry_batch,
                     LogEntryBatch** reserved_entry) {
   TRACE_EVENT0("log", "Log::Reserve");
@@ -647,7 +669,6 @@ Status Log::Reserve(LogEntryTypePB type,
   // TODO (perf) Use a ring buffer instead of a blocking queue and set
   // 'reserved_entry' to a pre-allocated slot in the buffer.
   *reserved_entry = new_entry_batch.release();
-  return Status::OK();
 }
 
 Status Log::TEST_AsyncAppendWithReplicates(
@@ -693,7 +714,7 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
   }
 
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(REPLICATE, &batch, &reserved_entry_batch));
+  Reserve(REPLICATE, &batch, &reserved_entry_batch);
 
   // If we're able to reserve, set the vector of replicate shared pointers in the LogEntryBatch.
   // This will make sure there's a reference for each replicate while we're appending.
@@ -1030,7 +1051,7 @@ Status Log::WaitUntilAllFlushed() {
   LogEntryBatchPB entry_batch;
   entry_batch.add_entry()->set_type(log::FLUSH_MARKER);
   LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch));
+  Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch);
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
   return s.Wait();
@@ -1130,6 +1151,10 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
                             << " (GCed ops < " << min_op_idx << ")";
       RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
       (*num_gced)++;
+
+      if (metrics_) {
+        metrics_->wal_size->IncrementBy(-1 * segment->file_size());
+      }
     }
 
     // Determine the minimum remaining replicate index in order to properly GC the index chunks.
@@ -1295,7 +1320,7 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
                         Format("Failed to create tablet WAL dir $0", dest_wal_dir));
   // Make sure log segments we have so far are immutable, so we can hardlink them instead of
   // copying.
-  if (footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
+  if (active_segment_ && footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
     // If active log segment has entries - close it and rollover to next one, so this one become
     // immutable. If active log segment empty - we will just skip it.
     RETURN_NOT_OK(AllocateSegmentAndRollOver());
@@ -1305,8 +1330,9 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
   auto* const env = options_.env;
   const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
 
-  const auto active_segment_filename =
-      FsManager::GetWalSegmentFileName(active_segment_sequence_number_);
+  boost::optional<std::string> active_segment_filename = active_segment_
+      ? boost::make_optional(FsManager::GetWalSegmentFileName(active_segment_sequence_number_))
+      : boost::none;
 
   for (const auto& file : files) {
     const auto src_path = JoinPathSegments(wal_dir_, file);
@@ -1531,10 +1557,7 @@ Status LogEntryBatch::Serialize() {
   total_size_bytes_ = entry_batch_pb_.ByteSize();
   buffer_.reserve(total_size_bytes_);
 
-  if (!pb_util::AppendToString(entry_batch_pb_, &buffer_)) {
-    return STATUS(IOError, Substitute("unable to serialize the entry batch, contents: $1",
-                                      entry_batch_pb_.DebugString()));
-  }
+  pb_util::AppendToString(entry_batch_pb_, &buffer_);
 
   state_ = kEntrySerialized;
   return Status::OK();

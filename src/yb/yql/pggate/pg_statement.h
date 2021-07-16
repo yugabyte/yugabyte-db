@@ -54,6 +54,7 @@ enum class StmtOp {
   STMT_ALTER_DATABASE,
   STMT_CREATE_TABLEGROUP,
   STMT_DROP_TABLEGROUP,
+  STMT_ANALYZE,
 };
 
 class PgStatement : public PgMemctx::Registrable {
@@ -80,10 +81,6 @@ class PgStatement : public PgMemctx::Registrable {
   //------------------------------------------------------------------------------------------------
   // Add expressions that are belong to this statement.
   void AddExpr(PgExpr::SharedPtr expr);
-
-  //------------------------------------------------------------------------------------------------
-  // Clear all values and expressions that were bound to the given statement.
-  virtual CHECKED_STATUS ClearBinds() = 0;
 
  protected:
   // YBSession that this statement belongs to.

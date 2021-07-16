@@ -11,14 +11,15 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
+from azure.mgmt.privatedns import PrivateDnsManagementClient
 from msrestazure.azure_exceptions import CloudError
-from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key, wait_for_ssh
+from ybops.utils import validated_key_file, format_rsa_key, DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
+    MIN_NUM_CORES
 from ybops.common.exceptions import YBOpsRuntimeError
 
 import logging
 import os
 import re
-from collections import defaultdict
 import requests
 import adal
 import json
@@ -36,6 +37,12 @@ YUGABYTE_SUBNET_PREFIX = "yugabyte-subnet-{}"
 YUGABYTE_SG_PREFIX = "yugabyte-sg-{}"
 YUGABYTE_PEERING_FORMAT = "yugabyte-peering-{}-{}"
 RESOURCE_SKU_URL = "https://management.azure.com/subscriptions/{}/providers/Microsoft.Compute/skus".format(SUBSCRIPTION_ID)
+GALLERY_IMAGE_ID_REGEX = re.compile("/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)/providers/Microsoft.Compute/galleries/(?P<gallery_name>[^/]*)/images/(?P<image_definition_name>[^/]*)/versions/(?P<version_id>[^/]*)")
+VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
+    "serviceFamily eq 'Compute' " \
+    "and serviceName eq 'Virtual Machines' and priceType eq 'Consumption' " \
+    "and armRegionName eq '{}'"
+PRIVATE_DNS_ZONE_ID_REGEX = re.compile("/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
 
 
 def get_credentials():
@@ -52,7 +59,7 @@ def create_resource_group(resource_group, region):
     if resource_group_client.resource_groups.check_existence(resource_group):
         return
     resource_group_params = {'location': region}
-    return self.resource_group_client.resource_groups.create_or_update(
+    return resource_group_client.resource_groups.create_or_update(
         RESOURCE_GROUP,
         resource_group_params
     )
@@ -281,27 +288,31 @@ class AzureCloudAdmin():
         self.credentials = get_credentials()
         self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
         self.network_client = NetworkManagementClient(self.credentials, SUBSCRIPTION_ID)
+        self.dns_client = PrivateDnsManagementClient(self.credentials, SUBSCRIPTION_ID)
 
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
 
-    def appendDisk(self, vm, vm_name, disk_name, size, lun, zone, vol_type, region):
+    def appendDisk(self, vm, vm_name, disk_name, size, lun, zone, vol_type, region, tags):
+        disk_params = {
+            "location": region,
+            "disk_size_gb": size,
+            "creation_data": {
+                "create_option": DiskCreateOption.empty
+            },
+            "sku": {
+                "name": AZURE_SKU_FORMAT[vol_type]
+            }
+        }
+        if zone is not None:
+            disk_params["zones"] = [zone]
+        if tags:
+            disk_params["tags"] = tags
+
         data_disk = self.compute_client.disks.create_or_update(
             RESOURCE_GROUP,
             disk_name,
-            {
-                "location": region,
-                "disk_size_gb": size,
-                "creation_data": {
-                    "create_option": DiskCreateOption.empty
-                },
-                "sku": {
-                    "name": AZURE_SKU_FORMAT[vol_type]
-                },
-                "zones": [
-                    zone
-                ]
-            }
+            disk_params
         ).result()
 
         vm.storage_profile.data_disks.append({
@@ -323,23 +334,51 @@ class AzureCloudAdmin():
         async_disk_attach.wait()
         return async_disk_attach.result()
 
+    def tag_disks(self, vm, tags):
+        # Updating requires Disk as input rather than OSDisk. Retrieve Disk class with OSDisk name.
+        disk = self.compute_client.disks.get(
+            RESOURCE_GROUP,
+            vm.storage_profile.os_disk.name
+        )
+        disk.tags = tags
+        self.compute_client.disks.create_or_update(
+            RESOURCE_GROUP,
+            disk.name,
+            disk
+        )
+
+        for disk in vm.storage_profile.data_disks:
+            # The data disk returned from vm.storage_profile can't be deserialized properly.
+            disk = self.compute_client.disks.get(
+                RESOURCE_GROUP,
+                disk.name
+            )
+            disk.tags = tags
+            self.compute_client.disks.create_or_update(
+                RESOURCE_GROUP,
+                disk.name,
+                disk
+            )
+
     def get_public_ip_name(self, vm_name):
         return vm_name + '-IP'
 
     def get_nic_name(self, vm_name):
         return vm_name + '-NIC'
 
-    def create_public_ip_address(self, vm_name, zone, region):
+    def create_or_update_public_ip_address(self, vm_name, zone, region, tags):
         public_ip_addess_params = {
             "location": region,
             "sku": {
                 "name": "Standard"  # Only standard SKU supports zone
             },
             "public_ip_allocation_method": "Static",
-            "zones": [
-                zone
-            ]
         }
+        if zone is not None:
+            public_ip_addess_params["zones"] = [zone]
+        if tags:
+            public_ip_addess_params["tags"] = tags
+
         creation_result = self.network_client.public_ip_addresses.create_or_update(
             RESOURCE_GROUP,
             self.get_public_ip_name(vm_name),
@@ -347,7 +386,7 @@ class AzureCloudAdmin():
         )
         return creation_result.result()
 
-    def create_nic(self, vm_name, vnet, subnet, zone, nsg, region, public_ip):
+    def create_or_update_nic(self, vm_name, vnet, subnet, zone, nsg, region, public_ip, tags):
         """
         Creates network interface and returns the id of the resource for use in
         vm creation.
@@ -364,10 +403,12 @@ class AzureCloudAdmin():
             }],
         }
         if public_ip:
-            publicIPAddress = self.create_public_ip_address(vm_name, zone, region)
+            publicIPAddress = self.create_or_update_public_ip_address(vm_name, zone, region, tags)
             nic_params["ip_configurations"][0]["public_ip_address"] = publicIPAddress
         if nsg:
             nic_params['networkSecurityGroup'] = {'id': self.get_nsg_id(nsg)}
+        if tags:
+            nic_params['tags'] = tags
         creation_result = self.network_client.network_interfaces.create_or_update(
             RESOURCE_GROUP,
             self.get_nic_name(vm_name),
@@ -448,18 +489,30 @@ class AzureCloudAdmin():
         result = params.get("tags", {})
         result[key] = value
         params["tags"] = result
+        params["storage_profile"]["osDisk"]["tags"] = result
         return params
 
-    def create_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
-                  instance_type, ssh_user, image, nsg, pub, offer, sku, vol_type, server_type,
-                  region, nic_id):
-        try:
-            return self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
-        except CloudError:
-            pass
-
+    def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
+                            instance_type, ssh_user, nsg, image, vol_type, server_type,
+                            region, nic_id, tags, is_edit=False):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
+
+        shared_gallery_image_match = GALLERY_IMAGE_ID_REGEX.match(image)
+        if shared_gallery_image_match:
+            image_reference = {
+                "id": image
+            }
+        else:
+            # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
+            pub, offer, sku, version = image.split(':')
+            image_reference = {
+                "publisher": pub,
+                "offer": offer,
+                "sku": sku,
+                "version": version
+            }
+
         vm_parameters = {
             "location": region,
             "os_profile": {
@@ -485,28 +538,24 @@ class AzureCloudAdmin():
                         "storageAccountType": "Standard_LRS"
                     }
                 },
-                "image_reference": {
-                        "publisher": pub,
-                        "offer": offer,
-                        "sku": sku,
-                        "version": image
-                }
+                "image_reference": image_reference
             },
             "network_profile": {
                 "network_interfaces": [{
                     "id": nic_id
                 }]
-            },
-            "zones": [
-                zone
-            ]
+            }
         }
+        if zone is not None:
+            vm_parameters["zones"] = [zone]
 
         if (vol_type == "ultrassd_lrs"):
             vm_parameters["additionalCapabilities"] = {"ultraSSDEnabled": True}
 
         # Tag VM as cluster-server for ansible configure-{} script
         self.add_tag_resource(vm_parameters, "yb-server-type", server_type)
+        for k in tags:
+            self.add_tag_resource(vm_parameters, k, tags[k])
 
         creation_result = self.compute_client.virtual_machines.create_or_update(
             RESOURCE_GROUP,
@@ -518,9 +567,16 @@ class AzureCloudAdmin():
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
 
         # Attach disks
-        for idx, disk_name in enumerate(disk_names):
-            self.appendDisk(vm, vm_name, disk_name, volume_size, idx, zone, vol_type, region)
-
+        if is_edit:
+            self.tag_disks(vm, vm_parameters["tags"])
+        else:
+            num_disks_attached = len(vm.storage_profile.data_disks)
+            for idx, disk_name in enumerate(disk_names):
+                # "Logical Unit Number" - where the data disk will be inserted. Add our disks
+                # after any existing ones.
+                lun = num_disks_attached + idx
+                self.appendDisk(
+                    vm, vm_name, disk_name, volume_size, lun, zone, vol_type, region, tags)
         return
 
     def query_vpc(self):
@@ -543,6 +599,7 @@ class AzureCloudAdmin():
         vm_info["numCores"] = vm.get("numberOfCores")
         vm_info["memSizeGb"] = float(vm.get("memoryInMB")) / 1000.0
         vm_info["maxDiskCount"] = vm.get("maxDataDiskCount")
+        vm_info['prices'] = {}
         return vm_info
 
     def get_instance_types(self, regions):
@@ -551,22 +608,41 @@ class AzureCloudAdmin():
         regex = re.compile(premium_regex_format, re.IGNORECASE)
 
         all_vms = {}
-        regionsPresent = defaultdict(set)
+        # Base list of VMs to check for.
+        vm_list = [vm.serialize() for vm in
+                   self.compute_client.virtual_machine_sizes.list(location=regions[0])]
+        for vm in vm_list:
+            vm_size = vm.get("name")
+            # We only care about VMs that support Premium storage. Promo is pricing special.
+            if (not regex.match(vm_size) or vm_size.endswith("Promo")):
+                continue
+            vm_info = self.parse_vm_info(vm)
+            if vm_info["memSizeGb"] < MIN_MEM_SIZE_GB or vm_info["numCores"] < MIN_NUM_CORES:
+                continue
+            all_vms[vm_size] = vm_info
 
         for region in regions:
-            vm_list = [vm.serialize() for vm in
-                       self.compute_client.virtual_machine_sizes.list(location=region)]
-            for vm in vm_list:
-                vm_size = vm.get("name")
-                # We only care about VMs that support Premium storage. Promo is pricing special.
-                if (not regex.match(vm_size) or vm_size.endswith("Promo")):
-                    continue
-                all_vms[vm_size] = self.parse_vm_info(vm)
-                regionsPresent[vm_size].add(region)
+            price_info = self.get_pricing_info(VM_PRICING_URL_FORMAT.format(region))
+            common_vms = set(price_info.keys()) & set(all_vms.keys())
+            for vm_name in common_vms:
+                all_vms[vm_name]['prices'][region] = price_info[vm_name]
+            # Only return VMs that are present in all regions
+            all_vms = {k: all_vms[k] for k in common_vms}
 
-        num_regions = len(regions)
-        # Only return VMs that are present in all regions
-        return {vm: info for vm, info in all_vms.items() if len(regionsPresent[vm]) == num_regions}
+        return all_vms
+
+    def get_pricing_info(self, url):
+        price_info = requests.get(url).json()
+        vm_name_to_price_dict = {}
+        for info in price_info.get('Items'):
+            # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
+            # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
+            if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0):
+                vm_name_to_price_dict[info['armSkuName']] = info['unitPrice']
+        next_url = price_info.get('NextPageLink')
+        if next_url:
+            vm_name_to_price_dict.update(self.get_pricing_info(next_url))
+        return vm_name_to_price_dict
 
     def ultra_ssd_available(self, capabilities):
         if not capabilities:
@@ -590,9 +666,9 @@ class AzureCloudAdmin():
         for region in regions:
             vms = {}
             payload = {"api-version": "2019-04-01", "$filter": "location eq '{}'".format(region)}
-            listOfResourcces = requests.get(RESOURCE_SKU_URL, params=payload,
-                                            headers=headers).json().get("value", [])
-            for resource in listOfResourcces:
+            listOfResources = requests.get(RESOURCE_SKU_URL, params=payload,
+                                           headers=headers).json().get("value", [])
+            for resource in listOfResources:
                 # We only care about virtual machines
                 if resource.get("resourceType") != "virtualMachines":
                     continue
@@ -641,3 +717,48 @@ class AzureCloudAdmin():
                 "zone": "{}-{}".format(region, zone), "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name}
+
+    def list_dns_record_set(self, dns_zone_id):
+        return self.dns_client.private_zones.get(*self._get_dns_zone_info(dns_zone_id))
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix, ip_list)
+        # Setting if_none_match="*" will cause this to error if a record with the name exists.
+        return self.dns_client.record_sets.create_or_update(if_none_match="*", **parameters)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix, ip_list)
+        return self.dns_client.record_sets.update(**parameters)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        parameters = self._get_dns_record_set_args(dns_zone_id, domain_name_prefix)
+        return self.dns_client.record_sets.delete(**parameters)
+
+    def _get_dns_record_set_args(self, dns_zone_id, domain_name_prefix, ip_list=None):
+        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
+        rg, zone_name = self._get_dns_zone_info(dns_zone_id)
+        args = {
+            "resource_group_name": rg,
+            "private_zone_name": zone_name,
+            "record_type": "A",
+            "relative_record_set_name": "{}.{}".format(domain_name_prefix, zone_name),
+        }
+
+        if ip_list is not None:
+            params = {
+                "ttl": DNS_RECORD_SET_TTL,
+                "arecords": [{"ipv4_address": ip} for ip in ip_list]
+            }
+            args["parameters"] = params
+
+        return args
+
+    def _get_dns_zone_info(self, dns_zone_id):
+        """Returns tuple of (resource_group, dns_zone_name). Assumes dns_zone_id is the zone name
+        if it's not given in Resource ID format.
+        """
+        zone_info = PRIVATE_DNS_ZONE_ID_REGEX.match(dns_zone_id)
+        if zone_info:
+            return zone_info.group('resource_group'), zone_info.group('zone_name')
+        else:
+            return RESOURCE_GROUP, dns_zone_id

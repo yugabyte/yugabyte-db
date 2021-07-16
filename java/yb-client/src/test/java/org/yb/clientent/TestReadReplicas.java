@@ -16,6 +16,7 @@ import org.yb.client.*;
 
 import java.util.*;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 
 import org.junit.Test;
@@ -34,9 +35,6 @@ public class TestReadReplicas extends TestYBClient {
   private static final String PLACEMENT_CLOUD = "testCloud";
   private static final String PLACEMENT_REGION = "testRegion";
   private static final String PLACEMENT_ZONE = "testZone";
-  private static final String LIVE_TS = "live";
-  private static final String READ_ONLY_TS = "readOnly";
-  private static final String READ_ONLY_NEW_TS = "readOnlyNew";
 
   /**
    * Test for live and read only replica correct load balancing.
@@ -44,33 +42,45 @@ public class TestReadReplicas extends TestYBClient {
    */
   @Test(timeout = 100000)
   public void testCreateTableWithAddRemoveNode() throws Exception {
+    final String liveTsPlacement = "live";
+    final String readOnlyTsPlacement = "readOnly";
+    final String readOnlyNewTsPlacement = "readOnlyNew";
+
     // Destroy the cluster so we can create a new one.
     destroyMiniCluster();
 
-    List<String> livePlacement = Arrays.asList(
-            "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION,
-            "--placement_zone=" + PLACEMENT_ZONE, "--placement_uuid=" + LIVE_TS);
+    List<Map<String, String>> perTserverFlags = new ArrayList<>();
 
-    List<String> readOnlyPlacement = Arrays.asList(
-            "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION,
-            "--placement_zone=" + PLACEMENT_ZONE, "--placement_uuid=" + READ_ONLY_TS);
+    {
+      Map<String, String> livePlacement = getPlacementFlagMap(liveTsPlacement);
+      Map<String, String> readOnlyPlacement = getPlacementFlagMap(readOnlyTsPlacement);
 
-    List<List<String>> tserverArgs = new ArrayList<List<String>>();
-    // Create a live and read only cluster with 3 masters and 3 tservers in the same az. Although
-    // this is not the most common use case, it is the most pathological and should be no different
-    // from different azs.
-    for (int i = 0; i < 3; i++) {
-      tserverArgs.add(livePlacement);
-      tserverArgs.add(readOnlyPlacement);
+      // Create a live and read only cluster with 3 masters and 3 tservers in the same az. Although
+      // this is not the most common use case, it is the most pathological and should be no
+      // different from different azs.
+      for (int i = 0; i < 3; i++) {
+        perTserverFlags.add(livePlacement);
+        perTserverFlags.add(readOnlyPlacement);
+      }
     }
 
-    // Master args, used to speed up the test.
-    List<String> masterArgs = Arrays.asList("--load_balancer_max_concurrent_adds=100",
-            "--load_balancer_max_concurrent_moves=100",
-            "--load_balancer_max_concurrent_removals=100");
 
-    // Enable YSQL to generate the txn status table (in order to test txn status leader spread).
-    createMiniCluster(3, masterArgs, tserverArgs, true /* enable_ysql */);
+    createMiniCluster(
+        3,
+        perTserverFlags.size(),
+        // Master args, used to speed up the test.
+        ImmutableMap.of(
+            "load_balancer_max_concurrent_adds", "100",
+            "load_balancer_max_concurrent_moves", "100",
+            "load_balancer_max_concurrent_removals", "100"),
+        Collections.emptyMap(),
+        cb -> {
+          cb.perTServerFlags(perTserverFlags);
+
+          // Enable YSQL to generate the txn status table
+          // (in order to test txn status leader spread).
+          cb.enablePgTransactions(true);
+        });
 
     // Create the cluster config pb to be sent to the masters
     org.yb.Common.CloudInfoPB cloudInfo0 = org.yb.Common.CloudInfoPB.newBuilder()
@@ -91,11 +101,11 @@ public class TestReadReplicas extends TestYBClient {
 
     Master.PlacementInfoPB livePlacementInfo =
             Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
-                    setPlacementUuid(ByteString.copyFromUtf8(LIVE_TS)).build();
+                    setPlacementUuid(ByteString.copyFromUtf8(liveTsPlacement)).build();
 
     Master.PlacementInfoPB readOnlyPlacementInfo =
             Master.PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
-                    setPlacementUuid(ByteString.copyFromUtf8(READ_ONLY_TS)).build();
+                    setPlacementUuid(ByteString.copyFromUtf8(readOnlyTsPlacement)).build();
 
     List<Master.PlacementInfoPB> readOnlyPlacements = Arrays.asList(readOnlyPlacementInfo);
     ModifyClusterConfigReadReplicas readOnlyOperation =
@@ -127,8 +137,8 @@ public class TestReadReplicas extends TestYBClient {
     // only replicas each.
     Map<String, List<List<Integer>>> placementUuidMap =
             table.getMemberTypeCountsForEachTSType(DEFAULT_TIMEOUT_MS);
-    List<List<Integer>> liveTsList = placementUuidMap.get(LIVE_TS);
-    List<List<Integer>> readOnlyTsList = placementUuidMap.get(READ_ONLY_TS);
+    List<List<Integer>> liveTsList = placementUuidMap.get(liveTsPlacement);
+    List<List<Integer>> readOnlyTsList = placementUuidMap.get(readOnlyTsPlacement);
 
     LOG.info(liveTsList.get(0).toString());
     assertTrue(liveTsList.get(0).equals(Arrays.asList(8, 8, 8)));
@@ -138,8 +148,8 @@ public class TestReadReplicas extends TestYBClient {
     assertTrue(readOnlyTsList.get(1).equals(Arrays.asList(8, 8, 8)));
 
     // Create another live and readOnly node.
-    miniCluster.startTServer(tserverArgs.get(0));
-    miniCluster.startTServer(tserverArgs.get(1));
+    miniCluster.startTServer(perTserverFlags.get(0));
+    miniCluster.startTServer(perTserverFlags.get(1));
     Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     miniCluster.waitForTabletServers(8);
 
@@ -151,16 +161,14 @@ public class TestReadReplicas extends TestYBClient {
             Arrays.asList(0, 0, 0, 0));
     List<List<Integer>> expectedReadOnlyTsList = Arrays.asList(Arrays.asList(0, 0, 0, 0),
             Arrays.asList(6, 6, 6, 6));
-    expectedMap.put(LIVE_TS, expectedLiveTsList);
-    expectedMap.put(READ_ONLY_TS, expectedReadOnlyTsList);
+    expectedMap.put(liveTsPlacement, expectedLiveTsList);
+    expectedMap.put(readOnlyTsPlacement, expectedReadOnlyTsList);
 
     assertTrue(syncClient.waitForExpectedReplicaMap(30000, table, expectedMap));
 
     // Now we create a new read only cluster with 3 nodes and RF=3 with uuid readOnlyNew in the
     // same zone.
-    List<String> readOnlyPlacementNew = Arrays.asList(
-            "--placement_cloud=" + PLACEMENT_CLOUD, "--placement_region=" + PLACEMENT_REGION,
-            "--placement_zone=" + PLACEMENT_ZONE, "--placement_uuid=" + READ_ONLY_NEW_TS);
+    Map<String, String> readOnlyPlacementNew = getPlacementFlagMap(readOnlyNewTsPlacement);
 
     for (int i = 0; i < 3; i++) {
       miniCluster.startTServer(readOnlyPlacementNew);
@@ -175,7 +183,7 @@ public class TestReadReplicas extends TestYBClient {
     Master.PlacementInfoPB readOnlyPlacementInfoNew =
             Master.PlacementInfoPB.newBuilder().
                     addAllPlacementBlocks(placementBlocksreadOnlyNew).
-                    setPlacementUuid(ByteString.copyFromUtf8(READ_ONLY_NEW_TS)).build();
+                    setPlacementUuid(ByteString.copyFromUtf8(readOnlyNewTsPlacement)).build();
 
     List<Master.PlacementInfoPB> readOnlyPlacementsNew =
             Arrays.asList(readOnlyPlacementInfoNew);
@@ -192,11 +200,19 @@ public class TestReadReplicas extends TestYBClient {
     // that none of the other tservers have changed replica counts.
     List<List<Integer>> expectedReadOnlyNewTsList = Arrays.asList(Arrays.asList(0, 0, 0),
             Arrays.asList(8, 8, 8));
-    expectedMap.put(READ_ONLY_NEW_TS, expectedReadOnlyNewTsList);
+    expectedMap.put(readOnlyNewTsPlacement, expectedReadOnlyNewTsList);
 
     assertTrue(syncClient.waitForExpectedReplicaMap(60000, table, expectedMap));
     // From issue #6081, make sure that we ignore read replicas when checking if
     // transaction status tablet leaders are properly spread.
     assertTrue(syncClient.waitForAreLeadersOnPreferredOnlyCondition(DEFAULT_TIMEOUT_MS));
+  }
+
+  private Map<String, String> getPlacementFlagMap(String placementUuid) {
+    return ImmutableMap.of(
+        "placement_cloud", PLACEMENT_CLOUD,
+        "placement_region", PLACEMENT_REGION,
+        "placement_zone", PLACEMENT_ZONE,
+        "placement_uuid", placementUuid);
   }
 }

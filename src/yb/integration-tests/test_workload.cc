@@ -308,10 +308,10 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       CHECK_OK(session->Apply(op));
     }
 
-    Status s = session->Flush();
-    if (!s.ok()) {
-      VLOG(1) << "Flush error: " << AsString(s);
-      for (const auto& error : session->GetAndClearPendingErrors()) {
+    const auto flush_status = session->FlushAndGetOpsErrors();
+    if (!flush_status.status.ok()) {
+      VLOG(1) << "Flush error: " << AsString(flush_status.status);
+      for (const auto& error : flush_status.errors) {
         auto* resp = down_cast<client::YBqlOp*>(&error->failed_op())->mutable_response();
         resp->Clear();
         resp->set_status(
@@ -403,7 +403,8 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
     }
     QLAddInt32HashValue(req, key);
     CHECK_OK(session->Apply(op));
-    const auto s = session->Flush();
+    const auto flush_status = session->FlushAndGetOpsErrors();
+    const auto& s = flush_status.status;
     if (s.ok()) {
       if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
         ++rows_read_ok_;

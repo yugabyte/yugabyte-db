@@ -21,9 +21,6 @@
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/rpc/messenger.h"
 
-using yb::rpc::ServiceIf;
-using namespace yb::size_literals;  // NOLINT.
-
 DEFINE_int32(cql_service_queue_length, 10000,
              "RPC queue length for CQL service");
 TAG_FLAG(cql_service_queue_length, advanced);
@@ -35,10 +32,14 @@ TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
 DEFINE_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
-using namespace std::placeholders;
-
 namespace yb {
 namespace cqlserver {
+
+using namespace std::placeholders;
+using namespace yb::size_literals;
+using namespace yb::ql; // NOLINT
+
+using yb::rpc::ServiceIf;
 
 namespace {
 

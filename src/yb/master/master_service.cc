@@ -36,25 +36,28 @@
 #include <string>
 #include <vector>
 
+#include <boost/preprocessor/cat.hpp>
+
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_service_base-internal.h"
 #include "yb/master/master.h"
+#include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_service_base.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-#include "yb/master/encryption_manager.h"
+
 #include "yb/server/webserver.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shared_lock.h"
-
-DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "Threshold on tablet size after which tablet should be split. Automated splitting is "
-             "disabled if this value is set to 0");
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
@@ -98,8 +101,8 @@ static void SetupErrorAndRespond(MasterErrorPB* error,
 }
 
 MasterServiceImpl::MasterServiceImpl(Master* server)
-  : MasterServiceIf(server->metric_entity()),
-    MasterServiceBase(server) {
+    : MasterServiceIf(server->metric_entity()),
+      MasterServiceBase(server) {
 }
 
 void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
@@ -109,7 +112,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   // If CatalogManager is not initialized don't even know whether or not we will
   // be a leader (so we can't tell whether or not we can accept tablet reports).
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
 
   consensus::ConsensusStatePB cpb;
   Status s = server_->catalog_manager()->GetCurrentConfig(&cpb);
@@ -182,11 +185,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     return;
   }
 
-  ts_desc->UpdateHeartbeatTime();
-  ts_desc->set_num_live_replicas(req->num_live_tablets());
-  ts_desc->set_leader_count(req->leader_count());
-  ts_desc->set_physical_time(req->ts_physical_time());
-  ts_desc->set_hybrid_time(HybridTime::FromPB(req->ts_hybrid_time()));
+  ts_desc->UpdateHeartbeat(req);
 
   // Adjust the table report limit per heartbeat so this can be dynamically changed.
   if (ts_desc->HasCapability(CAPABILITY_TabletReportLimit)) {
@@ -213,8 +212,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     if (rpc.GetClientDeadline() > safe_time_left) {
       for (const auto& tablet : req->tablets_for_split()) {
         VLOG(1) << "Got tablet to split: " << AsString(tablet);
-        const auto split_status = server_->catalog_manager()->SplitTablet(
-            tablet.tablet_id(), tablet.split_encoded_key(), tablet.split_partition_key());
+        const auto split_status = server_->catalog_manager()->SplitTablet(tablet.tablet_id());
         if (!split_status.ok()) {
           if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
             YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;
@@ -223,6 +221,12 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
           }
         }
       }
+    }
+
+    safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+    if (rpc.GetClientDeadline() > safe_time_left && req->has_tablet_path_info()) {
+      server_->catalog_manager()->ProcessTabletPathInfo(
+            ts_desc.get()->permanent_uuid(), req->tablet_path_info());
     }
 
     // Only set once. It may take multiple heartbeats to receive a full tablet report.
@@ -251,17 +255,13 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                  << s.ToUserMessage();
   }
 
-  if (FLAGS_tablet_split_size_threshold_bytes > 0) {
-    resp->set_tablet_split_size_threshold_bytes(FLAGS_tablet_split_size_threshold_bytes);
-  }
-
   rpc.RespondSuccess();
 }
 
 void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* req,
                                            GetTabletLocationsResponsePB* resp,
                                            RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
@@ -270,8 +270,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
   if (PREDICT_FALSE(FLAGS_TEST_master_fail_transactional_tablet_lookups)) {
-    std::vector<scoped_refptr<TableInfo>> tables;
-    server_->catalog_manager()->GetAllTables(&tables);
+    auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
       TabletInfos tablets;
@@ -303,7 +302,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     const auto table_info = server_->catalog_manager()->GetTableInfo(req->table_id());
     if (table_info) {
       const auto table_lock = table_info->LockForRead();
-      resp->set_partition_list_version(table_lock->data().pb.partition_list_version());
+      resp->set_partition_list_version(table_lock->pb.partition_list_version());
     }
   }
 
@@ -325,273 +324,120 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
   rpc.RespondSuccess();
 }
 
-void MasterServiceImpl::CreateTable(const CreateTableRequestPB* req,
-                                    CreateTableResponsePB* resp,
-                                    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::CreateTable);
-}
+#define COMMON_HANDLER_ARGS(class_name, method_name) \
+    req, resp, &rpc, &class_name::method_name, __FILE__, __LINE__, __func__
 
-void MasterServiceImpl::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
-                                          IsCreateTableDoneResponsePB* resp,
-                                          RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsCreateTableDone);
-}
+#define HANDLE_ON_LEADER_IMPL(class_name, method_name, hold_leader_lock) \
+    HandleIn<class_name>(COMMON_HANDLER_ARGS(class_name, method_name), (hold_leader_lock))
 
-void MasterServiceImpl::TruncateTable(const TruncateTableRequestPB* req,
-                                      TruncateTableResponsePB* resp,
-                                      RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::TruncateTable);
-}
+#define HANDLE_ON_LEADER_WITH_LOCK(class_name, method_name) \
+    HANDLE_ON_LEADER_IMPL(class_name, method_name, HoldCatalogLock::kTrue)
 
-void MasterServiceImpl::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
-                                            IsTruncateTableDoneResponsePB* resp,
-                                            RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsTruncateTableDone);
-}
+#define HANDLE_ON_LEADER_WITHOUT_LOCK(class_name, method_name) \
+    HANDLE_ON_LEADER_IMPL(class_name, method_name, HoldCatalogLock::kFalse)
 
-void MasterServiceImpl::BackfillIndex(const BackfillIndexRequestPB* req,
-                                      BackfillIndexResponsePB* resp,
-                                      RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::BackfillIndex);
-}
+#define HANDLE_ON_ALL_MASTERS(class_name, method_name) \
+    HandleOnAllMasters<class_name>(COMMON_HANDLER_ARGS(class_name, method_name))
 
-void MasterServiceImpl::DeleteTable(const DeleteTableRequestPB* req,
-                                    DeleteTableResponsePB* resp,
-                                    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::DeleteTable);
-}
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(r, class_name, method_name) \
+  void MasterServiceImpl::method_name( \
+      const BOOST_PP_CAT(method_name, RequestPB)* req, \
+      BOOST_PP_CAT(method_name, ResponsePB)* resp, \
+      RpcContext rpc) { \
+    HANDLE_ON_LEADER_WITH_LOCK(class_name, method_name); \
+  }
 
-void MasterServiceImpl::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
-                                          IsDeleteTableDoneResponsePB* resp,
-                                          RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsDeleteTableDone);
-}
+#define MASTER_SERVICE_IMPL_ON_ALL_MASTERS(r, class_name, method_name) \
+  void MasterServiceImpl::method_name( \
+      const BOOST_PP_CAT(method_name, RequestPB)* req, \
+      BOOST_PP_CAT(method_name, ResponsePB)* resp, \
+      RpcContext rpc) { \
+    HANDLE_ON_ALL_MASTERS(class_name, method_name); \
+  }
 
-void MasterServiceImpl::AlterTable(const AlterTableRequestPB* req,
-                                   AlterTableResponsePB* resp,
-                                   RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::AlterTable);
-}
+BOOST_PP_SEQ_FOR_EACH(
+    MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK, CatalogManager,
+    (CreateTable)
+    (IsCreateTableDone)
+    (AnalyzeTable)
+    (TruncateTable)
+    (IsTruncateTableDone)
+    (BackfillIndex)
+    (LaunchBackfillIndexForTable)
+    (GetBackfillJobs)
+    (DeleteTable)
+    (IsDeleteTableDone)
+    (AlterTable)
+    (IsAlterTableDone)
+    (ListTables)
+    (GetTableSchema)
+    (GetColocatedTabletSchema)
+    (CreateNamespace)
+    (IsCreateNamespaceDone)
+    (DeleteNamespace)
+    (IsDeleteNamespaceDone)
+    (AlterNamespace)
+    (ListNamespaces)
+    (GetNamespaceInfo)
+    (ReservePgsqlOids)
+    (GetYsqlCatalogConfig)
+    (CreateTablegroup)
+    (DeleteTablegroup)
+    (ListTablegroups)
+    (RedisConfigSet)
+    (RedisConfigGet)
+    (CreateUDType)
+    (DeleteUDType)
+    (ListUDTypes)
+    (GetUDTypeInfo)
+    (SetPreferredZones)
+    (IsLoadBalanced)
+    (IsLoadBalancerIdle)
+    (AreLeadersOnPreferredOnly)
+    (SplitTablet)
+    (DeleteTablet)
+    (DdlLog)
+)
 
-void MasterServiceImpl::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
-                                         IsAlterTableDoneResponsePB* resp,
-                                         RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsAlterTableDone);
-}
-
-void MasterServiceImpl::ListTables(const ListTablesRequestPB* req,
-                                   ListTablesResponsePB* resp,
-                                   RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::ListTables);
-}
 
 void MasterServiceImpl::GetTableLocations(const GetTableLocationsRequestPB* req,
                                           GetTableLocationsResponsePB* resp,
                                           RpcContext rpc) {
+  // We can't use the HANDLE_ON_LEADER_WITH_LOCK macro here because we have to inject latency
+  // before acquiring the leader lock.
   HandleOnLeader(req, resp, &rpc, [&]() -> Status {
     if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
       SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
     }
-    return server_->catalog_manager()->GetTableLocations(req, resp); });
-}
-
-void MasterServiceImpl::GetTableSchema(const GetTableSchemaRequestPB* req,
-                                       GetTableSchemaResponsePB* resp,
-                                       RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetTableSchema);
-}
-
-void MasterServiceImpl::GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
-                                                 GetColocatedTabletSchemaResponsePB* resp,
-                                                 RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetColocatedTabletSchema);
-}
-
-void MasterServiceImpl::CreateNamespace(const CreateNamespaceRequestPB* req,
-                                        CreateNamespaceResponsePB* resp,
-                                        RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::CreateNamespace);
-}
-
-void MasterServiceImpl::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
-                                              IsCreateNamespaceDoneResponsePB* resp,
-                                              rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsCreateNamespaceDone);
-}
-
-void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
-                                        DeleteNamespaceResponsePB* resp,
-                                        RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::DeleteNamespace);
-}
-
-void MasterServiceImpl::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestPB* req,
-                                              IsDeleteNamespaceDoneResponsePB* resp,
-                                              RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsDeleteNamespaceDone);
-}
-
-void MasterServiceImpl::AlterNamespace(const AlterNamespaceRequestPB* req,
-                                       AlterNamespaceResponsePB* resp,
-                                       RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::AlterNamespace);
-}
-
-void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
-                                       ListNamespacesResponsePB* resp,
-                                       RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
-}
-
-void MasterServiceImpl::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
-                                         GetNamespaceInfoResponsePB* resp,
-                                         RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetNamespaceInfo);
-}
-
-void MasterServiceImpl::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
-                                         ReservePgsqlOidsResponsePB* resp,
-                                         rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::ReservePgsqlOids);
-}
-
-void MasterServiceImpl::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
-                                             GetYsqlCatalogConfigResponsePB* resp,
-                                             rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetYsqlCatalogConfig);
-}
-
-// ------------------------------------------------------------------------------------------------
-// Tablegroup
-// ------------------------------------------------------------------------------------------------
-
-void MasterServiceImpl::CreateTablegroup(const CreateTablegroupRequestPB* req,
-                                         CreateTablegroupResponsePB* resp,
-                                         rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::CreateTablegroup);
-}
-
-void MasterServiceImpl::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
-                                         DeleteTablegroupResponsePB* resp,
-                                         rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::DeleteTablegroup);
-}
-
-void MasterServiceImpl::ListTablegroups(const ListTablegroupsRequestPB* req,
-                                        ListTablegroupsResponsePB* resp,
-                                        rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::ListTablegroups);
+    return server_->catalog_manager()->GetTableLocations(req, resp);
+  }, __FILE__, __LINE__, __func__, HoldCatalogLock::kTrue);
 }
 
 // ------------------------------------------------------------------------------------------------
 // Permissions
 // ------------------------------------------------------------------------------------------------
 
-void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,
-                                   CreateRoleResponsePB* resp,
-                                   rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &PermissionsManager::CreateRole);
-}
-
-void MasterServiceImpl::AlterRole(const AlterRoleRequestPB* req,
-                                  AlterRoleResponsePB* resp,
-                                  rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &PermissionsManager::AlterRole);
-}
-
-void MasterServiceImpl::DeleteRole(const DeleteRoleRequestPB* req,
-                                   DeleteRoleResponsePB* resp,
-                                   rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &PermissionsManager::DeleteRole);
-}
-
-void MasterServiceImpl::GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
-                                        GrantRevokeRoleResponsePB* resp,
-                                        rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &PermissionsManager::GrantRevokeRole);
-}
-
-void MasterServiceImpl::GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
-                                              GrantRevokePermissionResponsePB* resp,
-                                              rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &PermissionsManager::GrantRevokePermission);
-}
-
-void MasterServiceImpl::GetPermissions(const GetPermissionsRequestPB* req,
-                                       GetPermissionsResponsePB* resp,
-                                       rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &PermissionsManager::GetPermissions);
-}
-
-// ------------------------------------------------------------------------------------------------
-// Redis
-// ------------------------------------------------------------------------------------------------
-
-void MasterServiceImpl::RedisConfigSet(
-    const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::RedisConfigSet);
-}
-
-void MasterServiceImpl::RedisConfigGet(
-    const RedisConfigGetRequestPB* req, RedisConfigGetResponsePB* resp, rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::RedisConfigGet);
-}
-
-// ------------------------------------------------------------------------------------------------
-// YCQL user-defined types
-// ------------------------------------------------------------------------------------------------
-
-void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
-                                     CreateUDTypeResponsePB* resp,
-                                     rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::CreateUDType);
-}
-
-void MasterServiceImpl::DeleteUDType(const DeleteUDTypeRequestPB* req,
-                                     DeleteUDTypeResponsePB* resp,
-                                     rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::DeleteUDType);
-}
-
-void MasterServiceImpl::ListUDTypes(const ListUDTypesRequestPB* req,
-                                    ListUDTypesResponsePB* resp,
-                                    rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::ListUDTypes);
-}
-
-void MasterServiceImpl::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
-                                      GetUDTypeInfoResponsePB* resp,
-                                      rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetUDTypeInfo);
-}
+BOOST_PP_SEQ_FOR_EACH(
+    MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK,
+    PermissionsManager,
+    (CreateRole)
+    (AlterRole)
+    (DeleteRole)
+    (GrantRevokeRole)
+    (GrantRevokePermission)
+    (GetPermissions));
 
 // ------------------------------------------------------------------------------------------------
 // CDC Stream
 // ------------------------------------------------------------------------------------------------
 
-void MasterServiceImpl::CreateCDCStream(const CreateCDCStreamRequestPB* req,
-                                        CreateCDCStreamResponsePB* resp,
-                                        rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateCDCStream);
-}
-
-void MasterServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
-                                        DeleteCDCStreamResponsePB* resp,
-                                        rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteCDCStream);
-}
-
-void MasterServiceImpl::ListCDCStreams(const ListCDCStreamsRequestPB* req,
-                                       ListCDCStreamsResponsePB* resp,
-                                       rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListCDCStreams);
-}
-
-void MasterServiceImpl::GetCDCStream(const GetCDCStreamRequestPB* req,
-                                     GetCDCStreamResponsePB* resp,
-                                     rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetCDCStream);
-}
+BOOST_PP_SEQ_FOR_EACH(
+    MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK,
+    enterprise::CatalogManager,
+    (CreateCDCStream)
+    (DeleteCDCStream)
+    (ListCDCStreams)
+    (GetCDCStream));
 
 // ------------------------------------------------------------------------------------------------
 // Miscellaneous
@@ -600,7 +446,7 @@ void MasterServiceImpl::GetCDCStream(const GetCDCStreamRequestPB* req,
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,
                                           RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
@@ -622,6 +468,29 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
     entry->set_alive(desc->IsLive());
     desc->GetMetrics(entry->mutable_metrics());
+  }
+  rpc.RespondSuccess();
+}
+
+void MasterServiceImpl::ListLiveTabletServers(const ListLiveTabletServersRequestPB* req,
+                                              ListLiveTabletServersResponsePB* resp,
+                                              RpcContext rpc) {
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+    return;
+  }
+  string placement_uuid = server_->catalog_manager()->placement_uuid();
+
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  server_->ts_manager()->GetAllLiveDescriptors(&descs);
+
+  for (const std::shared_ptr<TSDescriptor>& desc : descs) {
+    ListLiveTabletServersResponsePB::Entry* entry = resp->add_servers();
+    auto ts_info = *desc->GetTSInformationPB();
+    *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
+    *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
+    bool isPrimary = server_->ts_manager()->IsTsInCluster(desc, placement_uuid);
+    entry->set_isfromreadreplica(!isPrimary);
   }
   rpc.RespondSuccess();
 }
@@ -666,7 +535,7 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
     std::this_thread::sleep_for(20s);
   }
   resp->mutable_instance_id()->CopyFrom(server_->instance_pb());
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
   if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
@@ -689,7 +558,7 @@ void MasterServiceImpl::DumpState(
     const DumpMasterStateRequestPB* req,
     DumpMasterStateResponsePB* resp,
     RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
   if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
@@ -743,7 +612,7 @@ void MasterServiceImpl::DumpState(
 void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
                                             RemovedMasterUpdateResponsePB* resp,
                                             RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
   if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
     return;
   }
@@ -772,41 +641,34 @@ void MasterServiceImpl::GetLoadBalancerState(
   rpc.RespondSuccess();
 }
 
-void MasterServiceImpl::SetPreferredZones(
-    const SetPreferredZonesRequestPB* req, SetPreferredZonesResponsePB* resp,
-    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::SetPreferredZones);
-}
-
 void MasterServiceImpl::GetMasterClusterConfig(
     const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
     RpcContext rpc) {
-  // Explicit instantiation here because the handler method has a few overloadings.
-  HandleIn<CatalogManager>(req, resp, &rpc, &CatalogManager::GetClusterConfig);
+  HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetClusterConfig);
 }
 
 void MasterServiceImpl::ChangeMasterClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
     RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::SetClusterConfig);
+  HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, SetClusterConfig);
 }
 
 void MasterServiceImpl::GetLoadMoveCompletion(
     const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
     RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetLoadMoveCompletionPercent);
+  HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLoadMoveCompletionPercent);
 }
 
 void MasterServiceImpl::GetLeaderBlacklistCompletion(
     const GetLeaderBlacklistPercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
     RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetLeaderBlacklistCompletionPercent);
+  HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLeaderBlacklistCompletionPercent);
 }
 
 void MasterServiceImpl::IsMasterLeaderServiceReady(
     const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
     RpcContext rpc) {
-  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
     return;
   }
@@ -814,112 +676,33 @@ void MasterServiceImpl::IsMasterLeaderServiceReady(
   rpc.RespondSuccess();
 }
 
-void MasterServiceImpl::IsLoadBalanced(
-    const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
-    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalanced);
-}
-
-void MasterServiceImpl::IsLoadBalancerIdle(
-    const IsLoadBalancerIdleRequestPB* req, IsLoadBalancerIdleResponsePB* resp,
-    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalancerIdle);
-}
-
-void MasterServiceImpl::AreLeadersOnPreferredOnly(
-    const AreLeadersOnPreferredOnlyRequestPB* req, AreLeadersOnPreferredOnlyResponsePB* resp,
-    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::AreLeadersOnPreferredOnly);
-}
-
-void MasterServiceImpl::FlushTables(const FlushTablesRequestPB* req,
-                                    FlushTablesResponsePB* resp,
-                                    RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &FlushManager::FlushTables);
-}
-
-void MasterServiceImpl::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
-                                          IsFlushTablesDoneResponsePB* resp,
-                                          RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &FlushManager::IsFlushTablesDone);
-}
+BOOST_PP_SEQ_FOR_EACH(
+    MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK, FlushManager,
+    (FlushTables)
+    (IsFlushTablesDone));
 
 void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
                                      IsInitDbDoneResponsePB* resp,
                                      RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::IsInitDbDone, HoldCatalogLock::kFalse);
+  HANDLE_ON_LEADER_WITHOUT_LOCK(CatalogManager, IsInitDbDone);
 }
 
-void MasterServiceImpl::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
-                                             ChangeEncryptionInfoResponsePB* resp,
-                                             rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ChangeEncryptionInfo);
-}
+BOOST_PP_SEQ_FOR_EACH(
+    MASTER_SERVICE_IMPL_ON_ALL_MASTERS, EncryptionManager,
+    (GetUniverseKeyRegistry)
+    (AddUniverseKeys)
+    (HasUniverseKeyInMemory));
 
-void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
-                                            IsEncryptionEnabledResponsePB* resp,
-                                            rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
-}
-
-void MasterServiceImpl::GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
-                                               GetUniverseKeyRegistryResponsePB* resp,
-                                               rpc::RpcContext rpc) {
-  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::GetUniverseKeyRegistry);
-}
-
-void MasterServiceImpl::AddUniverseKeys(const AddUniverseKeysRequestPB* req,
-                                        AddUniverseKeysResponsePB* resp,
-                                        rpc::RpcContext rpc) {
-  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::AddUniverseKeys);
-}
-
-void MasterServiceImpl::HasUniverseKeyInMemory(const HasUniverseKeyInMemoryRequestPB* req,
-                                               HasUniverseKeyInMemoryResponsePB* resp,
-                                               rpc::RpcContext rpc) {
-  HandleOnAllMasters(req, resp, &rpc, &EncryptionManager::HasUniverseKeyInMemory);
-}
-
-void MasterServiceImpl::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
-                                                 SetupUniverseReplicationResponsePB* resp,
-                                                 rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetupUniverseReplication);
-}
-
-void MasterServiceImpl::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
-                                                  DeleteUniverseReplicationResponsePB* resp,
-                                                  rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteUniverseReplication);
-}
-
-void MasterServiceImpl::AlterUniverseReplication(const AlterUniverseReplicationRequestPB* req,
-                                                  AlterUniverseReplicationResponsePB* resp,
-                                                  rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::AlterUniverseReplication);
-}
-
-void MasterServiceImpl::SetUniverseReplicationEnabled(
-                          const SetUniverseReplicationEnabledRequestPB* req,
-                          SetUniverseReplicationEnabledResponsePB* resp,
-                          rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetUniverseReplicationEnabled);
-}
-
-void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
-                                               GetUniverseReplicationResponsePB* resp,
-                                               rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetUniverseReplication);
-}
-
-void MasterServiceImpl::SplitTablet(
-    const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::SplitTablet);
-}
-
-void MasterServiceImpl::DeleteTablet(
-    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::DeleteTablet);
-}
+BOOST_PP_SEQ_FOR_EACH(
+    MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK, enterprise::CatalogManager,
+    (SetupUniverseReplication)
+    (DeleteUniverseReplication)
+    (AlterUniverseReplication)
+    (SetUniverseReplicationEnabled)
+    (GetUniverseReplication)
+    (IsSetupUniverseReplicationDone)
+    (ChangeEncryptionInfo)
+    (IsEncryptionEnabled));
 
 } // namespace master
 } // namespace yb

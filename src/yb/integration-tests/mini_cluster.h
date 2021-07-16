@@ -75,19 +75,17 @@ class TSTabletManager;
 }
 
 struct MiniClusterOptions {
-  MiniClusterOptions();
-
-  MiniClusterOptions(int num_masters, int num_tablet_servers)
-      : num_masters(num_masters), num_tablet_servers(num_tablet_servers) {
-  }
-
   // Number of master servers.
-  // Default: 1
-  int num_masters;
+  int num_masters = 1;
 
   // Number of TS to start.
-  // Default: 1
-  int num_tablet_servers;
+  int num_tablet_servers = 1;
+
+  // Number of drives to use on TS. MiniCluster only.
+  int num_drives = 1;
+
+  Env* master_env = Env::Default();
+  Env* ts_env = Env::Default();
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -107,7 +105,7 @@ class MiniCluster : public MiniClusterBase {
   typedef std::vector<uint16_t> Ports;
   typedef MiniClusterOptions Options;
 
-  MiniCluster(Env* env, const MiniClusterOptions& options);
+  explicit MiniCluster(const MiniClusterOptions& options);
   ~MiniCluster();
 
   // Start a cluster with a Master and 'num_tablet_servers' TabletServers.
@@ -147,6 +145,9 @@ class MiniCluster : public MiniClusterBase {
   // Same as above, but get options from flags.
   CHECKED_STATUS AddTabletServer();
 
+  CHECKED_STATUS AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
+  CHECKED_STATUS ClearBlacklist();
+
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
   // there are multiple masters.
@@ -155,9 +156,9 @@ class MiniCluster : public MiniClusterBase {
     return mini_master(0);
   }
 
-  // Returns the leader Master for this MiniCluster or NULL if none can be
-  // found. May block until a leader Master is ready.
-  master::MiniMaster* leader_mini_master();
+  // Returns the leader Master for this MiniCluster or error if none can be
+  // elected within kMasterLeaderElectionWaitTimeSeconds. May block until a leader Master is ready.
+  Result<master::MiniMaster*> GetLeaderMiniMaster();
 
   int LeaderMasterIdx();
 
@@ -182,6 +183,8 @@ class MiniCluster : public MiniClusterBase {
   std::string GetMasterFsRoot(int indx);
 
   std::string GetTabletServerFsRoot(int idx);
+
+  string GetTabletServerDrive(int idx, int drive_index);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
@@ -223,7 +226,7 @@ class MiniCluster : public MiniClusterBase {
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  HostPort DoGetLeaderMasterBoundRpcAddr() override;
+  Result<HostPort> DoGetLeaderMasterBoundRpcAddr() override;
 
   // Allocates ports for the given daemon type and saves them to the ports vector. Does not
   // overwrite values in the ports vector that are non-zero already.
@@ -237,10 +240,8 @@ class MiniCluster : public MiniClusterBase {
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
   void EnsurePortsAllocated(int new_num_masters = 0, int num_tservers = 0);
 
-  Env* const env_ = nullptr;
+  const MiniClusterOptions options_;
   const std::string fs_root_;
-  const int num_masters_initial_;
-  const int num_ts_initial_;
 
   Ports master_rpc_ports_;
   Ports master_web_ports_;
@@ -270,6 +271,8 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster,
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
 
+// By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
+// i.e. not yet completed split or deleted (tombstoned).
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id);
 
@@ -277,6 +280,9 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
 std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
+
+std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
+    MiniCluster* cluster);
 
 CHECKED_STATUS WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline);
@@ -325,8 +331,16 @@ CHECKED_STATUS StartAllTServers(MiniCluster* cluster);
 void ShutdownAllMasters(MiniCluster* cluster);
 CHECKED_STATUS StartAllMasters(MiniCluster* cluster);
 
+YB_DEFINE_ENUM(Connectivity, (kOn)(kOff));
+
 CHECKED_STATUS BreakConnectivity(MiniCluster* cluster, int idx1, int idx2);
+CHECKED_STATUS SetupConnectivity(
+    MiniCluster* cluster, int idx1, int idx2, Connectivity connectivity);
 Result<int> ServerWithLeaders(MiniCluster* cluster);
+
+// Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
+// for already created tablets.
+void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
 
 }  // namespace yb
 

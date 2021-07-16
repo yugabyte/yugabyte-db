@@ -223,6 +223,9 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                           &nbsp;
                           {formData.instanceConfig.deviceInfo?.diskIops &&
                             formData.instanceConfig.deviceInfo?.diskIops + ' IOPS'}
+                          &nbsp;
+                          {formData.instanceConfig.deviceInfo?.throughput &&
+                            formData.instanceConfig.deviceInfo?.throughput + ' MiB/sec'}
                         </Col>
                       </Row>
                     )}

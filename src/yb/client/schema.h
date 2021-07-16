@@ -72,10 +72,6 @@ class TsAdminClient;
 namespace client {
 
 namespace internal {
-class GetTableSchemaRpc;
-class GetColocatedTabletSchemaRpc;
-class LookupRpc;
-class WriteRpc;
 
 const Schema& GetSchema(const YBSchema& schema);
 Schema& GetSchema(YBSchema* schema);
@@ -398,7 +394,7 @@ class YBSchema {
   // the YBSchema object.
   //
   // The caller takes ownership of the created row.
-  YBPartialRow* NewRow() const;
+  std::unique_ptr<YBPartialRow> NewRow() const;
 
   const std::vector<ColumnSchema>& columns() const;
 
@@ -417,6 +413,14 @@ class YBSchema {
   uint32_t version_;
   bool is_compatible_with_previous_version_ = false;
 };
+
+inline bool operator==(const YBSchema& lhs, const YBSchema& rhs) {
+  return lhs.Equals(rhs);
+}
+
+inline std::ostream& operator<<(std::ostream& out, const YBSchema& schema) {
+  return out << schema.ToString();
+}
 
 } // namespace client
 } // namespace yb

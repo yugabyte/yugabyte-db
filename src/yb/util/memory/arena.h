@@ -48,7 +48,6 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 

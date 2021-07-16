@@ -15,11 +15,13 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformBackupFrequencyFormData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.mvc.Result;
 
 import java.io.File;
@@ -27,6 +29,7 @@ import java.net.URL;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -34,27 +37,19 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(PlatformReplicationController.class);
 
-  @Inject
-  private PlatformReplicationManager replicationManager;
-
-  @Inject
-  private FormFactory formFactory;
+  @Inject private PlatformReplicationManager replicationManager;
 
   public Result startPeriodicBackup(UUID configUUID) {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
-      if (config == null) {
+      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
+      if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
       Form<PlatformBackupFrequencyFormData> formData =
-        formFactory.form(PlatformBackupFrequencyFormData.class).bindFromRequest();
+          formFactory.getFormDataOrBadRequest(PlatformBackupFrequencyFormData.class);
 
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
-
-      if (!config.isLocalLeader()) {
+      if (!config.get().isLocalLeader()) {
         return ApiResponse.error(BAD_REQUEST, "This platform instance is not a leader");
       }
 
@@ -71,8 +66,8 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   public Result stopPeriodicBackup(UUID configUUID) {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
-      if (config == null) {
+      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
+      if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
@@ -86,8 +81,8 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   public Result getBackupInfo(UUID configUUID) {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
-      if (config == null) {
+      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
+      if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
@@ -101,21 +96,28 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   public Result listBackups(UUID configUUID, String leaderAddr) {
     try {
-      if (leaderAddr == null) {
-        HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
-        if (config == null) {
+      if (StringUtils.isBlank(leaderAddr)) {
+        Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
+        if (!config.isPresent()) {
           return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
         }
-        leaderAddr = config.getLeader().getAddress();
+
+        Optional<PlatformInstance> leaderInstance = config.get().getLeader();
+        if (!leaderInstance.isPresent()) {
+          return ApiResponse.error(BAD_REQUEST, "Could not find leader platform instance");
+        }
+
+        leaderAddr = leaderInstance.get().getAddress();
       }
 
       List<String> backups =
-        replicationManager.listBackups(new URL(leaderAddr))
-          .stream()
-          .map(File::getName)
-          .sorted(Collections.reverseOrder())
-          .collect(Collectors.toList());
-      return ApiResponse.success(backups);
+          replicationManager
+              .listBackups(new URL(leaderAddr))
+              .stream()
+              .map(File::getName)
+              .sorted(Collections.reverseOrder())
+              .collect(Collectors.toList());
+      return YWResults.withData(backups);
     } catch (Exception e) {
       LOG.error("Error listing backups", e);
 

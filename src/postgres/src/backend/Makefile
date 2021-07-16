@@ -54,9 +54,7 @@ endif
 ifndef YB_BUILD_ROOT
 $(error YB_BUILD_ROOT is not set)
 endif
-ifneq ($(YB_BUILD_TYPE),compilecmds)
 LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util -lyb_pggate -lyb_common
-endif
 
 CCLD = $(CXX)
 

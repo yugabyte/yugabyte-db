@@ -134,8 +134,6 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
         << "but found " << subdoc_key.num_subkeys() << " subkeys: " << subdoc_key.ToString();
     subdoc_key.remove_hybrid_time();
 
-    bool doc_found = false;
-    SubDocument subdoc;
     // TODO: It would be good to be able to refer to a slice of the original key whenever we need
     //       to extract document key out of a subdocument key.
     auto encoded_doc_key = subdoc_key.doc_key().Encode();
@@ -144,20 +142,12 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
     // For now passing kNonTransactionalOperationContext in order to fail if there are any intents,
     // since this is not supported.
     auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
-    GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
-    const Status get_doc_status = yb::docdb::GetSubDocument(
-        doc_db, data, query_id, kNonTransactionalOperationContext,
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time));
-    if (!get_doc_status.ok()) {
-      // This will help with debugging the GetSubDocument failure.
-      LOG(WARNING)
-          << "DocDB state:\n"
-          << DocDBDebugDumpToStr(doc_db.regular, StorageDbType::kRegular, IncludeBinary::kTrue);
-    }
-    CHECK_OK(get_doc_status);
+    auto doc_from_rocksdb_opt = ASSERT_RESULT(yb::docdb::TEST_GetSubDocument(
+        encoded_subdoc_key, doc_db, query_id, kNonTransactionalOperationContext,
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time)));
     // doc_found can be false for deleted documents, and that is perfectly valid.
-    if (doc_found) {
-      SetDocument(encoded_doc_key, std::move(subdoc));
+    if (doc_from_rocksdb_opt) {
+      SetDocument(encoded_doc_key, std::move(*doc_from_rocksdb_opt));
     }
     // Go to the next top-level document key.
     ROCKSDB_SEEK(&rocksdb_iter, subdoc_key.AdvanceOutOfSubDoc().AsSlice());

@@ -60,6 +60,8 @@ extern char *filename_completion_function();
 #define completion_matches rl_completion_matches
 #endif
 
+#define PQmblenBounded(s, e)  strnlen(s, PQmblen(s, e))
+
 /* word break characters */
 #define WORD_BREAKS		"\t\n@$><=;|&{() "
 
@@ -2980,6 +2982,10 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_FUNCTION_ARG(prev2_wd);
 	else if (Matches2("DROP", "FOREIGN"))
 		COMPLETE_WITH_LIST2("DATA WRAPPER", "TABLE");
+	else if (Matches2("DROP", "DATABASE"))
+		COMPLETE_WITH_CONST("WITH (");
+	else if (HeadMatches2("DROP", "DATABASE") && (ends_with(prev_wd, '(')))
+		COMPLETE_WITH_CONST("FORCE");
 
 	/* DROP INDEX */
 	else if (Matches2("DROP", "INDEX"))
@@ -4115,7 +4121,7 @@ _complete_from_query(const char *simple_query,
 		while (*pstr)
 		{
 			char_length++;
-			pstr += PQmblen(pstr, pset.encoding);
+			pstr += PQmblenBounded(pstr, pset.encoding);
 		}
 
 		/* Free any prior result */

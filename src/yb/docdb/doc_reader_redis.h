@@ -37,6 +37,9 @@
 namespace yb {
 namespace docdb {
 
+// Indicates if we can get away by only seeking forward, or if we must do a regular seek.
+YB_STRONGLY_TYPED_BOOL(SeekFwdSuffices);
+
 class SliceKeyBound {
  public:
   SliceKeyBound() {}

@@ -5,10 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-
-/**
- * These are the various types of user tasks and internal tasks.
- */
+/** These are the various types of user tasks and internal tasks. */
 public enum TaskType {
 
   // Tasks that are CustomerTasks
@@ -27,7 +24,7 @@ public enum TaskType {
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
   DestroyUniverse("DestroyUniverse"),
-  
+
   PauseUniverse("PauseUniverse"),
 
   ResumeUniverse("ResumeUniverse"),
@@ -37,8 +34,6 @@ public enum TaskType {
   DeleteTable("DeleteTable"),
 
   BackupUniverse("BackupUniverse"),
-
-  DeleteBackup("DeleteBackup"),
 
   MultiTableBackup("MultiTableBackup"),
 
@@ -52,6 +47,16 @@ public enum TaskType {
   ImportIntoTable("ImportIntoTable"),
 
   UpgradeUniverse("UpgradeUniverse"),
+
+  CreateRootVolumes("subtasks.CreateRootVolumes"),
+
+  ReplaceRootVolume("subtasks.ReplaceRootVolume"),
+
+  ChangeInstanceType("subtasks.ChangeInstanceType"),
+
+  PersistResizeNode("subtasks.PersistResizeNode"),
+
+  UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
 
@@ -80,13 +85,15 @@ public enum TaskType {
 
   StartMasterOnNode("StartMasterOnNode"),
 
+  SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
 
   AnsibleDestroyServer("subtasks.AnsibleDestroyServer"),
-  
+
   PauseServer("subtasks.PauseServer"),
 
   ResumeServer("subtasks.ResumeServer"),
@@ -104,6 +111,8 @@ public enum TaskType {
   CreateTable("subtasks.CreateTable"),
 
   DeleteNode("subtasks.DeleteNode"),
+
+  DeleteBackup("subtasks.DeleteBackup"),
 
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
@@ -189,7 +198,13 @@ public enum TaskType {
 
   UnivSetCertificate("subtasks.UnivSetCertificate"),
 
-  CreateAlertDefinitions("subtasks.CreateAlertDefinitions");
+  CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
+
+  UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
+
+  AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
+
+  ResetUniverseVersion("subtasks.ResetUniverseVersion");
 
   private String relativeClassPath;
 
@@ -203,13 +218,16 @@ public enum TaskType {
   }
 
   public static List<TaskType> filteredValues() {
-    return Arrays.stream(TaskType.values()).filter(value -> {
-      try {
-        Field field = TaskType.class.getField(value.name());
-        return !field.isAnnotationPresent(Deprecated.class);
-      } catch (Exception e) {
-        return false;
-      }
-    }).collect(Collectors.toList());
+    return Arrays.stream(TaskType.values())
+        .filter(
+            value -> {
+              try {
+                Field field = TaskType.class.getField(value.name());
+                return !field.isAnnotationPresent(Deprecated.class);
+              } catch (Exception e) {
+                return false;
+              }
+            })
+        .collect(Collectors.toList());
   }
 }

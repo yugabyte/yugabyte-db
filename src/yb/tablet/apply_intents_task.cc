@@ -34,13 +34,14 @@ ApplyIntentsTask::ApplyIntentsTask(TransactionIntentApplier* applier,
     : applier_(*applier), running_transaction_context_(*running_transaction_context),
       apply_data_(*apply_data) {}
 
-bool ApplyIntentsTask::Prepare(RunningTransactionPtr transaction) {
+bool ApplyIntentsTask::Prepare(RunningTransactionPtr transaction, ScopedRWOperation* operation) {
   bool expected = false;
   if (!used_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
     return false;
   }
 
   transaction_ = std::move(transaction);
+  operation_ = std::move(*DCHECK_NOTNULL(operation));
   return true;
 }
 
@@ -72,6 +73,7 @@ void ApplyIntentsTask::Run() {
 
 void ApplyIntentsTask::Done(const Status& status) {
   WARN_NOT_OK(status, "Apply intents task failed");
+  operation_.Reset();
   transaction_.reset();
 }
 

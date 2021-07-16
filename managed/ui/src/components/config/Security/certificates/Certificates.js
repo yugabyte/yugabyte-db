@@ -15,6 +15,8 @@ import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
 import { YBFormInput } from '../../../common/forms/fields';
+import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
+import { YBConfirmModal } from '../../../modals';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -75,7 +77,7 @@ class DownloadCertificateForm extends Component {
               type="text"
               label="Username"
               component={YBFormInput}
-              infoContent={'Username that will be tied to certificates'}
+              infoContent="Connect to the database using this username for certificate-based authentication"
             />
           </Col>
         </Row>
@@ -87,7 +89,9 @@ class DownloadCertificateForm extends Component {
 class Certificates extends Component {
   state = {
     showSubmitting: false,
-    selectedCert: {}
+    selectedCert: {},
+    associatedUniverses: [],
+    isVisibleModal: false
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
@@ -117,22 +121,26 @@ class Certificates extends Component {
       .finally(() => this.setState({ showSubmitting: false }));
   };
 
+  showDeleteCertificateModal = (certificateModal) => {
+    this.setState({ certificateModal });
+    this.props.showConfirmDeleteModal();
+  }
+
   /**
    * Delete the root certificate if certificate is safe to remove,
    * i.e - Certificate is not attached to any universe for current user.
-   * 
+   *
    * @param certificateUUID Unique id of certificate.
    */
   deleteCertificate = (certificateUUID) => {
     const {
-      customer: { currentCustomer}
+      customer: { currentCustomer }
     } = this.props;
-    
-    api.deleteCertificate(certificateUUID, currentCustomer?.data?.uuid).then(
-      () => this.props.fetchCustomerCertificates()
-    ).catch(
-      err => console.error(`Failed to delete certificate ${certificateUUID}`, err)
-    )
+
+    api
+      .deleteCertificate(certificateUUID, currentCustomer?.data?.uuid)
+      .then(() => this.props.fetchCustomerCertificates())
+      .catch((err) => console.error(`Failed to delete certificate ${certificateUUID}`, err));
   };
 
   formatActionButtons = (cell, row) => {
@@ -142,7 +150,8 @@ class Certificates extends Component {
       name: row.name,
       uuid: row.uuid,
       creationTime: row.creationTime,
-      expiryDate: row.expiryDate
+      expiryDate: row.expiryDate,
+      universeDetails: row.universeDetails
     };
     // TODO: Replace dropdown option + modal with a side panel
     return (
@@ -160,8 +169,10 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            this.setState({ selectedCert: payload });
-            this.props.showDownloadCertificateModal();
+            if (!downloadDisabled) {
+              this.setState({ selectedCert: payload });
+              this.props.showDownloadCertificateModal();
+            }
           }}
           disabled={downloadDisabled}
         >
@@ -169,22 +180,40 @@ class Certificates extends Component {
         </MenuItem>
         <MenuItem
           onClick={() => {
-            this.downloadRootCertificate(row);
+            !downloadDisabled && this.downloadRootCertificate(row);
           }}
           disabled={downloadDisabled}
         >
           <i className="fa fa-download"></i> Download Root CA Cert
         </MenuItem>
         <MenuItem
-          onClick={() => { 
-            this.deleteCertificate(payload?.uuid)
+          onClick={() => {
+            !deleteDisabled && this.showDeleteCertificateModal(payload);
           }}
           disabled={deleteDisabled}
+          title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
         >
-          <i className="fa fa-trash"></i> Delete Cert
+          <i className="fa fa-trash"></i> Delete Certificate
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            this.setState({
+              associatedUniverses: [...payload?.universeDetails],
+              isVisibleModal: true
+            });
+          }}
+        >
+          <i className="fa fa-eye"></i> Show Universes
         </MenuItem>
       </DropdownButton>
     );
+  };
+
+  /**
+   * Close the modal by setting the local flag.
+   */
+  closeModal = () => {
+    this.setState({ isVisibleModal: false });
   };
 
   render() {
@@ -194,23 +223,26 @@ class Certificates extends Component {
       showAddCertificateModal
     } = this.props;
 
-    const { showSubmitting } = this.state;
+    const { showSubmitting, associatedUniverses, isVisibleModal } = this.state;
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
-    ? userCertificates.data.map((cert) => {
-      return {
-        type: cert.certType,
-        uuid: cert.uuid,
-        name: cert.label,
-        expiryDate: cert.expiryDate,
-        certificate: cert.certificate,
-        creationTime: cert.startDate,
-        privateKey: cert.privateKey,
-        customCertInfo: cert.customCertInfo,
-        inUse: cert.inUse
-      };
-    })
-    : [];
+    ? userCertificates.data
+        .map((cert) => {
+          return {
+            type: cert.certType,
+            uuid: cert.uuid,
+            name: cert.label,
+            expiryDate: cert.expiryDate,
+            certificate: cert.certificate,
+            creationTime: cert.startDate,
+            privateKey: cert.privateKey,
+            customCertInfo: cert.customCertInfo,
+            inUse: cert.inUse,
+            universeDetails: cert.universeDetails
+          };
+        })
+        .sort((a, b) => (new Date(b.creationTime) - new Date(a.creationTime)))
+      : [];
 
     return (
       <div id="page-wrapper">
@@ -238,6 +270,9 @@ class Certificates extends Component {
             <Fragment>
               <BootstrapTable
                 data={certificateArray}
+                search
+                multiColumnSearch
+                pagination
                 className="bs-table-certs"
                 trClassName="tr-cert-name"
               >
@@ -263,7 +298,12 @@ class Certificates extends Component {
                 <TableHeaderColumn dataField="certificate" width="240px" dataAlign="left">
                   Certificate
                 </TableHeaderColumn>
-                <TableHeaderColumn dataField="privateKey" width="240px" headerAlign="left" dataAlign="left">
+                <TableHeaderColumn
+                  dataField="privateKey"
+                  width="240px"
+                  headerAlign="left"
+                  dataAlign="left"
+                >
                   Private Key
                 </TableHeaderColumn>
                 <TableHeaderColumn
@@ -291,6 +331,12 @@ class Certificates extends Component {
                 onHide={this.props.closeModal}
                 certificate={this.state.selectedCert}
               />
+              <AssociatedUniverse
+                visible={isVisibleModal}
+                onHide={this.closeModal}
+                associatedUniverses={associatedUniverses}
+                title="Certificate"
+              />
             </Fragment>
           }
         />
@@ -300,6 +346,19 @@ class Certificates extends Component {
             <i onClick={() => this.setState({ showSubmitting: false })} className="fa fa-times"></i>
           </div>
         )}
+        <YBConfirmModal
+          name="deleteCertificateModal"
+          title="Delete Certificate"
+          hideConfirmModal={ this.props.closeModal }
+          currentModal="deleteCertificateModal"
+          visibleModal={ visibleModal }
+          onConfirm={ () => this.deleteCertificate(this.state.certificateModal?.uuid) }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+        >
+          Are you sure you want to delete certificate{' '}
+          <strong>{ this.state.certificateModal?.name }</strong> ?
+        </YBConfirmModal>
       </div>
     );
   }

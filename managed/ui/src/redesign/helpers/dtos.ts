@@ -123,6 +123,7 @@ export interface EncryptionAtRestConfig {
 export enum StorageType {
   IO1 = 'IO1',
   GP2 = 'GP2',
+  GP3 = 'GP3',
   Scratch = 'Scratch',
   Persistent = 'Persistent',
   StandardSSD_LRS = 'StandardSSD_LRS',
@@ -134,6 +135,7 @@ export interface DeviceInfo {
   volumeSize: number;
   numVolumes: number;
   diskIops: number | null;
+  throughput: number | null;
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
   mountPoints: string | null;
   storageType: StorageType | null;

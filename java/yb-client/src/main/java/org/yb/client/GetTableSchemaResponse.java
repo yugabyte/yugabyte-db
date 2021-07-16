@@ -32,8 +32,11 @@
 package org.yb.client;
 
 import org.yb.Common.TableType;
+import org.yb.IndexInfo;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
+
+import java.util.List;
 
 @InterfaceAudience.Private
 public class GetTableSchemaResponse extends YRpcResponse {
@@ -45,6 +48,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
   private final String tableName;
   private final String tableId;
   private final TableType tableType;
+  private final List<IndexInfo> indexes;
 
   /**
    * @param ellapsedMillis Time in milliseconds since RPC creation to now
@@ -59,7 +63,8 @@ public class GetTableSchemaResponse extends YRpcResponse {
                          String tableId,
                          PartitionSchema partitionSchema,
                          boolean createTableDone,
-                         TableType tableType) {
+                         TableType tableType,
+                         List<IndexInfo> indexes) {
     super(ellapsedMillis, tsUUID);
     this.schema = schema;
     this.partitionSchema = partitionSchema;
@@ -68,6 +73,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
     this.tableName = tableName;
     this.tableId = tableId;
     this.tableType = tableType;
+    this.indexes = indexes;
   }
 
   /**
@@ -76,6 +82,14 @@ public class GetTableSchemaResponse extends YRpcResponse {
    */
   public Schema getSchema() {
     return schema;
+  }
+
+  /**
+   * Get the table's indexes.
+   * @return Table's indexes
+   */
+  public List<IndexInfo> getIndexes() {
+    return indexes;
   }
 
   /**

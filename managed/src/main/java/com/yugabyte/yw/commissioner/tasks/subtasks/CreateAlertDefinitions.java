@@ -2,18 +2,26 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Slf4j
 public class CreateAlertDefinitions extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CreateAlertDefinitions.class);
+
+  @Inject
+  public CreateAlertDefinitions(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   protected UniverseTaskParams taskParams() {
     return (UniverseTaskParams) taskParams;
@@ -27,21 +35,28 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      LOG.info("Running {}", getName());
-      Universe universe = Universe.get(taskParams().universeUUID);
+      log.info("Running {}", getName());
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Customer customer = Customer.get(universe.customerId);
-      String nodePrefix = universe.getUniverseDetails().nodePrefix;
 
-      for (AlertDefinitionTemplate definition : AlertDefinitionTemplate.values()) {
-        if (definition.isCreateForNewUniverse()) {
-          AlertDefinition.create(customer.uuid, universe.universeUUID, definition.getName(),
-              definition.buildTemplate(nodePrefix), true);
-        }
-      }
+      AlertDefinitionGroupFilter filter =
+          AlertDefinitionGroupFilter.builder()
+              .customerUuid(customer.getUuid())
+              .targetType(AlertDefinitionGroup.TargetType.UNIVERSE)
+              .build();
 
+      List<AlertDefinitionGroup> groups =
+          alertDefinitionGroupService
+              .list(filter)
+              .stream()
+              .filter(group -> group.getTarget().isAll())
+              .collect(Collectors.toList());
+
+      // Just need to save - service will create definition itself.
+      alertDefinitionGroupService.save(groups);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      LOG.warn(msg, e.getMessage());
+      log.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

@@ -17,7 +17,7 @@ Use datetime data types to specify data of date and time at a time zone, `DATE` 
 
 ## Syntax
 
-```
+```ebnf
 type_specification ::= TIMESTAMP | DATE | TIME
 ```
 
@@ -36,6 +36,7 @@ A date is represented using a 32-bit unsigned integer representing the number of
 Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values as an integer (days since epoch) or in the string format shown below.
 
 #### Syntax
+
 ```
 yyyy-mm-dd
 ```
@@ -53,6 +54,7 @@ Values of the `time` data type are encoded as 64-bit signed integers representin
 Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the following string format, where subseconds (`f`) are optional and if provided, can be less than nanosecond:
 
 #### Syntax
+
 ```
 hh:mm:ss[.fffffffff]
 ```
@@ -71,6 +73,7 @@ Values of the `timestamp` data type combines date, time, and time zone, in ISO 8
 Use [INSERT](../dml_insert) or [UPDATE](../dml_update) to add values in the string format shown below, where milliseconds (`f`) are optional.
 
 #### Syntax
+
 ```
 yyyy-mm-dd[ (T| )HH:MM[:SS][.fff]][(+|-)NNNN]
 ```
@@ -123,7 +126,7 @@ ycqlsh:example> INSERT INTO orders(customer_id, order_date, order_time, amount) 
 ycqlsh:example> SELECT * FROM orders;
 ```
 
-```
+```output
  customer_id | order_date | order_time         | amount
 -------------+------------+--------------------+--------
            1 | 2018-10-09 | 17:12:25.824094000 |  85.99
@@ -137,7 +140,7 @@ Date values can be given using date-time literals.
 ycqlsh:example> SELECT sum(amount) FROM orders WHERE customer_id = 1 AND order_date = '2018-10-09';
 ```
 
-```
+```output
  system.sum(amount)
 --------------------
              120.14
@@ -171,7 +174,7 @@ ycqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (2, 1499171
 ycqlsh:example> SELECT * FROM sensor_data;
 ```
 
-```
+```output
  sensor_id | ts                              | value
 -----------+---------------------------------+-------
          2 | 2017-07-04 12:30:30.000000+0000 |    20
@@ -181,7 +184,7 @@ ycqlsh:example> SELECT * FROM sensor_data;
 
 ### Supported timestamp literals
 
-```
+```output
 '1992-06-04 12:30'
 '1992-6-4 12:30'
 '1992-06-04 12:30+04:00'

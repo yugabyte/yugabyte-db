@@ -44,7 +44,6 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/messenger.h"
 #include "yb/server/clock.h"
@@ -62,6 +61,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
 
+METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
@@ -113,7 +113,8 @@ class TabletPeerTest : public YBTabletTest {
     messenger_ = ASSERT_RESULT(builder.Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
-    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
+    table_metric_entity_ = METRIC_ENTITY_table.Instantiate(&metric_registry_, "test-table");
+    tablet_metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
 
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(tablet()->metadata()->fs_manager()->uuid());
@@ -158,7 +159,8 @@ class TabletPeerTest : public YBTabletTest {
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
                         tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
                         *tablet()->schema(), tablet()->metadata()->schema_version(),
-                        metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
+                        table_metric_entity_.get(), tablet_metric_entity_.get(),
+                        log_thread_pool_.get(), log_thread_pool_.get(),
                         tablet()->metadata()->cdc_min_replicated_index(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
@@ -167,17 +169,17 @@ class TabletPeerTest : public YBTabletTest {
                                            messenger_.get(),
                                            proxy_cache_.get(),
                                            log,
-                                           metric_entity_,
+                                           table_metric_entity_,
+                                           tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */,
-                                           consensus::SplitOpInfo()));
+                                           nullptr /* retryable_requests */));
   }
 
-  Status StartPeer(const ConsensusBootstrapInfo& info) {
+  CHECKED_STATUS StartPeer(const ConsensusBootstrapInfo& info) {
     RETURN_NOT_OK(tablet_peer_->Start(info));
 
-    AssertLoggedWaitFor([&]() -> Result<bool> {
+    return LoggedWaitFor([&]() -> Result<bool> {
       if (FLAGS_quick_leader_election_on_create) {
         return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
       }
@@ -185,7 +187,6 @@ class TabletPeerTest : public YBTabletTest {
       return true;
     }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
                                          "leader, otherwise emulate.");
-    return Status::OK();
   }
 
   void TabletPeerStateChangedCallback(
@@ -197,7 +198,7 @@ class TabletPeerTest : public YBTabletTest {
 
   void TearDown() override {
     messenger_->Shutdown();
-    tablet_peer_->Shutdown();
+    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
     YBTabletTest::TearDown();
   }
 
@@ -217,18 +218,19 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
-    gscoped_ptr<WriteResponsePB> resp(new WriteResponsePB());
-    auto operation_state = std::make_unique<WriteOperationState>(
-        tablet_peer->tablet(), &req, resp.get());
+    WriteResponsePB resp;
+    auto operation = std::make_unique<WriteOperation>(
+        /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
+    *operation->AllocateRequest() = req;
 
     CountDownLatch rpc_latch(1);
-    operation_state->set_completion_callback(
-        MakeLatchOperationCompletionCallback(&rpc_latch, resp.get()));
+    operation->set_completion_callback(
+        MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
 
-    tablet_peer->WriteAsync(std::move(operation_state), 1, CoarseTimePoint::max() /* deadline */);
+    tablet_peer->WriteAsync(std::move(operation));
     rpc_latch.Wait();
-    CHECK(!resp->has_error())
-        << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
+    CHECK(!resp.has_error())
+        << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp.DebugString();
 
     Synchronizer synchronizer;
     CHECK_OK(tablet_peer->log_->TEST_SubmitFuncToAppendToken([&synchronizer, tablet_peer] {
@@ -274,39 +276,14 @@ class TabletPeerTest : public YBTabletTest {
   int32_t insert_counter_;
   int32_t delete_counter_;
   MetricRegistry metric_registry_;
-  scoped_refptr<MetricEntity> metric_entity_;
+  scoped_refptr<MetricEntity> table_metric_entity_;
+  scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
-};
-
-// An operation that waits on the apply_continue latch inside of Apply().
-class DelayedApplyOperation : public WriteOperation {
- public:
-  DelayedApplyOperation(CountDownLatch* apply_started,
-                        CountDownLatch* apply_continue,
-                        std::unique_ptr<WriteOperationState> state)
-      : WriteOperation(std::move(state), consensus::LEADER, ScopedOperation(),
-                       CoarseTimePoint::max() /* deadline */, nullptr /* context */),
-        apply_started_(DCHECK_NOTNULL(apply_started)),
-        apply_continue_(DCHECK_NOTNULL(apply_continue)) {
-  }
-
-  Status DoReplicated(int64_t leader_term, Status* completion_status) override {
-    apply_started_->CountDown();
-    LOG(INFO) << "Delaying apply...";
-    apply_continue_->Wait();
-    LOG(INFO) << "Apply proceeding";
-    return WriteOperation::DoReplicated(leader_term, completion_status);
-  }
-
- private:
-  CountDownLatch* apply_started_;
-  CountDownLatch* apply_continue_;
-  DISALLOW_COPY_AND_ASSIGN(DelayedApplyOperation);
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.

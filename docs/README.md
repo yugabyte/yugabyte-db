@@ -1,6 +1,6 @@
 # Contributing to the YugabyteDB Documentation
 
-This account has three sections:
+This file has three sections:
 
 &nbsp;&nbsp;&nbsp;[0. The art and craft of writing technical documentation](#0-the-art-and-craft-of-writing-technical-documentation)<br>
 &nbsp;&nbsp;&nbsp;[1. Basic usage](#1-basic-usage)<br>
@@ -73,6 +73,13 @@ Follow these steps if this is the first time you are setting up to work on the d
 > Notice that, after having done all this once, it's usually sufficient to do just the `xcode-select --install` step after subsequent macOS upgrades.
 >
 > Only now do `git` commands start to work normally. Now, too (but not before) `npm ci` works properly.
+
+Note:
+In some cases, an additional step may be necessary to make sure `xcode-select` is pointing to the correct Xcode or Command-Line Tools installation. For example:
+
+```sh
+sudo xcode-select --switch /Applications/Xcode.app
+```
 
 Then:
 

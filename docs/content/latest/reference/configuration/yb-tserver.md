@@ -329,7 +329,7 @@ Default: `64`
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag.
+Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
 
 {{< note title="Important" >}}
 
@@ -347,7 +347,7 @@ On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api
 
 The number of shards per YB-TServer for each YSQL table when a user table is created.
 
-Default: `8`
+Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
 
 {{< note title="Important" >}}
 
@@ -515,7 +515,7 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-Default: `true`
+Default: `false`
 
 ##### --ysql_sequence_cache_minval
 
@@ -706,7 +706,7 @@ Default: `false`
 
 ### Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
+To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
 ##### --cdc_rpc_timeout_ms
 

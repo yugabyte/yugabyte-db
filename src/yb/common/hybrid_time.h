@@ -155,6 +155,10 @@ class HybridTime {
     return AddMicroseconds(millis * MonoTime::kMicrosecondsPerMillisecond);
   }
 
+  HybridTime AddSeconds(int64_t seconds) const {
+    return AddMicroseconds(seconds * MonoTime::kMicrosecondsPerSecond);
+  }
+
   HybridTime AddDelta(MonoDelta delta) const {
     return AddMicroseconds(delta.ToMicroseconds());
   }

@@ -147,16 +147,58 @@ delete_postgres_backup() {
 
 create_backup() {
   now=$(date +"%y-%m-%d-%H-%M")
-  output_path="$1"
-  data_dir="$2"
-  exclude_prometheus="$3"
-  exclude_releases="$4"
-  db_username="$5"
-  db_host="$6"
-  db_port="$7"
-  verbose="$8"
-  prometheus_host="$9"
+  output_path="${1}"
+  data_dir="${2}"
+  exclude_prometheus="${3}"
+  exclude_releases="${4}"
+  db_username="${5}"
+  db_host="${6}"
+  db_port="${7}"
+  verbose="${8}"
+  prometheus_host="${9}"
+  k8s_namespace="${10}"
+  k8s_pod="${11}"
   exclude_releases_flag=""
+
+  mkdir -p "${output_path}"
+
+  # Perform K8s backup.
+  if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
+    # Run backup script in container.
+    verbose_flag=""
+    if [[ "${verbose}" == true ]]; then
+      verbose_flag="-v"
+    fi
+    backup_script="/opt/yugabyte/devops/bin/yb_platform_backup.sh"
+    # Currently, this script does not support backup/restore of Prometheus data for K8s deployments.
+    # On K8s deployments (unlike Replicated deployments) the prometheus data volume for snapshots is
+    # not shared between the yugaware and prometheus containers.
+    exclude_flags="--exclude_prometheus"
+    if [[ "$exclude_releases" = true ]]; then
+      exclude_flags="${exclude_flags} --exclude_releases"
+    fi
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
+      "${backup_script} create ${verbose_flag} ${exclude_flags} --output /opt/yugabyte/yugaware"
+    # Determine backup archive filename.
+    # Note: There is a slight race condition here. It will always use the most recent backup file.
+    backup_file=$(kubectl -n "${k8s_namespace}" -c yugaware exec -it "${k8s_pod}" -c yugaware -- \
+      /bin/bash -c "cd /opt/yugabyte/yugaware && ls -1 backup*.tgz | tail -n 1")
+    backup_file=${backup_file%$'\r'}
+    # Ensure backup succeeded.
+    if [[ -z "${backup_file}" ]]; then
+      echo "Failed"
+      return
+    fi
+    echo "Copying backup from container"
+    # Copy backup archive from container to local machine.
+    kubectl -n "${k8s_namespace}" -c yugaware cp \
+      "${k8s_pod}:${backup_file}" "${output_path}/${backup_file}"
+    # Delete backup archive from container.
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
+      /bin/bash -c "rm /opt/yugabyte/yugaware/backup*.tgz"
+    echo "Done"
+    return
+  fi
 
   if [[ "$exclude_releases" = true ]]; then
     exclude_releases_flag="--exclude release*"
@@ -168,7 +210,6 @@ create_backup() {
 
   modify_service yb-platform stop
 
-  mkdir -p "${output_path}"
   tar_name="${output_path}/backup_${now}.tgz"
   db_backup_path="${data_dir}/${PLATFORM_DUMP_FNAME}"
   trap 'delete_postgres_backup ${db_backup_path}' RETURN
@@ -197,15 +238,43 @@ create_backup() {
 }
 
 restore_backup() {
-  input_path="$1"
-  destination="$2"
-  db_host="$3"
-  db_port="$4"
-  db_username="$5"
-  verbose="$6"
-  prometheus_host="$7"
-  data_dir="$8"
+  input_path="${1}"
+  destination="${2}"
+  db_host="${3}"
+  db_port="${4}"
+  db_username="${5}"
+  verbose="${6}"
+  prometheus_host="${7}"
+  data_dir="${8}"
+  k8s_namespace="${9}"
+  k8s_pod="${10}"
   prometheus_dir_regex="^${PROMETHEUS_SNAPSHOT_DIR}/$"
+
+  # Perform K8s restore.
+  if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
+    # Copy backup archive to container.
+    echo "Copying backup to container"
+    kubectl -n "${k8s_namespace}" -c yugaware cp \
+      "${input_path}" "${k8s_pod}:/opt/yugabyte/yugaware/"
+    echo "Done"
+    # Determine backup archive filename.
+    # Note: There is a slight race condition here. It will always use the most recent backup file.
+    backup_file=$(kubectl -n "${k8s_namespace}" -c yugaware exec -it "${k8s_pod}" -c yugaware -- \
+      /bin/bash -c "cd /opt/yugabyte/yugaware && ls -1 backup*.tgz | tail -n 1")
+    backup_file=${backup_file%$'\r'}
+    # Run restore script in container.
+    verbose_flag=""
+    if [[ "${verbose}" == true ]]; then
+      verbose_flag="-v"
+    fi
+    backup_script="/opt/yugabyte/devops/bin/yb_platform_backup.sh"
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
+      "${backup_script} restore ${verbose_flag} --input /opt/yugabyte/yugaware/${backup_file}"
+    # Delete backup archive from container.
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
+      /bin/bash -c "rm /opt/yugabyte/yugaware/backup*.tgz"
+    return
+  fi
 
   modify_service yb-platform stop
 
@@ -241,6 +310,17 @@ restore_backup() {
   echo "Finished restoring backup"
 }
 
+validate_k8s_args() {
+  k8s_namespace="${1}"
+  k8s_pod="${2}"
+  if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
+    if [[ -z "${k8s_namespace}" ]] || [[ -z "${k8s_pod}" ]]; then
+      echo "Error: Must specify both --k8s_namespace and --k8s_pod"
+      exit 1
+    fi
+  fi
+}
+
 print_backup_usage() {
   echo "Create: ${SCRIPT_NAME} create [options]"
   echo "options:"
@@ -254,6 +334,8 @@ print_backup_usage() {
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
   echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
+  echo "  --k8s_namespace                kubernetes namespace"
+  echo "  --k8s_pod                      kubernetes pod"
   echo "  -?, --help                     show create help, then exit"
   echo
 }
@@ -270,6 +352,8 @@ print_restore_usage() {
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
   echo "  -n, --prometheus_host=HOST     prometheus host (default: localhost)"
+  echo "  --k8s_namespace                kubernetes namespace"
+  echo "  --k8s_pod                      kubernetes pod"
   echo "  -?, --help                     show restore help, then exit"
   echo
 }
@@ -304,6 +388,8 @@ db_username=postgres
 db_host=localhost
 db_port=5432
 prometheus_host=localhost
+k8s_namespace=""
+k8s_pod=""
 data_dir=/opt/yugabyte
 verbose=false
 
@@ -367,6 +453,14 @@ case $command in
           prometheus_host=$2
           shift 2
           ;;
+        --k8s_namespace)
+          k8s_namespace=$2
+          shift 2
+          ;;
+        --k8s_pod)
+          k8s_pod=$2
+          shift 2
+          ;;
         -?|--help)
           print_backup_usage
           exit 0
@@ -379,8 +473,10 @@ case $command in
       esac
     done
 
+    validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
+
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
-    "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host"
+    "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$k8s_namespace" "$k8s_pod"
     exit 0
     ;;
   restore)
@@ -433,6 +529,14 @@ case $command in
           prometheus_host=$2
           shift 2
           ;;
+        --k8s_namespace)
+          k8s_namespace=$2
+          shift 2
+          ;;
+        --k8s_pod)
+          k8s_pod=$2
+          shift 2
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -444,14 +548,18 @@ case $command in
           exit 1
       esac
     done
+
     if [[ -z "$input_path" ]]; then
       echo "${SCRIPT_NAME}: input_path is required"
       echo
       print_restore_usage
       exit 1
     fi
+
+    validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
+
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
-    "$prometheus_host" "$data_dir"
+    "$prometheus_host" "$data_dir" "$k8s_namespace" "$k8s_pod"
     exit 0
     ;;
   *)

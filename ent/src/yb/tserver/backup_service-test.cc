@@ -47,7 +47,7 @@ class BackupServiceTest : public TabletServerTestBase {
             proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr())));
   }
 
-  gscoped_ptr<TabletServerBackupServiceProxy> backup_proxy_;
+  std::unique_ptr<TabletServerBackupServiceProxy> backup_proxy_;
 };
 
 TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
@@ -157,7 +157,7 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) });
 
   // Send the restore snapshot request.
-  req.set_operation(TabletSnapshotOpRequestPB::RESTORE);
+  req.set_operation(TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   {
     RpcController rpc;
     SCOPED_TRACE(req.DebugString());

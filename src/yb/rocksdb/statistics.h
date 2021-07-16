@@ -28,6 +28,12 @@
 #include <memory>
 #include <vector>
 
+#include "yb/gutil/ref_counted.h"
+
+namespace yb {
+class MetricEntity;
+}
+
 namespace rocksdb {
 
 /**
@@ -170,7 +176,6 @@ enum Tickers : uint32_t {
   // head of the writers queue.
   WRITE_DONE_BY_SELF,
   WRITE_DONE_BY_OTHER,  // Equivalent to writes done for others
-  WRITE_TIMEDOUT,       // Number of writes ending up with timed-out.
   WRITE_WITH_WAL,       // Number of Write calls that request WAL
   COMPACT_READ_BYTES,   // Bytes read during compaction
   COMPACT_WRITE_BYTES,  // Bytes written during compaction
@@ -185,6 +190,7 @@ enum Tickers : uint32_t {
   NUMBER_BLOCK_NOT_COMPRESSED,
   // Size of all the SST Files for the current version.
   CURRENT_VERSION_SST_FILES_SIZE,
+  OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE,
   CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE,
   CURRENT_VERSION_NUM_SST_FILES,
   MERGE_OPERATION_TOTAL_TIME,
@@ -278,9 +284,9 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {WRITE_DONE_BY_SELF, "rocksdb_write_self"},
     {WRITE_DONE_BY_OTHER, "rocksdb_write_other"},
     {WRITE_WITH_WAL, "rocksdb_write_wal"},
-    {FLUSH_WRITE_BYTES, "rocksdb_flush_write_bytes"},
     {COMPACT_READ_BYTES, "rocksdb_compact_read_bytes"},
     {COMPACT_WRITE_BYTES, "rocksdb_compact_write_bytes"},
+    {FLUSH_WRITE_BYTES, "rocksdb_flush_write_bytes"},
     {NUMBER_DIRECT_LOAD_TABLE_PROPERTIES,
      "rocksdb_number_direct_load_table_properties"},
     {NUMBER_SUPERVERSION_ACQUIRES, "rocksdb_number_superversion_acquires"},
@@ -288,15 +294,10 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {NUMBER_SUPERVERSION_CLEANUPS, "rocksdb_number_superversion_cleanups"},
     {NUMBER_BLOCK_NOT_COMPRESSED, "rocksdb_number_block_not_compressed"},
     {CURRENT_VERSION_SST_FILES_SIZE, "rocksdb_current_version_sst_files_size"},
-
-    // TODO: for backward compatibility only, so previous metrics data is shown in UI.
-    {CURRENT_VERSION_SST_FILES_SIZE, "rocksdb_total_sst_file_size"},
+    {OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE, "rocksdb_total_sst_files_size"},
 
     {CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE,
           "rocksdb_current_version_sst_files_uncompressed_size"},
-
-    // TODO: for backward compatibility only, so previous metrics data is shown in UI.
-    {CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE, "rocksdb_total_uncompressed_size"},
 
     {CURRENT_VERSION_NUM_SST_FILES, "rocksdb_current_version_num_sst_files"},
     {MERGE_OPERATION_TOTAL_TIME, "rocksdb_merge_operation_time_nanos"},
@@ -325,28 +326,14 @@ enum Histograms : uint32_t {
   DB_GET = 0,
   DB_WRITE,
   COMPACTION_TIME,
-  SUBCOMPACTION_SETUP_TIME,
-  TABLE_SYNC_MICROS,
-  COMPACTION_OUTFILE_SYNC_MICROS,
   WAL_FILE_SYNC_MICROS,
-  MANIFEST_FILE_SYNC_MICROS,
-  // TIME SPENT IN IO DURING TABLE OPEN
-  TABLE_OPEN_IO_MICROS,
   DB_MULTIGET,
   READ_BLOCK_COMPACTION_MICROS,
   READ_BLOCK_GET_MICROS,
   WRITE_RAW_BLOCK_MICROS,
-  STALL_L0_SLOWDOWN_COUNT,
-  STALL_MEMTABLE_COMPACTION_COUNT,
-  STALL_L0_NUM_FILES_COUNT,
-  HARD_RATE_LIMIT_DELAY_COUNT,
-  SOFT_RATE_LIMIT_DELAY_COUNT,
   NUM_FILES_IN_SINGLE_COMPACTION,
   DB_SEEK,
-  WRITE_STALL,
   SST_READ_MICROS,
-  // The number of subcompactions actually scheduled during a compaction
-  NUM_SUBCOMPACTIONS_SCHEDULED,
   // Value size distribution in each operation
   BYTES_PER_READ,
   BYTES_PER_WRITE,
@@ -358,26 +345,14 @@ const std::vector<std::pair<Histograms, std::string>> HistogramsNameMap = {
     {DB_GET, "rocksdb_db_get_micros"},
     {DB_WRITE, "rocksdb_db_write_micros"},
     {COMPACTION_TIME, "rocksdb_compaction_times_micros"},
-    {SUBCOMPACTION_SETUP_TIME, "rocksdb_subcompaction_setup_times_micros"},
-    {TABLE_SYNC_MICROS, "rocksdb_table_sync_micros"},
-    {COMPACTION_OUTFILE_SYNC_MICROS, "rocksdb_compaction_outfile_sync_micros"},
     {WAL_FILE_SYNC_MICROS, "rocksdb_wal_file_sync_micros"},
-    {MANIFEST_FILE_SYNC_MICROS, "rocksdb_manifest_file_sync_micros"},
-    {TABLE_OPEN_IO_MICROS, "rocksdb_table_open_io_micros"},
     {DB_MULTIGET, "rocksdb_db_multiget_micros"},
     {READ_BLOCK_COMPACTION_MICROS, "rocksdb_read_block_compaction_micros"},
     {READ_BLOCK_GET_MICROS, "rocksdb_read_block_get_micros"},
     {WRITE_RAW_BLOCK_MICROS, "rocksdb_write_raw_block_micros"},
-    {STALL_L0_SLOWDOWN_COUNT, "rocksdb_l0_slowdown_count"},
-    {STALL_MEMTABLE_COMPACTION_COUNT, "rocksdb_memtable_compaction_count"},
-    {STALL_L0_NUM_FILES_COUNT, "rocksdb_num_files_stall_count"},
-    {HARD_RATE_LIMIT_DELAY_COUNT, "rocksdb_hard_rate_limit_delay_count"},
-    {SOFT_RATE_LIMIT_DELAY_COUNT, "rocksdb_soft_rate_limit_delay_count"},
     {NUM_FILES_IN_SINGLE_COMPACTION, "rocksdb_numfiles_in_singlecompaction"},
     {DB_SEEK, "rocksdb_db_seek_micros"},
-    {WRITE_STALL, "rocksdb_db_write_stall"},
     {SST_READ_MICROS, "rocksdb_sst_read_micros"},
-    {NUM_SUBCOMPACTIONS_SCHEDULED, "rocksdb_num_subcompactions_scheduled"},
     {BYTES_PER_READ, "rocksdb_bytes_per_read"},
     {BYTES_PER_WRITE, "rocksdb_bytes_per_write"},
     {BYTES_PER_MULTIGET, "rocksdb_bytes_per_multiget"},
@@ -417,6 +392,7 @@ class Statistics {
   virtual void recordTick(uint32_t tickerType, uint64_t count = 0) = 0;
   virtual void setTickerCount(uint32_t tickerType, uint64_t count) = 0;
   virtual void measureTime(uint32_t histogramType, uint64_t time) = 0;
+  virtual void resetTickersForTest() = 0;
 
   // String representation of the statistic object.
   virtual std::string ToString() const {
@@ -433,7 +409,11 @@ class Statistics {
 };
 
 // Create a concrete DBStatistics object
-std::shared_ptr<Statistics> CreateDBStatistics();
+std::shared_ptr<Statistics> CreateDBStatistics(
+    const scoped_refptr<yb::MetricEntity>& hist_entity,
+    const scoped_refptr<yb::MetricEntity>& tick_entity,
+    const bool for_intents = false);
+std::shared_ptr<Statistics> CreateDBStatisticsForTests(bool for_intents = false);
 
 }  // namespace rocksdb
 

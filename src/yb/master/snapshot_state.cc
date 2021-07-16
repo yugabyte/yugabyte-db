@@ -15,13 +15,12 @@
 
 #include "yb/common/transaction_error.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
-#include "yb/docdb/primitive_value.h"
 
 #include "yb/master/master_error.h"
-#include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/snapshot_coordinator_context.h"
+
+#include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.pb.h"
 
@@ -36,28 +35,18 @@ DEFINE_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
 namespace yb {
 namespace master {
 
-namespace {
-
-Result<ColumnId> MetadataColumnId(SnapshotCoordinatorContext* context) {
-  return context->schema().ColumnIdByName(kSysCatalogTableColMetadata);
-}
-
-} // namespace
-
 Result<docdb::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context) {
-  docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(SysRowEntry::SNAPSHOT),
-                          docdb::PrimitiveValue(id.AsSlice().ToBuffer()) });
-  docdb::SubDocKey sub_doc_key(
-      doc_key, docdb::PrimitiveValue(VERIFY_RESULT(MetadataColumnId(context))));
-  return sub_doc_key.Encode();
+  return EncodedKey(SysRowEntry::SNAPSHOT, id.AsSlice(), context);
 }
 
 SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const tserver::TabletSnapshotOpRequestPB& request)
     : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
-      id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()), version_(1) {
+      id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()),
+      previous_snapshot_hybrid_time_(HybridTime::FromPB(request.previous_snapshot_hybrid_time())),
+      schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1) {
   InitTabletIds(request.tablet_id(),
                 request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
   request.extra_data().UnpackTo(&entries_);
@@ -67,14 +56,20 @@ SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const SysSnapshotEntryPB& entry)
     : StateWithTablets(context, entry.state()),
-      id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()), version_(entry.version()) {
+      id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()),
+      previous_snapshot_hybrid_time_(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
+      schedule_id_(TryFullyDecodeSnapshotScheduleId(entry.schedule_id())),
+      version_(entry.version()) {
   InitTablets(entry.tablet_snapshots());
   *entries_.mutable_entries() = entry.entries();
 }
 
 std::string SnapshotState::ToString() const {
-  return Format("{ id: $0 snapshot_hybrid_time: $1 version: $2 initial_state: $3 tablets: $4 }",
-                id_, snapshot_hybrid_time_, version_, InitialStateName(), tablets());
+  return Format(
+      "{ id: $0 snapshot_hybrid_time: $1 schedule_id: $2 previous_snapshot_hybrid_time: $3 "
+          "version: $4 initial_state: $5 tablets: $6 }",
+      id_, snapshot_hybrid_time_, schedule_id_, previous_snapshot_hybrid_time_, version_,
+      InitialStateName(), tablets());
 }
 
 Status SnapshotState::ToPB(SnapshotInfoPB* out) {
@@ -85,10 +80,17 @@ Status SnapshotState::ToPB(SnapshotInfoPB* out) {
 Status SnapshotState::ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client) {
   out->set_state(for_client ? VERIFY_RESULT(AggregatedState()) : initial_state());
   out->set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
+  if (previous_snapshot_hybrid_time_) {
+    out->set_previous_snapshot_hybrid_time(previous_snapshot_hybrid_time_.ToUint64());
+  }
 
   TabletsToPB(out->mutable_tablet_snapshots());
 
   *out->mutable_entries() = entries_.entries();
+
+  if (schedule_id_) {
+    out->set_schedule_id(schedule_id_.data(), schedule_id_.size());
+  }
 
   out->set_version(version_);
 
@@ -109,23 +111,29 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
   return Status::OK();
 }
 
-Status SnapshotState::CheckCanDelete() {
-  if (AllInState(SysSnapshotEntryPB::DELETED)) {
-    return STATUS(NotFound, "The snapshot was deleted", id_.ToString(),
-                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-  }
-  if (HasInState(SysSnapshotEntryPB::DELETING)) {
+Status SnapshotState::TryStartDelete() {
+  if (initial_state() == SysSnapshotEntryPB::DELETING || delete_started_) {
+    if (AllInState(SysSnapshotEntryPB::DELETED)) {
+      return STATUS(NotFound, "The snapshot was deleted", id_.ToString(),
+                    MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
+    }
     return STATUS(NotFound, "The snapshot is being deleted", id_.ToString(),
                   MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
+  delete_started_ = true;
 
   return Status::OK();
+}
+
+void SnapshotState::DeleteAborted(const Status& status) {
+  delete_started_ = false;
 }
 
 void SnapshotState::PrepareOperations(TabletSnapshotOperations* out) {
   DoPrepareOperations([this, out](const TabletData& tablet) {
     out->push_back(TabletSnapshotOperation {
       .tablet_id = tablet.id,
+      .schedule_id = schedule_id_,
       .snapshot_id = id_,
       .state = initial_state(),
       .snapshot_hybrid_time = snapshot_hybrid_time_,
@@ -152,6 +160,30 @@ bool SnapshotState::IsTerminalFailure(const Status& status) {
     return true;
   }
   return false;
+}
+
+bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
+  // Backward compatibility mode
+  int other_version = other.version() == 0 ? version() + 1 : other.version();
+  // If we have several updates for single snapshot, they are loaded in chronological order.
+  // So latest update should be picked.
+  return version() < other_version;
+}
+
+Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
+    const tablet::SnapshotOperation& operation) const {
+  if (!schedule_id_) {
+    static Status result(STATUS(Uninitialized, ""));
+    return result;
+  }
+
+  return tablet::CreateSnapshotData {
+    .snapshot_hybrid_time = snapshot_hybrid_time_,
+    .hybrid_time = operation.hybrid_time(),
+    .op_id = operation.op_id(),
+    .snapshot_dir = VERIFY_RESULT(operation.GetSnapshotDir()),
+    .schedule_id = schedule_id_,
+  };
 }
 
 } // namespace master

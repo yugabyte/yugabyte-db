@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import './mixins.scss';
+@import './variables.scss';
 
 $YB_TEXT_COLOR: #232329;
 
@@ -27,6 +28,7 @@ $YB_HOVER_BACKGROUND_COLOR: $YB_WHITE;
 $YB_SUCCESS_COLOR: #289b42;
 $YB_PENDING_COLOR: $YB_ORANGE;
 $YB_FAIL_COLOR: #e8473f;
+$YB_ERROR_TEXT_COLOR: #a94442;
 $YB_BLUE_COLOR: #35a3ff;
 $YB_FAIL_COLOR_ICON: darken($YB_FAIL_COLOR, 20%);
 $YB_FAIL_COLOR_DARK: darken($YB_FAIL_COLOR, 30%);

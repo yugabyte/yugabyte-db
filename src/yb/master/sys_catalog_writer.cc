@@ -123,23 +123,16 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
 }
 
 Status FillSysCatalogWriteRequest(
-    int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+    int8_t type, const std::string& item_id, const Slice& data,
     QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req) {
-  req->set_type(op_type);
-
   if (IsWrite(op_type)) {
-    faststring metadata_buf;
-
-    if (!pb_util::SerializeToString(new_pb, &metadata_buf)) {
-      return STATUS_FORMAT(
-          Corruption, "Unable to serialize SysCatalog entry $0", item_id);
-    }
-
     // Add the metadata column.
     QLColumnValuePB* metadata = req->add_column_values();
     RETURN_NOT_OK(SetColumnId(schema_with_ids, kSysCatalogTableColMetadata, metadata));
-    SetBinaryValue(metadata_buf, metadata->mutable_expr());
+    SetBinaryValue(data, metadata->mutable_expr());
   }
+
+  req->set_type(op_type);
 
   // Add column type.
   SetInt8Value(type, req->add_range_column_values());
@@ -150,30 +143,55 @@ Status FillSysCatalogWriteRequest(
   return Status::OK();
 }
 
+Status FillSysCatalogWriteRequest(
+    int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req) {
+  req->set_type(op_type);
+
+  if (IsWrite(op_type)) {
+    faststring metadata_buf;
+
+    pb_util::SerializeToString(new_pb, &metadata_buf);
+
+    return FillSysCatalogWriteRequest(
+        type, item_id, Slice(metadata_buf.data(), metadata_buf.size()), op_type, schema_with_ids,
+        req);
+  }
+
+  return FillSysCatalogWriteRequest(type, item_id, Slice(), op_type, schema_with_ids, req);
+}
+
 Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
-    const std::function<Status(const Slice& id, const Slice& data)>& callback) {
+    const EnumerationCallback& callback) {
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
+      CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
+
+  return EnumerateSysCatalog(
+      down_cast<docdb::DocRowwiseIterator*>(iter.get()), schema, entry_type, callback);
+}
+
+Status EnumerateSysCatalog(
+    docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
+    const EnumerationCallback& callback) {
   const int type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
   const int entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
   const int metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColMetadata));
 
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      schema.CopyWithoutColumnIds(), boost::none, ReadHybridTime::Max(), /* table_id= */"",
-      CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
-
-  auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, entry_type);
+  const std::vector<docdb::PrimitiveValue> empty_hash_components;
   docdb::DocQLScanSpec spec(
       schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
-      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+      empty_hash_components, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   QLTableRow value_map;
   QLValue found_entry_type, entry_id, metadata;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&value_map));
+  while (VERIFY_RESULT(doc_iter->HasNext())) {
+    RETURN_NOT_OK(doc_iter->NextRow(&value_map));
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
     SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));

@@ -34,28 +34,41 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/date_time/posix_time/time_parsers.hpp>
 
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/json_util.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
-#include "yb/integration-tests/ts_itest-base.h"
-#include "yb/master/master_defaults.h"
 
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_backup.pb.h"
+
+#include "yb/tools/admin-test-base.h"
+
+#include "yb/util/date_time.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/random_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace tools {
@@ -74,8 +87,6 @@ using itest::TServerDetails;
 using strings::Substitute;
 
 namespace {
-
-static const char* const kAdminToolName = "yb-admin";
 
 //  Helper to check hosts list by requesting cluster config via yb-admin and parse its output:
 //
@@ -141,15 +152,8 @@ class BlacklistChecker {
 
 } // namespace
 
-class AdminCliTest : public tserver::TabletServerIntegrationTestBase {
- protected:
-  // Figure out where the admin tool is.
-  string GetAdminToolPath() const;
+class AdminCliTest : public AdminTestBase {
 };
-
-string AdminCliTest::GetAdminToolPath() const {
-  return GetToolPath(kAdminToolName);
-}
 
 // Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
@@ -214,9 +218,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   LOG(INFO) << "Adding tserver with uuid " << new_node->uuid() << " as PRE_VOTER ...";
   string exe_path = GetAdminToolPath();
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", cluster_->master()->bound_rpc_addr(), "change_config",
-      tablet_id_, "ADD_SERVER", new_node->uuid(), "PRE_VOTER")));
+  ASSERT_OK(CallAdmin("change_config", tablet_id_, "ADD_SERVER", new_node->uuid(), "PRE_VOTER"));
 
   InsertOrDie(&active_tablet_servers, new_node->uuid(), new_node);
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -246,9 +248,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   // Now remove the server once again.
   LOG(INFO) << "Removing tserver with uuid " << new_node->uuid() << " from the config...";
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", cluster_->master()->bound_rpc_addr(), "change_config",
-      tablet_id_, "REMOVE_SERVER", new_node->uuid())));
+  ASSERT_OK(CallAdmin("change_config", tablet_id_, "REMOVE_SERVER", new_node->uuid()));
 
   ASSERT_EQ(1, active_tablet_servers.erase(new_node->uuid()));
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -274,8 +274,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   string keyspace = kTableName.namespace_name();
 
   string exe_path = GetAdminToolPath();
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
+  ASSERT_OK(CallAdmin("delete_table", keyspace, table_name));
 
   const auto tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
@@ -341,16 +340,14 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   // Delete index.
   string exe_path = GetAdminToolPath();
   LOG(INFO) << "Delete index via yb-admin: " << keyspace << "." << index_name;
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "delete_index", keyspace, index_name)));
+  ASSERT_OK(CallAdmin("delete_index", keyspace, index_name));
 
   tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(1 + master::kNumSystemTables, tables.size());
 
   // Delete table.
   LOG(INFO) << "Delete table via yb-admin: " << keyspace << "." << table_name;
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
+  ASSERT_OK(CallAdmin("delete_table", keyspace, table_name));
 
   tables = ASSERT_RESULT(client->ListTables(/* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
@@ -362,12 +359,10 @@ TEST_F(AdminCliTest, BlackList) {
   const auto exe_path = GetAdminToolPath();
   const auto default_port = 9100;
   vector<HostPort> hosts{{"node1", default_port}, {"node2", default_port}, {"node3", default_port}};
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "change_blacklist", "ADD", unpack(hosts))));
+  ASSERT_OK(CallAdmin("change_blacklist", "ADD", unpack(hosts)));
   const BlacklistChecker checker(exe_path, master_address);
   ASSERT_OK(checker(hosts));
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      exe_path, "-master_addresses", master_address, "change_blacklist", "REMOVE", hosts.back())));
+  ASSERT_OK(CallAdmin("change_blacklist", "REMOVE", hosts.back()));
   hosts.pop_back();
   ASSERT_OK(checker(hosts));
 }
@@ -422,8 +417,6 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
 
 TEST_F(AdminCliTest, TestSnapshotCreation) {
   BuildAndStart();
-  const auto master_address = ToString(cluster_->master()->bound_rpc_addr());
-  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
   const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
                                        kTableName.namespace_name(),
                                        "extra-table");
@@ -432,24 +425,17 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
   YBSchema schema;
   ASSERT_OK(schemaBuilder.Build(&schema));
-  ASSERT_OK(client->NewTableCreator()->table_name(extra_table)
+  ASSERT_OK(client_->NewTableCreator()->table_name(extra_table)
       .schema(&schema).table_type(yb::client::YBTableType::YQL_TABLE_TYPE).Create());
-  const auto tables = ASSERT_RESULT(client->ListTables(kTableName.table_name(),
+  const auto tables = ASSERT_RESULT(client_->ListTables(kTableName.table_name(),
       /* exclude_ysql */ true));
   ASSERT_EQ(1, tables.size());
-  std::string output;
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      GetAdminToolPath(), "-master_addresses", master_address, "create_snapshot",
-      Format("tableid.$0", tables.front().table_id()),
-      extra_table.namespace_name(), extra_table.table_name()),
-                            &output));
+  std::string output = ASSERT_RESULT(CallAdmin(
+      "create_snapshot", Format("tableid.$0", tables.front().table_id()),
+      extra_table.namespace_name(), extra_table.table_name()));
   ASSERT_NE(output.find("Started snapshot creation"), string::npos);
 
-  ASSERT_OK(Subprocess::Call(
-      ToStringVector(
-          GetAdminToolPath(), "-master_addresses", master_address,
-          "list_snapshots", "SHOW_DETAILS"),
-      &output));
+  output = ASSERT_RESULT(CallAdmin("list_snapshots", "SHOW_DETAILS"));
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
 }
@@ -477,12 +463,7 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
   // This should timeout.
   Status s = WaitFor(
       [&]() -> Result<bool> {
-        RETURN_NOT_OK(Subprocess::Call(
-            ToStringVector(
-                GetAdminToolPath(),
-                "-master_addresses", master_address,
-                "get_is_load_balancer_idle"),
-            &output));
+        auto output = VERIFY_RESULT(CallAdmin("get_is_load_balancer_idle"));
         return output.compare("Idle = 0\n") == 0;
       },
       kWaitTime,
@@ -494,15 +475,6 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
 TEST_F(AdminCliTest, TestLeaderStepdown) {
   BuildAndStart();
   std::string out;
-  auto call_admin = [
-      &out,
-      admin_path = GetAdminToolPath(),
-      master_address = ToString(cluster_->master()->bound_rpc_addr())] (
-      const std::initializer_list<std::string>& args) mutable {
-    auto cmds = ToStringVector(admin_path, "-master_addresses", master_address);
-    std::copy(args.begin(), args.end(), std::back_inserter(cmds));
-    return Subprocess::Call(cmds, &out);
-  };
   auto regex_fetch_first = [&out](const std::string& exp) -> Result<std::string> {
     std::smatch match;
     if (!std::regex_search(out.cbegin(), out.cend(), match, std::regex(exp)) || match.size() != 2) {
@@ -511,14 +483,15 @@ TEST_F(AdminCliTest, TestLeaderStepdown) {
     return match[1];
   };
 
-  ASSERT_OK(call_admin({"list_tablets", kTableName.namespace_name(), kTableName.table_name()}));
+  out = ASSERT_RESULT(CallAdmin(
+      "list_tablets", kTableName.namespace_name(), kTableName.table_name()));
   const auto tablet_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+)"));
-  ASSERT_OK(call_admin({"list_tablet_servers", tablet_id}));
+  out = ASSERT_RESULT(CallAdmin("list_tablet_servers", tablet_id));
   const auto tserver_id = ASSERT_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+FOLLOWER)"));
-  ASSERT_OK(call_admin({"leader_stepdown", tablet_id, tserver_id}));
+  ASSERT_OK(CallAdmin("leader_stepdown", tablet_id, tserver_id));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    RETURN_NOT_OK(call_admin({"list_tablet_servers", tablet_id}));
+    out = VERIFY_RESULT(CallAdmin("list_tablet_servers", tablet_id));
     return tserver_id == VERIFY_RESULT(regex_fetch_first(R"(\s+([a-z0-9]{32})\s+\S+\s+LEADER)"));
   }, 5s, "Leader stepdown"));
 }
@@ -534,28 +507,23 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
   auto client = ASSERT_RESULT(YBClientBuilder()
                                   .add_master_server_addr(master_address)
                                   .Build());
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+  output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
   ASSERT_NE(output.find("ENABLED"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "set_load_balancer_enabled", "0"), &output));
+  output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "0"));
 
   ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+  output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
   ASSERT_NE(output.find("DISABLED"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "set_load_balancer_enabled", "1"), &output));
+  output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "1"));
 
   ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
 
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-      "-master_addresses", master_address, "get_load_balancer_state"), &output));
+  output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
   ASSERT_NE(output.find("ENABLED"), std::string::npos);
 }
@@ -579,10 +547,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
       .Build());
 
   // Modify the cluster placement policy to consist of 2 zones.
-  std::string output;
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_placement_info", "c.r.z0,c.r.z1", 2, ""),
-   &output));
+  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z0,c.r.z1", 2, ""));
 
   // Create a new table.
   const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
@@ -602,18 +567,16 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Use yb-admin_cli to set a custom placement policy different from that of
   // the cluster placement policy for the new table.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, ""),
-   &output));
+  ASSERT_OK(CallAdmin(
+      "modify_table_placement_info", kTableName.namespace_name(), "extra-table",
+      "c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
   // Verify that changing the placement _uuid for a table fails if the
   // placement_uuid does not match the cluster live placement_uuid.
   const string& random_placement_uuid = "19dfa091-2b53-434f-b8dc-97280a5f8831";
-  ASSERT_NOK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   kTableName.namespace_name(), "extra-table", "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid),
-   &output));
+  ASSERT_NOK(CallAdmin(
+      "modify_table_placement_info", kTableName.namespace_name(), "extra-table",
+      "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
   ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
@@ -643,18 +606,13 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Perform the same test, but use the table-id instead of table name to set the
   // custom placement policy.
-  const string& id = table->id();
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   Format("tableid.$0", id), "c.r.z1", 1, ""),
-   &output));
+  std::string table_id = "tableid." + table->id();
+  ASSERT_OK(CallAdmin("modify_table_placement_info", table_id, "c.r.z1", 1, ""));
 
   // Verify that changing the placement _uuid for a table fails if the
   // placement_uuid does not match the cluster live placement_uuid.
-  ASSERT_NOK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_table_placement_info",
-   Format("tableid.$0", id), "c.r.z1", 1, random_placement_uuid),
-   &output));
+  ASSERT_NOK(CallAdmin(
+      "modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
   ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
@@ -694,30 +652,67 @@ TEST_F(AdminCliTest, TestClearPlacementPolicy) {
   ts_flags.push_back("--placement_zone=z");
   BuildAndStart(ts_flags, master_flags);
 
-  std::string output;
-  const std::string& master_address = ToString(cluster_->master()->bound_rpc_addr());
-
   // Create the placement config.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "modify_placement_info", "c.r.z", 3, ""),
-   &output));
+  ASSERT_OK(CallAdmin("modify_placement_info", "c.r.z", 3, ""));
 
   // Ensure that the universe config has placement information.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "get_universe_config"),
-   &output));
+  auto output = ASSERT_RESULT(CallAdmin("get_universe_config"));
   ASSERT_TRUE(output.find("replicationInfo") != std::string::npos);
 
   // Clear the placement config.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "clear_placement_info"),
-   &output));
+  ASSERT_OK(CallAdmin("clear_placement_info"));
 
   // Ensure that the placement config is absent.
-  ASSERT_OK(Subprocess::Call(ToStringVector(GetAdminToolPath(),
-   "-master_addresses", master_address, "get_universe_config"),
-   &output));
+  output = ASSERT_RESULT(CallAdmin("get_universe_config"));
   ASSERT_TRUE(output.find("replicationInfo") == std::string::npos);
+}
+
+TEST_F(AdminCliTest, DdlLog) {
+  const std::string kNamespaceName = "test_namespace";
+  const std::string kTableName = "test_table";
+  BuildAndStart({}, {});
+
+  auto session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE KEYSPACE IF NOT EXISTS $0", kNamespaceName));
+
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", kNamespaceName));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, text_column TEXT) "
+      "WITH transactions = { 'enabled' : true }", kTableName));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE INDEX test_idx ON $0 (text_column)", kTableName));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "ALTER TABLE $0 ADD int_column INT", kTableName));
+
+  ASSERT_OK(session.ExecuteQuery("DROP INDEX test_idx"));
+
+  ASSERT_OK(session.ExecuteQueryFormat("ALTER TABLE $0 DROP text_column", kTableName));
+
+  auto document = ASSERT_RESULT(CallJsonAdmin("ddl_log"));
+
+  auto log = ASSERT_RESULT(Get(document, "log")).get().GetArray();
+  ASSERT_EQ(log.Size(), 3);
+  std::vector<std::string> actions;
+  for (const auto& entry : log) {
+    LOG(INFO) << "Entry: " << common::PrettyWriteRapidJsonToString(entry);
+    TableType type;
+    bool parse_result = TableType_Parse(
+        ASSERT_RESULT(Get(entry, "table_type")).get().GetString(), &type);
+    ASSERT_TRUE(parse_result);
+    ASSERT_EQ(type, TableType::YQL_TABLE_TYPE);
+    auto namespace_name = ASSERT_RESULT(Get(entry, "namespace")).get().GetString();
+    ASSERT_EQ(namespace_name, kNamespaceName);
+    auto table_name = ASSERT_RESULT(Get(entry, "table")).get().GetString();
+    ASSERT_EQ(table_name, kTableName);
+    actions.emplace_back(ASSERT_RESULT(Get(entry, "action")).get().GetString());
+  }
+  ASSERT_EQ(actions[0], "Drop column text_column");
+  ASSERT_EQ(actions[1], "Drop index test_idx");
+  ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE NOT A PARTITION KEY]");
 }
 
 }  // namespace tools

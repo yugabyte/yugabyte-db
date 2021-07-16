@@ -51,6 +51,10 @@ message SysSnapshotEntryPB {
   optional fixed64 snapshot_hybrid_time = 4;
 
   optional int64 version = 5;
+
+  optional bytes schedule_id = 6;
+
+  optional fixed64 previous_snapshot_hybrid_time = 7;
 }
 
 ////////////////////////////////////////////////////////////
@@ -67,6 +71,8 @@ message CreateSnapshotRequestPB {
   // Interpet this snapshot as imported:
   // Snapshot will be created as COMPLETE and no tablet operations will be performed.
   optional bool imported = 4;
+
+  optional bytes schedule_id = 5; // Create snapshot to this schedule. Other fields are ignored.
 }
 
 message CreateSnapshotResponsePB {
@@ -79,6 +85,27 @@ message SnapshotInfoPB {
   optional bytes id = 1;
   // Detailed snapshot entries.
   optional SysSnapshotEntryPB entry = 2;
+}
+
+message TabletRestorationPB {
+  optional bytes id = 1;
+  optional SysSnapshotEntryPB.State state = 2;
+}
+
+message SysRestorationEntryPB {
+  optional SysSnapshotEntryPB.State state = 1 [ default = UNKNOWN ];
+  repeated TabletRestorationPB tablet_restorations = 2;
+  optional bytes snapshot_id = 8;
+
+  // Time when restoration finished. Computed on master after received response from the last
+  // tablet.
+  optional fixed64 complete_time_ht = 3;
+}
+
+message RestorationInfoPB {
+  optional bytes id = 1;
+  // Detailed snapshot entries.
+  optional SysRestorationEntryPB entry = 2;
 }
 
 message ListSnapshotsRequestPB {
@@ -95,7 +122,7 @@ message ListSnapshotsResponsePB {
 
 message RestoreSnapshotRequestPB {
   optional bytes snapshot_id = 2;
-  optional fixed64 restore_ht = 3;
+  optional fixed64 restore_ht = 3; // Absolute Timing Option: Max HybridTime, in Micros.
 }
 
 message RestoreSnapshotResponsePB {
@@ -123,7 +150,7 @@ message ListSnapshotRestorationsRequestPB {
 message ListSnapshotRestorationsResponsePB {
   optional AppStatusPB status = 1;
 
-  repeated SnapshotInfoPB restorations = 2;
+  repeated RestorationInfoPB restorations = 2;
 }
 
 // ID mapping pair: old ID (object ID on external cluster) TO new ID
@@ -153,6 +180,58 @@ message ImportSnapshotMetaResponsePB {
   repeated TableMetaPB tables_meta = 3;
 }
 
+message TableIdentifiersPB {
+  repeated TableIdentifierPB tables = 1;
+}
+
+message SnapshotScheduleFilterPB {
+  oneof filter {
+    TableIdentifiersPB tables = 1;
+  }
+}
+
+message SnapshotScheduleOptionsPB {
+  optional SnapshotScheduleFilterPB filter = 1;
+  optional uint64 interval_sec = 2; // interval for taking snapshot in seconds.
+  optional uint64 retention_duration_sec = 3; // how long store snapshots in seconds.
+  optional fixed64 delete_time = 4; // hybrid time when this schedule was deleted.
+}
+
+message CreateSnapshotScheduleRequestPB {
+  optional SnapshotScheduleOptionsPB options = 1;
+}
+
+message CreateSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bytes snapshot_schedule_id = 2;
+}
+
+message ListSnapshotSchedulesRequestPB {
+  // When snapshot_schedule_id is not specified, all schedules are listed.
+  optional bytes snapshot_schedule_id = 1;
+}
+
+message SnapshotScheduleInfoPB {
+  optional bytes id = 1;
+  optional SnapshotScheduleOptionsPB options = 2;
+  repeated SnapshotInfoPB snapshots = 3;
+}
+
+message ListSnapshotSchedulesResponsePB {
+  optional MasterErrorPB error = 1;
+
+  repeated SnapshotScheduleInfoPB schedules = 2;
+}
+
+message DeleteSnapshotScheduleRequestPB {
+  optional bytes snapshot_schedule_id = 1;
+}
+
+message DeleteSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -162,4 +241,10 @@ service MasterBackupService {
   rpc RestoreSnapshot(RestoreSnapshotRequestPB) returns (RestoreSnapshotResponsePB);
   rpc DeleteSnapshot(DeleteSnapshotRequestPB) returns (DeleteSnapshotResponsePB);
   rpc ImportSnapshotMeta(ImportSnapshotMetaRequestPB) returns (ImportSnapshotMetaResponsePB);
+  rpc CreateSnapshotSchedule(CreateSnapshotScheduleRequestPB)
+      returns (CreateSnapshotScheduleResponsePB);
+  rpc ListSnapshotSchedules(ListSnapshotSchedulesRequestPB)
+      returns (ListSnapshotSchedulesResponsePB);
+  rpc DeleteSnapshotSchedule(DeleteSnapshotScheduleRequestPB)
+      returns (DeleteSnapshotScheduleResponsePB);
 }

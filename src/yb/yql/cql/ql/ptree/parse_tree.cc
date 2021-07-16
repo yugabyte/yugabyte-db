@@ -53,6 +53,10 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
     return Status::OK();
   }
 
+  // Each analysis process needs to have state variables.
+  // Setup a base sem_state variable before traversing the statement tree.
+  SemState sem_state(sem_context);
+
   DCHECK_EQ(root_->opcode(), TreeNodeOpcode::kPTListNode) << "statement list expected";
   const auto lnode = std::static_pointer_cast<PTListNode>(root_);
   switch (lnode->size()) {

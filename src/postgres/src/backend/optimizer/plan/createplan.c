@@ -2518,7 +2518,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 									bool *no_row_trigger,
 									List **no_update_index_list)
 {
-	RelOptInfo *relInfo;
+	RelOptInfo *relInfo = NULL;
 	Oid relid;
 	Relation relation;
 	Path *subpath;
@@ -2551,10 +2551,47 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 	/*
 	 * Multi-relation implies multi-shard.
-	 * Note that simple_rel_array is one-based, so size of two implies one entry.
 	 */
-	if (list_length(path->resultRelations) != 1 || root->simple_rel_array_size != 2)
+	if (list_length(path->resultRelations) != 1)
 		return false;
+
+	/*
+	 * Check that the number of relations being updated is 1.
+	 * Note that simple_rel_array is one-based.
+	 */
+	for (int rti = 1; rti < root->simple_rel_array_size; ++rti)
+	{
+			RelOptInfo *rel = root->simple_rel_array[rti];
+			if (rel != NULL)
+			{
+					if (relInfo == NULL)
+					{
+						/* Found the first non null RelOptInfo.
+						 * Set relInfo and relid.
+						 */
+						relInfo = rel;
+						relid = root->simple_rte_array[rti]->relid;
+					}
+					else
+					{
+							/*
+							 * There are multiple entries in simple_rel_array.
+							 * This implies that multiple relations are being
+							 * affected. Single row optimization is not
+							 * applicable here.
+							 */
+							return false;
+					}
+			}
+	}
+
+	/*
+	 * One relation must be updated.
+	 */
+	if (relInfo == NULL)
+	{
+			return false;
+	}
 
 	/* ON CONFLICT clause is not supported here yet. */
 	if (path->onconflict)
@@ -2568,10 +2605,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	if (list_length(path->returningLists) > 1)
 		return false;
 
-	/* Extract the relation. Must be first entry since we only have one relation (one-based). */
-	relInfo = root->simple_rel_array[1];
-	relid = root->simple_rte_array[1]->relid;
-
 	/* Verify we're a YB relation. */
 	if (!IsYBRelationById(relid))
 		return false;
@@ -2579,19 +2612,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	/* Ensure we close the relation before returning. */
 	relation = RelationIdGetRelation(relid);
 	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
-
-	/*
-	 * Cannot allow check constraints for single-row update as we will need
-	 * to ensure we read all columns they reference to check them correctly.
-	 */
-	TupleDesc tupDesc = RelationGetDescr(relation);
-	if (path->operation == CMD_UPDATE &&
-	    tupDesc->constr &&
-	    tupDesc->constr->num_check > 0)
-	{
-		RelationClose(relation);
-		return false;
-	}
 
 	subroot = linitial_node(PlannerInfo, path->subroots);
 	subpath = (Path *) linitial(path->subpaths);
@@ -2691,6 +2711,19 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * update/delete from the index, requiring the scan.
 	 */
 	if (has_applicable_indices(relation, update_attrs, no_update_index_list))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Cannot allow check constraints for single-row update as we will need
+	 * to ensure we read all columns they reference to check them correctly.
+	 */
+	TupleDesc tupDesc = RelationGetDescr(relation);
+	if (path->operation == CMD_UPDATE &&
+		tupDesc->constr &&
+		tupDesc->constr->num_check > 0)
 	{
 		RelationClose(relation);
 		return false;

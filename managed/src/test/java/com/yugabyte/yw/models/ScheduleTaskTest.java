@@ -31,7 +31,7 @@ public class ScheduleTaskTest extends FakeDBApplication {
     UUID scheduleUUID = UUID.randomUUID();
     return ScheduleTask.create(taskUUID, scheduleUUID);
   }
-  
+
   @Test
   public void testCreateTask() {
     ScheduleTask task = createScheduleTask(UUID.randomUUID());

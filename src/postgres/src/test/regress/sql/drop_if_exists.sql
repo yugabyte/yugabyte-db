@@ -271,3 +271,10 @@ DROP TEXT SEARCH TEMPLATE IF EXISTS no_such_schema.foo;
 DROP TRIGGER IF EXISTS foo ON no_such_schema.bar;
 DROP TYPE IF EXISTS no_such_schema.foo;
 DROP VIEW IF EXISTS no_such_schema.foo;
+
+-- This test checks both the functionality of 'if exists' and the syntax
+-- of the drop database command.
+drop database test_database_exists (force);
+drop database test_database_exists with (force);
+drop database if exists test_database_exists (force);
+drop database if exists test_database_exists with (force);

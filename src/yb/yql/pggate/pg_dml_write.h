@@ -70,9 +70,6 @@ class PgDmlWrite : public PgDml {
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 
-  // Delete allocated target for columns that have no bind-values.
-  CHECKED_STATUS DeleteEmptyPrimaryBinds();
-
   // Protobuf code.
   PgsqlWriteRequestPB *write_req_ = nullptr;
 
@@ -81,6 +78,8 @@ class PgDmlWrite : public PgDml {
   int32_t rows_affected_count_ = 0;
 
  private:
+  CHECKED_STATUS DeleteEmptyPrimaryBinds();
+
   virtual std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const = 0;
 };
 

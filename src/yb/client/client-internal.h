@@ -58,6 +58,8 @@ class HostPort;
 
 namespace master {
 class AlterTableRequestPB;
+class AnalyzeTableRequestPB;
+class AnalyzeTableResponsePB;
 class CreateTableRequestPB;
 class MasterServiceProxy;
 } // namespace master
@@ -119,6 +121,9 @@ class YBClient::Data {
                              const YBSchema& schema,
                              CoarseTimePoint deadline,
                              std::string* table_id);
+
+  Result<master::AnalyzeTableResponsePB> AnalyzeTable(
+      YBClient* client, const master::AnalyzeTableRequestPB& req, CoarseTimePoint deadline);
 
   // Take one of table id or name.
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
@@ -470,6 +475,12 @@ class YBClient::Data {
   std::unordered_map<TabletId, TabletRequests> tablet_requests_;
 
   std::atomic<int> tserver_count_cached_{0};
+
+  // The proxy for the node local tablet server.
+  std::shared_ptr<tserver::TabletServerForwardServiceProxy> node_local_forward_proxy_;
+
+  // The host port of the node local tserver.
+  HostPort node_local_tserver_host_port_;
 
  private:
   CHECKED_STATUS FlushTablesHelper(YBClient* client,

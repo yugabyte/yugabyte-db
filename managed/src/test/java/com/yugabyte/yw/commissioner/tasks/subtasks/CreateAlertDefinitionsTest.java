@@ -2,60 +2,101 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-import java.util.Set;
-
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
+
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateAlertDefinitionsTest extends FakeDBApplication {
 
-  @Test
-  public void testRunFunctionality() {
-    Customer customer = ModelFactory.testCustomer();
-    Universe u = ModelFactory.createUniverse(customer.getCustomerId());
-    CreateAlertDefinitionsExt alertDefinitionTask = new CreateAlertDefinitionsExt();
-    UniverseTaskParams taskParams = new UniverseTaskParams();
-    taskParams.universeUUID = u.universeUUID;
-    alertDefinitionTask.setParams(taskParams);
+  @Mock private BaseTaskDependencies baseTaskDependencies;
+  @Mock private RuntimeConfigFactory runtimeConfigFactory;
 
-    assertEquals(0, AlertDefinition.listActive(customer.uuid).size());
-    int adCount = 0;
+  private AlertService alertService = new AlertService();
+  private AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
+  private AlertDefinitionGroupService alertDefinitionGroupService =
+      new AlertDefinitionGroupService(alertDefinitionService, runtimeConfigFactory);
+
+  private Customer customer;
+
+  private Universe u;
+
+  private int plannedDefinitions = 0;
+
+  @Before
+  public void setUp() {
+    when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
+    when(baseTaskDependencies.getAlertDefinitionService()).thenReturn(alertDefinitionService);
+    when(baseTaskDependencies.getAlertDefinitionGroupService())
+        .thenReturn(alertDefinitionGroupService);
+
+    customer = ModelFactory.testCustomer();
+    u = ModelFactory.createUniverse(customer.getCustomerId());
+
     for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
-      if (template.isCreateForNewUniverse()) {
-        adCount++;
+      ModelFactory.createAlertDefinitionGroup(
+          customer,
+          u,
+          g ->
+              g.setTarget(
+                  new AlertDefinitionGroupTarget().setAll(template.isCreateForNewCustomer())));
+      if (template.isCreateForNewCustomer()) {
+        plannedDefinitions++;
       }
-    }
-
-    alertDefinitionTask.run();
-
-    Set<AlertDefinition> createdDefinitions = AlertDefinition.listActive(customer.uuid);
-    assertEquals(adCount, createdDefinitions.size());
-    for (AlertDefinition definition : createdDefinitions) {
-      assertFalse(definition.query.contains("__nodePrefix__"));
-      assertFalse(definition.query.contains("__value__"));
-      assertTrue(definition.isActive);
     }
   }
 
-  private static class CreateAlertDefinitionsExt extends CreateAlertDefinitions {
+  private void createAlertData(boolean enableClockSkew) {
+    AlertingData data = new AlertingData();
+    data.sendAlertsToYb = false;
+    data.alertingEmail = "";
+    data.reportOnlyErrors = true;
+    data.enableClockSkew = enableClockSkew;
+    // Setup alerting data.
+    CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
+  }
 
-    public void setParams(ITaskParams taskParams) {
-      this.taskParams = taskParams;
+  @Test
+  public void testRunFunctionality() {
+    createAlertData(true);
+
+    CreateAlertDefinitions alertDefinitionTask = new CreateAlertDefinitions(baseTaskDependencies);
+    UniverseTaskParams taskParams = new UniverseTaskParams();
+    taskParams.universeUUID = u.universeUUID;
+    alertDefinitionTask.initialize(taskParams);
+
+    AlertDefinitionFilter definitionFilter =
+        AlertDefinitionFilter.builder().customerUuid(customer.uuid).build();
+    assertEquals(0, alertDefinitionService.list(definitionFilter).size());
+
+    alertDefinitionTask.run();
+
+    List<AlertDefinition> createdDefinitions = alertDefinitionService.list(definitionFilter);
+    assertEquals(plannedDefinitions, createdDefinitions.size());
+    for (AlertDefinition definition : createdDefinitions) {
+      assertFalse(definition.getQuery().contains("__nodePrefix__"));
+      assertFalse(definition.getQuery().contains("__value__"));
     }
   }
 }

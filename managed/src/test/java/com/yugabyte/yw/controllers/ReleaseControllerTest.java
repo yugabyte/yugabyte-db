@@ -5,40 +5,25 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.ReleaseManager.ReleaseState.DISABLED;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.FORBIDDEN;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.*;
+import static play.mvc.Http.Status.*;
 import static play.test.Helpers.contentAsString;
 
 public class ReleaseControllerTest extends FakeDBApplication {
@@ -50,7 +35,6 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
-
   }
 
   private Result getReleases(UUID customerUUID) {
@@ -72,14 +56,12 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   private Result createRelease(UUID customerUUID, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases";
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
-        user.createAuthToken(), body);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), body);
   }
 
   private Result updateRelease(UUID customerUUID, String version, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases/" + version;
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri,
-        user.createAuthToken(), body);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri, user.createAuthToken(), body);
   }
 
   private void mockReleaseData(boolean multiple) {
@@ -93,17 +75,15 @@ public class ReleaseControllerTest extends FakeDBApplication {
       ReleaseManager.ReleaseMetadata deletedRelease =
           ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "yugabyte-0.0.1.tar.gz");
       deletedRelease.state = ReleaseManager.ReleaseState.DELETED;
-      data = ImmutableMap.of(
-          "0.0.3", activeRelease,
-          "0.0.2", disabledRelease,
-          "0.0.1", deletedRelease
-      );
+      data =
+          ImmutableMap.of(
+              "0.0.3", activeRelease,
+              "0.0.2", disabledRelease,
+              "0.0.1", deletedRelease);
     } else {
       ReleaseManager.ReleaseMetadata activeRelease =
           ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "yugabyte-0.0.1.tar.gz");
-      data = ImmutableMap.of(
-          "0.0.1", activeRelease
-      );
+      data = ImmutableMap.of("0.0.1", activeRelease);
     }
 
     when(mockReleaseManager.getReleaseMetadata()).thenReturn(data);
@@ -143,7 +123,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testCreateReleaseWithInvalidData() {
     ObjectNode body = Json.newObject();
-    Result result = createRelease(customer.uuid, body);
+    Result result = assertYWSE(() -> createRelease(customer.uuid, body));
     assertBadRequest(result, "{\"version\":[\"This field is required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
@@ -164,8 +144,10 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testCreateReleaseWithReleaseManagerException() {
     ObjectNode body = Json.newObject();
     body.put("version", "0.0.1");
-    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).addRelease("0.0.1");
-    Result result = createRelease(customer.uuid, body);
+    doThrow(new YWServiceException(BAD_REQUEST, "Some Error"))
+        .when(mockReleaseManager)
+        .addRelease("0.0.1");
+    Result result = assertYWSE(() -> createRelease(customer.uuid, body));
     verify(mockReleaseManager, times(1)).addRelease("0.0.1");
     assertInternalServerError(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
@@ -185,9 +167,11 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetReleaseWithGetReleaseMetadataException() {
-    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).getReleaseMetadata();
-    Result result = getReleases(customer.uuid);
-    assertInternalServerError(result, "Some Error");
+    doThrow(new YWServiceException(BAD_REQUEST, "Some Error"))
+        .when(mockReleaseManager)
+        .getReleaseMetadata();
+    Result result = assertYWSE(() -> getReleases(customer.uuid));
+    assertBadRequest(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -222,11 +206,9 @@ public class ReleaseControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     HashMap releases = Json.fromJson(json, HashMap.class);
     assertTrue(json.has("0.0.1"));
-    Map expectedMap = ImmutableMap.of(
-        "0.0.1",
-        ImmutableMap.of("filePath", "yugabyte-0.0.1.tar.gz",
-            "state", "ACTIVE")
-    );
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.1", ImmutableMap.of("filePath", "yugabyte-0.0.1.tar.gz", "state", "ACTIVE"));
     assertReleases(expectedMap, releases);
     assertAuditEntry(0, customer.uuid);
   }
@@ -234,14 +216,12 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testGetReleasesStateFilteringWithMetadata() {
     mockReleaseData(true);
-    Map expectedMap = ImmutableMap.of(
-        "0.0.3",
-        ImmutableMap.of("filePath", "yugabyte-0.0.3.tar.gz",
-            "state", "ACTIVE"),
-        "0.0.2",
-        ImmutableMap.of("filePath", "yugabyte-0.0.2.tar.gz",
-            "state", "DISABLED")
-    );
+    Map expectedMap =
+        ImmutableMap.of(
+            "0.0.3",
+            ImmutableMap.of("filePath", "yugabyte-0.0.3.tar.gz", "state", "ACTIVE"),
+            "0.0.2",
+            ImmutableMap.of("filePath", "yugabyte-0.0.2.tar.gz", "state", "DISABLED"));
     Result result = getReleases(customer.uuid, true);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -278,21 +258,22 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testUpdateReleaseWithInvalidVersion() {
     ObjectNode body = Json.newObject();
     body.put("state", "DISABLED");
-    Result result = updateRelease(customer.uuid, "0.0.2", body);
+    Result result = assertYWSE(() -> updateRelease(customer.uuid, "0.0.2", body));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
     assertBadRequest(result, "Invalid Release version: 0.0.2");
     assertAuditEntry(0, customer.uuid);
   }
 
-
   @Test
   public void testUpdateReleaseWithReleaseManagerException() {
-    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).getReleaseByVersion("0.0.2");
+    doThrow(new YWServiceException(BAD_REQUEST, "Some Error"))
+        .when(mockReleaseManager)
+        .getReleaseByVersion("0.0.2");
     ObjectNode body = Json.newObject();
     body.put("state", "DISABLED");
-    Result result = updateRelease(customer.uuid, "0.0.2", body);
+    Result result = assertYWSE(() -> updateRelease(customer.uuid, "0.0.2", body));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
-    assertInternalServerError(result, "Some Error");
+    assertBadRequest(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -301,7 +282,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
     ObjectNode body = Json.newObject();
-    Result result = updateRelease(customer.uuid, "0.0.1", body);
+    Result result = assertYWSE(() -> updateRelease(customer.uuid, "0.0.1", body));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.1");
     assertBadRequest(result, "Missing Required param: State");
     assertAuditEntry(0, customer.uuid);
@@ -329,7 +310,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testRefreshReleaseReleaseManagerException() {
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).importLocalReleases();
-    Result result = refreshReleases(customer.uuid);
+    Result result = assertYWSE(() -> refreshReleases(customer.uuid));
     assertInternalServerError(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }

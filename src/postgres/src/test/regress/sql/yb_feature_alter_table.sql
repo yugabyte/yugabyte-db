@@ -462,3 +462,10 @@ select * from test_alter_column_type_with_index order by a;
 \d test_alter_column_type_with_index
 
 DROP TABLE test_alter_column_type_with_index;
+-- Test #5543 by exercising cases where ALTER command fails due to constraint
+-- check validation, causing rollback of ALTER operation on DocDB.
+CREATE TABLE foobar (key text, value text);
+INSERT INTO foobar VALUES ('key', 'value');
+ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constraint
+ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
+DROP TABLE foobar;

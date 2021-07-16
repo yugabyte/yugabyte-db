@@ -17,6 +17,38 @@ backup:
 monitors:
   cpuacct: []
   memory: []
+custom_requirements:
+  - id: check_free_space
+    message: Ensure there is sufficient space for platform installation.
+    details: Must have at least 16 GB space available.
+    results:
+      - status: success
+        message:
+          default_message: Directory {{.directory}} has enough space available.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+        condition:
+          status_code: 0
+          bool_expr: '{{repl Trim .Result | ParseFloat | lt 16e9 }}'
+      - status: error
+        message:
+          default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 16 GB.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+            bytes: '{{repl ParseFloat .Result | HumanSize }}'
+        condition:
+          status_code: 0
+      - status: warn
+        message:
+          default_message: 'Invalid status code {{.status}}. Error: {{.error}}'
+          args:
+            status: '{{repl .StatusCode }}'
+            error: '{{repl .Error }}'
+    command:
+      id: disk_space_available
+      data:
+        cluster: false
+        dir: '{{repl ConfigOption "storage_path"}}'
 cmds:
   - name: dbpass_cmd
     cmd: random
@@ -76,20 +108,22 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.2.1
+        version: v2.27.1
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
             permission: "0777"
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
             container_path: /prometheus_configs
             permission: "0777"
         ports:
           - private_port: "9090"
             public_port: "9090"
-        entrypoint: [ "/bin/sh", "-c", "cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
+        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
         publish_events:
           - name: Prometheus started
             trigger: container-start
@@ -105,12 +139,22 @@ components:
                   evaluation_interval: {{repl ConfigOption "prometheus_scrape_interval"}}
                   external_labels:
                       monitor: 'swamper'
+              rule_files:
+                - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
               scrape_configs:
                 - job_name: 'prometheus'
-                  scrape_interval: {{repl ConfigOption "prometheus_scrape_interval"}}
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   static_configs:
                       - targets: ['{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9090']
+
+                - job_name: 'platform'
+                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
+                  metrics_path: "/api/v1/prometheus_metrics"
+                  static_configs:
+                    - targets: [
+                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9000'
+                    ]
+
                 - job_name: "node"
                   file_sd_configs:
                     - files:
@@ -160,6 +204,8 @@ components:
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/data'
             container_path: /opt/yugabyte/yugaware/data
           - host_path: '{{repl ConfigOption "storage_path"}}/releases'
@@ -226,7 +272,9 @@ components:
                 # CORS config
                 cors {
                   pathPrefixes = ["/"]
-                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}"]
+                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}",
+                    "{{repl ConfigOption "support_origin_url"}}"
+                  ]
                   supportsCredentials=true
                   allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
                   allowedHttpHeaders = ["Accept", "Origin", "Content-Type", "X-Auth-Token", "X-AUTH-YW-API-TOKEN", ${play.filters.csrf.header.name}]
@@ -234,12 +282,14 @@ components:
               }
 
               yb {
+                cloud.enabled = false
                 devops.home = /opt/yugabyte/devops
                 metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
                 swamper.targetPath = /opt/yugabyte/prometheus/targets
+                swamper.rulesPath = /opt/yugabyte/prometheus/rules
                 multiTenant = false
                 releases.path = "/opt/yugabyte/releases"
                 docker.release = "/opt/yugabyte/release"
@@ -264,7 +314,6 @@ components:
             trigger: container-start
             data: ""
             subscriptions: []
-        volumes_from: [yugaware]
         customer_files: []
         config_files:
           - filename: /opt/certs/server.key
@@ -343,6 +392,12 @@ config:
           name: host_ip
           value_at: 0
         required: true
+      - name: support_origin_url
+        title: Support Origin URL
+        type: text
+        value: ""
+        default: localhost:9000
+        help_text: Specify a support origin URL to be whitelisted in the CORS filter
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text

@@ -46,6 +46,7 @@ Admin web server UI can be viewed at these addresses.
 | yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
 
 ## Firewall Rules
+
 Along with the above, include the following common ports in firewall rules. 
 
 | Service     | Port
@@ -64,7 +65,7 @@ YugabyteDB servers expose time-series performance metrics in the [Prometheus exp
 <target>/prometheus-metrics
 ```
 
-You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `93000` for node level metrics.
+You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
 
 ### Servers
 
@@ -84,6 +85,5 @@ Use the following `yb-tserver` targets for the various API metrics.
 | ysql    | `<yb-tserver-address>:13000` |
 | ycql    | `<yb-tserver-address>:12000` |
 | yedis   | `<yb-tserver-address>:11000` |
-
 
 For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).

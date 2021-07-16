@@ -40,6 +40,9 @@ DEFINE_bool(allow_preempting_compactions, true,
             "Whether a compaction may be preempted in favor of another compaction with higher "
             "priority");
 
+DEFINE_int32(rocksdb_file_starting_buffer_size, 8192,
+             "Starting buffer size for writable files, grows by 2x every new allocation.");
+
 namespace rocksdb {
 
 Status SequentialFileReader::Read(size_t n, Slice* result, uint8_t* scratch) {

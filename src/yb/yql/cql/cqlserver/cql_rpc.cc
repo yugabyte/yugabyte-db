@@ -14,7 +14,6 @@
 //
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 
-#include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
@@ -26,9 +25,11 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/size_literals.h"
 
-using yb::cqlserver::CQLMessage;
-using namespace std::literals; // NOLINT
+using namespace std::literals;
 using namespace std::placeholders;
+using yb::ql::CQLMessage;
+using yb::ql::CQLRequest;
+using yb::ql::ErrorResponse;
 using yb::operator"" _KB;
 using yb::operator"" _MB;
 
@@ -63,6 +64,8 @@ DEFINE_int32(max_message_length, 254_MB,
 // available event always - even if the connection was not subscribed for events.
 DEFINE_bool(cql_server_always_send_events, false,
             "All CQL connections automatically subscribed for all CQL events.");
+
+DECLARE_int32(client_read_write_timeout_ms);
 
 namespace yb {
 namespace cqlserver {
@@ -143,7 +146,8 @@ CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
                                ql::QLSession::SharedPtr ql_session)
     : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
-      ql_session_(std::move(ql_session)) {
+      ql_session_(std::move(ql_session)),
+      deadline_(CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms) {
 }
 
 Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data) {
@@ -158,7 +162,7 @@ Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallDat
 
   // Fill the service name method name to transfer the call to. The method name is for debug
   // tracing only. Inside CQLServiceImpl::Handle, we rely on the opcode to dispatch the execution.
-  stream_id_ = cqlserver::CQLRequest::ParseStreamId(serialized_request_);
+  stream_id_ = CQLRequest::ParseStreamId(serialized_request_);
 
   return Status::OK();
 }
@@ -245,13 +249,13 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
     case CQLMessage::Opcode::PREPARE:
       call_in_progress->set_type("PREPARE");
       details_pb = call_in_progress->add_call_details();
-      details_pb->set_sql_string((static_cast<const PrepareRequest&>(*request)).query()
+      details_pb->set_sql_string((static_cast<const ql::PrepareRequest&>(*request)).query()
                                     .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
       return;
     case CQLMessage::Opcode::EXECUTE:
       call_in_progress->set_type("EXECUTE");
       details_pb = call_in_progress->add_call_details();
-      query_id = (static_cast<const ExecuteRequest&>(*request)).query_id();
+      query_id = (static_cast<const ql::ExecuteRequest&>(*request)).query_id();
       details_pb->set_sql_id(b2a_hex(query_id));
       statement_ptr = service_impl_->GetPreparedStatement(query_id);
       if (statement_ptr != nullptr) {
@@ -262,13 +266,13 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
     case CQLMessage::Opcode::QUERY:
       call_in_progress->set_type("QUERY");
       details_pb = call_in_progress->add_call_details();
-      details_pb->set_sql_string((static_cast<const QueryRequest&>(*request)).query()
+      details_pb->set_sql_string((static_cast<const ql::QueryRequest&>(*request)).query()
                                     .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
       return;
     case CQLMessage::Opcode::BATCH:
       call_in_progress->set_type("BATCH");
-      for (const BatchRequest::Query& batchQuery :
-          (static_cast<const BatchRequest&>(*request)).queries()) {
+      for (const ql::BatchRequest::Query& batchQuery :
+          (static_cast<const ql::BatchRequest&>(*request)).queries()) {
         details_pb = call_in_progress->add_call_details();
         if (batchQuery.is_prepared) {
           details_pb->set_sql_id(b2a_hex(batchQuery.query_id));
@@ -332,8 +336,7 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
 }
 
 CoarseTimePoint CQLInboundCall::GetClientDeadline() const {
-  // TODO(Robert) - fill in CQL timeout
-  return CoarseTimePoint::max();
+  return deadline_;
 }
 
 } // namespace cqlserver

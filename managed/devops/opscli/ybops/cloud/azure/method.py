@@ -62,7 +62,7 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
 
     def run_ansible_create(self, args):
         self.update_ansible_vars(args)
-        self.cloud.create_instance(args, self.extra_vars["ssh_user"])
+        self.cloud.create_or_update_instance(args, self.extra_vars["ssh_user"])
 
 
 class AzureProvisionInstancesMethod(ProvisionInstancesMethod):
@@ -99,20 +99,6 @@ class AzureAccessAddKeyMethod(AbstractAccessMethod):
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
         print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
-
-
-class AzureAccessDeleteKeyMethod(AbstractAccessMethod):
-    def __init__(self, base_command):
-        super(AzureAccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
-
-    def callback(self, args):
-        try:
-            for key_file in glob.glob("{}/{}.*".format(args.key_file_path, args.key_pair_name)):
-                os.remove(key_file)
-            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
-        except Exception as e:
-            logging.error(e)
-            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
 
 
 class AzureQueryVPCMethod(AbstractMethod):
@@ -187,3 +173,78 @@ class AzureQueryUltraMethod(AbstractMethod):
         self.parser.add_argument("--regions", nargs='+')
         self.parser.add_argument("--folder", required=True,
                                  help="Folder to write region ultra disk json.")
+
+
+class AbstractDnsMethod(AbstractMethod):
+    def __init__(self, base_command, method_name):
+        super(AbstractDnsMethod, self).__init__(base_command, method_name)
+        self.ip_list = []
+        self.naming_info_required = True
+
+    def add_extra_args(self):
+        super(AbstractDnsMethod, self).add_extra_args()
+        self.parser.add_argument("--hosted_zone_id", required=True,
+                                 help="The ID of the Azure private DNS zone.")
+        self.parser.add_argument("--domain_name_prefix", required=self.naming_info_required,
+                                 help="The prefix to create the RecordSet with, in your Zone.")
+        self.parser.add_argument("--node_ips", required=self.naming_info_required,
+                                 help="The CSV of the node IPs to associate to this DNS entry.")
+
+    def preprocess_args(self, args):
+        super(AbstractDnsMethod, self).preprocess_args(args)
+        if args.node_ips:
+            self.ip_list = args.node_ips.split(',')
+
+
+class AzureCreateDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureCreateDnsEntryMethod, self).__init__(base_command, "create")
+
+    def callback(self, args):
+        self.cloud.create_dns_record_set(
+            args.hosted_zone_id, args.domain_name_prefix, self.ip_list)
+
+
+class AzureEditDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureEditDnsEntryMethod, self).__init__(base_command, "edit")
+
+    def callback(self, args):
+        self.cloud.edit_dns_record_set(
+            args.hosted_zone_id, args.domain_name_prefix, self.ip_list)
+
+
+class AzureDeleteDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureDeleteDnsEntryMethod, self).__init__(base_command, "delete")
+
+    def callback(self, args):
+        self.cloud.delete_dns_record_set(args.hosted_zone_id, args.domain_name_prefix)
+
+
+class AzureListDnsEntryMethod(AbstractDnsMethod):
+    def __init__(self, base_command):
+        super(AzureListDnsEntryMethod, self).__init__(base_command, "list")
+        self.naming_info_required = False
+
+    def callback(self, args):
+        try:
+            result = self.cloud.list_dns_record_set(args.hosted_zone_id)
+            print(json.dumps({
+                'name': result.name
+            }))
+        except Exception as e:
+            print(json.dumps({'error': repr(e)}))
+
+
+class AzureTagsMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(AzureTagsMethod, self).__init__(base_command, "tags")
+
+    def add_extra_args(self):
+        super(AzureTagsMethod, self).add_extra_args()
+        self.parser.add_argument("--remove_tags", required=False,
+                                 help="Tag keys to remove. Noop for Azure.")
+
+    def callback(self, args):
+        self.cloud.modify_tags(args)

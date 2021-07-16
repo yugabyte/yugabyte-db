@@ -63,7 +63,10 @@ export default class YBLabel extends Component {
         <div className="yb-field-group">
           {this.props.children}
           {hasError && (
-            <div className={`help-block ${insetError ? 'embed-error' : 'standard-error'}`}>
+            <div
+              className={`help-block ${insetError ? 'embed-error' : 'standard-error'}`}
+              data-testid="yb-label-validation-error"
+            >
               <span>{errorMsg}</span>
             </div>
           )}

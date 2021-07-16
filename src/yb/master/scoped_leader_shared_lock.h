@@ -46,6 +46,12 @@ namespace master {
 
 class CatalogManager;
 
+// This is how we should instantiate ScopedLeaderSharedLock. Captures context information so we can
+// use it in logging and debugging.
+#define SCOPED_LEADER_SHARED_LOCK(lock_name, catalog_manager) \
+    ::yb::master::ScopedLeaderSharedLock lock_name( \
+        (catalog_manager), __FILE__, __LINE__, __func__)
+
 // Scoped "shared lock" to serialize master leader elections.
 //
 // While in scope, blocks the catalog manager in the event that it becomes
@@ -74,7 +80,11 @@ class ScopedLeaderSharedLock {
   // destroyed.
   //
   // 'catalog' must outlive this object.
-  explicit ScopedLeaderSharedLock(CatalogManager* catalog);
+  explicit ScopedLeaderSharedLock(
+      CatalogManager* catalog,
+      const char* file_name,
+      int line_number,
+      const char* function_name);
 
   ~ScopedLeaderSharedLock() { Unlock(); }
 
@@ -140,6 +150,10 @@ class ScopedLeaderSharedLock {
   Status catalog_status_;
   Status leader_status_;
   std::chrono::steady_clock::time_point start_;
+
+  const char* file_name_;
+  int line_number_;
+  const char* function_name_;
 };
 
 }  // namespace master

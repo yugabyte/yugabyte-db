@@ -62,6 +62,18 @@ export function successStringFormatter(cell, row) {
           <i className="fa fa-warning" /> Failed
         </span>
       );
+    case 'Deleted':
+      return (
+        <span className="yb-orange">
+          <i className="fa fa-warning" /> Deleted
+        </span>
+      );
+    case 'Stopped':
+      return (
+        <span className="yb-warn-color">
+          <i className="fa fa-pause" /> Stopped
+        </span>
+      );
     default:
       return (
         <span className="yb-fail-color">
@@ -72,21 +84,21 @@ export function successStringFormatter(cell, row) {
   }
 }
 
-export function alertTypeFormatter(cell, row) {
-  switch (row.type) {
-    case 'Error':
+export function alertSeverityFormatter(cell, row) {
+  switch (row.severity) {
+    case 'SEVERE':
       return (
         <span className="yb-fail-color">
           <i className="fa fa-warning" /> Error
         </span>
       );
-    case 'Warning':
+    case 'WARNING':
       return (
         <span className="yb-warn-color">
           <i className="fa fa-warning" /> Warning
         </span>
       );
     default:
-      return <span>{row.type}</span>;
+      return <span>{row.severity}</span>;
   }
 }

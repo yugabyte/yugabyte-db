@@ -11,10 +11,12 @@ from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCo
 from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvisionInstancesMethod, \
     AzureCreateInstancesMethod, AzureAccessAddKeyMethod, AzureQueryVPCMethod, \
     AzureQueryRegionsMethod, AzureQueryZonesMethod, AzureDestroyInstancesMethod, \
-    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureAccessDeleteKeyMethod, \
-    AzureNetworkCleanupMethod, AzureQueryUltraMethod
+    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureNetworkCleanupMethod, \
+    AzureQueryUltraMethod, AzureCreateDnsEntryMethod, AzureEditDnsEntryMethod, \
+    AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
-    ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod
+    ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
+    AccessEditVaultMethod, AccessDeleteKeyMethod
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -48,7 +50,8 @@ class AzureAccessCommand(AccessCommand):
     def add_methods(self):
         self.add_method(AzureAccessAddKeyMethod(self))
         self.add_method(AccessCreateVaultMethod(self))
-        self.add_method(AzureAccessDeleteKeyMethod(self))
+        self.add_method(AccessEditVaultMethod(self))
+        self.add_method(AccessDeleteKeyMethod(self))
 
 
 class AzureQueryCommand(QueryCommand):
@@ -62,3 +65,14 @@ class AzureQueryCommand(QueryCommand):
         self.add_method(AzureQueryInstanceTypesMethod(self))
         self.add_method(AzureQueryVnetMethod(self))
         self.add_method(AzureQueryUltraMethod(self))
+
+
+class AzureDnsCommand(DnsCommand):
+    def __init__(self):
+        super(AzureDnsCommand, self).__init__()
+
+    def add_methods(self):
+        self.add_method(AzureCreateDnsEntryMethod(self))
+        self.add_method(AzureEditDnsEntryMethod(self))
+        self.add_method(AzureDeleteDnsEntryMethod(self))
+        self.add_method(AzureListDnsEntryMethod(self))

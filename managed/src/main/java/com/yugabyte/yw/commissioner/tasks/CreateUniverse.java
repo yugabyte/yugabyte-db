@@ -10,16 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.yb.Common;
-import org.yb.client.YBClient;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
@@ -32,13 +23,26 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.Common;
+import org.yb.client.YBClient;
 
+import javax.inject.Inject;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+@Slf4j
 public class CreateUniverse extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
+
+  @Inject
+  protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   public void run() {
-    LOG.info("Started {} task.", getName());
+    log.info("Started {} task.", getName());
     try {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
@@ -64,15 +68,18 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Update the universe to the latest state and
       // check if the nodes already exist in the cloud provider, if so,
       // fail the universe creation.
-      universe = Universe.get(universe.universeUUID);
+      universe = Universe.getOrBadRequest(universe.universeUUID);
       checkIfNodesExist(universe);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
 
       // Check if nodes are able to be provisioned/configured properly.
       Map<NodeInstance, String> failedNodes = new HashMap<>();
-      for (NodeDetails node: taskParams().nodeDetailsSet) {
-        if (!universe.getCluster(node.placementUuid)
-                    .userIntent.providerType.equals(CloudType.onprem)) {
+      for (NodeDetails node : taskParams().nodeDetailsSet) {
+        if (!universe
+            .getCluster(node.placementUuid)
+            .userIntent
+            .providerType
+            .equals(CloudType.onprem)) {
           continue;
         }
 
@@ -83,16 +90,16 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         nodeParams.azUuid = node.azUuid;
         nodeParams.universeUUID = taskParams().universeUUID;
         nodeParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
+            taskParams().extraDependencies.installNodeExporter;
 
         String preflightStatus = performPreflightCheck(node, nodeParams);
         if (preflightStatus != null) {
-            failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
+          failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
         }
       }
       if (!failedNodes.isEmpty()) {
         createFailedPrecheckTask(failedNodes, true)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+            .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       }
 
       // Create the required number of nodes in the appropriate locations.
@@ -120,8 +127,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 
       // Creates the YB cluster by starting the masters in the create mode.
-      createStartMasterTasks(newMasters)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartMasterTasks(newMasters).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for new masters to be responsive.
       createWaitForServersTasks(newMasters, ServerType.MASTER)
@@ -140,8 +146,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Wait for a Master Leader to be elected.
-      createWaitForMasterLeaderTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Persist the placement info into the YB master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
@@ -154,8 +159,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Wait for a master leader to hear from all the tservers.
-      createWaitForTServerHeartBeatsTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);
@@ -167,10 +171,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Update the DNS entry for all the nodes once, using the primary cluster type.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
-                                primaryCluster.userIntent.providerType,
-                                primaryCluster.userIntent.provider,
-                                primaryCluster.userIntent.universeName)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster.userIntent)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Create alert definitions.
@@ -184,14 +185,14 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   private void checkIfNodesExist(Universe universe) {
@@ -209,9 +210,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         nodeParams.nodeName = node.nodeName;
         nodeParams.azUuid = node.azUuid;
         nodeParams.placementUuid = node.placementUuid;
-        if (instanceExists(nodeParams)){
-          errMsg = String.format("Node %s already exist. Pick different universe name.",
-                                 node.nodeName);
+        if (instanceExists(nodeParams)) {
+          errMsg =
+              String.format("Node %s already exist. Pick different universe name.", node.nodeName);
           throw new RuntimeException(errMsg);
         }
       }

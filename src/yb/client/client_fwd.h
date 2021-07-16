@@ -20,6 +20,8 @@
 #include <memory>
 #include <vector>
 
+#include <boost/function.hpp>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/util/result.h"
@@ -59,6 +61,8 @@ class YBRedisWriteOp;
 
 class YBSession;
 typedef std::shared_ptr<YBSession> YBSessionPtr;
+struct FlushStatus;
+using FlushCallback = boost::function<void(FlushStatus*)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
@@ -83,6 +87,7 @@ class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
 class YBTabletServer;
+class YBTabletServerPlacementInfo;
 
 struct YBTableInfo;
 
@@ -95,8 +100,12 @@ YB_STRONGLY_TYPED_BOOL(UseCache);
 namespace internal {
 
 class AsyncRpc;
+class GetTableSchemaRpc;
+class GetColocatedTabletSchemaRpc;
+class LookupRpc;
 class MetaCache;
 class TabletInvoker;
+class WriteRpc;
 
 struct InFlightOp;
 typedef std::shared_ptr<InFlightOp> InFlightOpPtr;
@@ -112,6 +121,8 @@ typedef scoped_refptr<Batcher> BatcherPtr;
 
 struct AsyncRpcMetrics;
 typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
+
+YB_STRONGLY_TYPED_BOOL(IsWithinTransactionRetry);
 
 } // namespace internal
 

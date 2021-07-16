@@ -10,48 +10,44 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.HAConfigFormData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Results;
 
-import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public class HAController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(HAController.class);
 
-  @Inject
-  private PlatformReplicationManager replicationManager;
-
-  @Inject
-  private FormFactory formFactory;
+  @Inject private PlatformReplicationManager replicationManager;
 
   // TODO: (Daniel) - This could be a task
   public Result createHAConfig() {
     try {
-      Form<HAConfigFormData> formData = formFactory.form(HAConfigFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
 
-      if (!HighAvailabilityConfig.list().isEmpty()) {
-        LOG.warn("Only support for a single HA Config has currently been implemented");
+      if (HighAvailabilityConfig.get().isPresent()) {
+        LOG.error("An HA Config already exists");
 
         return ApiResponse.error(BAD_REQUEST, "An HA Config already exists");
       }
 
       HighAvailabilityConfig config = HighAvailabilityConfig.create(formData.get().cluster_key);
 
-      return ApiResponse.success(config);
+      return YWResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error creating HA config", e);
 
@@ -61,13 +57,16 @@ public class HAController extends AuthenticatedController {
 
   public Result getHAConfig() {
     try {
-      List<HighAvailabilityConfig> configs = HighAvailabilityConfig.list();
+      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
 
-      if (configs.isEmpty()) {
-        return ApiResponse.error(NOT_FOUND, "No HA config exists");
+      if (!config.isPresent()) {
+        LOG.debug("No HA config exists");
+
+        JsonNode jsonMsg = Json.newObject().put("error", "No HA config exists");
+        return Results.status(NOT_FOUND, jsonMsg);
       }
 
-      return ApiResponse.success(configs.get(0));
+      return YWResults.withData(config.get());
     } catch (Exception e) {
       LOG.error("Error retrieving HA config", e);
 
@@ -77,21 +76,18 @@ public class HAController extends AuthenticatedController {
 
   public Result editHAConfig(UUID configUUID) {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
-      if (config == null) {
+      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
+      if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
-      Form<HAConfigFormData> formData = formFactory.form(HAConfigFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
 
       replicationManager.stop();
-      HighAvailabilityConfig.update(config, formData.get().cluster_key);
+      HighAvailabilityConfig.update(config.get(), formData.get().cluster_key);
       replicationManager.start();
 
-      return ApiResponse.success(config);
+      return YWResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error updating cluster key", e);
 
@@ -102,9 +98,15 @@ public class HAController extends AuthenticatedController {
   // TODO: (Daniel) - This could be a task
   public Result deleteHAConfig(UUID configUUID) {
     try {
-      HighAvailabilityConfig config = HighAvailabilityConfig.get(configUUID);
-      if (config == null) {
+      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
+      if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
+      }
+
+      Optional<PlatformInstance> localInstance = config.get().getLocal();
+      if (localInstance.isPresent() && !localInstance.get().getIsLeader()) {
+        // Revert prometheus from federated mode.
+        replicationManager.switchPrometheusToStandalone();
       }
 
       // Stop the backup schedule.

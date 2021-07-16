@@ -218,12 +218,12 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 /*
  * Utility method to insert a tuple into the relation's backing YugaByte table.
  */
-static Oid YBCExecuteInsertInternal(Relation rel,
+static Oid YBCExecuteInsertInternal(Oid dboid,
+                                    Relation rel,
                                     TupleDesc tupleDesc,
                                     HeapTuple tuple,
                                     bool is_single_row_txn)
 {
-	Oid            dboid    = YBCGetDatabaseOid(rel);
 	Oid            relid    = RelationGetRelid(rel);
 	AttrNumber     minattr  = YBGetFirstLowInvalidAttributeNumber(rel);
 	int            natts    = RelationGetNumberOfAttributes(rel);
@@ -283,14 +283,12 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 	}
 
-	/* Delete row from foreign key cache */
-	YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid);
-
 	/* Execute the insert */
 	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */);
 
-	/* Clean up */
-	insert_stmt = NULL;
+	/* Add row into foreign key cache */
+	if (!is_single_row_txn)
+		YBCPgAddIntoForeignKeyReferenceCache(relid, tuple->t_ybctid);
 
 	return HeapTupleGetOid(tuple);
 }
@@ -365,25 +363,58 @@ Oid YBCExecuteInsert(Relation rel,
                      TupleDesc tupleDesc,
                      HeapTuple tuple)
 {
-	return YBCExecuteInsertInternal(rel,
+	return YBCExecuteInsertForDb(YBCGetDatabaseOid(rel),
+	                             rel,
+	                             tupleDesc,
+	                             tuple);
+}
+
+Oid YBCExecuteInsertForDb(Oid dboid,
+                          Relation rel,
+                          TupleDesc tupleDesc,
+                          HeapTuple tuple)
+{
+	return YBCExecuteInsertInternal(dboid,
+	                                rel,
 	                                tupleDesc,
 	                                tuple,
 	                                false /* is_single_row_txn */);
 }
 
 Oid YBCExecuteNonTxnInsert(Relation rel,
-						   TupleDesc tupleDesc,
-						   HeapTuple tuple)
+                           TupleDesc tupleDesc,
+                           HeapTuple tuple)
 {
-	return YBCExecuteInsertInternal(rel,
+	return YBCExecuteNonTxnInsertForDb(YBCGetDatabaseOid(rel),
+	                                   rel,
+	                                   tupleDesc,
+	                                   tuple);
+}
+
+Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
+                                Relation rel,
+                                TupleDesc tupleDesc,
+                                HeapTuple tuple)
+{
+	return YBCExecuteInsertInternal(dboid,
+	                                rel,
 	                                tupleDesc,
 	                                tuple,
 	                                true /* is_single_row_txn */);
 }
 
 Oid YBCHeapInsert(TupleTableSlot *slot,
-				  HeapTuple tuple,
-				  EState *estate)
+                  HeapTuple tuple,
+                  EState *estate)
+{
+	Oid dboid = YBCGetDatabaseOid(estate->es_result_relation_info->ri_RelationDesc);
+	return YBCHeapInsertForDb(dboid, slot, tuple, estate);
+}
+
+Oid YBCHeapInsertForDb(Oid dboid,
+                       TupleTableSlot* slot,
+                       HeapTuple tuple,
+                       EState* estate)
 {
 	/*
 	 * get information on the (current) result relation
@@ -400,11 +431,17 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 		 * single row (i.e. single-row-modify txn), and there are no indices
 		 * or triggers on the target table.
 		 */
-		return YBCExecuteNonTxnInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
+		return YBCExecuteNonTxnInsertForDb(dboid,
+		                                   resultRelationDesc,
+		                                   slot->tts_tupleDescriptor,
+		                                   tuple);
 	}
 	else
 	{
-		return YBCExecuteInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
+		return YBCExecuteInsertForDb(dboid,
+		                             resultRelationDesc,
+		                             slot->tts_tupleDescriptor,
+		                             tuple);
 	}
 }
 
@@ -452,16 +489,32 @@ YBCForeignKeyReferenceCacheDeleteIndex(Relation index, Datum *values, bool *isnu
 }
 
 void YBCExecuteInsertIndex(Relation index,
-						   Datum *values,
-						   bool *isnull,
-						   Datum ybctid,
-						   bool is_backfill,
-						   uint64_t *write_time)
+                           Datum *values,
+                           bool *isnull,
+                           Datum ybctid,
+                           bool is_backfill,
+                           uint64_t *write_time)
+{
+	YBCExecuteInsertIndexForDb(YBCGetDatabaseOid(index),
+	                           index,
+	                           values,
+	                           isnull,
+	                           ybctid,
+	                           is_backfill,
+	                           write_time);
+}
+
+void YBCExecuteInsertIndexForDb(Oid dboid,
+                                Relation index,
+                                Datum* values,
+                                bool* isnull,
+                                Datum ybctid,
+                                bool is_backfill,
+                                uint64_t* write_time)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
 
-	Oid            dboid    = YBCGetDatabaseOid(index);
 	Oid            relid    = RelationGetRelid(index);
 	YBCPgStatement insert_stmt = NULL;
 
@@ -783,7 +836,11 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 
 void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 {
-	Oid            dboid       = YBCGetDatabaseOid(rel);
+	YBCUpdateSysCatalogTupleForDb(YBCGetDatabaseOid(rel), rel, oldtuple, tuple);
+}
+
+void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, HeapTuple tuple)
+{
 	Oid            relid       = RelationGetRelid(rel);
 	TupleDesc      tupleDesc   = RelationGetDescr(rel);
 	int            natts       = RelationGetNumberOfAttributes(rel);

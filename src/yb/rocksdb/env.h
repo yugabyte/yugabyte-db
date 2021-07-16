@@ -40,7 +40,6 @@
 
 #include "yb/rocksdb/file.h"
 #include "yb/rocksdb/status.h"
-#include "yb/rocksdb/thread_status.h"
 
 #include "yb/util/file_system.h"
 #include "yb/util/result.h"
@@ -80,8 +79,6 @@ class WritableFile;
 class Directory;
 struct DBOptions;
 class RateLimiter;
-class ThreadStatusUpdater;
-struct ThreadStatus;
 
 typedef yb::SequentialFile SequentialFile;
 typedef yb::RandomAccessFile RandomAccessFile;
@@ -208,7 +205,7 @@ class Env {
     uint64_t size_bytes;
   };
 
-  Env() : thread_status_updater_(nullptr) {}
+  Env() {}
 
   virtual ~Env();
 
@@ -461,18 +458,6 @@ class Env {
   virtual EnvOptions OptimizeForManifestWrite(const EnvOptions& env_options)
       const;
 
-  // Returns the status of all threads that belong to the current Env.
-  virtual Status GetThreadList(std::vector<ThreadStatus>* thread_list) {
-    return STATUS(NotSupported, "Not supported.");
-  }
-
-  // Returns the pointer to ThreadStatusUpdater.  This function will be
-  // used in RocksDB internally to update thread status and supports
-  // GetThreadList().
-  virtual ThreadStatusUpdater* GetThreadStatusUpdater() const {
-    return thread_status_updater_;
-  }
-
   virtual bool IsPlainText() const {
     return true;
   }
@@ -480,21 +465,11 @@ class Env {
   // Returns the ID of the current thread.
   virtual uint64_t GetThreadID() const;
 
- protected:
-  // The pointer to an internal structure that will update the
-  // status of each thread.
-  ThreadStatusUpdater* thread_status_updater_;
-
  private:
   // No copying allowed
   Env(const Env&);
   void operator=(const Env&);
 };
-
-// The factory function to construct a ThreadStatusUpdater.  Any Env
-// that supports GetThreadList() feature should call this function in its
-// constructor to initialize thread_status_updater_.
-ThreadStatusUpdater* CreateThreadStatusUpdater();
 
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
@@ -986,14 +961,6 @@ class EnvWrapper : public Env {
 
   std::string TimeToString(uint64_t time) override {
     return target_->TimeToString(time);
-  }
-
-  Status GetThreadList(std::vector<ThreadStatus>* thread_list) override {
-    return target_->GetThreadList(thread_list);
-  }
-
-  ThreadStatusUpdater* GetThreadStatusUpdater() const override {
-    return target_->GetThreadStatusUpdater();
   }
 
   uint64_t GetThreadID() const override {

@@ -267,7 +267,7 @@ void Schema::ResetColumnIds(const vector<ColumnId>& ids) {
 
 Status Schema::Reset(const vector<ColumnSchema>& cols,
                      const vector<ColumnId>& ids,
-                     int key_columns,
+                     size_t key_columns,
                      const TableProperties& table_properties,
                      const Uuid& cotable_id,
                      const PgTableOid pgtable_id) {
@@ -282,7 +282,7 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   has_nullables_ = false;
   has_statics_ = false;
   for (const ColumnSchema& col : cols_) {
-    if (col.is_hash_key()) {
+    if (col.is_hash_key() && num_hash_key_columns_ < key_columns) {
       num_hash_key_columns_++;
     }
     if (col.is_nullable()) {
@@ -296,11 +296,6 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   if (PREDICT_FALSE(key_columns > cols_.size())) {
     return STATUS(InvalidArgument,
       "Bad schema", "More key columns than columns");
-  }
-
-  if (PREDICT_FALSE(key_columns < 0)) {
-    return STATUS(InvalidArgument,
-      "Bad schema", "Cannot specify a negative number of key columns");
   }
 
   if (PREDICT_FALSE(!ids.empty() && ids.size() != cols_.size())) {
@@ -355,13 +350,12 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   ResetColumnIds(ids);
 
   // Ensure clustering columns have a default sorting type of 'ASC' if not specified.
-  for (int i = num_hash_key_columns_; i < num_key_columns(); i++) {
+  for (auto i = num_hash_key_columns_; i < num_key_columns(); ++i) {
     ColumnSchema& col = cols_[i];
     if (col.sorting_type() == ColumnSchema::SortingType::kNotSpecified) {
       col.set_sorting_type(ColumnSchema::SortingType::kAscending);
     }
   }
-
   return Status::OK();
 }
 

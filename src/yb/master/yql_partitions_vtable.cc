@@ -18,6 +18,7 @@
 #include "yb/master/master_util.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/shared_lock.h"
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 
@@ -47,7 +48,7 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
 Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   {
-    std::shared_lock<boost::shared_mutex> read_lock(mutex_);
+    SharedLock<boost::shared_mutex> read_lock(mutex_);
     // The cached versions are initialized to -1, so if there is a race, we may still generate the
     // cache on the calling thread.
     if (FLAGS_partitions_vtable_cache_refresh_secs > 0 &&
@@ -58,19 +59,18 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     }
   }
 
-  RETURN_NOT_OK(GenerateAndCacheData());
-  return cache_;
+  return GenerateAndCacheData();
 }
 
-Status YQLPartitionsVTable::GenerateAndCacheData() const {
+Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() const {
   CatalogManager* catalog_manager = master_->catalog_manager();
   {
-    std::shared_lock<boost::shared_mutex> read_lock(mutex_);
+    SharedLock<boost::shared_mutex> read_lock(mutex_);
     if (FLAGS_use_cache_for_partitions_vtable &&
         catalog_manager->tablets_version() == cached_tablets_version_ &&
         catalog_manager->tablet_locations_version() == cached_tablet_locations_version_) {
       // Cache is up to date, so we could use it.
-      return Status::OK();
+      return cache_;
     }
   }
 
@@ -81,12 +81,11 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
       new_tablets_version == cached_tablets_version_ &&
       new_tablet_locations_version == cached_tablet_locations_version_) {
     // Cache was updated between locks, and now it is up to date.
-    return Status::OK();
+    return cache_;
   }
 
   auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  catalog_manager->GetAllTables(&tables, true /* includeOnlyRunningTables */);
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
   auto& resolver = master_->messenger()->resolver();
 
   std::unordered_map<std::string, std::shared_future<Result<IpAddress>>> dns_lookups;
@@ -106,10 +105,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
     }
 
     // Get namespace for table.
-    NamespaceIdentifierPB namespace_id;
-    namespace_id.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> namespace_info;
-    RETURN_NOT_OK(catalog_manager->FindNamespace(namespace_id, &namespace_info));
+    auto namespace_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Get tablets for table.
     std::vector<scoped_refptr<TabletInfo>> tablet_infos;
@@ -178,7 +174,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
   cached_tablet_locations_version_ = new_tablet_locations_version;
   cache_ = vtable;
 
-  return Status::OK();
+  return cache_;
 }
 
 Schema YQLPartitionsVTable::CreateSchema() const {

@@ -15,7 +15,6 @@ package org.yb.pgsql;
 
 import java.util.*;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.postgresql.util.PSQLException;
@@ -39,10 +38,11 @@ public class TestPgMisc extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgMisc.class);
 
-  @BeforeClass
-  public static void SetUpBeforeClass() throws Exception {
+  @Override
+  protected void resetSettings() {
+    super.resetSettings();
     // Starts CQL proxy for the cross Postgres/CQL testNamespaceSeparation test case.
-    BasePgSQLTest.startCqlProxy = true;
+    startCqlProxy = true;
   }
 
   protected void assertResult(ResultSet rs, Set<String> expectedRows) {
@@ -133,6 +133,21 @@ public class TestPgMisc extends BasePgSQLTest {
     }
   }
 
+  /*
+   * Test for CHECKPOINT no-op functionality
+   */
+  @Test
+  public void testCheckpoint() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CHECKPOINT");
+      if (statement.getWarnings() != null) {
+        throw statement.getWarnings();
+      }
+      fail("Checkpoint executed without warnings");
+    } catch(PSQLWarning w) {
+    }
+  }
+
   @Test
   public void testTemporaryTableTransactionInExecute() throws Exception {
     try (Statement statement = connection.createStatement()) {
@@ -144,6 +159,21 @@ public class TestPgMisc extends BasePgSQLTest {
       // Can insert explicitly prepared statement.
       statement.execute("PREPARE ins AS INSERT INTO test_table(a, b, c) VALUES (2, 3, 4)");
       statement.execute("EXECUTE ins");
+    }
+  }
+
+  @Test
+  public void testTemporaryTableTransactionInProcedure() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TEMP TABLE test_table(k int PRIMARY KEY)");
+      stmt.execute("CREATE PROCEDURE test_temp_table(k int) AS $$ " +
+        "BEGIN" +
+        "  INSERT INTO test_table VALUES(k);" +
+        "END; $$ LANGUAGE 'plpgsql';");
+      stmt.execute("CALL test_temp_table(1)");
+      stmt.execute("CALL test_temp_table(2)");
+      // Can insert explicitly prepared statement.
+      assertOneRow(stmt, "SELECT COUNT(*) FROM test_table", 2);
     }
   }
 

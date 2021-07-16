@@ -32,6 +32,7 @@
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_util.h"
+#include "yb/master/permissions_manager.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -58,7 +59,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // Setup the table info.
   scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id);
   auto l = table->LockForWrite();
-  auto& pb = l->mutable_data()->pb;
+  auto& pb = l.mutable_data()->pb;
   pb.CopyFrom(metadata);
 
   if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kTransactionsTableName) {
@@ -69,11 +70,11 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // add Postgres tables to the name map as the table name is not unique in a namespace.
   auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
   (*table_ids_map_checkout)[table->id()] = table;
-  if (l->data().table_type() != PGSQL_TABLE_TYPE && !l->data().started_deleting()) {
-    catalog_manager_->table_names_map_[{l->data().namespace_id(), l->data().name()}] = table;
+  if (l->table_type() != PGSQL_TABLE_TYPE && !l->started_deleting()) {
+    catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
   }
 
-  l->Commit();
+  l.Commit();
   catalog_manager_->HandleNewTableId(table->id());
 
   // Tables created as part of a Transaction should check transaction status and be deleted
@@ -89,7 +90,8 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
         "Could not submit VerifyTransaction to thread pool");
   }
 
-  LOG(INFO) << "Loaded metadata for table " << table->ToString();
+  LOG(INFO) << "Loaded metadata for table " << table->ToString() << ", state: "
+            << SysTablesEntryPB::State_Name(metadata.state());
   VLOG(1) << "Metadata for table " << table->ToString() << ": " << metadata.ShortDebugString();
 
   return Status::OK();
@@ -101,109 +103,115 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
 Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) {
   // Lookup the table.
-  scoped_refptr<TableInfo> first_table(FindPtrOrNull(
-      *catalog_manager_->table_ids_map_, metadata.table_id()));
+  TableInfoPtr first_table = FindPtrOrNull(*catalog_manager_->table_ids_map_, metadata.table_id());
 
   // TODO: We need to properly remove deleted tablets.  This can happen async of master loading.
   if (!first_table) {
     if (metadata.state() != SysTabletsEntryPB::DELETED) {
-      LOG(ERROR) << "Unexpected Tablet state for " << tablet_id << ": "
-                 << SysTabletsEntryPB::State_Name(metadata.state());
+      LOG(DFATAL) << "Unexpected Tablet state for " << tablet_id << ": "
+                  << SysTabletsEntryPB::State_Name(metadata.state())
+                  << ", unknown table for this tablet: " << metadata.table_id();
     }
     return Status::OK();
   }
 
   // Setup the tablet info.
-  TabletInfo* tablet = new TabletInfo(first_table, tablet_id);
-  auto l = tablet->LockForWrite();
-  l->mutable_data()->pb.CopyFrom(metadata);
-
-  // Add the tablet to the tablet manager.
-  auto tablet_map_checkout = catalog_manager_->tablet_map_.CheckOut();
-  auto inserted = tablet_map_checkout->emplace(tablet->tablet_id(), tablet).second;
-  if (!inserted) {
-    return STATUS_FORMAT(
-        IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
-  }
-
   std::vector<TableId> table_ids;
-  for (int k = 0; k < metadata.table_ids_size(); ++k) {
-    table_ids.push_back(metadata.table_ids(k));
-  }
+  bool tablet_deleted;
+  bool listed_as_hidden;
+  TabletInfoPtr tablet(new TabletInfo(first_table, tablet_id));
+  {
+    auto l = tablet->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
 
-  // This is for backwards compatibility: we want to ensure that the table_ids
-  // list contains the first table that created the tablet. If the table_ids field
-  // was empty, we "upgrade" the master to support this new invariant.
-  if (metadata.table_ids_size() == 0) {
-    l->mutable_data()->pb.add_table_ids(metadata.table_id());
-    Status s = catalog_manager_->sys_catalog_->UpdateItem(
-        tablet, catalog_manager_->leader_ready_term());
-    if (PREDICT_FALSE(!s.ok())) {
+    // Add the tablet to the tablet manager.
+    auto tablet_map_checkout = catalog_manager_->tablet_map_.CheckOut();
+    auto inserted = tablet_map_checkout->emplace(tablet->tablet_id(), tablet).second;
+    if (!inserted) {
       return STATUS_FORMAT(
-          IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
+          IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
     }
-    table_ids.push_back(metadata.table_id());
-  }
 
-  bool tablet_deleted = l->mutable_data()->is_deleted();
+    for (int k = 0; k < metadata.table_ids_size(); ++k) {
+      table_ids.push_back(metadata.table_ids(k));
+    }
 
-  // Assume we need to delete this tablet until we find an active table using this tablet.
-  bool should_delete_tablet = !tablet_deleted;
+    // This is for backwards compatibility: we want to ensure that the table_ids
+    // list contains the first table that created the tablet. If the table_ids field
+    // was empty, we "upgrade" the master to support this new invariant.
+    if (metadata.table_ids_size() == 0) {
+      l.mutable_data()->pb.add_table_ids(metadata.table_id());
+      Status s = catalog_manager_->sys_catalog_->Upsert(
+          catalog_manager_->leader_ready_term(), tablet);
+      if (PREDICT_FALSE(!s.ok())) {
+        return STATUS_FORMAT(
+            IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
+      }
+      table_ids.push_back(metadata.table_id());
+    }
 
-  for (auto table_id : table_ids) {
-    scoped_refptr<TableInfo> table(FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id));
+    tablet_deleted = l.mutable_data()->is_deleted();
+    listed_as_hidden = l.mutable_data()->ListedAsHidden();
 
-    if (table == nullptr) {
-      // If the table is missing and the tablet is in "preparing" state
-      // may mean that the table was not created (maybe due to a failed write
-      // for the sys-tablets). The cleaner will remove.
-      auto tablet_state = l->data().pb.state();
-      if (tablet_state == SysTabletsEntryPB::PREPARING) {
+    // Assume we need to delete this tablet until we find an active table using this tablet.
+    bool should_delete_tablet = !tablet_deleted;
+
+    for (const auto& table_id : table_ids) {
+      TableInfoPtr table = FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id);
+
+      if (table == nullptr) {
+        // If the table is missing and the tablet is in "preparing" state
+        // may mean that the table was not created (maybe due to a failed write
+        // for the sys-tablets). The cleaner will remove.
+        auto tablet_state = l->pb.state();
+        if (tablet_state == SysTabletsEntryPB::PREPARING) {
+          LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
+                        << " (probably a failed table creation: the tablet was not assigned)";
+          return Status::OK();
+        }
+
+        // Otherwise, something is wrong...
         LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
-                      << " (probably a failed table creation: the tablet was not assigned)";
-        return Status::OK();
+                     << ", metadata: " << metadata.DebugString()
+                     << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
+        // If we ignore deleted tables, then a missing table can be expected and we continue.
+        if (PREDICT_TRUE(FLAGS_master_ignore_deleted_on_load)) {
+          continue;
+        }
+        // Otherwise, we need to surface the corruption.
+        return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
       }
 
-      // Otherwise, something is wrong...
-      LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
-                   << ", metadata: " << metadata.DebugString()
-                   << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
-      // If we ignore deleted tables, then a missing table can be expected and we continue.
-      if (PREDICT_TRUE(FLAGS_master_ignore_deleted_on_load)) {
-        continue;
+      // Add the tablet to the Table.
+      if (!tablet_deleted) {
+        // Any table listed under the sys catalog tablet, is by definition a system table.
+        // This is the easiest place to mark these as system tables, as we'll only go over
+        // sys_catalog tablet once and can mark in memory all the relevant tables.
+        if (tablet_id == kSysCatalogTabletId) {
+          table->set_is_system();
+        }
+        table->AddTablet(tablet.get());
       }
-      // Otherwise, we need to surface the corruption.
-      return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
+
+      auto tl = table->LockForRead();
+      if (!tl->started_deleting()) {
+        // Found an active table.
+        should_delete_tablet = false;
+      }
     }
 
-    // Add the tablet to the Table.
-    if (!tablet_deleted) {
-      // Any table listed under the sys catalog tablet, is by definition a system table.
-      // This is the easiest place to mark these as system tables, as we'll only go over
-      // sys_catalog tablet once and can mark in memory all the relevant tables.
-      if (tablet_id == kSysCatalogTabletId) {
-        table->set_is_system();
-      }
-      table->AddTablet(tablet);
+
+    if (should_delete_tablet) {
+      LOG(WARNING)
+          << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
+      string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
+      l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->Upsert(term_, tablet),
+                            Format("Error deleting tablet $0", tablet->id()));
     }
 
-    auto tl = table->LockForRead();
-    if (!tl->data().started_deleting()) {
-      // Found an active table.
-      should_delete_tablet = false;
-    }
+    l.Commit();
   }
-
-
-  if (should_delete_tablet) {
-    LOG(WARNING) << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
-    string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
-    l->mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-    RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->UpdateItem(tablet, term_),
-                          strings::Substitute("Error deleting tablet $0", tablet->id()));
-  }
-
-  l->Commit();
 
   // Add the tablet to colocated_tablet_ids_map_ if the tablet is colocated.
   if (catalog_manager_->IsColocatedParentTable(*first_table)) {
@@ -232,6 +240,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   VLOG(1) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
 
+  if (listed_as_hidden) {
+    catalog_manager_->hidden_tablets_.push_back(tablet);
+  }
+
   return Status::OK();
 }
 
@@ -246,13 +258,13 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
   // Setup the namespace info.
   scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(ns_id);
   auto l = ns->LockForWrite();
-  const auto& pb_data = l->data().pb;
+  const auto& pb_data = l->pb;
 
-  l->mutable_data()->pb.CopyFrom(metadata);
+  l.mutable_data()->pb.CopyFrom(metadata);
 
   if (!pb_data.has_database_type() || pb_data.database_type() == YQL_DATABASE_UNKNOWN) {
     LOG(INFO) << "Updating database type of namespace " << pb_data.name();
-    l->mutable_data()->pb.set_database_type(GetDefaultDatabaseType(pb_data.name()));
+    l.mutable_data()->pb.set_database_type(GetDefaultDatabaseType(pb_data.name()));
   }
 
   // When upgrading, we won't have persisted this new field.
@@ -261,7 +273,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
   if (!metadata.has_state()) {
     state = SysNamespaceEntryPB::RUNNING;
     LOG(INFO) << "Changing metadata without state to RUNNING: " << ns->ToString();
-    l->mutable_data()->pb.set_state(state);
+    l.mutable_data()->pb.set_state(state);
   }
 
   switch(state) {
@@ -273,7 +285,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       } else {
         LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
       }
-      l->Commit();
+      l.Commit();
       LOG(INFO) << "Loaded metadata for namespace " << ns->ToString();
 
       // Namespaces created as part of a Transaction should check transaction status and be deleted
@@ -297,7 +309,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
     case SysNamespaceEntryPB::FAILED:
       LOG(INFO) << "Transitioning failed namespace (state="  << metadata.state()
                 << ") to DELETING: " << ns->ToString();
-      l->mutable_data()->pb.set_state(SysNamespaceEntryPB::DELETING);
+      l.mutable_data()->pb.set_state(SysNamespaceEntryPB::DELETING);
       FALLTHROUGH_INTENDED;
     case SysNamespaceEntryPB::DELETING:
       catalog_manager_->namespace_ids_map_[ns_id] = ns;
@@ -306,12 +318,17 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       } else {
         LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
       }
-      l->Commit();
+      l.Commit();
       LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
-      LOG_IF(DFATAL, ns->database_type() != YQL_DATABASE_PGSQL) << "PGSQL Databases only";
-      WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+      if (ns->database_type() != YQL_DATABASE_PGSQL) {
+        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+          std::bind(&CatalogManager::DeleteYcqlDatabaseAsync, catalog_manager_, ns)),
+          "Could not submit DeleteYcqlDatabaseAsync to thread pool");
+      } else {
+        WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
           std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns)),
           "Could not submit DeleteYsqlDatabaseAsync to thread pool");
+      }
       break;
     case SysNamespaceEntryPB::DELETED:
       LOG(INFO) << "Skipping metadata for namespace (state="  << metadata.state()
@@ -340,17 +357,19 @@ Status UDTypeLoader::Visit(const UDTypeId& udtype_id, const SysUDTypeEntryPB& me
       << "Type already exists: " << udtype_id;
 
   // Setup the table info.
-  UDTypeInfo *const udtype = new UDTypeInfo(udtype_id);
-  auto l = udtype->LockForWrite();
-  l->mutable_data()->pb.CopyFrom(metadata);
+  UDTypeInfo* const udtype = new UDTypeInfo(udtype_id);
+  {
+    auto l = udtype->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
 
-  // Add the used-defined type to the IDs map and to the name map (if the type is not deleted).
-  catalog_manager_->udtype_ids_map_[udtype->id()] = udtype;
-  if (!l->data().name().empty()) { // If name is set (non-empty) then type is not deleted.
-    catalog_manager_->udtype_names_map_[{l->data().namespace_id(), l->data().name()}] = udtype;
+    // Add the used-defined type to the IDs map and to the name map (if the type is not deleted).
+    catalog_manager_->udtype_ids_map_[udtype->id()] = udtype;
+    if (!l->name().empty()) {  // If name is set (non-empty) then type is not deleted.
+      catalog_manager_->udtype_names_map_[{l->namespace_id(), l->name()}] = udtype;
+    }
+
+    l.Commit();
   }
-
-  l->Commit();
 
   LOG(INFO) << "Loaded metadata for type " << udtype->ToString();
   VLOG(1) << "Metadata for type " << udtype->ToString() << ": " << metadata.ShortDebugString();
@@ -370,26 +389,16 @@ Status ClusterConfigLoader::Visit(
 
   // Prepare the config object.
   ClusterConfigInfo* config = new ClusterConfigInfo();
-  auto l = config->LockForWrite();
-  l->mutable_data()->pb.CopyFrom(metadata);
-
   {
-    std::lock_guard <CatalogManager::LockType> blacklist_lock(catalog_manager_->blacklist_lock_);
+    auto l = config->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
 
-    if (metadata.has_server_blacklist()) {
-      // Rebuild the blacklist state for load movement completion tracking.
-      RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist()));
-    }
 
-    if (metadata.has_leader_blacklist()) {
-      // Rebuild the blacklist state for load movement completion tracking.
-      RETURN_NOT_OK(catalog_manager_->SetLeaderBlacklist(metadata.leader_blacklist()));
-    }
+
+    // Update in memory state.
+    catalog_manager_->cluster_config_ = config;
+    l.Commit();
   }
-
-  // Update in memory state.
-  catalog_manager_->cluster_config_ = config;
-  l->Commit();
 
   return Status::OK();
 }
@@ -403,10 +412,12 @@ Status RedisConfigLoader::Visit(const std::string& key, const SysRedisConfigEntr
       << "Redis Config with key already exists: " << key;
   // Prepare the config object.
   RedisConfigInfo* config = new RedisConfigInfo(key);
-  auto l = config->LockForWrite();
-  l->mutable_data()->pb.CopyFrom(metadata);
-  catalog_manager_->redis_config_map_[key] = config;
-  l->Commit();
+  {
+    auto l = config->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    catalog_manager_->redis_config_map_[key] = config;
+    l.Commit();
+  }
   return Status::OK();
 }
 
@@ -419,12 +430,14 @@ Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metada
     << "Role already exists: " << role_name;
 
   RoleInfo* const role = new RoleInfo(role_name);
-  auto l = role->LockForWrite();
-  l->mutable_data()->pb.CopyFrom(metadata);
-  catalog_manager_->permissions_manager()->AddRoleUnlocked(
-      role_name, make_scoped_refptr<RoleInfo>(role));
+  {
+    auto l = role->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    catalog_manager_->permissions_manager()->AddRoleUnlocked(
+        role_name, make_scoped_refptr<RoleInfo>(role));
 
-  l->Commit();
+    l.Commit();
+  }
 
   LOG(INFO) << "Loaded metadata for role " << role->id();
   VLOG(1) << "Metadata for role " << role->id() << ": " << metadata.ShortDebugString();
@@ -438,19 +451,21 @@ Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metada
 
 Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB& metadata) {
   SysConfigInfo* const config = new SysConfigInfo(config_type);
-  auto l = config->LockForWrite();
-  l->mutable_data()->pb.CopyFrom(metadata);
+  {
+    auto l = config->LockForWrite();
+    l.mutable_data()->pb.CopyFrom(metadata);
 
-  // For now we are only using this to store (ycql) security config or ysql catalog config.
-  if (config_type == kSecurityConfigType) {
-    catalog_manager_->permissions_manager()->SetSecurityConfigOnLoadUnlocked(config);
-  } else if (config_type == kYsqlCatalogConfigType) {
-    LOG_IF(WARNING, catalog_manager_->ysql_catalog_config_ != nullptr)
-        << "Multiple sys config type " << config_type << " found";
-    catalog_manager_->ysql_catalog_config_ = config;
+    // For now we are only using this to store (ycql) security config or ysql catalog config.
+    if (config_type == kSecurityConfigType) {
+      catalog_manager_->permissions_manager()->SetSecurityConfigOnLoadUnlocked(config);
+    } else if (config_type == kYsqlCatalogConfigType) {
+      LOG_IF(WARNING, catalog_manager_->ysql_catalog_config_ != nullptr)
+          << "Multiple sys config type " << config_type << " found";
+      catalog_manager_->ysql_catalog_config_ = config;
+    }
+
+    l.Commit();
   }
-
-  l->Commit();
 
   LOG(INFO) << "Loaded sys config type " << config_type;
   return Status::OK();

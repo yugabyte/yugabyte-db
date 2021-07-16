@@ -41,7 +41,11 @@ class RegisterForm extends Component {
 
       email: Yup.string().required('Enter email').email('This is not a valid email'),
 
-      password: Yup.string().required('Enter password'),
+      password: Yup.string()
+        .required('Enter password')
+        .min(8, 'Password is too short - must be 8 characters minimum.')
+        .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.'),
 
       confirmPassword: Yup.string()
         .oneOf([Yup.ref('password'), null], "Passwords don't match")
@@ -96,7 +100,7 @@ class RegisterForm extends Component {
                     type="password"
                     component={YBFormInput}
                     label="Confirm Password"
-                  />                  
+                  />
                 </div>
                 <div className="clearfix form-register__footer">
                   <div className="confirm-eula">

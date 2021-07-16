@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import subprocess
+import sysconfig
 
 from ybops.common.exceptions import YBOpsRuntimeError
 import ybops.utils as ybutils
@@ -54,17 +55,19 @@ class AnsibleProcess(object):
         """
 
         playbook_args = self.playbook_args
-        tags = extra_vars.pop("tags", None)
-        skip_tags = extra_vars.pop("skip_tags", None)
+        vars = extra_vars.copy()
+        tags = vars.pop("tags", None)
+        skip_tags = vars.pop("skip_tags", None)
         # Use the ssh_user provided in extra vars as the ssh user to override.
-        ssh_user = extra_vars.pop("ssh_user", host_info.get("ssh_user", self.DEFAULT_SSH_USER))
-        ssh_port = extra_vars.pop("ssh_port", None)
-        ssh_host = extra_vars.pop("ssh_host", None)
-        vault_password_file = extra_vars.pop("vault_password_file", None)
-        ask_sudo_pass = extra_vars.pop("ask_sudo_pass", None)
-        ssh_key_file = extra_vars.pop("private_key_file", None)
+        ssh_user = vars.pop("ssh_user", host_info.get("ssh_user", self.DEFAULT_SSH_USER))
+        ssh_port = vars.pop("ssh_port", None)
+        ssh_host = vars.pop("ssh_host", None)
+        vault_password_file = vars.pop("vault_password_file", None)
+        ask_sudo_pass = vars.pop("ask_sudo_pass", None)
+        sudo_pass_file = vars.pop("sudo_pass_file", None)
+        ssh_key_file = vars.pop("private_key_file", None)
 
-        playbook_args.update(extra_vars)
+        playbook_args.update(vars)
 
         if self.can_ssh:
             playbook_args.update({
@@ -82,6 +85,8 @@ class AnsibleProcess(object):
             process_args.extend(["--vault-password-file", vault_password_file])
         if ask_sudo_pass is not None:
             process_args.extend(["--ask-sudo-pass"])
+        if sudo_pass_file is not None:
+            playbook_args["yb_sudo_pass_file"] = sudo_pass_file
 
         if skip_tags is not None:
             process_args.extend(["--skip-tags", skip_tags])
@@ -116,17 +121,21 @@ class AnsibleProcess(object):
             "-e", "ansible_python_interpreter='/usr/bin/env python'"
         ])
 
+        os.environ['SITE_PACKAGES'] = sysconfig.get_path('purelib')
+
         # Setup the full list of extra-vars needed for ansible plays.
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
-        env = {'PROFILE_TASKS_TASK_OUTPUT_LIMIT': '30'}
+        env = os.environ.copy()
+        if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
+            env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
         logging.info("[app] Running ansible playbook {} against target {}".format(
                         filename, inventory_target))
         logging.info("Running ansible command {}".format(json.dumps(process_args,
                                                                     separators=(' ', ' '))))
-        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         stdout, stderr = p.communicate()
         if print_output:
-            print(stdout)
+            print(stdout.decode('utf-8'))
         EXCEPTION_MSG_FORMAT = ("Playbook run of {} against {} with args {} " +
                                 "failed with return code {} and error '{}'")
         if p.returncode != 0:

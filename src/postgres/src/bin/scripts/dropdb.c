@@ -33,6 +33,7 @@ main(int argc, char *argv[])
 		{"interactive", no_argument, NULL, 'i'},
 		{"if-exists", no_argument, &if_exists, 1},
 		{"maintenance-db", required_argument, NULL, 2},
+		{"force", no_argument, NULL, 'f'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -46,8 +47,10 @@ main(int argc, char *argv[])
 	char	   *port = NULL;
 	char	   *username = NULL;
 	enum trivalue prompt_password = TRI_DEFAULT;
+	ConnParams	cparams;
 	bool		echo = false;
 	bool		interactive = false;
+	bool		force = false;
 
 	PQExpBufferData sql;
 
@@ -59,7 +62,7 @@ main(int argc, char *argv[])
 
 	handle_help_version_opts(argc, argv, "dropdb", help);
 
-	while ((c = getopt_long(argc, argv, "h:p:U:wWei", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "h:p:U:wWeif", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -83,6 +86,9 @@ main(int argc, char *argv[])
 				break;
 			case 'i':
 				interactive = true;
+				break;
+			case 'f':
+				force = true;
 				break;
 			case 0:
 				/* this covers the long options */
@@ -121,16 +127,23 @@ main(int argc, char *argv[])
 
 	initPQExpBuffer(&sql);
 
-	appendPQExpBuffer(&sql, "DROP DATABASE %s%s;",
-					  (if_exists ? "IF EXISTS " : ""), fmtId(dbname));
+	appendPQExpBuffer(&sql, "DROP DATABASE %s%s%s;",
+					  (if_exists ? "IF EXISTS " : ""),
+					  fmtId(dbname),
+					  force ? " WITH (FORCE)" : "");
 
 	/* Avoid trying to drop postgres db while we are connected to it. */
 	if (maintenance_db == NULL && strcmp(dbname, "postgres") == 0)
 		maintenance_db = "template1";
 
-	conn = connectMaintenanceDatabase(maintenance_db,
-									  host, port, username, prompt_password,
-									  progname, echo);
+	cparams.dbname = maintenance_db;
+	cparams.pghost = host;
+	cparams.pgport = port;
+	cparams.pguser = username;
+	cparams.prompt_password = prompt_password;
+	cparams.override_dbname = NULL;
+
+	conn = connectMaintenanceDatabase(&cparams, progname, echo);
 
 	if (echo)
 		printf("%s\n", sql.data);
@@ -158,6 +171,7 @@ help(const char *progname)
 	printf(_("\nOptions:\n"));
 	printf(_("  -e, --echo                show the commands being sent to the server\n"));
 	printf(_("  -i, --interactive         prompt before deleting anything\n"));
+	printf(_("  -f, --force               try to terminate other connections before dropping\n"));
 	printf(_("  -V, --version             output version information, then exit\n"));
 	printf(_("  --if-exists               don't report error if database doesn't exist\n"));
 	printf(_("  -?, --help                show this help, then exit\n"));

@@ -22,7 +22,6 @@ public class ExternalDaemonLogErrorListener implements LogErrorListener {
 
   private final Object serverStartEventMonitor = new Object();
   private boolean sawServerStarting = false;
-  private LogPrinter logPrinter;
 
   // These messages in the log will cause a test failure in the end.
   private static final String[] ERROR_LOG_PATTERNS = {
@@ -86,17 +85,5 @@ public class ExternalDaemonLogErrorListener implements LogErrorListener {
             "Waited for " + timeoutMs + ". Log: " + processDescription);
       }
     }
-
   }
-
-  @Override
-  public void associateWithLogPrinter(LogPrinter logPrinter) {
-    if (this.logPrinter != null && this.logPrinter != logPrinter) {
-      throw new IllegalStateException(
-          "Attempt to associate log error listener " + this + " with two different log printers: " +
-              this.logPrinter + " and " + logPrinter);
-    }
-    this.logPrinter = logPrinter;
-  }
-
 }

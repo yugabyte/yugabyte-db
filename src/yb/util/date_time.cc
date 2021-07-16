@@ -20,9 +20,12 @@
 #include <regex>
 #include <ctime>
 
+#include <boost/smart_ptr/make_shared.hpp>
+
 #include <gflags/gflags.h>
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
+#include "yb/util/string_case.h"
 #include "boost/date_time/gregorian/gregorian.hpp"
 #include "boost/date_time/c_local_time_adjustor.hpp"
 #include "boost/date_time/local_time/local_time.hpp"
@@ -151,6 +154,16 @@ Result<string> GetTimezone(string timezoneID) {
   return buffer;
 }
 
+Result<time_zone_ptr> StringToTimezone(const std::string& tz, bool use_utc) {
+  if (tz.empty()) {
+    return use_utc ? kUtcTimezone : boost::make_shared<posix_time_zone>(GetSystemTimezone());
+  }
+  if (FLAGS_use_icu_timezones) {
+    return boost::make_shared<posix_time_zone>(VERIFY_RESULT(GetTimezone(tz)));
+  }
+  return boost::make_shared<posix_time_zone>(tz);
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------------------------
@@ -173,21 +186,14 @@ Result<Timestamp> DateTime::TimestampFromString(const string& str,
       try {
         const date d(year, month, day);
         const time_duration t(hours, minutes, seconds, frac);
-        posix_time_zone *ptz;
-        if (FLAGS_use_icu_timezones) {
-          ptz = new posix_time_zone(VERIFY_RESULT(GetTimezone(m.str(8))));
-        } else {
-          ptz = new posix_time_zone(m.str(8).empty() ? GetSystemTimezone()
-            : m.str(8));
-        }
-        const time_zone_ptr tz(ptz);
+        time_zone_ptr tz = VERIFY_RESULT(StringToTimezone(m.str(8), input_format.use_utc));
         return ToTimestamp(local_date_time(d, t, tz, local_date_time::NOT_DATE_TIME_ON_ERROR));
       } catch (std::exception& e) {
         return STATUS(InvalidArgument, "Invalid timestamp", e.what());
       }
     }
   }
-  return STATUS(InvalidArgument, "Invalid timestamp", "Wrong format of input string");
+  return STATUS_FORMAT(InvalidArgument, "Invalid timestamp $0: Wrong format of input string", str);
 }
 
 Timestamp DateTime::TimestampFromInt(const int64_t val, const InputFormat& input_format) {
@@ -197,8 +203,11 @@ Timestamp DateTime::TimestampFromInt(const int64_t val, const InputFormat& input
 string DateTime::TimestampToString(const Timestamp timestamp, const OutputFormat& output_format) {
   std::ostringstream ss;
   ss.imbue(output_format.output_locale);
+  static const local_date_time kSystemEpoch(
+      boost::posix_time::from_time_t(0), boost::make_shared<posix_time_zone>(GetSystemTimezone()));
   try {
-    ss << (kEpoch + microseconds(timestamp.value()));
+    auto epoch = output_format.use_utc ? kEpoch : kSystemEpoch;
+    ss << epoch + microseconds(timestamp.value());
   } catch (...) {
     // If we cannot produce a valid date, default to showing the exact timestamp value.
     // This can happen if timestamp value is outside the standard year range (1400..10000).
@@ -328,6 +337,35 @@ int64_t DateTime::TimeNow() {
 }
 
 //------------------------------------------------------------------------------------------------
+Result<MonoDelta> DateTime::IntervalFromString(const std::string& str) {
+  /* See Postgres: DecodeInterval() in datetime.c */
+  static const std::vector<std::regex> regexes {
+      // ISO 8601: '3d 4h 5m 6s'
+      // Abbreviated Postgres: '3 d 4 hrs 5 mins 6 secs'
+      // Traditional Postgres: '3 days 4 hours 5 minutes 6 seconds'
+      std::regex("(?:(\\d+) ?d(?:ay)?s?)? *(?:(\\d+) ?h(?:ou)?r?s?)? *"
+                     "(?:(\\d+) ?m(?:in(?:ute)?s?)?)? *(?:(\\d+) ?s(?:ec(?:ond)?s?)?)?",
+                 std::regex_constants::icase),
+      // SQL Standard: 'D H:M:S'
+      std::regex("(?:(\\d+) )?(\\d{1,2}):(\\d{1,2}):(\\d{1,2})", std::regex_constants::icase),
+  };
+  // Try each regex to see if one matches.
+  for (const auto& reg : regexes) {
+    std::smatch m;
+    if (std::regex_match(str, m, reg)) {
+      // All regex's have the name 4 capture groups, in order.
+      const int day = m.str(1).empty() ? 0 : stoi(m.str(1));
+      const int hours = m.str(2).empty() ? 0 : stoi(m.str(2));
+      const int minutes = m.str(3).empty() ? 0 : stoi(m.str(3));
+      const int seconds = m.str(4).empty() ? 0 : stoi(m.str(4));
+      // Convert to microseconds.
+      return MonoDelta::FromSeconds(seconds + (60 * (minutes + 60 * (hours + 24 * day))));
+    }
+  }
+  return STATUS(InvalidArgument, "Invalid interval", "Wrong format of input string: " + str);
+}
+
+//------------------------------------------------------------------------------------------------
 int64_t DateTime::AdjustPrecision(int64_t val,
                                   int input_precision,
                                   const int output_precision) {
@@ -347,14 +385,16 @@ int64_t DateTime::AdjustPrecision(int64_t val,
   return val;
 }
 
-const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
+namespace {
+
+std::vector<std::regex> InputFormatRegexes() {
   // declaring format components used to construct regexes below
   string fmt_empty = "()";
   string date_fmt = "(\\d{4})-(\\d{1,2})-(\\d{1,2})";
   string time_fmt = "(\\d{1,2}):(\\d{1,2}):(\\d{1,2})";
   string time_fmt_no_sec = "(\\d{1,2}):(\\d{1,2})" + fmt_empty;
   string time_empty = fmt_empty + fmt_empty + fmt_empty;
-  string frac_fmt = "\\.(\\d{1,3})";
+  string frac_fmt = "\\.(\\d{6}|\\d{1,3})";
   // Offset, i.e. +/-xx:xx, +/-0000, timezone parser will do additional checking.
   string tzX_fmt = "((?:\\+|-)\\d{2}:?\\d{2})";
   // Zulu Timezone e.g allows user to just add z or Z at the end with no space in front to indicate
@@ -365,90 +405,44 @@ const DateTime::InputFormat DateTime::CqlInputFormat = []() -> InputFormat {
   // further processing to the timezone parser.
   string tzZ_fmt = " ([a-zA-Z\\+].+)";
 
-  // These cases match the valid Cassandra input formats
-  vector<std::regex> regexes {
-      // e.g. "1992-06-04 12:30" or "1992-6-4 12:30"
-      regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + fmt_empty),
-      // e.g. "1992-06-04 12:30+04:00" or "1992-6-4 12:30-04:30"
-      regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + tzX_fmt),
-      // e.g. "1992-06-04 12:30 UTCz" or "1992-6-4 12:30Z"
-      regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + tzY_fmt),
-      // e.g. "1992-06-04 12:30 UTC+04:00" or "1992-6-4 12:30 UTC-04:30"
-      regex(date_fmt + " " + time_fmt_no_sec + fmt_empty + tzZ_fmt),
-      // e.g. "1992-06-04 12:30.321" or "1992-6-4 12:30.12"
-      regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + fmt_empty),
-      // e.g. "1992-06-04 12:30.321+04:00" or "1992-6-4 12:30.12-04:30"
-      regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + tzX_fmt),
-      // e.g. "1992-06-04 12:30.321z" or "1992-6-4 12:30.12Z"
-      regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + tzY_fmt),
-      // e.g. "1992-06-04 12:30.321 UTC+04:00" or "1992-6-4 12:30.12 UTC-04:30"
-      regex(date_fmt + " " + time_fmt_no_sec + frac_fmt + tzZ_fmt),
-      // e.g. "1992-06-04 12:30:45" or "1992-6-4 12:30:45"
-      regex(date_fmt + " " + time_fmt + fmt_empty + fmt_empty),
-      // e.g. "1992-06-04 12:30:45+04:00" or "1992-6-4 12:30:45-04:30"
-      regex(date_fmt + " " + time_fmt + fmt_empty + tzX_fmt),
-      // e.g. "1992-06-04 12:30:45z" or "1992-6-4 12:30:45Z"
-      regex(date_fmt + " " + time_fmt + fmt_empty + tzY_fmt),
-      // e.g. "1992-06-04 12:30:45 UTC+04:00" or "1992-6-4 12:30:45 UTC-04:30"
-      regex(date_fmt + " " + time_fmt + fmt_empty + tzZ_fmt),
-      // e.g. "1992-06-04 12:30:45.321" or "1992-6-4 12:30:45.12"
-      regex(date_fmt + " " + time_fmt + frac_fmt + fmt_empty),
-      // e.g. "1992-06-04 12:30:45.321+04:00" or "1992-6-4 12:30:45.12-04:30"
-      regex(date_fmt + " " + time_fmt + frac_fmt + tzX_fmt),
-      // e.g. "1992-06-04 12:30:45.321z" or "1992-6-4 12:30:45.12Z"
-      regex(date_fmt + " " + time_fmt + frac_fmt + tzY_fmt),
-      // e.g. "1992-06-04 12:30:45.321 UTC+04:00" or "1992-6-4 12:30:45.12 UTC-04:30"
-      regex(date_fmt + " " + time_fmt + frac_fmt + tzZ_fmt),
-      // e.g. "1992-06-04T12:30" or "1992-6-4T12:30"
-      regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + fmt_empty),
-      // e.g. "1992-06-04T12:30+04:00" or "1992-6-4T12:30-04:30"
-      regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + tzX_fmt),
-      // e.g. "1992-06-04T12:30z" or "1992-6-4T12:30TZ"
-      regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + tzY_fmt),
-      // e.g. "1992-06-04T12:30 UTC+04:00" or "1992-6-4T12:30T UTC-04:30"
-      regex(date_fmt + "T" + time_fmt_no_sec + fmt_empty + tzZ_fmt),
-      // e.g. "1992-06-04T12:30.321" or "1992-6-4T12:30.12"
-      regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + fmt_empty),
-      // e.g. "1992-06-04T12:30.321+04:00" or "1992-6-4T12:30.12-04:30"
-      regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + tzX_fmt),
-      // e.g. "1992-06-04T12:30.321z" or "1992-6-4T12:30.12Z"
-      regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + tzY_fmt),
-      // e.g. "1992-06-04T12:30.321 UTC+04:00" or "1992-6-4T12:30.12 UTC-04:30"
-      regex(date_fmt + "T" + time_fmt_no_sec + frac_fmt + tzZ_fmt),
-      // e.g. "1992-06-04T12:30:45" or "1992-6-4T12:30:45"
-      regex(date_fmt + "T" + time_fmt + fmt_empty + fmt_empty),
-      // e.g. "1992-06-04T12:30:45+04:00" or "1992-6-4T12:30:45-04:30"
-      regex(date_fmt + "T" + time_fmt + fmt_empty + tzX_fmt),
-      // e.g. "1992-06-04T12:30:45z" or "1992-6-4T12:30:45Z"
-      regex(date_fmt + "T" + time_fmt + fmt_empty + tzY_fmt),
-      // e.g. "1992-06-04T12:30:45 UTC+04:00" or "1992-6-4T12:30:45 UTC-04:30"
-      regex(date_fmt + "T" + time_fmt + fmt_empty + tzZ_fmt),
-      // e.g. "1992-06-04T12:30:45.321" or "1992-6-4T12:30:45.12"
-      regex(date_fmt + "T" + time_fmt + frac_fmt + fmt_empty),
-      // e.g. "1992-06-04T12:30:45.321+04:00" or "1992-6-4T12:30:45.12-04:30"
-      regex(date_fmt + "T" + time_fmt + frac_fmt + tzX_fmt),
-      // e.g. "1992-06-04T12:30:45.321z" or "1992-6-4T12:30:45.12Z"
-      regex(date_fmt + "T" + time_fmt + frac_fmt + tzY_fmt),
-      // e.g. "1992-06-04T12:30:45.321 UTC+04:00" or "1992-6-4T12:30:45.12 UTC-04:30"
-      regex(date_fmt + "T" + time_fmt + frac_fmt + tzZ_fmt),
-      // e.g. "1992-06-04" or "1992-6-4"
-      regex(date_fmt + time_empty + fmt_empty + fmt_empty),
-      // e.g. "1992-06-04+04:00" or "1992-6-4-04:30"
-      regex(date_fmt + time_empty + fmt_empty + tzX_fmt),
-      // e.g. "1992-06-04z" or "1992-6-4Z"
-      regex(date_fmt + time_empty + fmt_empty + tzY_fmt),
-      // e.g. "1992-06-04 UTC+04:00" or "1992-6-4 UTC-04:30"
-      regex(date_fmt + time_empty + fmt_empty + tzZ_fmt)};
-  int input_precision = 3; // Cassandra current default
-  return InputFormat(regexes, input_precision);
-} ();
+  std::vector<std::regex> result;
+  for (const auto& sep : { " ", "T" }) {
+    for (const auto& time : { time_fmt_no_sec, time_fmt }) {
+      for (const auto& frac : { fmt_empty, frac_fmt }) {
+        for (const auto& tz : { fmt_empty, tzX_fmt, tzY_fmt, tzZ_fmt }) {
+          result.emplace_back(date_fmt + sep + time + frac + tz);
+        }
+      }
+    }
+  }
+  for (const auto& tz : { fmt_empty, tzX_fmt, tzY_fmt, tzZ_fmt }) {
+    result.emplace_back(date_fmt + time_empty + fmt_empty + tz);
+  }
+  return result;
+}
 
-const DateTime::OutputFormat DateTime::CqlOutputFormat = OutputFormat(
-    locale(locale::classic(), new local_time_facet("%Y-%m-%dT%H:%M:%S.%f%q"))
-);
+} // namespace
 
-const DateTime::OutputFormat DateTime::HumanReadableOutputFormat = OutputFormat(
-    locale(locale::classic(), new local_time_facet("%Y-%m-%d %H:%M:%S.%f"))
-);
+const DateTime::InputFormat DateTime::CqlInputFormat = {
+  .regexes = InputFormatRegexes(),
+  .input_precision = 3, // Cassandra current default
+  .use_utc = false,
+};
+
+const DateTime::OutputFormat DateTime::CqlOutputFormat = OutputFormat {
+  .output_locale = locale(locale::classic(), new local_time_facet("%Y-%m-%dT%H:%M:%S.%f%q")),
+  .use_utc = true,
+};
+
+const DateTime::InputFormat DateTime::HumanReadableInputFormat = DateTime::InputFormat {
+  .regexes = InputFormatRegexes(),
+  .input_precision = 6,
+  .use_utc = false,
+};
+
+const DateTime::OutputFormat DateTime::HumanReadableOutputFormat = OutputFormat {
+  .output_locale = locale(locale::classic(), new local_time_facet("%Y-%m-%d %H:%M:%S.%f")),
+  .use_utc = false,
+};
 
 } // namespace yb

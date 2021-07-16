@@ -3,53 +3,47 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import play.libs.Json;
 import play.mvc.Result;
 
 import java.util.List;
 import java.util.UUID;
 
+@Api(value = "Schedule", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
+  @ApiOperation(
+      value = "list",
+      response = Schedule.class,
+      responseContainer = "List",
+      nickname = "listOfSchedule")
   public Result list(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
     List<Schedule> schedules = Schedule.getAllActiveByCustomerUUID(customerUUID);
-    return ApiResponse.success(schedules);
+    return YWResults.withData(schedules);
   }
 
+  @ApiOperation(value = "delete", response = YWResults.class, nickname = "deleteSchedule")
   public Result delete(UUID customerUUID, UUID scheduleUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      String errMsg = "Invalid Customer UUID: " + customerUUID;
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer.getOrBadRequest(customerUUID);
 
-    Schedule schedule = Schedule.get(scheduleUUID);
-    if (schedule == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
-    }
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
 
-    try {
-      schedule.stopSchedule();
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Schedule UUID: " + scheduleUUID);
-    }
+    schedule.stopSchedule();
 
     ObjectNode responseJson = Json.newObject();
-    responseJson.put("success", true);
-    Audit.createAuditEntry(ctx(), request());
-    return ApiResponse.success(responseJson);
+    auditService().createAuditEntry(ctx(), request());
+    return YWResults.YWSuccess.empty();
   }
 }

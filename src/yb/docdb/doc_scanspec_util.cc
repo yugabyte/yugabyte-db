@@ -24,16 +24,25 @@ namespace docdb {
 
 using common::QLScanRange;
 
-std::vector<PrimitiveValue> GetRangeKeyScanSpec(const Schema& schema,
-                                                const QLScanRange* scan_range,
-                                                bool lower_bound,
-                                                bool include_static_columns) {
+std::vector<PrimitiveValue> GetRangeKeyScanSpec(
+    const Schema& schema,
+    const std::vector<PrimitiveValue>* prefixed_hash_components,
+    const QLScanRange* scan_range,
+    bool lower_bound,
+    bool include_static_columns) {
   std::vector<PrimitiveValue> range_components;
+  range_components.reserve(schema.num_range_key_columns());
+  if (prefixed_hash_components) {
+    range_components.insert(range_components.begin(),
+                            prefixed_hash_components->begin(),
+                            prefixed_hash_components->end());
+  }
   if (scan_range != nullptr) {
     // Return the lower/upper range components for the scan.
-    range_components.reserve(schema.num_range_key_columns());
 
-    for (size_t i = schema.num_hash_key_columns(); i < schema.num_key_columns(); i++) {
+    for (size_t i = schema.num_hash_key_columns() + range_components.size();
+         i < schema.num_key_columns();
+         i++) {
       const auto& column = schema.column(i);
       const auto& range = scan_range->RangeFor(schema.column_id(i));
       range_components.emplace_back(GetQLRangeBoundAsPVal(range,

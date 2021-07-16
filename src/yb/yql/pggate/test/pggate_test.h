@@ -72,6 +72,9 @@ class PggateTest : public YBTest {
   void ConnectDB(const string& db_name = kDefaultDatabase);
 
  protected:
+  void BeginDDLTransaction();
+  void CommitDDLTransaction();
+  void BeginTransaction();
   void CommitTransaction();
 
   //------------------------------------------------------------------------------------------------

@@ -31,6 +31,10 @@ public class MiscUtil {
     void run() throws Exception;
   }
 
+  public interface ThrowingCallable<T, E extends Throwable> {
+    T call() throws E;
+  }
+
   public static void runInParallel(Collection<ThrowingRunnable> cmds,
                                    CountDownLatch stopLatch,
                                    int completeTimeoutSecs) throws Throwable {

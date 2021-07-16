@@ -3,6 +3,7 @@
 import { connect } from 'react-redux';
 import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { reset } from 'redux-form';
+import { toast } from 'react-toastify';
 import OnPremNodesList from './OnPremNodesList';
 import {
   getInstanceTypeList,
@@ -52,16 +53,22 @@ const mapDispatchToProps = (dispatch, ownProps) => {
     createOnPremNodes: (nodePayloadData, pUUID) => {
       nodePayloadData.forEach(function (nodePayload) {
         Object.keys(nodePayload).forEach((zoneUUID, zoneIdx) => {
-          const nodesForZone = nodePayload[zoneUUID];
-          dispatch(createNodeInstances(zoneUUID, nodesForZone)).then((response) => {
-            dispatch(createNodeInstancesResponse(response.payload));
-            if (zoneIdx === Object.keys(nodePayload).length - 1) {
-              dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
-                dispatch(getNodesInstancesForProviderResponse(response.payload));
-              });
+          const nodesForZone = nodePayload[zoneUUID];          
+          dispatch(createNodeInstances(zoneUUID, nodesForZone)).then((response) => {       
+            if (!response.error) {
+              dispatch(createNodeInstancesResponse(response.payload));
+              if (zoneIdx === Object.keys(nodePayload).length - 1) {
+                dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
+                  dispatch(getNodesInstancesForProviderResponse(response.payload));
+                });
+                dispatch(closeDialog());
+                dispatch(closeUniverseDialog());
+              }
+            } else {
+              const errorMessage = response.payload?.response?.data?.error ?? 'Something went wrong creating node instances!';
+              toast.error(errorMessage);
               dispatch(closeDialog());
-              dispatch(closeUniverseDialog());
-            }
+            }           
           });
         });
       });
@@ -108,20 +115,30 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 const validate = (values) => {
   const errors = { instances: {} };
   if (isNonEmptyObject(values.instances)) {
-    Object.keys(values.instances).forEach(function (instanceRowKey) {
+    Object.keys(values.instances).forEach((instanceRowKey) => {
       const instanceRowArray = values.instances[instanceRowKey];
       errors.instances[instanceRowKey] = [];
       if (isNonEmptyArray(instanceRowArray)) {
-        instanceRowArray.forEach(function (instanceRowItem, instanceRowIdx) {
-          errors.instances[instanceRowKey][instanceRowIdx] = {};
-          if (
-            isNonEmptyString(instanceRowItem.instanceTypeIP) &&
-            instanceRowItem.instanceTypeIP.length > 75
-          ) {
-            errors.instances[instanceRowKey][instanceRowIdx] = {
-              instanceTypeIP: 'Address Too Long'
-            };
-          }
+        instanceRowArray.forEach((instanceRowItem, instanceRowIdx) => {
+          const instanceErrors = {};
+          if (Object.keys(instanceRowItem).length) {
+            if (!instanceRowItem.zone) {
+              instanceErrors.zone = 'Zone is required';
+            }
+            if (!instanceRowItem.instanceTypeIP) {
+              instanceErrors.instanceTypeIP = 'IP address or DNS is required';
+            }
+            if (!instanceRowItem.machineType) {
+              instanceErrors.machineType = 'Type is required';
+            }
+            if (
+              isNonEmptyString(instanceRowItem.instanceTypeIP) &&
+              instanceRowItem.instanceTypeIP.length > 75
+            ) {
+              instanceErrors.instanceTypeIP = 'Address Too Long';
+            }
+          }          
+          errors.instances[instanceRowKey][instanceRowIdx] = instanceErrors;
         });
       }
     });

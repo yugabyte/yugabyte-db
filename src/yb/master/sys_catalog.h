@@ -44,6 +44,9 @@
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/tablet_memory_manager.h"
+
+#include "yb/util/mem_tracker.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
@@ -100,30 +103,15 @@ class SysCatalogTable {
   // ==================================================================
   // Templated CRUD methods for items in sys.catalog.
   // ==================================================================
-  template <class Item>
-  CHECKED_STATUS AddItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS AddItems(const vector<Item*>& items, int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Upsert(int64_t leader_term, Items&&... items);
 
-  template <class Item>
-  CHECKED_STATUS UpdateItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS UpdateItems(const vector<Item*>& items, int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Delete(int64_t leader_term, Items&&... items);
 
-  template <class Item>
-  CHECKED_STATUS AddAndUpdateItems(const vector<Item*>& added_items,
-                                   const vector<Item*>& updated_items,
-                                   int64_t leader_term);
-
-  template <class Item>
-  CHECKED_STATUS DeleteItem(Item* item, int64_t leader_term);
-  template <class Item>
-  CHECKED_STATUS DeleteItems(const vector<Item*>& items, int64_t leader_term);
-
-  template <class Item>
-  CHECKED_STATUS MutateItems(const vector<Item*>& items,
-                             const QLWriteRequestPB::QLStmtType& op_type,
-                             int64_t leader_term);
+  template <class... Items>
+  CHECKED_STATUS Mutate(
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
 
   // ==================================================================
   // Static schema related methods.
@@ -136,7 +124,7 @@ class SysCatalogTable {
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
 
-  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
+  std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
     return std::atomic_load(&tablet_peer_);
   }
 
@@ -189,6 +177,8 @@ class SysCatalogTable {
   const Schema& schema();
 
   const scoped_refptr<MetricEntity>& GetMetricEntity() const { return metric_entity_; }
+
+  CHECKED_STATUS FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries);
 
  private:
   friend class CatalogManager;
@@ -246,16 +236,16 @@ class SysCatalogTable {
 
   scoped_refptr<MetricEntity> metric_entity_;
 
-  gscoped_ptr<ThreadPool> inform_removed_master_pool_;
+  std::unique_ptr<ThreadPool> inform_removed_master_pool_;
 
   // Thread pool for Raft-related operations
-  gscoped_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
 
   // Thread pool for preparing transactions, shared between all tablets.
-  gscoped_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> tablet_prepare_pool_;
 
   // Thread pool for appender tasks
-  gscoped_ptr<ThreadPool> append_pool_;
+  std::unique_ptr<ThreadPool> append_pool_;
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 
@@ -272,6 +262,8 @@ class SysCatalogTable {
   scoped_refptr<Counter> peer_write_count;
 
   std::unordered_map<std::string, scoped_refptr<AtomicGauge<uint64>>> visitor_duration_metrics_;
+
+  std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };

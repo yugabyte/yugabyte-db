@@ -227,8 +227,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*doc_key_,
-                    PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+          SubDocKey(*doc_key_, PrimitiveValue::kLivenessColumn),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -369,12 +368,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  // Add the liveness column.
-  static const PrimitiveValue kLivenessColumnId =
-      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn);
-
   RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-      DocPath(encoded_doc_key_.as_slice(), kLivenessColumnId),
+      DocPath(encoded_doc_key_.as_slice(), PrimitiveValue::kLivenessColumn),
       Value(PrimitiveValue()),
       data.read_time, data.deadline, request_.stmt_id()));
 
@@ -928,14 +923,6 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
-  if (request_.partition_column_values().empty()) {
-    // Empty components mean that we don't have primary key at all, but request
-    // could still contain hash_code as part of tablet routing.
-    // So we should ignore it.
-    AddIntent(DocKey(schema).Encode().ToStringBuffer(), out);
-    return Status::OK();
-  }
-
   if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");

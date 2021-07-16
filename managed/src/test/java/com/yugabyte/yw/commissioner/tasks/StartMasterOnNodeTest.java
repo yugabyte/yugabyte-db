@@ -45,8 +45,7 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class StartMasterOnNodeTest extends CommissionerBaseTest {
 
-  @InjectMocks
-  Commissioner commissioner;
+  @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
   YBClient mockClient;
@@ -55,7 +54,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
@@ -64,7 +63,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(defaultUniverse.universeUUID,
+    Universe.saveDetails(
+        defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
     Map<String, String> gflags = new HashMap<>();
@@ -72,14 +72,15 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags = gflags;
 
     Master.SysClusterConfigEntryPB.Builder configBuilder =
-      Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
+        Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
     GetMasterClusterConfigResponse mockConfigResponse =
-      new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
 
     mockClient = mock(YBClient.class);
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-    } catch (Exception e) {}
+    } catch (Exception e) {
+    }
 
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
 
@@ -89,7 +90,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
-    taskParams.clusters.addAll(Universe.get(taskParams.universeUUID).getUniverseDetails().clusters);
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
     taskParams.expectedUniverseVersion = 2;
     taskParams.nodeName = nodeName;
     try {
@@ -102,7 +104,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   }
 
   // @formatter:off
-  List<TaskType> START_MASTER_TASK_SEQUENCE = ImmutableList.of(
+  List<TaskType> START_MASTER_TASK_SEQUENCE =
+      ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
@@ -115,10 +118,10 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.UniverseUpdateSucceeded
-  );
+          TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> START_MASTER_TASK_EXPECTED_RESULTS = ImmutableList.of(
+  List<JsonNode> START_MASTER_TASK_EXPECTED_RESULTS =
+      ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
@@ -141,8 +144,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       // assertEquals(1, tasks.size());
       assertEquals("At position: " + position, taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = START_MASTER_TASK_EXPECTED_RESULTS.get(position);
-      List<JsonNode> taskDetails = tasks.stream().map(t -> t.getTaskDetails())
-          .collect(Collectors.toList());
+      List<JsonNode> taskDetails =
+          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -151,15 +154,16 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   @Test
   public void testStartMasterOnNodeIfUnderReplicatedMasterAndNodeIsLive() {
     Universe universe = createUniverse("Demo");
-    universe = Universe.saveDetails(universe.universeUUID,
-        ApiUtils.mockUniverseUpdaterWithInactiveNodes());
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n2");
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition = subTasks.stream()
-        .collect(Collectors.groupingBy(w -> w.getPosition()));
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     assertEquals(START_MASTER_TASK_SEQUENCE.size(), subTasksByPosition.size());
     assertStartMasterSequence(subTasksByPosition);
   }
@@ -186,8 +190,9 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   @Test
   public void testStartMasterOnNodeIfUnderReplicatedMasterAndNodeIsRemoved() {
     Universe universe = createUniverse("DemoX");
-    universe = Universe.saveDetails(universe.universeUUID,
-        ApiUtils.mockUniverseUpdaterWithInactiveNodes());
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     // Node "host-n4" is in Removed state already.
@@ -200,8 +205,10 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   @Test
   public void testStartMasterOnNodeIfNodeInReadOnlyCluster() {
     Universe universe = createUniverse("DemoX");
-    universe = Universe.saveDetails(universe.universeUUID,
-        ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 3));
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID,
+            ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 3));
 
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;

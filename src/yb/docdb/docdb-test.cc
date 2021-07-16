@@ -20,6 +20,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -100,8 +101,7 @@ class DocDBTest : public DocDBTestBase {
   virtual void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) = 0;
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) = 0;
 
   // This is the baseline state of the database that we set up and come back to as we test various
   // operations.
@@ -240,10 +240,9 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
     // TODO(dtxn) - check both transaction and non-transaction path?
     // https://yugabyte.atlassian.net/browse/ENG-2177
     auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
-    DocHybridTime table_tombstone_time(DocHybridTime::kInvalid);
     GetSubDoc(
         encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
-        kNonTransactionalOperationContext, ReadHybridTime::SingleTime(ht), &table_tombstone_time);
+        kNonTransactionalOperationContext, ReadHybridTime::SingleTime(ht));
     if (subdoc_string.empty()) {
       EXPECT_FALSE(subdoc_found_in_rocksdb);
       return;
@@ -423,19 +422,22 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time,
-      DocHybridTime* table_tombstone_time, const vector<PrimitiveValue>* projection = nullptr) {
-  GetSubDocumentData data = { subdoc_key, result, found_result };
-  data.table_tombstone_time = table_tombstone_time;
-  auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, rocksdb::kDefaultQueryId,
-      txn_op_context, CoarseTimePoint::max() /* deadline */, read_time);
-  ASSERT_OK(GetSubDocument(iter.get(), data, projection, SeekFwdSuffices::kFalse));
+      const vector<PrimitiveValue>* projection = nullptr) {
+  auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
+    subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
+    CoarseTimePoint::max() /* deadline */, read_time, projection));
+  if (doc_from_rocksdb_opt) {
+    *found_result = true;
+    *result = *doc_from_rocksdb_opt;
+  } else {
+    *found_result = false;
+    *result = SubDocument();
+  }
 }
 
 void GetSubDocRedis(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time,
-      DocHybridTime* table_tombstone_time) {
+      const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time) {
   GetRedisSubDocumentData data = { subdoc_key, result, found_result };
   ASSERT_OK(GetRedisSubDocument(
       doc_db, data, rocksdb::kDefaultQueryId,
@@ -451,19 +453,15 @@ class DocDBTestWrapper : public DocDBTest, public testing::WithParamInterface<Te
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) override {
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     switch (GetParam()) {
       case TestDocDb::kQlReader: {
-        GetSubDocQl(
-            doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-            table_tombstone_time);
+        GetSubDocQl(doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
         break;
       }
       case TestDocDb::kRedisReader: {
         GetSubDocRedis(
-            doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-            table_tombstone_time);
+            doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
         break;
       }
     }
@@ -479,11 +477,8 @@ class DocDBTestQl : public DocDBTest {
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) override {
-    GetSubDocQl(
-        doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-        table_tombstone_time);
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
+    GetSubDocQl(doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
   }
 };
 
@@ -492,11 +487,9 @@ class DocDBTestRedis : public DocDBTest {
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContextOpt& txn_op_context = boost::none,
-      const ReadHybridTime& read_time = ReadHybridTime::Max(),
-      DocHybridTime* table_tombstone_time = nullptr) override {
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     GetSubDocRedis(
-        doc_db(), subdoc_key, result, found_result, txn_op_context, read_time,
-        table_tombstone_time);
+        doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
   }
 };
 
@@ -647,7 +640,6 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
 
   auto subdoc_key = SubDocKey(doc_key);
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
-  DocHybridTime table_tombstone_time(DocHybridTime::kInvalid);
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
   const vector<PrimitiveValue> projection = {
@@ -658,7 +650,7 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   GetSubDocQl(
       doc_db(), encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
       kNonTransactionalOperationContext, ReadHybridTime::SingleTime(4000_usec_ht),
-      &table_tombstone_time, &projection);
+      &projection);
   EXPECT_TRUE(subdoc_found_in_rocksdb);
   EXPECT_STR_EQ_VERBOSE_TRIMMED(R"#(
 {
@@ -752,7 +744,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["u"; HT{ physical: 1000 w: 6 }]) ->
      )#");
 }
 
-// This tests GetSubDocument without init markers. Basic Test tests with init markers.
+// This tests reads on data without init markers. Basic Test tests with init markers.
 TEST_P(DocDBTestWrapper, GetSubDocumentTest) {
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
   SetupRocksDBState(doc_key.Encode());
@@ -918,7 +910,6 @@ TEST_P(DocDBTestWrapper, ListInsertAndGetTest) {
   parent.SetChild(PrimitiveValue("list2"), SubDocument(list));
   ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), parent, HybridTime(100)));
 
-  // GetSubDocument Doesn't know that this is an array so it is returned as an object for now.
   VerifySubDocument(SubDocKey(doc_key), HybridTime(250),
       R"#(
   {
@@ -2115,9 +2106,8 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   HybridTime t4 = server::HybridClock::AddPhysicalTimeToHybridTime(t3, one_ms);
   KeyBytes encoded_doc_key(doc_key.Encode());
   // First row.
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
-      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
-      Value(PrimitiveValue(), 1ms), t0));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue::kLivenessColumn),
+                         Value(PrimitiveValue(), 1ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(0))),
       Value(PrimitiveValue("v1"), 2ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
@@ -2129,9 +2119,8 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   // Second row.
   const DocKey doc_key_row2(PrimitiveValues("k2"));
   KeyBytes encoded_doc_key_row2(doc_key_row2.Encode());
-  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2,
-      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
-      Value(PrimitiveValue(), 3ms), t0));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue::kLivenessColumn),
+                         Value(PrimitiveValue(), 3ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(0))),
       Value(PrimitiveValue("v1"), 2ms), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(1))),
@@ -2279,7 +2268,7 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
-        DocPath(doc_key.Encode(), PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+        DocPath(doc_key.Encode(), PrimitiveValue::kLivenessColumn),
         Value(PrimitiveValue()),
         t));
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
@@ -2319,7 +2308,7 @@ SubDocKey(DocKey(PgTableId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical:
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(PrimitiveValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
-        DocPath(doc_key.Encode(), PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+        DocPath(doc_key.Encode(), PrimitiveValue::kLivenessColumn),
         Value(PrimitiveValue()),
         t));
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
@@ -2937,8 +2926,8 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
   ASSERT_NO_FATALS(get_doc(key2));
   ASSERT_TRUE(!subdoc_found_in_rocksdb);
   // Bloom filter excluded this file.
-  // docdb::GetSubDocument sometimes seeks twice - first time on key2 and second time to advance
-  // out of it, because key2 was found.
+  // docdb::TEST_GetSubDocument sometimes seeks twice - first time on key2 and second time to
+  // advance out of it, because key2 was found.
   ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful, 0, &total_table_iterators));
 
   ASSERT_NO_FATALS(get_doc(key3));
@@ -3770,7 +3759,7 @@ TEST_P(DocDBTestWrapper, DISABLED_DumpDB) {
   tablet::TabletOptions tablet_options;
   rocksdb::Options options;
   docdb::InitRocksDBOptions(
-      &options, "" /* log_prefix */, rocksdb::CreateDBStatistics(), tablet_options);
+      &options, "" /* log_prefix */, rocksdb::CreateDBStatisticsForTests(), tablet_options);
 
   rocksdb::DB* rocksdb = nullptr;
   std::string db_path = "";

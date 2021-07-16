@@ -118,7 +118,7 @@ typedef struct PgTypeEntity {
   // Postgres type OID.
   int type_oid;
 
-  // YugaByte storgate (DocDB) type.
+  // YugaByte storage (DocDB) type.
   YBCPgDataType yb_type;
 
   // Allow to be used for primary key.
@@ -253,6 +253,7 @@ typedef struct PgAttrValueDescriptor {
 typedef struct PgCallbacks {
   void (*FetchUniqueConstraintName)(YBCPgOid, char*, size_t);
   YBCPgMemctx (*GetCurrentYbMemctx)();
+  const char* (*GetDebugQueryString)();
 } YBCPgCallbacks;
 
 typedef struct PgTableProperties {
@@ -267,6 +268,15 @@ typedef struct PgYBTupleIdDescriptor {
   int32_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
+
+typedef struct PgServerDescriptor {
+  const char *host;
+  const char *cloud;
+  const char *region;
+  const char *zone;
+  bool isPrimary;
+  const char *publicIp;
+} YBCServerDescriptor;
 
 #ifdef __cplusplus
 }  // extern "C"

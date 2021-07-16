@@ -78,7 +78,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   Result<string> DecodeYbctid(const Slice& ybctid) const;
 
   // Seek the tablet partition where the row whose "ybctid" value was given can be found.
-  Result<int> FindPartitionIndex(const Slice& ybctid) const;
+  Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
   // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
   CHECKED_STATUS SetScanBoundary(PgsqlReadRequestPB *req,

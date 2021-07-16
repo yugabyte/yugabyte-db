@@ -23,6 +23,7 @@ class ConsensusFrontier;
 class DeadlineInfo;
 class DocKey;
 class DocPath;
+class DocRowwiseIterator;
 class DocWriteBatch;
 class IntentAwareIterator;
 class KeyBytes;
@@ -35,9 +36,6 @@ struct ApplyTransactionState;
 struct DocDB;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
-
-// Indicates if we can get away by only seeking forward, or if we must do a regular seek.
-YB_STRONGLY_TYPED_BOOL(SeekFwdSuffices);
 
 }  // namespace docdb
 }  // namespace yb

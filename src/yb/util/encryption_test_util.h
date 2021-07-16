@@ -19,7 +19,6 @@
 #include "yb/util/test_util.h"
 
 namespace yb {
-namespace enterprise {
 
 void DoTest(std::function<void(uint32_t, uint32_t)> file_op, int32_t size);
 
@@ -52,7 +51,6 @@ void TestSequentialReads(Readable* file, const Slice& data) {
   }, data.size());
 }
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_ENCRYPTION_TEST_UTIL_H

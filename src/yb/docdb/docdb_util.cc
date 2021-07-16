@@ -184,15 +184,30 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests() {
   // TODO(bojanserafimov): create MemoryMonitor?
   const size_t cache_size = block_cache_size();
   if (cache_size > 0) {
     block_cache_ = rocksdb::NewLRUCache(cache_size);
   }
 
-  regular_db_options_.statistics = rocksdb::CreateDBStatistics();
-  intents_db_options_.statistics = rocksdb::CreateDBStatistics();
+  regular_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ false);
+  intents_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ true);
+  RETURN_NOT_OK(ReinitDBOptions());
+  InitRocksDBWriteOptions(&write_options_);
+  return Status::OK();
+}
+
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad() {
+  const size_t cache_size = block_cache_size();
+  if (cache_size > 0) {
+    block_cache_ = rocksdb::NewLRUCache(cache_size);
+  }
+
+  // Don't care about statistics/metrics as we don't keep metric registries during
+  // bulk load.
+  regular_db_options_.statistics = nullptr;
+  intents_db_options_.statistics = nullptr;
   RETURN_NOT_OK(ReinitDBOptions());
   InitRocksDBWriteOptions(&write_options_);
   return Status::OK();

@@ -40,19 +40,23 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/faststring.h"
 #include "yb/util/status.h"
 #include "yb/util/result.h"
 
 namespace google {
 namespace protobuf {
+
 class FileDescriptor;
 class FileDescriptorSet;
 class MessageLite;
 class Message;
-}
-}
+
+template <class T>
+class RepeatedPtrField;
+
+} // namespace protobuf
+} // namespace google
 
 namespace yb {
 
@@ -77,13 +81,14 @@ enum CreateMode {
 };
 
 // See MessageLite::AppendToString
-bool AppendToString(const MessageLite &msg, faststring *output);
+void AppendToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::AppendPartialToString
-bool AppendPartialToString(const MessageLite &msg, faststring *output);
+void AppendPartialToString(const MessageLite &msg, faststring *output);
+void AppendPartialToString(const MessageLite &msg, std::string *output);
 
 // See MessageLite::SerializeToString.
-bool SerializeToString(const MessageLite &msg, faststring *output);
+void SerializeToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::ParseFromZeroCopyStream
 // TODO: change this to return Status - differentiate IO error from bad PB
@@ -304,7 +309,7 @@ class ReadablePBContainerFile {
   // The fully-qualified PB type name of the messages in the container.
   std::string pb_type_;
 
-  // Wrapped in a gscoped_ptr so that clients need not include PB headers.
+  // Wrapped in a std::unique_ptr so that clients need not include PB headers.
   std::unique_ptr<google::protobuf::FileDescriptorSet> protos_;
 
   std::unique_ptr<RandomAccessFile> reader_;
@@ -336,5 +341,9 @@ bool ArePBsEqual(const google::protobuf::Message& prev_pb,
                  std::string* diff_str);
 
 } // namespace pb_util
+
+using RepeatedBytes = google::protobuf::RepeatedPtrField<std::string>;
+
 } // namespace yb
+
 #endif // YB_UTIL_PB_UTIL_H

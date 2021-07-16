@@ -18,6 +18,9 @@ import java.util.*;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
@@ -28,6 +31,8 @@ import static org.yb.AssertionWrappers.fail;
 
 @RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
 public class TestYbBackup extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
+
   @Before
   public void initYBBackupUtil() {
     YBBackupUtil.setMasterAddresses(masterAddresses);
@@ -39,7 +44,7 @@ public class TestYbBackup extends BaseCQLTest {
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 2;
   }
 
@@ -249,19 +254,21 @@ public class TestYbBackup extends BaseCQLTest {
                 "Row[1, {\"a\":{\"b\":\"b" + value_c + "\"},\"c\":" + value_c + "}]");
   }
 
-  public void testYCQLRestoreIntoKeyspace(TableProperties tp,
-                                          String keyspace,
-                                          String... createBackupArgs) throws Exception {
+  public void testYCQLBackupIntoKeyspace(TableProperties tp,
+                                         String keyspace,
+                                         String... createBackupArgs) throws Exception {
     setupTablesBeforeBackup(tp);
     checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.SOURCE);
     YBBackupUtil.runYbBackupCreate(createBackupArgs);
     updateValuesInTables(DEFAULT_TEST_KEYSPACE, tp);
     checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.UPDATED);
+  }
 
-    if (keyspace == DEFAULT_TEST_KEYSPACE) {
-      YBBackupUtil.runYbBackupRestore();
-    } else {
-      YBBackupUtil.runYbBackupRestore("--keyspace", keyspace);
+  public void testYCQLRestoreIntoKeyspace(TableProperties tp,
+                                          String keyspace,
+                                          String... restoreBackupArgs) throws Exception {
+    YBBackupUtil.runYbBackupRestore(restoreBackupArgs);
+    if (keyspace != DEFAULT_TEST_KEYSPACE) {
       checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.UPDATED);
     }
 
@@ -271,24 +278,36 @@ public class TestYbBackup extends BaseCQLTest {
     checkValuesInTables(keyspace, tp, ValuesUpdateState.UPDATED);
   }
 
+  public void testYCQLBackupAndRestoreIntoKeyspace(TableProperties tp,
+                                                   String keyspace,
+                                                   String... createBackupArgs) throws Exception {
+    testYCQLBackupIntoKeyspace(tp, keyspace, createBackupArgs);
+    if (keyspace == DEFAULT_TEST_KEYSPACE) {
+      testYCQLRestoreIntoKeyspace(tp, keyspace);
+    } else {
+      testYCQLRestoreIntoKeyspace(tp, keyspace, "--keyspace", keyspace);
+    }
+  }
+
   @Test
   public void testYCQLKeyspaceBackup() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), "ks2",
-        "--keyspace", DEFAULT_TEST_KEYSPACE);
+    testYCQLBackupAndRestoreIntoKeyspace(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL),
+        "ks2", "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLKeyspaceBackup_Transactional() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_TRANSACTIONAL), "ks3",
-        "--keyspace", DEFAULT_TEST_KEYSPACE);
+    testYCQLBackupAndRestoreIntoKeyspace(new TableProperties(TableProperties.TP_TRANSACTIONAL),
+        "ks3", "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
 
   @Test
   public void testYCQLTablesWithIndexesBackup() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), "ks4",
+    testYCQLBackupAndRestoreIntoKeyspace(new TableProperties(TableProperties.TP_NON_TRANSACTIONAL),
+        "ks4",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -297,7 +316,8 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLTablesWithIndexesBackup_Transactional() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-   testYCQLRestoreIntoKeyspace(new TableProperties(TableProperties.TP_TRANSACTIONAL), "ks5",
+   testYCQLBackupAndRestoreIntoKeyspace(new TableProperties(TableProperties.TP_TRANSACTIONAL),
+        "ks5",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_json_tbl");
@@ -306,7 +326,7 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(
+    testYCQLBackupAndRestoreIntoKeyspace(
         new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
@@ -314,7 +334,7 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace_Transactional() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
-    testYCQLRestoreIntoKeyspace(
+    testYCQLBackupAndRestoreIntoKeyspace(
         new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
   }
@@ -322,7 +342,7 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(
+    testYCQLBackupAndRestoreIntoKeyspace(
         new TableProperties(TableProperties.TP_NON_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
@@ -332,7 +352,7 @@ public class TestYbBackup extends BaseCQLTest {
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables_Transactional() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLRestoreIntoKeyspace(
+    testYCQLBackupAndRestoreIntoKeyspace(
         new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl",
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_types",
@@ -492,5 +512,46 @@ public class TestYbBackup extends BaseCQLTest {
                 "Row[2000, 2100, 2002.14]");
     assertQuery("select h from ks1.test_tbl where h=2000", "Row[2000]");
     assertQuery("select * from ks1.test_tbl where h=9999", "");
+  }
+
+  @Test
+  public void testBackupWithoutChecksumsRestoreWithoutChecksums() throws Exception {
+    // Create backup without any checksums.
+    testYCQLBackupIntoKeyspace(
+        new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+        "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
+    // Restore backup without any checksums, should succeed.
+    testYCQLRestoreIntoKeyspace(
+        new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+        "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
+  }
+
+  @Test
+  public void testBackupWithChecksumsRestoreWithoutChecksums() throws Exception {
+    // Create backup with checksums.
+    testYCQLBackupIntoKeyspace(
+        new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+        "--keyspace", DEFAULT_TEST_KEYSPACE);
+    // Restore backup without any checksum validation, should succeed.
+    testYCQLRestoreIntoKeyspace(
+        new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+        "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
+  }
+
+  @Test
+  public void testBackupWithoutChecksumsRestoreWithChecksums() throws Exception {
+    // Create backup without any checksums.
+    testYCQLBackupIntoKeyspace(
+        new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+        "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
+    // Try to restore backup with checksum validation, should fail since there are no checksums.
+    try {
+      testYCQLRestoreIntoKeyspace(
+          new TableProperties(TableProperties.TP_TRANSACTIONAL), DEFAULT_TEST_KEYSPACE,
+          "--keyspace", DEFAULT_TEST_KEYSPACE);
+      fail("Backup restoring did not fail as expected");
+    } catch (YBBackupException ex) {
+      LOG.info("Expected exception", ex);
+    }
   }
 }

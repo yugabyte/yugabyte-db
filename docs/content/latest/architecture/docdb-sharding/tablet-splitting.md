@@ -137,7 +137,7 @@ Imagine there is a table with pre-existing data spread across a certain number o
 1. Create a three-node local cluster.
 
     ```sh
-    bin/yb-ctl --rf=3 create --num_shards_per_tserver=1
+    bin/yb-ctl --rf=3 create --ysql_num_shards_per_tserver=1
     ```
 
 1. Create a sample table and insert some data.
@@ -156,7 +156,9 @@ Imagine there is a table with pre-existing data spread across a certain number o
 
     ```plpgsql
     SELECT count(*) FROM t;
-
+    ```
+    
+    ```output
     count
     --------
     100000
@@ -173,7 +175,7 @@ bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 
 This produces the following output. Note the tablet UUID for later use, to split this tablet.
 
-```plpgsql
+```output
 Tablet UUID                       Range                         Leader
 9991368c4b85456988303cd65a3c6503  key_start: "" key_end: ""     127.0.0.1:9100
 ```
@@ -194,7 +196,7 @@ After the split, you see two tablets for the table `t`.
 bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
-```plpgsql
+```output
 Tablet UUID                       Range                                 Leader
 20998f68c3fa4d299e8af7c04410e230  key_start: "" key_end: "\177\377"     127.0.0.1:9100
 a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.3:9100
@@ -279,9 +281,11 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 The following known limitations are planned to be resolved in upcoming releases:
 
-* During tablet splitting, client applications may get an error from the driver and need to retry the request.
-* Colocated tables cannot be split.
+* During tablet splitting, client applications may get an error from the driver and need to retry the request. [#5854](https://github.com/yugabyte/yugabyte-db/issues/5854)
+* Colocated tables cannot be split. [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463)
+* Tablet splitting should be disabled during an index backfill. [#6704](https://github.com/yugabyte/yugabyte-db/issues/6704)
+* Cross cluster replication currently does not work with tablet splitting. [#5373](https://github.com/yugabyte/yugabyte-db/issues/5373)
 
-To follow the tablet splitting work-in-progress, see [GitHub #1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
+To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
 
 {{< /note >}}

@@ -33,6 +33,8 @@ using std::vector;
 using std::stack;
 using std::thread;
 
+DECLARE_bool(dump_lock_keys);
+
 namespace yb {
 namespace docdb {
 
@@ -182,6 +184,19 @@ TEST_F(SharedLockManagerTest, LockConflicts) {
   }
 
   tp.Shutdown();
+}
+
+TEST_F(SharedLockManagerTest, DumpKeys) {
+  FLAGS_dump_lock_keys = true;
+
+  auto lb1 = TestLockBatch();
+  ASSERT_OK(lb1.status());
+  auto lb2 = TestLockBatch(CoarseMonoClock::now() + 10ms);
+  ASSERT_NOK(lb2.status());
+  ASSERT_STR_CONTAINS(
+      lb2.status().ToString(),
+      "[{ key: 666F6F intent_types: [kStrongRead, kStrongWrite] }, "
+      "{ key: 626172 intent_types: [kStrongRead, kStrongWrite] }]");
 }
 
 } // namespace docdb

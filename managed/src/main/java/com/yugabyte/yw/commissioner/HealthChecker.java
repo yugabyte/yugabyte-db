@@ -10,55 +10,42 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
-
-import javax.mail.MessagingException;
-
-import java.util.Date;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
+import akka.Done;
+import akka.actor.ActorSystem;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-
-import com.yugabyte.yw.common.*;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.HealthCheck;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.Configuration;
+import play.inject.ApplicationLifecycle;
 import play.libs.Json;
-
-import akka.actor.ActorSystem;
-import com.google.common.annotations.VisibleForTesting;
-import java.util.concurrent.TimeUnit;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
-import io.prometheus.client.Gauge;
-import io.prometheus.client.CollectorRegistry;
-
-import com.fasterxml.jackson.databind.JsonNode;
+import javax.mail.MessagingException;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Singleton
 public class HealthChecker {
@@ -70,10 +57,9 @@ public class HealthChecker {
   public static final String kCheckLabel = "check_name";
   public static final String kNodeLabel = "node";
 
-  @VisibleForTesting
-  static final String ALERT_ERROR_CODE = "HEALTH_CHECKER_FAILURE";
+  private static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
 
-  play.Configuration config;
+  private final play.Configuration config;
 
   // Last time we sent a status update email per customer.
   private final Map<UUID, Long> lastStatusUpdateTimeMap = new HashMap<>();
@@ -98,7 +84,17 @@ public class HealthChecker {
 
   private final EmailHelper emailHelper;
 
-  private final AlertManager alertManager;
+  private final AlertService alertService;
+
+  private final RuntimeConfigFactory runtimeConfigFactory;
+
+  // The thread pool executor for parallelized health checks.
+  private final ExecutorService executor;
+
+  // A map of all running health checks.
+  final Map<UUID, CompletableFuture<Void>> runningHealthChecks = new ConcurrentHashMap<>();
+
+  final ApplicationLifecycle lifecycle;
 
   @VisibleForTesting
   HealthChecker(
@@ -109,7 +105,9 @@ public class HealthChecker {
       CollectorRegistry promRegistry,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
-      AlertManager alertManager) {
+      AlertService alertService,
+      RuntimeConfigFactory runtimeConfigFactory,
+      ApplicationLifecycle lifecycle) {
     this.actorSystem = actorSystem;
     this.config = config;
     this.executionContext = executionContext;
@@ -117,43 +115,61 @@ public class HealthChecker {
     this.promRegistry = promRegistry;
     this.healthCheckerReport = healthCheckerReport;
     this.emailHelper = emailHelper;
-    this.alertManager = alertManager;
+    this.alertService = alertService;
+    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.lifecycle = lifecycle;
+    this.executor = this.createExecutor();
 
     this.initialize();
   }
 
-
   @Inject
   public HealthChecker(
-    ActorSystem actorSystem,
-    Configuration config,
-    ExecutionContext executionContext,
-    HealthManager healthManager,
-    HealthCheckerReport healthCheckerReport,
-    EmailHelper emailHelper,
-    AlertManager alertManager) {
-    this(actorSystem, config, executionContext, healthManager,
-        CollectorRegistry.defaultRegistry, healthCheckerReport,
-        emailHelper, alertManager);
+      ActorSystem globalActorSystem,
+      Configuration config,
+      ExecutionContext executionContext,
+      HealthManager healthManager,
+      HealthCheckerReport healthCheckerReport,
+      EmailHelper emailHelper,
+      AlertService alertService,
+      RuntimeConfigFactory runtimeConfigFactory,
+      ApplicationLifecycle lifecycle) {
+    this(
+        globalActorSystem,
+        config,
+        executionContext,
+        healthManager,
+        CollectorRegistry.defaultRegistry,
+        healthCheckerReport,
+        emailHelper,
+        alertService,
+        runtimeConfigFactory,
+        lifecycle);
   }
 
   private void initialize() {
     LOG.info("Scheduling health checker every " + this.healthCheckIntervalMs() + " ms");
-    this.actorSystem.scheduler().schedule(
-      Duration.create(0, TimeUnit.MILLISECONDS), // initialDelay
-      Duration.create(this.healthCheckIntervalMs(), TimeUnit.MILLISECONDS), // interval
-      this::scheduleRunner,
-      this.executionContext
-    );
+    this.actorSystem
+        .scheduler()
+        .schedule(
+            Duration.create(0, TimeUnit.MILLISECONDS), // initialDelay
+            Duration.create(this.healthCheckIntervalMs(), TimeUnit.MILLISECONDS), // interval
+            this::scheduleRunner,
+            this.executionContext);
 
     try {
-      healthMetric = Gauge.build(kUnivMetricName, "Boolean result of health checks")
-        .labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel)
-        .register(this.promRegistry);
+      healthMetric =
+          Gauge.build(kUnivMetricName, "Boolean result of health checks")
+              .labelNames(kUnivUUIDLabel, kUnivNameLabel, kNodeLabel, kCheckLabel)
+              .register(this.promRegistry);
     } catch (IllegalArgumentException e) {
       LOG.warn("Failed to build prometheus gauge for name: " + kUnivMetricName);
     }
 
+    // Add shutdown hook to kill the task pool
+    if (this.lifecycle != null) {
+      this.lifecycle.addStopHook(this::shutdownThreadpool);
+    }
   }
 
   // The interval at which the checker will run.
@@ -170,8 +186,14 @@ public class HealthChecker {
     return interval == null ? 0 : interval;
   }
 
-  private void processResults(Customer c, Universe u, String response, long durationMs,
-      String emailDestinations, boolean sendMailAlways, boolean reportOnlyErrors) {
+  private void processResults(
+      Customer c,
+      Universe u,
+      String response,
+      long durationMs,
+      String emailDestinations,
+      boolean sendMailAlways,
+      boolean reportOnlyErrors) {
 
     JsonNode healthJSON = null;
     try {
@@ -191,30 +213,43 @@ public class HealthChecker {
           hasErrors = checkResult || hasErrors;
           if (null == healthMetric) continue;
 
-          Gauge.Child prometheusVal = healthMetric.labels(u.universeUUID.toString(), u.name,
-              nodeName, checkName);
+          Gauge.Child prometheusVal =
+              healthMetric.labels(u.universeUUID.toString(), u.name, nodeName, checkName);
           prometheusVal.set(checkResult ? 1 : 0);
         }
-        LOG.info("Health check for universe {} reported {}. [ {} ms ]", u.name,
-            (hasErrors ? "errors" : " success"), durationMs);
+        LOG.info(
+            "Health check for universe {} reported {}. [ {} ms ]",
+            u.name,
+            (hasErrors ? "errors" : " success"),
+            durationMs);
 
         if (!hasErrors) {
-          resolveHealthCheckAlerts(c, u);
+          AlertFilter filter =
+              AlertFilter.builder()
+                  .customerUuid(c.getUuid())
+                  .errorCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
+                  .label(KnownAlertLabels.TARGET_UUID, u.universeUUID.toString())
+                  .build();
+          alertService.markResolved(filter);
         }
 
       } catch (Exception e) {
         LOG.warn("Failed to convert health check response to prometheus metrics " + e.getMessage());
-        createAlert(c, u,
+        createAlert(
+            c,
+            u,
             "Error converting health check response to prometheus metrics: " + e.getMessage());
       }
 
       SmtpData smtpData = emailHelper.getSmtpData(c.uuid);
-      if (!StringUtils.isEmpty(emailDestinations) && (smtpData != null)
+      if (!StringUtils.isEmpty(emailDestinations)
+          && (smtpData != null)
           && (sendMailAlways || hasErrors)) {
-        String subject = String.format("%s - <%s> %s", hasErrors ? "ERROR" : "OK", c.getTag(),
-            u.name);
-        String mailError = sendEmailReport(u, c, smtpData, emailDestinations, subject, healthJSON,
-            reportOnlyErrors);
+        String subject =
+            String.format("%s - <%s> %s", hasErrors ? "ERROR" : "OK", c.getTag(), u.name);
+        String mailError =
+            sendEmailReport(
+                u, c, smtpData, emailDestinations, subject, healthJSON, reportOnlyErrors);
         if (mailError != null) {
           LOG.warn("Health check had the following errors during mailing: " + mailError);
           createAlert(c, u, "Error sending Health check email: " + mailError);
@@ -223,32 +258,22 @@ public class HealthChecker {
     }
   }
 
-  /**
-   * Updates states of all active health-check alerts to RESOLVED.
-   *
-   * @param c Customer
-   * @param u Universe
-   */
-  private void resolveHealthCheckAlerts(Customer c, Universe u) {
-    List<Alert> activeAlerts = Alert.list(c.uuid, ALERT_ERROR_CODE, u.universeUUID).stream()
-        .filter(alert -> alert.state == State.ACTIVE || alert.state == State.CREATED)
-        .collect(Collectors.toList());
-    LOG.debug("Resetting health-check alerts, count: " + activeAlerts.size());
-    for (Alert alert : activeAlerts) {
-        alert.setState(State.RESOLVED);
-        alert.save();
-    }
-  }
-
-  private String sendEmailReport(Universe u, Customer c, SmtpData smtpData,
-      String emailDestinations, String subject, JsonNode report, boolean reportOnlyErrors) {
+  private String sendEmailReport(
+      Universe u,
+      Customer c,
+      SmtpData smtpData,
+      String emailDestinations,
+      String subject,
+      JsonNode report,
+      boolean reportOnlyErrors) {
 
     // LinkedHashMap saves values order.
     Map<String, String> contentMap = new LinkedHashMap<>();
-    contentMap.put("text/plain; charset=\"us-ascii\"",
+    contentMap.put(
+        "text/plain; charset=\"us-ascii\"",
         healthCheckerReport.asPlainText(report, reportOnlyErrors));
-    contentMap.put("text/html; charset=\"us-ascii\"",
-        healthCheckerReport.asHtml(u, report, reportOnlyErrors));
+    contentMap.put(
+        "text/html; charset=\"us-ascii\"", healthCheckerReport.asHtml(u, report, reportOnlyErrors));
 
     try {
       emailHelper.sendEmail(c, subject, emailDestinations, smtpData, contentMap);
@@ -261,23 +286,26 @@ public class HealthChecker {
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (running.get()) {
-      LOG.info("Previous run of health checker is still underway");
+    if (HighAvailabilityConfig.isFollower()) {
+      LOG.debug("Skipping health check scheduler for follower platform");
       return;
     }
 
-    LOG.info("Started running health checker");
+    if (running.get()) {
+      LOG.info("Previous run of health check scheduler is still underway");
+      return;
+    }
+
     running.set(true);
     // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
     for (Customer c : Customer.getAll()) {
       try {
         checkCustomer(c);
       } catch (Exception ex) {
-        LOG.error("Error running health check for customer " + c.uuid, ex);
+        LOG.error("Error running health check scheduler for customer " + c.uuid, ex);
       }
     }
 
-    LOG.info("Completed running health checker.");
     running.set(false);
   }
 
@@ -291,15 +319,15 @@ public class HealthChecker {
 
     AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
     long now = (new Date()).getTime();
-    long checkIntervalMs = alertingData.checkIntervalMs <= 0
-      ? healthCheckIntervalMs()
-      : alertingData.checkIntervalMs;
+    long checkIntervalMs =
+        alertingData.checkIntervalMs <= 0 ? healthCheckIntervalMs() : alertingData.checkIntervalMs;
     boolean shouldRunCheck = (now - checkIntervalMs) > lastCheckTimeMap.getOrDefault(c.uuid, 0L);
-    long statusUpdateIntervalMs = alertingData.statusUpdateIntervalMs <= 0
-      ? statusUpdateIntervalMs()
-      : alertingData.statusUpdateIntervalMs;
-    boolean shouldSendStatusUpdate = (now - statusUpdateIntervalMs) >
-        lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
+    long statusUpdateIntervalMs =
+        alertingData.statusUpdateIntervalMs <= 0
+            ? statusUpdateIntervalMs()
+            : alertingData.statusUpdateIntervalMs;
+    boolean shouldSendStatusUpdate =
+        (now - statusUpdateIntervalMs) > lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
     // Always do a check if it's time for a status update OR if it's time for a check.
     if (shouldSendStatusUpdate || shouldRunCheck) {
       // Since we'll do a check, update this all the time.
@@ -312,27 +340,137 @@ public class HealthChecker {
   }
 
   private void createAlert(Customer c, Universe u, String details) {
-    Alert.create(c.uuid, u.universeUUID, Alert.TargetType.UniverseType, ALERT_ERROR_CODE, "Warning",
-        details, true, null);
+    Alert alert =
+        new Alert()
+            .setCustomerUUID(c.getUuid())
+            .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
+            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
+            .setMessage(details)
+            .setSendEmail(true)
+            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
+    alertService.save(alert);
+  }
+
+  static class CheckSingleUniverseParams {
+    final Universe universe;
+    final Customer customer;
+    final boolean shouldSendStatusUpdate;
+    final boolean reportOnlyErrors;
+    final String emailDestinations;
+
+    public CheckSingleUniverseParams(
+        Universe universe,
+        Customer customer,
+        boolean shouldSendStatusUpdate,
+        boolean reportOnlyErrors,
+        String emailDestinations) {
+      this.universe = universe;
+      this.customer = customer;
+      this.shouldSendStatusUpdate = shouldSendStatusUpdate;
+      this.reportOnlyErrors = reportOnlyErrors;
+      this.emailDestinations = emailDestinations;
+    }
+  }
+
+  @VisibleForTesting
+  Config getRuntimeConfig() {
+    return this.runtimeConfigFactory.globalRuntimeConf();
+  }
+
+  private int getThreadpoolParallelism() {
+    return this.getRuntimeConfig().getInt(HealthChecker.MAX_NUM_THREADS_KEY);
   }
 
   public void checkAllUniverses(Customer c, CustomerConfig config, boolean shouldSendStatusUpdate) {
 
-    AlertingData alertingData = config != null ? Json.fromJson(config.data, AlertingData.class)
-        : null;
-    boolean reportOnlyErrors = !shouldSendStatusUpdate && alertingData != null
-        && alertingData.reportOnlyErrors;
+    AlertingData alertingData =
+        config != null ? Json.fromJson(config.data, AlertingData.class) : null;
+    boolean reportOnlyErrors =
+        !shouldSendStatusUpdate && alertingData != null && alertingData.reportOnlyErrors;
 
-    // Process all of a customer's universes.
-    for (Universe u : c.getUniverses()) {
-      String destinations = getAlertDestinations(u, c);
-      try {
-        checkSingleUniverse(u, c, shouldSendStatusUpdate, reportOnlyErrors, destinations);
-      } catch (Exception ex) {
-        LOG.error("Error running health check for universe " + u.universeUUID, ex);
-        createAlert(c, u, "Error running health check: " + ex.getMessage());
-      }
+    c.getUniverses()
+        .stream()
+        .map(
+            u -> {
+              String destinations = getAlertDestinations(u, c);
+              return new CheckSingleUniverseParams(
+                  u, c, shouldSendStatusUpdate, reportOnlyErrors, destinations);
+            })
+        .forEach(this::runHealthCheck);
+  }
+
+  public void cancelHealthCheck(UUID universeUUID) {
+    CompletableFuture<Void> lastCheckForUUID = this.runningHealthChecks.get(universeUUID);
+    if (lastCheckForUUID == null) {
+      return;
     }
+
+    lastCheckForUUID.cancel(true);
+  }
+
+  private CompletableFuture<Done> shutdownThreadpool() {
+    if (this.executor != null) {
+      LOG.info("Shutting down Health Check thread pool");
+      this.executor.shutdownNow();
+    }
+
+    return CompletableFuture.completedFuture(Done.done());
+  }
+
+  private ExecutorService createExecutor() {
+    if (this.executor != null) {
+      return this.executor;
+    }
+
+    int numParallelism = this.getThreadpoolParallelism();
+
+    // Initialize the health check thread pool.
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("Health-Check-Pool-%d").build();
+    // Create an task pool which can handle an unbounded number of tasks, while using an initial
+    // set of threads that get spawned up to TASK_THREADS limit.
+    ExecutorService newExecutor = Executors.newFixedThreadPool(numParallelism, namedThreadFactory);
+
+    LOG.info("Created Health Check thread pool");
+
+    return newExecutor;
+  }
+
+  public CompletableFuture<Void> runHealthCheck(CheckSingleUniverseParams params) {
+    String universeName = params.universe.name;
+    CompletableFuture<Void> lastCheck = this.runningHealthChecks.get(params.universe.universeUUID);
+    // Only schedule a task if the previous one for the given universe has completed.
+    if (lastCheck != null && !lastCheck.isDone()) {
+      LOG.info("Health check for universe {} is still running. Skipping...", universeName);
+
+      return lastCheck;
+    }
+
+    LOG.debug("Scheduling health check for universe: {}", universeName);
+    long scheduled = System.currentTimeMillis();
+    CompletableFuture<Void> task =
+        CompletableFuture.runAsync(
+            () -> {
+              long diff = System.currentTimeMillis() - scheduled;
+              LOG.debug(
+                  "Health check for universe {} was queued for [ {} ms ]", universeName, diff);
+              try {
+                LOG.info("Running health check for universe: {}", universeName);
+                checkSingleUniverse(params);
+              } catch (Exception e) {
+                LOG.error("Error running health check for universe: {}", universeName, e);
+                createAlert(
+                    params.customer,
+                    params.universe,
+                    "Error running health check: " + e.getMessage());
+              }
+            },
+            this.executor);
+
+    // Add the task to the map of running tasks.
+    this.runningHealthChecks.put(params.universe.universeUUID, task);
+
+    return task;
   }
 
   private String getAlertDestinations(Universe u, Customer c) {
@@ -353,26 +491,24 @@ public class HealthChecker {
     return silenceEmails ? null : String.join(",", destinations);
   }
 
-  public void checkSingleUniverse(Universe u, Customer c, boolean shouldSendStatusUpdate,
-      boolean reportOnlyErrors, String emailDestinations) {
+  public void checkSingleUniverse(CheckSingleUniverseParams params) {
     // Validate universe data and make sure nothing is in progress.
-    UniverseDefinitionTaskParams details = u.getUniverseDetails();
-    if (details.universePaused) {
-      LOG.warn("Skipping universe " + u.name + " as it is in the paused state...");
-      createAlert(c, u, "Health check skipped as the uiverse is in the paused state.");
+    UniverseDefinitionTaskParams details = params.universe.getUniverseDetails();
+    if (details == null) {
+      LOG.warn("Skipping universe " + params.universe.name + " due to invalid details json...");
+      createAlert(
+          params.customer, params.universe, "Health check skipped due to invalid details json.");
       return;
     }
-    if (details == null) {
-      LOG.warn("Skipping universe " + u.name + " due to invalid details json...");
-      createAlert(c, u, "Health check skipped due to invalid details json.");
+    if (details.universePaused) {
+      LOG.warn("Skipping universe " + params.universe.name + " as it is in the paused state...");
       return;
     }
     if (details.updateInProgress) {
-      LOG.warn("Skipping universe " + u.name + " due to task in progress...");
+      LOG.warn("Skipping universe " + params.universe.name + " due to task in progress...");
       return;
     }
     long startMs = System.currentTimeMillis();
-    LOG.info("Doing health check for universe: " + u.name);
 
     Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
     boolean invalidUniverseData = false;
@@ -389,28 +525,41 @@ public class HealthChecker {
       // Since health checker only uses CQLSH, we only care about the
       // client to node encryption flag.
       info.enableTlsClient = cluster.userIntent.enableClientToNodeEncrypt;
+      // Setting this flag to identify correct cert location.
+      info.rootAndClientRootCASame = details.rootAndClientRootCASame;
+      // Pass in whether YSQL authentication is enabled for the given cluster.
+      info.enableYSQLAuth =
+          cluster.userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true");
 
       Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
       if (provider == null) {
-        LOG.warn("Skipping universe " + u.name + " due to invalid provider "
-            + cluster.userIntent.provider);
+        LOG.warn(
+            "Skipping universe "
+                + params.universe.name
+                + " due to invalid provider "
+                + cluster.userIntent.provider);
         invalidUniverseData = true;
-        createAlert(c, u, "Health check skipped due to invalid provider data.");
+        createAlert(
+            params.customer, params.universe, "Health check skipped due to invalid provider data.");
+
         break;
       }
 
       providerCode = provider.code;
       if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
-        info.namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(
-            cluster.placementInfo, details.nodePrefix, provider);
+        info.namespaceToConfig =
+            PlacementInfoUtil.getConfigPerNamespace(
+                cluster.placementInfo, details.nodePrefix, provider);
       }
 
       AccessKey accessKey = AccessKey.get(provider.uuid, cluster.userIntent.accessKeyCode);
       if (accessKey == null || accessKey.getKeyInfo() == null) {
         if (!providerCode.equals(CloudType.kubernetes.toString())) {
-          LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
+          LOG.warn("Skipping universe " + params.universe.name + " due to invalid access key...");
           invalidUniverseData = true;
-          createAlert(c, u, "Health check skipped due to invalid access key.");
+          createAlert(
+              params.customer, params.universe, "Health check skipped due to invalid access key.");
+
           break;
         }
       } else {
@@ -421,8 +570,8 @@ public class HealthChecker {
       if (info.enableYSQL) {
         for (NodeDetails nd : details.nodeDetailsSet) {
           if (nd.isYsqlServer) {
-           info.ysqlPort = nd.ysqlServerRpcPort;
-           break;
+            info.ysqlPort = nd.ysqlServerRpcPort;
+            break;
           }
         }
       }
@@ -448,14 +597,32 @@ public class HealthChecker {
     }
 
     for (NodeDetails nd : details.nodeDetailsSet) {
+      if (nd.cloudInfo.private_ip == null) {
+        invalidUniverseData = true;
+        LOG.warn(
+            String.format(
+                "Universe %s has unprovisioned node %s.", params.universe.name, nd.nodeName));
+        createAlert(
+            params.customer,
+            params.universe,
+            String.format(
+                "Can't run health check for the universe due to missing IP address for node %s.",
+                nd.nodeName));
+        break;
+      }
+
       HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
       if (info == null) {
         invalidUniverseData = true;
-        LOG.warn(String.format(
-              "Universe %s has node %s with invalid placement %s", u.name, nd.nodeName,
-              nd.placementUuid));
-        createAlert(c, u, String.format("Universe has node %s with invalid placement %s.",
-            nd.nodeName, nd.placementUuid));
+        LOG.warn(
+            String.format(
+                "Universe %s has node %s with invalid placement %s",
+                params.universe.name, nd.nodeName, nd.placementUuid));
+        String alertText =
+            String.format(
+                "Universe has node %s with invalid placement %s.", nd.nodeName, nd.placementUuid);
+        createAlert(params.customer, params.universe, alertText);
+
         break;
       }
 
@@ -473,39 +640,50 @@ public class HealthChecker {
       return;
     }
 
-    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(u.universeUUID);
+    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(params.universe.universeUUID);
     long potentialStartTime = 0;
-    if (lastTask != null && lastTask.getCompletionTime()!= null) {
+    if (lastTask != null && lastTask.getCompletionTime() != null) {
       potentialStartTime = lastTask.getCompletionTime().getTime();
     }
 
     // If last check had errors, set the flag to send an email. If this check will have an error,
     // we would send an email anyway, but if this check shows a healthy universe, let's send an
     // email about it.
-    HealthCheck lastCheck = HealthCheck.getLatest(u.universeUUID);
+    HealthCheck lastCheck = HealthCheck.getLatest(params.universe.universeUUID);
     boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
-    Provider mainProvider = Provider.get(UUID.fromString(
-          details.getPrimaryCluster().userIntent.provider));
+    Provider mainProvider =
+        Provider.get(UUID.fromString(details.getPrimaryCluster().userIntent.provider));
 
     // Call devops and process response.
-    ShellResponse response = healthManager.runCommand(
-        mainProvider,
-        new ArrayList<>(clusterMetadata.values()),
-        potentialStartTime
-    );
+    ShellResponse response =
+        healthManager.runCommand(
+            mainProvider, new ArrayList<>(clusterMetadata.values()), potentialStartTime);
 
     long durationMs = System.currentTimeMillis() - startMs;
-    boolean sendMailAlways = (shouldSendStatusUpdate || lastCheckHadErrors);
+    boolean sendMailAlways = (params.shouldSendStatusUpdate || lastCheckHadErrors);
 
     if (response.code == 0) {
-      processResults(c, u, response.message, durationMs, emailDestinations, sendMailAlways,
-          reportOnlyErrors);
-      HealthCheck.addAndPrune(u.universeUUID, u.customerId, response.message);
+      processResults(
+          params.customer,
+          params.universe,
+          response.message,
+          durationMs,
+          params.emailDestinations,
+          sendMailAlways,
+          params.reportOnlyErrors);
+      HealthCheck.addAndPrune(
+          params.universe.universeUUID, params.universe.customerId, response.message);
     } else {
-      LOG.error("Health check script got error: {} code ({}) [ {} ms ]",
-                response.message, response.code, durationMs);
-      createAlert(c, u, String.format("Health check script got error: %s code (%d) [ %d ms ]",
-          response.message, response.code, durationMs));
+      LOG.error(
+          "Health check script got error: {} code ({}) [ {} ms ]",
+          response.message,
+          response.code,
+          durationMs);
+      String alertText =
+          String.format(
+              "Health check script got error: %s code (%d) [ %d ms ]",
+              response.message, response.code, durationMs);
+      createAlert(params.customer, params.universe, alertText);
     }
   }
 }

@@ -3,11 +3,13 @@ import React, { FC, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
-import { HAReplicationError } from './HAReplicationError';
+import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { FREQUENCY_MULTIPLIER } from './HAReplicationForm';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
+import { YBCopyButton } from '../../common/descriptors';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import './HAReplicationView.scss';
 
 interface HAReplicationViewProps {
@@ -25,13 +27,15 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
   const showPromoteModal = () => setPromoteModalVisible(true);
   const hidePromoteModal = () => setPromoteModalVisible(false);
 
-  const sortedInstances = _.sortBy(config.instances, 'address');
+  // sort by is_leader to show active instance on the very top, then sort other items by address
+  const sortedInstances = _.sortBy(config.instances, [item => !item.is_leader, 'address']);
   const currentInstance = sortedInstances.find((item) => item.is_local);
   if (currentInstance) {
     return (
-      <Grid fluid className="ha-replication-view">
+      <Grid fluid className="ha-replication-view" data-testid="ha-replication-config-overview">
         <DeleteModal
           configId={config.uuid}
+          isStandby={!currentInstance.is_leader}
           visible={isDeleteModalVisible}
           onClose={hideDeleteModal}
         />
@@ -51,12 +55,19 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
               <YBButton btnText="Edit Configuration" onClick={editConfig} />
             )}
             {!currentInstance.is_leader && (
-              <YBButton
-                btnText="Make Active"
-                btnClass="btn btn-orange"
-                btnIcon="fa fa-upload"
-                onClick={showPromoteModal}
-              />
+              <>
+                <YBInfoTip
+                  placement="left"
+                  title="Replication Configuration"
+                  content="Promote this platform to active and demote other platforms to standby"
+                />
+                <YBButton
+                  btnText="Make Active"
+                  btnClass="btn btn-orange"
+                  btnIcon="fa fa-upload"
+                  onClick={showPromoteModal}
+                />
+              </>
             )}
             <YBButton btnText="Delete Configuration" onClick={showDeleteModal} />
           </Col>
@@ -83,6 +94,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
           </Col>
           <Col xs={10} className="ha-replication-view__value">
             {config.cluster_key}
+            <YBCopyButton text={config.cluster_key} />
           </Col>
         </Row>
         {currentInstance.is_leader && (
@@ -130,6 +142,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
       </Grid>
     );
   } else {
-    return <HAReplicationError error="Can't find an HA instance with is_local = true" />;
+    return <HAErrorPlaceholder error="Can't find an HA instance with is_local = true" />;
   }
 };

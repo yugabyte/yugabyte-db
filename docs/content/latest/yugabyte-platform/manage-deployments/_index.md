@@ -80,6 +80,18 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="high-availability/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="title">Enable High Availability</div>
+      </div>
+      <div class="body">
+        Enable Yugabyte Platform's high-availability features.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-config-flags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
@@ -92,18 +104,6 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-software/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Upgrade YugabyteDB software</div>
-      </div>
-      <div class="body">
-        Upgrade YugabyteDB software.
-      </div>
-    </a>
-  </div>
-  
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
@@ -111,6 +111,18 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
       </div>
       <div class="body">
         Use Yugabyte Platform to edit a universe.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="delete-universe/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
+        <div class="title">Delete a universe</div>
+      </div>
+      <div class="body">
+        Delete a universe that is not needed.
       </div>
     </a>
   </div>
@@ -128,17 +140,17 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="delete-universe/">
+    <a class="section-link icon-offset" href="upgrade-software/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Delete a universe</div>
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
+        <div class="title">Upgrade YugabyteDB software</div>
       </div>
       <div class="body">
-        Delete a universe that is not needed.
+        Upgrade YugabyteDB software.
       </div>
     </a>
   </div>
-
+  
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="migrate-to-helm3/">
       <div class="head">

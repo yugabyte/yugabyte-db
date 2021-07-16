@@ -104,6 +104,12 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   Result<std::shared_ptr<CDCRpcTasks>> GetOrCreateCDCRpcTasks(
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
+  // Set the Status related to errors on SetupUniverseReplication.
+  void SetSetupUniverseReplicationErrorStatus(const Status& status);
+
+  // Get the Status of the last error from the current SetupUniverseReplication.
+  CHECKED_STATUS GetSetupUniverseReplicationErrorStatus() const;
+
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   ~UniverseReplicationInfo() = default;
@@ -112,6 +118,10 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
 
   std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
   std::string master_addrs_;
+
+  // The last error Status of the currently running SetupUniverseReplication. Will be OK, if freshly
+  // constructed object, or if the SetupUniverseReplication was successful.
+  Status setup_universe_replication_error_ = Status::OK();
 
   // Protects cdc_rpc_tasks_.
   mutable rw_spinlock lock_;
@@ -187,12 +197,14 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
   // Returns true if the snapshot deleting is in-progress.
   bool IsDeleteInProgress() const;
 
-  CHECKED_STATUS AddEntries(const TableDescription& table_description);
+  void AddEntries(
+      const TableDescription& table_description, std::unordered_set<NamespaceId>* added_namespaces);
 
   static void AddEntries(
       const TableDescription& table_description,
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
-      google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos);
+      google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos,
+      std::unordered_set<NamespaceId>* added_namespaces);
 
  private:
   friend class RefCountedThreadSafe<SnapshotInfo>;

@@ -21,6 +21,8 @@
 
 #include "yb/master/state_with_tablets.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
@@ -30,6 +32,7 @@ YB_STRONGLY_TYPED_BOOL(ForClient);
 
 struct TabletSnapshotOperation {
   TabletId tablet_id;
+  SnapshotScheduleId schedule_id;
   TxnSnapshotId snapshot_id;
   SysSnapshotEntryPB::State state;
   HybridTime snapshot_hybrid_time;
@@ -59,26 +62,44 @@ class SnapshotState : public StateWithTablets {
     return snapshot_hybrid_time_;
   }
 
+  HybridTime previous_snapshot_hybrid_time() const {
+    return previous_snapshot_hybrid_time_;
+  }
+
+  const SnapshotScheduleId& schedule_id() const {
+    return schedule_id_;
+  }
+
   int version() const {
     return version_;
   }
+
+  Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
+      const tablet::SnapshotOperation& operation) const;
 
   std::string ToString() const;
   CHECKED_STATUS ToPB(SnapshotInfoPB* out);
   CHECKED_STATUS ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client);
   CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
-  CHECKED_STATUS CheckCanDelete();
+  CHECKED_STATUS TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
+  bool ShouldUpdate(const SnapshotState& other) const;
+  void DeleteAborted(const Status& status);
 
  private:
   bool IsTerminalFailure(const Status& status) override;
 
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;
+  HybridTime previous_snapshot_hybrid_time_;
   SysRowEntries entries_;
+  // When snapshot is taken as a part of snapshot schedule schedule_id_ will contain this
+  // schedule id. Otherwise it will be nil.
+  SnapshotScheduleId schedule_id_;
   int version_;
+  bool delete_started_ = false;
 };
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(

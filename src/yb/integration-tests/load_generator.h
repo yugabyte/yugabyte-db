@@ -297,7 +297,9 @@ class SingleThreadedScanner {
 // MultiThreadedReader
 // ------------------------------------------------------------------------------------------------
 
-enum class ReadStatus { OK, NO_ROWS, OTHER_ERROR };
+YB_DEFINE_ENUM(ReadStatus, (kOk)(kNoRows)(kInvalidRead)(kExtraRows)(kOtherError));
+YB_DEFINE_ENUM(MultiThreadedReaderOption, (kStopOnEmptyRead)(kStopOnExtraRead)(kStopOnInvalidRead));
+using MultiThreadedReaderOptions = EnumBitSet<MultiThreadedReaderOption>;
 
 class MultiThreadedReader : public MultiThreadedAction {
  public:
@@ -307,12 +309,20 @@ class MultiThreadedReader : public MultiThreadedAction {
                       const KeyIndexSet* inserted_keys,
                       const KeyIndexSet* failed_keys,
                       std::atomic_bool* stop_flag, int value_size,
-                      int max_num_read_errors, bool stop_on_empty_read);
+                      int max_num_read_errors,
+                      MultiThreadedReaderOptions options = MultiThreadedReaderOptions{
+                          MultiThreadedReaderOption::kStopOnEmptyRead,
+                          MultiThreadedReaderOption::kStopOnExtraRead,
+                          MultiThreadedReaderOption::kStopOnInvalidRead});
 
   void IncrementReadErrorCount(ReadStatus read_status);
 
   int64_t num_reads() { return num_reads_; }
   int64_t num_read_errors() { return num_read_errors_.load(); }
+
+  // Returns read status that caused stop of the reader.
+  ReadStatus read_status_stopped() { return read_status_stopped_; }
+
   void AssertSucceeded() { ASSERT_EQ(num_read_errors(), 0); }
 
  protected:
@@ -331,7 +341,8 @@ class MultiThreadedReader : public MultiThreadedAction {
   std::atomic<int64_t> num_reads_;
   std::atomic<int64_t> num_read_errors_;
   const int max_num_read_errors_;
-  const bool stop_on_empty_read_;
+  MultiThreadedReaderOptions options_;
+  ReadStatus read_status_stopped_ = ReadStatus::kOk;
 };
 
 class SingleThreadedReader {

@@ -1,28 +1,56 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import { Button } from 'react-bootstrap';
+import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
+import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 
 export class ListKeyManagementConfigurations extends Component {
-  render() {
-    const { configs, onCreate, onDelete } = this.props;
+  state = {
+    associatedUniverses: [],
+    isVisibleModal: false
+  };
 
-    const actionList = (item, row) => {
-      const { configUUID, in_use } = row.metadata;
-      return (
-        <Button
+  actionList = (item, row) => {
+    const { configUUID, in_use, universeDetails } = row.metadata;
+    return (
+      <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+        <MenuItem
           title={'Delete provider'}
-          bsClass="btn btn-default btn-config pull-right"
           disabled={in_use}
-          onClick={() => onDelete(configUUID)}
+          onClick={() => {
+            !in_use && this.props.onDelete(configUUID);
+          }}
         >
-          Delete Configuration
-        </Button>
-      );
-    };
+          <i className="fa fa-trash"></i> Delete Configuration
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });
+          }}
+        >
+          <i className="fa fa-eye"></i> Show Universes
+        </MenuItem>
+      </DropdownButton>
+    );
+  };
+
+  /**
+   * Close the modal by setting the local flag
+   */
+  closeModal = () => {
+    this.setState({ isVisibleModal: false });
+  };
+
+  render() {
+    const {
+      configs,
+      onCreate,
+    } = this.props;
+
+    const { associatedUniverses, isVisibleModal } = this.state;
 
     const showConfigProperties = (item, row) => {
       const displayed = [];
@@ -74,7 +102,7 @@ export class ListKeyManagementConfigurations extends Component {
               >
                 <TableHeaderColumn
                   dataField="metadata"
-                  dataFormat={cell => cell.configUUID}
+                  dataFormat={(cell) => cell.configUUID}
                   isKey={true}
                   hidden={true}
                 />
@@ -106,11 +134,17 @@ export class ListKeyManagementConfigurations extends Component {
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="configActions"
-                  dataFormat={actionList}
-                  columnClassName="no-border name-column no-side-padding"
-                  className="no-border"
+                  dataFormat={this.actionList}
+                  width="120px"
+                  columnClassName="yb-actions-cell"
                 />
               </BootstrapTable>
+              <AssociatedUniverse
+                visible={isVisibleModal}
+                onHide={this.closeModal}
+                associatedUniverses={associatedUniverses}
+                title="KMS Provider"
+              />
             </Fragment>
           }
           noBackground

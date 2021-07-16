@@ -2,39 +2,37 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.Alert.TargetType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.DataConverters;
+import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import lombok.extern.slf4j.Slf4j;
+import play.Application;
+import play.api.Play;
 import play.libs.Json;
 
-public abstract class AbstractTaskBase implements ITask {
+import javax.inject.Inject;
+import java.util.UUID;
+import java.util.concurrent.*;
 
-  public static final Logger LOG = LoggerFactory.getLogger(AbstractTaskBase.class);
+@Slf4j
+public abstract class AbstractTaskBase implements ITask {
 
   // Number of concurrent tasks to execute at a time.
   private static final int TASK_THREADS = 10;
@@ -42,9 +40,6 @@ public abstract class AbstractTaskBase implements ITask {
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).
   private static final long THREAD_ALIVE_TIME = 60L;
-
-  @VisibleForTesting
-  static final String ALERT_ERROR_CODE = "TASK_FAILURE";
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -60,6 +55,31 @@ public abstract class AbstractTaskBase implements ITask {
 
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";
+
+  protected final Application application;
+  protected final play.Environment environment;
+  protected final Config config;
+  protected final ConfigHelper configHelper;
+  protected final RuntimeConfigFactory runtimeConfigFactory;
+  protected final AlertService alertService;
+  protected final AlertDefinitionService alertDefinitionService;
+  protected final AlertDefinitionGroupService alertDefinitionGroupService;
+  protected final YBClientService ybService;
+  protected final TableManager tableManager;
+
+  @Inject
+  protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    this.application = baseTaskDependencies.getApplication();
+    this.environment = baseTaskDependencies.getEnvironment();
+    this.config = baseTaskDependencies.getConfig();
+    this.configHelper = baseTaskDependencies.getConfigHelper();
+    this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
+    this.alertService = baseTaskDependencies.getAlertService();
+    this.alertDefinitionService = baseTaskDependencies.getAlertDefinitionService();
+    this.alertDefinitionGroupService = baseTaskDependencies.getAlertDefinitionGroupService();
+    this.ybService = baseTaskDependencies.getYbService();
+    this.tableManager = baseTaskDependencies.getTableManager();
+  }
 
   protected ITaskParams taskParams() {
     return taskParams;
@@ -94,9 +114,13 @@ public abstract class AbstractTaskBase implements ITask {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
     executor =
-        new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
-                               TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
-                               namedThreadFactory);
+        new ThreadPoolExecutor(
+            TASK_THREADS,
+            TASK_THREADS,
+            THREAD_ALIVE_TIME,
+            TimeUnit.SECONDS,
+            new LinkedBlockingQueue<Runnable>(),
+            namedThreadFactory);
   }
 
   @Override
@@ -104,12 +128,10 @@ public abstract class AbstractTaskBase implements ITask {
     this.userTaskUUID = userTaskUUID;
   }
 
-  /**
-   * @param response : ShellResponse object
-   */
+  /** @param response : ShellResponse object */
   public void processShellResponse(ShellResponse response) {
     if (response.code != 0) {
-      throw new RuntimeException((response.message != null ) ? response.message : "error");
+      throw new RuntimeException((response.message != null) ? response.message : "error");
     }
   }
 
@@ -123,28 +145,33 @@ public abstract class AbstractTaskBase implements ITask {
     return Util.convertStringToJson(response.message);
   }
 
-  public UniverseUpdater nodeStateUpdater(final UUID universeUUID, final String nodeName,
-                                          final NodeDetails.NodeState state) {
-    UniverseUpdater updater = new UniverseUpdater() {
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        NodeDetails node = universe.getNode(nodeName);
-        if (node == null) {
-          return;
-        }
-        LOG.info("Changing node {} state from {} to {} in universe {}.",
-                  nodeName, node.state, state, universeUUID);
-        node.state = state;
-        if (state == NodeDetails.NodeState.Decommissioned) {
-          node.cloudInfo.private_ip = null;
-          node.cloudInfo.public_ip = null;
-        }
+  public UniverseUpdater nodeStateUpdater(
+      final UUID universeUUID, final String nodeName, final NodeDetails.NodeState state) {
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            NodeDetails node = universe.getNode(nodeName);
+            if (node == null) {
+              return;
+            }
+            log.info(
+                "Changing node {} state from {} to {} in universe {}.",
+                nodeName,
+                node.state,
+                state,
+                universeUUID);
+            node.state = state;
+            if (state == NodeDetails.NodeState.Decommissioned) {
+              node.cloudInfo.private_ip = null;
+              node.cloudInfo.public_ip = null;
+            }
 
-        // Update the node details.
-        universeDetails.nodeDetailsSet.add(node);
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+            // Update the node details.
+            universeDetails.nodeDetailsSet.add(node);
+            universe.setUniverseDetails(universeDetails);
+          }
+        };
     return updater;
   }
 
@@ -155,10 +182,10 @@ public abstract class AbstractTaskBase implements ITask {
       Customer customer = Customer.get(task.getCustomerUUID());
       CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
       CustomerRegisterFormData.AlertingData alertingData =
-        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-      return task.getType().equals(CustomerTask.TaskType.Create) &&
-        task.getTarget().equals(CustomerTask.TargetType.Backup) &&
-        alertingData.reportBackupFailures;
+          Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
+      return task.getType().equals(CustomerTask.TaskType.Create)
+          && task.getTarget().equals(CustomerTask.TargetType.Backup)
+          && alertingData.reportBackupFailures;
     } catch (Exception e) {
       return false;
     }
@@ -168,12 +195,43 @@ public abstract class AbstractTaskBase implements ITask {
   public void sendNotification() {
     CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
     Customer customer = Customer.get(task.getCustomerUUID());
-    String content = String.format("%s %s failed for %s.\n\nTask Info: %s", task.getType().name(),
-        task.getTarget().name(), task.getNotificationTargetName(), taskInfo);
+    String content =
+        String.format(
+            "%s %s failed for %s.\n\nTask Info: %s",
+            task.getType().name(),
+            task.getTarget().name(),
+            task.getNotificationTargetName(),
+            taskInfo);
 
-    Alert.TargetType alertType = DataConverters.taskTargetToAlertTargetType(task.getTarget());
-    Alert.create(customer.uuid,
-        alertType == TargetType.TaskType ? task.getTaskUUID() : task.getTargetUUID(), alertType,
-        ALERT_ERROR_CODE, "Error", content, true, null);
+    AlertDefinitionLabelsBuilder labelsBuilder = AlertDefinitionLabelsBuilder.create();
+    if (task.getTarget().isUniverseTarget()) {
+      Universe universe = Universe.maybeGet(task.getTargetUUID()).orElse(null);
+      if (universe == null) {
+        log.warn("Missing universe with UUID {}", task.getTargetUUID());
+      } else {
+        labelsBuilder.appendTarget(universe);
+      }
+    } else {
+      labelsBuilder.appendTarget(customer);
+    }
+    Alert alert =
+        new Alert()
+            .setCustomerUUID(customer.getUuid())
+            .setErrCode(KnownAlertCodes.TASK_FAILURE)
+            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+            .setMessage(content)
+            .setSendEmail(true)
+            .setLabels(labelsBuilder.getAlertLabels());
+    alertService.save(alert);
+  }
+
+  /**
+   * Creates task with appropriate dependency injection
+   *
+   * @param taskClass task class
+   * @return Task instance with injected dependencies
+   */
+  public static <T> T createTask(Class<T> taskClass) {
+    return Play.current().injector().instanceOf(taskClass);
   }
 }

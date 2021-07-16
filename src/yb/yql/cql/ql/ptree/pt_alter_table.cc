@@ -97,7 +97,7 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
         if (index.CheckColumnDependency(column_id)) {
           auto index_table = sem_context->GetTableDesc(index.table_id());
           return sem_context->Error(this,
-              Format("Can't drop indexed column. Remove '$0' index first and try again",
+              Format("Can't drop column used in an index. Remove '$0' index first and try again",
                   (index_table ? index_table->name().table_name() : "-unknown-")),
               ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
         }
@@ -129,6 +129,9 @@ CHECKED_STATUS PTAlterTable::AppendAlterProperty(SemContext *sem_context, PTTabl
 }
 
 CHECKED_STATUS PTAlterTable::ToTableProperties(TableProperties *table_properties) const {
+  DCHECK_ONLY_NOTNULL(table_.get());
+  // Init by values from the current table properties.
+  *DCHECK_NOTNULL(table_properties) = table_->schema().table_properties();
   for (const auto& table_property : mod_props_) {
       RETURN_NOT_OK(table_property->SetTableProperty(table_properties));
   }

@@ -14,7 +14,7 @@
 #include "yb/master/restoration_state.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_state.h"
 
 #include "yb/tserver/tserver_error.h"
@@ -30,13 +30,18 @@ RestorationState::RestorationState(
   InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
 }
 
-CHECKED_STATUS RestorationState::ToPB(SnapshotInfoPB* out) {
+CHECKED_STATUS RestorationState::ToPB(RestorationInfoPB* out) {
   out->set_id(restoration_id_.data(), restoration_id_.size());
   auto& entry = *out->mutable_entry();
+  entry.set_snapshot_id(snapshot_id_.data(), snapshot_id_.size());
 
   entry.set_state(VERIFY_RESULT(AggregatedState()));
 
-  TabletsToPB(entry.mutable_tablet_snapshots());
+  if (complete_time_) {
+    entry.set_complete_time_ht(complete_time_.ToUint64());
+  }
+
+  TabletsToPB(entry.mutable_tablet_restorations());
 
   return Status::OK();
 }

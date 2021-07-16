@@ -98,7 +98,7 @@ class YBUniverseItem extends Component {
                 </Col>
                 <Col sm={6} className="universe-create-date-container">
                   <div>Created: </div>
-                  {moment(Date.parse(universe.creationDate), 'x').format('MMM Do YYYY, hh:mm a')}
+                  {moment(universe.creationDate).format('MMM Do YYYY, hh:mm a')}
                 </Col>
               </Row>
               <div className="list-universe-status-container">

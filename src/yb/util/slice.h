@@ -316,13 +316,13 @@ struct SliceParts {
       : parts(input.data()), num_parts(N) {
   }
 
-  std::string ToDebugHexString() const {
-    std::string result;
-    for (int i = 0; i != num_parts; ++i) {
-      result += parts[i].ToDebugHexString();
-    }
-    return result;
-  }
+  std::string ToDebugHexString() const;
+
+  // Sum of sizes of all slices.
+  size_t SumSizes() const;
+
+  // Copy content of all slice to specified buffer.
+  void CopyAllTo(void* out) const;
 
   const Slice* parts;
   int num_parts;

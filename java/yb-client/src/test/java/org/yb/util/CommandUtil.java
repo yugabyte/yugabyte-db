@@ -12,13 +12,17 @@
 //
 package org.yb.util;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.yb.client.TestUtils;
 
 public final class CommandUtil {
 
@@ -59,5 +63,11 @@ public final class CommandUtil {
         errorFile.delete();
       }
     }
+  }
+
+  public static List<String> flagsToArgs(Map<String, String> flags) {
+    return flags.entrySet().stream()
+        .map(e -> "--" + e.getKey() + "=" + e.getValue())
+        .collect(Collectors.toList());
   }
 }

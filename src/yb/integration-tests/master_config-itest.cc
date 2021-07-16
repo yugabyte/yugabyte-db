@@ -40,6 +40,8 @@ using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::tserver::TabletServerErrorPB;
 
+using namespace std::chrono_literals;
+
 namespace yb {
 namespace master {
 
@@ -152,8 +154,15 @@ void MasterChangeConfigTest::VerifyNonLeaderMastersPeerCount() {
     LOG(INFO) << "Checking non_leader " << i << " at port "
               << non_leader_master->bound_rpc_hostport().port();
     num_peers = 0;
-    Status s = cluster_->GetNumMastersAsSeenBy(non_leader_master, &num_peers);
-    ASSERT_OK_PREPEND(s, "Non-leader master number of peers lookup returned error");
+    Status s;
+    ASSERT_OK_PREPEND(
+        WaitFor(
+            [&] {
+              s = cluster_->GetNumMastersAsSeenBy(non_leader_master, &num_peers);
+              return s.ok();
+            },
+            5s * kTimeMultiplier, "Waiting master is initialized"),
+        Format("Non-leader master number of peers lookup returned error: $0", s));
     EXPECT_EQ(num_peers, num_masters_);
   }
 }

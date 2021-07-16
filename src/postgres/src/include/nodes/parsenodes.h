@@ -710,8 +710,6 @@ typedef struct IndexElem
 	List	   *opclass;		/* name of desired opclass; NIL = default */
 	SortByDir	ordering;		/* ASC/DESC/default */
 	SortByNulls nulls_ordering; /* FIRST/LAST/default */
-
-	List	   *yb_name_list;	/* List of attribute names in parenthesis */
 } IndexElem;
 
 /*
@@ -3192,6 +3190,7 @@ typedef struct DropdbStmt
 	NodeTag		type;
 	char	   *dbname;			/* database to drop */
 	bool		missing_ok;		/* skip error if db is missing? */
+	List	   *options;		/* currently only FORCE is supported */
 } DropdbStmt;
 
 /* ----------------------

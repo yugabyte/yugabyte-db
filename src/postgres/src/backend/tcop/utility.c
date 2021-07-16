@@ -655,13 +655,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_DropdbStmt:
-			{
-				DropdbStmt *stmt = (DropdbStmt *) parsetree;
-
-				/* no event triggers for global objects */
-				PreventInTransactionBlock(isTopLevel, "DROP DATABASE");
-				dropdb(stmt->dbname, stmt->missing_ok);
-			}
+			/* no event triggers for global objects */
+			PreventInTransactionBlock(isTopLevel, "DROP DATABASE");
+			DropDatabase(pstate, (DropdbStmt *) parsetree);
 			break;
 
 			/* Query-level asynchronous notification */
@@ -825,7 +821,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			 * can be a useful way of reducing switchover time when using
 			 * various forms of replication.
 			 */
-			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
+			RequestCheckpoint(CHECKPOINT_CAUSE_CLIENT | CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
 							  (RecoveryInProgress() ? 0 : CHECKPOINT_FORCE));
 			break;
 
@@ -1553,7 +1549,7 @@ ProcessUtilitySlow(ParseState *pstate,
 				break;
 
 			case T_AlterEnumStmt:	/* ALTER TYPE (enum) */
-				address = AlterEnum((AlterEnumStmt *) parsetree, isTopLevel);
+				address = AlterEnum((AlterEnumStmt *) parsetree);
 				break;
 
 			case T_ViewStmt:	/* CREATE VIEW */

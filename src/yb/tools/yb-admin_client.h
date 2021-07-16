@@ -78,6 +78,7 @@ class TableNameResolver {
 
   Result<bool> Feed(const std::string& value);
   std::vector<client::YBTableName>& values();
+  master::NamespaceIdentifierPB last_namespace();
 
  private:
   class Impl;
@@ -152,6 +153,9 @@ class ClusterAdminClient {
 
   // Delete a single namespace by ID.
   CHECKED_STATUS DeleteNamespaceById(const NamespaceId& namespace_id);
+
+  // Launch backfill for (deferred) indexes on the specified table.
+  CHECKED_STATUS LaunchBackfillIndexForTable(const client::YBTableName& table_name);
 
   // List all tablet servers known to master
   CHECKED_STATUS ListAllTabletServers(bool exclude_dead = false);
@@ -237,6 +241,8 @@ class ClusterAdminClient {
   Result<std::string> GetMasterLeaderUuid();
 
   CHECKED_STATUS GetYsqlCatalogVersion();
+
+  Result<rapidjson::Document> DdlLog();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -334,6 +340,13 @@ std::string RightPadToUuidWidth(const std::string &s);
 Result<TypedNamespaceName> ParseNamespaceName(
     const std::string& full_namespace_name,
     const YQLDatabase default_if_no_prefix = YQL_DATABASE_CQL);
+
+void AddStringField(
+    const char* name, const std::string& value, rapidjson::Value* out,
+    rapidjson::Value::AllocatorType* allocator);
+
+// Renders hybrid time to string for user, time is rendered in local TZ.
+std::string HybridTimeToString(HybridTime ht);
 
 }  // namespace tools
 }  // namespace yb

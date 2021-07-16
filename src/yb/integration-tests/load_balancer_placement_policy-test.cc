@@ -27,6 +27,10 @@
 #include "yb/master/master.proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_client.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 
@@ -127,6 +131,24 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     std::vector<std::string> extra_opts;
     extra_opts.push_back("--placement_cloud=c");
     extra_opts.push_back("--placement_region=r");
+    extra_opts.push_back("--placement_zone=" + zone);
+
+    if (!placement_uuid.empty()) {
+      extra_opts.push_back("--placement_uuid=" + placement_uuid);
+    }
+
+    ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
+    ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(expected_num_tservers,
+      kDefaultTimeout));
+  }
+
+  void AddNewTserverToLocation(const string& cloud, const string& region,
+                              const string& zone, const int expected_num_tservers,
+                              const string& placement_uuid = "") {
+
+    std::vector<std::string> extra_opts;
+    extra_opts.push_back("--placement_cloud=" + cloud);
+    extra_opts.push_back("--placement_region=" + region);
     extra_opts.push_back("--placement_zone=" + zone);
 
     if (!placement_uuid.empty()) {
@@ -390,6 +412,245 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
   ASSERT_EQ(counts_per_ts[3], 0);
   ASSERT_EQ(counts_per_ts[4], 4);
 
+}
+
+TEST_F(LoadBalancerPlacementPolicyTest, PrefixPlacementTest) {
+  int num_tservers = 3;
+
+  // Test 1.
+  // Set prefix cluster placement policy for this region.
+  LOG(INFO) << "With c.r,c.r,c.r and num_replicas=3 as placement.";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r,c.r,c.r", 3, ""));
+  // Don't need to wait for load balancer as we don't expect any movement.
+
+  // Validate if min_num_replicas is set correctly.
+  int min_num_replicas;
+  ASSERT_OK(external_mini_cluster()->GetMinReplicaCountForPlacementBlock(
+    external_mini_cluster()->master(), "c", "r", "", &min_num_replicas));
+
+  ASSERT_EQ(min_num_replicas, 3);
+
+  // Load should be evenly distributed onto the 3 TS in z0, z1 and z2.
+  // With 4 tablets in a table and 3 replica per tablet, each TS should have 4 tablets.
+  vector<int> counts_per_ts;
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  for (int ii = 0; ii < 3; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 4);
+  }
+
+  // Add 3 tservers in a different region (c.r2.z0, c.r2.z1, c.r2.z2).
+  string cloud = "c", region = "r2", zone = "z0";
+  AddNewTserverToLocation(cloud, region, zone, ++num_tservers);
+
+  zone = "z1";
+  AddNewTserverToLocation(cloud, region, zone, ++num_tservers);
+
+  zone = "z2";
+  AddNewTserverToLocation(cloud, region, zone, ++num_tservers);
+  // Don't wait for load balancer as we don't anticipate any movement.
+  LOG(INFO) << "Added 3 TS to Region r2.";
+
+  // Test 2.
+  // Modify placement policy to shift all the load to region r2.
+  // From code perspective, this tests HandleAddIfMissingPlacement(),
+  // and HandleRemoveReplica().
+  // For each replica in r, there will first be a replica created
+  // in r2 and then the replica will be removed from r.
+  LOG(INFO) << "With c.r2,c.r2,c.r2 and num_replicas=3 as placement.";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r2,c.r2,c.r2", 3, ""));
+  WaitForLoadBalancer();
+
+  // Load should be evenly distributed onto the 3 TS in region r2.
+  // With 4 tablets in a table and 3 replica per tablet, each TS should have 4 tablets.
+  // TS in region r, shouldn't have any load.
+  counts_per_ts.clear();
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  for (int ii = 0; ii < 3; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 0);
+  }
+
+  for (int ii = 3; ii < 6; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 4);
+  }
+
+  // Test 3.
+  // Shift all the load to region r now.
+  // Set min_num_replica for region r to 1 keeping total replicas still 3.
+  // From code perspective, this tests HandleAddIfMissingPlacement(),
+  // HandleAddIfWrongPlacement() and HandleRemoveReplica().
+  // For the second and third replica there won't be any addition to region r
+  // because of missing placement (since min_num_replica is 1) but because of a wrong placement.
+  LOG(INFO) << "With c.r and num_replicas=3 as placement.";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r", 3, ""));
+  WaitForLoadBalancer();
+
+  // Load should be evenly distributed onto the 3 TS in region r.
+  // With 4 tablets in a table and 3 replica per tablet, each TS should have 4 tablets.
+  // TS in region r2, shouldn't have any load.
+  counts_per_ts.clear();
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  for (int ii = 0; ii < 3; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 4);
+  }
+
+  for (int ii = 3; ii < 6; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 0);
+  }
+
+  // Test 4.
+  // Reduce the num_replicas to 2 with the same placement.
+  // This will test the over-replication part of the code. For each tablet, one replica
+  // will be removed.
+  LOG(INFO) << "With c.r,c.r and num_replicas=2 as placement.";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r,c.r", 2, ""));
+  WaitForLoadBalancer();
+
+  // Total replicas across all tablets: 2*4 = 8.
+  // With 3 TS in region r this should split it in a permutation of 3+3+2.
+  // TS in region r2 shouldn't have any load.
+  counts_per_ts.clear();
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  int total_load = 0;
+  for (int ii = 0; ii < 3; ++ii) {
+    ASSERT_GE(counts_per_ts[ii], 2);
+    total_load += counts_per_ts[ii];
+  }
+
+  ASSERT_EQ(total_load, 8);
+
+  for (int ii = 3; ii < 6; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 0);
+  }
+
+  // Test 5.
+  // Blacklist a TS in region r.
+  // This tests the blacklist portion of CanSelectWrongReplicaToMove().
+  LOG(INFO) << "With c.r,c.r and num_replicas=2 as placement and a TS in region r blacklisted.";
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+                                          external_mini_cluster()->master(),
+                                          external_mini_cluster()->tablet_server(2)));
+
+  WaitForLoadBalancer();
+  LOG(INFO) << "Successfully blacklisted ts3.";
+
+  counts_per_ts.clear();
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  // 8 replicas distributed across TS with each TS containing 4.
+  // No load in region r2.
+  for (int ii = 0; ii < 2; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 4);
+  }
+
+  for (int ii = 3; ii < 6; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 0);
+  }
+
+  // Test 6.
+  // Add a TS in region r, zone 2.
+  LOG(INFO) << "With c.r,c.r and num_replicas=2 as placement, " <<
+                "a blacklisted TS in region r and a new TS added in region r.";
+
+  cloud = "c", region = "r", zone = "z2";
+  AddNewTserverToLocation(cloud, region, zone, ++num_tservers);
+  WaitForLoadBalancer();
+  LOG(INFO) << "Successfully added a TS in region r.";
+
+  counts_per_ts.clear();
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  // 8 replicas should be split in permutation of 3+3+2.
+  // No load in region r2.
+  total_load = 0;
+  for (int ii = 0; ii < 2; ++ii) {
+    total_load += counts_per_ts[ii];
+    ASSERT_GE(counts_per_ts[ii], 2);
+  }
+
+  for (int ii = 3; ii < 6; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 0);
+  }
+
+  ASSERT_GE(counts_per_ts[6], 2);
+
+  total_load += counts_per_ts[6];
+  ASSERT_EQ(total_load, 8);
+
+  // Test 7.
+  // Bump up the RF to 3 now keeping the same placement.
+  // A replica will be added despite there not being any missing placement.
+  LOG(INFO) << "With c.r,c.r and num_replicas=3 as placement, " <<
+                "a blacklisted TS in region r and a new TS added in region r.";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r,c.r", 3, ""));
+  WaitForLoadBalancer();
+
+  counts_per_ts.clear();
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  // Total replicas across all tablets: 3*4 = 12.
+  // With 3 TS in region r this should split it in 4+4+4.
+  for (int ii = 0; ii < 2; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 4);
+  }
+
+  for (int ii = 3; ii < 6; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 0);
+  }
+
+  ASSERT_EQ(counts_per_ts[6], 4);
+
+  // Test 8.
+  // Change the placement info to only the cloud (c.*.*)
+  LOG(INFO) << "With c,c,c and num_replicas=3 as placement, " <<
+                "a blacklisted TS in region r and a new TS added in region r.";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c,c,c", 3, ""));
+  WaitForLoadBalancer();
+
+  counts_per_ts.clear();
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+
+  // Total replicas across all tablets: 3*4 = 12.
+  // With 6 TS (3 in region r and 3 in r2) this should split it in clusters of 2.
+  for (int ii = 0; ii < 2; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 2);
+  }
+
+  for (int ii = 3; ii <= 6; ++ii) {
+    ASSERT_EQ(counts_per_ts[ii], 2);
+  }
+
+  // Some cheap tests for validating user input.
+  // Test 9 - Only prefixes allowed.
+  LOG(INFO) << "With c..z0,c.r.z0,c.r2.z1 as placement";
+  ASSERT_NOK(yb_admin_client_->ModifyPlacementInfo("c..z0,c.r.z0,c.r2.z1", 3, ""));
+
+  // Test 10 - No two prefixes should overlap (-ve test case).
+  LOG(INFO) << "With c.r2,c.r2.z0,c.r as placement";
+  ASSERT_NOK(yb_admin_client_->ModifyPlacementInfo("c.r2,c.r2.z0,c.r", 3, ""));
+
+  // Test 11 - No two prefixes should overlap (-ve test case).
+  LOG(INFO) << "With c,c.r2.z0,c.r as placement";
+  ASSERT_NOK(yb_admin_client_->ModifyPlacementInfo("c,c.r2.z0,c.r", 3, ""));
+
+  // Test 12 - No two prefixes should overlap (+ve test case).
+  LOG(INFO) << "With c.r.z0,c.r2.z0,c.r.z2 as placement";
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r2.z0,c.r.z2", 3, ""));
+
+  // Test 13 - All CRZ empty allowed.
+  LOG(INFO) << "With ,, as placement";
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(",,", 3, ""));
+
+  // FIN: Thank you all for watching, have a great day ahead!
 }
 
 } // namespace integration_tests

@@ -231,13 +231,17 @@ void RunningTransaction::StatusReceived(
 }
 
 bool RunningTransaction::UpdateStatus(
-    TransactionStatus transaction_status, HybridTime time_of_status) {
+    TransactionStatus transaction_status, HybridTime time_of_status,
+    HybridTime coordinator_safe_time) {
   // Check for local_commit_time_ is not required for correctness, but useful for optimization.
   // So we could avoid unnecessary actions.
   if (local_commit_time_) {
     return false;
   }
 
+  if (transaction_status == TransactionStatus::ABORTED && coordinator_safe_time) {
+    time_of_status = coordinator_safe_time;
+  }
   last_known_status_hybrid_time_ = time_of_status;
 
   if (transaction_status == last_known_status_) {
@@ -281,21 +285,28 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     if (response.status_hybrid_time().size() == 1) {
       time_of_status = HybridTime(response.status_hybrid_time()[0]);
     } else {
-      LOG(DFATAL) << "Wrong number of status hybrid time entries, exactly one entry expected: "
-                  << response.ShortDebugString();
+      LOG_WITH_PREFIX(DFATAL)
+          << "Wrong number of status hybrid time entries, exactly one entry expected: "
+          << response.ShortDebugString();
       time_of_status = HybridTime::kMin;
     }
 
     if (response.status().size() == 1) {
       transaction_status = response.status(0);
     } else {
-      LOG(DFATAL) << "Wrong number of status entries, exactly one entry expected: "
-                  << response.ShortDebugString();
+      LOG_WITH_PREFIX(DFATAL)
+          << "Wrong number of status entries, exactly one entry expected: "
+          << response.ShortDebugString();
       transaction_status = TransactionStatus::PENDING;
     }
 
-    if (UpdateStatus(transaction_status, time_of_status)) {
-      context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
+    LOG_IF_WITH_PREFIX(DFATAL, response.coordinator_safe_time().size() > 1)
+        << "Wrong number of coordinator safe time entries, at most one expected: "
+        << response.ShortDebugString();
+    auto coordinator_safe_time = response.coordinator_safe_time().size() == 1
+        ? HybridTime::FromPB(response.coordinator_safe_time(0)) : HybridTime();
+    if (UpdateStatus(transaction_status, time_of_status, coordinator_safe_time)) {
+      context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
     }
 
     time_of_status = last_known_status_hybrid_time_;
@@ -398,12 +409,9 @@ void RunningTransaction::AbortReceived(const Status& status,
     // kMax status_time means that this status is not yet replicated and could be rejected.
     // So we could use it as reply to Abort, but cannot store it as transaction status.
     if (result.ok() && result->status_time != HybridTime::kMax) {
-      last_known_status_hybrid_time_ = result->status_time;
-      if (last_known_status_ != result->status) {
-        last_known_status_ = result->status;
-        if (result->status == TransactionStatus::ABORTED) {
-          context_.EnqueueRemoveUnlocked(id(), &min_running_notifier);
-        }
+      auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
+      if (UpdateStatus(result->status, result->status_time, coordinator_safe_time)) {
+        context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
       }
     }
   }
@@ -424,18 +432,30 @@ Status MakeAbortedStatus(const TransactionId& id) {
 }
 
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,
-                                      const TransactionApplyData* data) {
+                                      const TransactionApplyData* data,
+                                      ScopedRWOperation* operation) {
   apply_state_ = apply_state;
   bool active = apply_state_.active();
+  if (active) {
+    // We are trying to assign set processing apply before starting actual process, and unset
+    // after we complete processing.
+    processing_apply_.store(true, std::memory_order_release);
+  }
 
   if (data) {
+    if (!active) {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Starting processing apply, but provided data in inactive state: " << data->ToString();
+      return;
+    }
+
     apply_data_ = *data;
     apply_data_.apply_state = &apply_state_;
 
     LOG_IF_WITH_PREFIX(DFATAL, local_commit_time_ != data->commit_ht)
         << "Commit time does not match: " << local_commit_time_ << " vs " << data->commit_ht;
 
-    if (apply_intents_task_.Prepare(shared_from_this())) {
+    if (apply_intents_task_.Prepare(shared_from_this(), operation)) {
       context_.participant_context_.StrandEnqueue(&apply_intents_task_);
     } else {
       LOG_WITH_PREFIX(DFATAL) << "Unable to prepare apply intents task";
@@ -443,16 +463,18 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   }
 
   if (!active) {
+    processing_apply_.store(false, std::memory_order_release);
+
     VLOG_WITH_PREFIX(3) << "Finished applying intents";
 
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::lock_guard<std::mutex> lock(context_.mutex_);
-    context_.RemoveUnlocked(id(), "applied large"s, &min_running_notifier);
+    context_.RemoveUnlocked(id(), RemoveReason::kLargeApplied, &min_running_notifier);
   }
 }
 
 bool RunningTransaction::ProcessingApply() const {
-  return apply_state_.active();
+  return processing_apply_.load(std::memory_order_acquire);
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

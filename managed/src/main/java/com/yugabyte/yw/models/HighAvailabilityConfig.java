@@ -13,6 +13,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import play.data.validation.Constraints;
@@ -22,13 +23,16 @@ import javax.crypto.SecretKey;
 import javax.persistence.*;
 import java.util.*;
 import java.util.stream.Collectors;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
-@JsonPropertyOrder({ "uuid", "cluster_key", "instances" })
+@JsonPropertyOrder({"uuid", "cluster_key", "instances"})
 public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
-    new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class){};
+      new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
+
+  @JsonIgnore private final int id = 1;
 
   @Id
   @Constraints.Required
@@ -41,7 +45,7 @@ public class HighAvailabilityConfig extends Model {
   @Temporal(TemporalType.TIMESTAMP)
   private Date lastFailover;
 
-  @OneToMany(mappedBy = "config", cascade= CascadeType.ALL)
+  @OneToMany(mappedBy = "config", cascade = CascadeType.ALL)
   private List<PlatformInstance> instances;
 
   public UUID getUUID() {
@@ -82,31 +86,22 @@ public class HighAvailabilityConfig extends Model {
 
   @JsonIgnore
   public List<PlatformInstance> getRemoteInstances() {
-    return this.instances.stream()
-      .filter(i -> !i.getIsLocal())
-      .collect(Collectors.toList());
+    return this.instances.stream().filter(i -> !i.getIsLocal()).collect(Collectors.toList());
   }
 
   @JsonIgnore
   public boolean isLocalLeader() {
-    return this.instances.stream()
-      .anyMatch(i -> i.getIsLeader() && i.getIsLocal());
+    return this.instances.stream().anyMatch(i -> i.getIsLeader() && i.getIsLocal());
   }
 
   @JsonIgnore
-  public PlatformInstance getLocal() {
-    return this.instances.stream()
-      .filter(PlatformInstance::getIsLocal)
-      .findFirst()
-      .orElse(null);
+  public Optional<PlatformInstance> getLocal() {
+    return this.instances.stream().filter(PlatformInstance::getIsLocal).findFirst();
   }
 
   @JsonIgnore
-  public PlatformInstance getLeader() {
-    return this.instances.stream()
-      .filter(PlatformInstance::getIsLeader)
-      .findFirst()
-      .orElse(null);
+  public Optional<PlatformInstance> getLeader() {
+    return this.instances.stream().filter(PlatformInstance::getIsLeader).findFirst();
   }
 
   public static HighAvailabilityConfig create(String clusterKey) {
@@ -124,18 +119,25 @@ public class HighAvailabilityConfig extends Model {
     config.update();
   }
 
-  public static HighAvailabilityConfig get(UUID uuid) {
-    return find.byId(uuid);
+  @Deprecated
+  public static Optional<HighAvailabilityConfig> get(UUID uuid) {
+    return Optional.ofNullable(find.byId(uuid));
   }
 
-  public static HighAvailabilityConfig getByClusterKey(String clusterKey) {
-    return find.query().where()
-      .eq("cluster_key", clusterKey)
-      .findOne();
+  public static Optional<HighAvailabilityConfig> getOrBadRequest(UUID uuid) {
+    Optional<HighAvailabilityConfig> config = get(uuid);
+    if (!config.isPresent()) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid config UUID");
+    }
+    return config;
   }
 
-  public static List<HighAvailabilityConfig> list() {
-    return find.all();
+  public static Optional<HighAvailabilityConfig> get() {
+    return find.query().where().findOneOrEmpty();
+  }
+
+  public static Optional<HighAvailabilityConfig> getByClusterKey(String clusterKey) {
+    return find.query().where().eq("cluster_key", clusterKey).findOneOrEmpty();
   }
 
   public static void delete(UUID uuid) {
@@ -148,5 +150,9 @@ public class HighAvailabilityConfig extends Model {
     SecretKey secretKey = keyGen.generateKey();
 
     return Base64.getEncoder().encodeToString(secretKey.getEncoded());
+  }
+
+  public static boolean isFollower() {
+    return get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.getIsLeader()).orElse(false);
   }
 }

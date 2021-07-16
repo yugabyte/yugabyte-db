@@ -156,6 +156,7 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  debug/lock_debug.cc
   debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc
@@ -258,12 +259,14 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  zlib.cc
   async_util.cc
   )
 
 set(UTIL_LIBS
   boost_system
   boost_thread
+  boost_atomic
   cds
   icui18n
   icuuc
@@ -349,6 +352,7 @@ endif()
 
 set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
+ADD_YB_TEST(background_task-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
@@ -377,6 +381,7 @@ ADD_YB_TEST(memenv/memenv-test)
 ADD_YB_TEST(memory/arena-test)
 ADD_YB_TEST(memory/mc_types-test)
 ADD_YB_TEST(memory/memory_usage-test)
+ADD_YB_TEST(memory/tracked_shared_ptr-test)
 ADD_YB_TEST(mem_tracker-test)
 ADD_YB_TEST(metrics-test)
 ADD_YB_TEST(monotime-test)
@@ -429,6 +434,7 @@ ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(string_trim-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)

@@ -23,9 +23,13 @@ import java.util.Random;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCreateTableWithProperties extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestCreateTableWithProperties.class);
+
   @Test
   public void testCreateTable() throws Exception {
     LOG.info("Begin test");

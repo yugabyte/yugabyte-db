@@ -117,6 +117,8 @@ message NodeInstancePB {
   // On a freshly initialized server, the first sequence number
   // should be 0.
   required int64 instance_seqno = 2;
+  // The time point when tserver/master starts up, it is derived from Env::NowMicros()
+  optional uint64 start_time_us = 3;
 }
 
 // RPC and HTTP addresses for each server, as well as cloud related information.

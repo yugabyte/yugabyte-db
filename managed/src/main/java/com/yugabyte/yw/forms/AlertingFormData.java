@@ -2,63 +2,69 @@
 
 package com.yugabyte.yw.forms;
 
-
 import play.data.validation.Constraints;
 import java.util.Map;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met
- */
+import com.yugabyte.yw.common.alerts.SmtpData;
+
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
+@ApiModel(value = "Alerts", description = "Alerts associated with customers")
 public class AlertingFormData {
-    @Constraints.MaxLength(15)
-    public String code;
+  @Constraints.MaxLength(15)
+  @ApiModelProperty(value = "Alert code")
+  public String code;
 
-    public String email;
+  @ApiModelProperty(value = "Alert email", example = "test@gmail.com")
+  public String email;
 
-    public String password;
+  @ApiModelProperty(value = "Email password", example = "XurenRknsc")
+  public String password;
 
-    public String confirmPassword;
+  @ApiModelProperty(value = "Email password", example = "XurenRknsc")
+  public String confirmPassword;
 
-    public String name;
+  @ApiModelProperty(value = "Alert name", example = "Test alert")
+  public String name;
 
-    public Map features;
+  @ApiModelProperty(value = "Feature")
+  public Map features;
 
-    static public class AlertingData {
-        @Constraints.Email
-        @Constraints.MinLength(5)
-        public String alertingEmail;
+  @ApiModel(value = "Alert Detail", description = "Alerts associated with customers")
+  public static class AlertingData {
+    @Constraints.Email
+    @Constraints.MinLength(5)
+    @ApiModelProperty(value = "Alert email id", example = "test@gmail.com")
+    public String alertingEmail;
 
-        public boolean sendAlertsToYb = false;
+    @ApiModelProperty(value = "Is alert has sent to YB")
+    public boolean sendAlertsToYb = false;
 
-        public long checkIntervalMs = 0;
+    @ApiModelProperty(value = "Alert interval")
+    public long checkIntervalMs = 0;
 
-        public long statusUpdateIntervalMs = 0;
+    @ApiModelProperty(value = "Status update of alert interval")
+    public long statusUpdateIntervalMs = 0;
 
-        public Boolean reportOnlyErrors = false;
+    @ApiModelProperty(value = "Is alert is just for error")
+    public Boolean reportOnlyErrors = false;
 
-        public Boolean reportBackupFailures = false;
-    }
+    @ApiModelProperty(value = "Is alert needed for backup failure")
+    public Boolean reportBackupFailures = false;
 
-    static public class SmtpData {
-        public String smtpServer = null;
+    // TODO: Remove after implementation of a separate window for all definitions
+    // configuration.
+    @ApiModelProperty(value = "Is Clock skew is enabled")
+    public boolean enableClockSkew = true;
+  }
 
-        public int smtpPort = -1;
+  public AlertingData alertingData;
 
-        public String emailFrom = null;
+  public SmtpData smtpData;
 
-        public String smtpUsername = null;
-
-        public String smtpPassword = null;
-
-        public boolean useSSL = true;
-
-        public boolean useTLS = false;
-      }
-
-    public AlertingData alertingData;
-    public SmtpData smtpData;
-
-    @Constraints.Pattern(message="Must be one of NONE, LOW, MEDIUM, HIGH",
-                         value="\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
-    public String callhomeLevel = "MEDIUM";
+  @Constraints.Pattern(
+      message = "Must be one of NONE, LOW, MEDIUM, HIGH",
+      value = "\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
+  public String callhomeLevel = "MEDIUM";
 }

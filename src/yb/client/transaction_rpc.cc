@@ -119,13 +119,13 @@ class TransactionRpc : public TransactionRpcBase {
   }
 
   void InvokeCallback(const Status& status) override {
-    Traits::CallCallback(callback_, status, resp_);
+    Traits::CallCallback(callback_, status, req_, resp_);
   }
 
   void InvokeAsync(tserver::TabletServerServiceProxy* proxy,
                    rpc::RpcController* controller,
                    rpc::ResponseCallback callback) override {
-    Traits::InvokeAsync(proxy, req_, &resp_, controller, std::move(callback));
+    Traits::InvokeAsync(proxy, &req_, &resp_, controller, std::move(callback));
   }
 
   typename Traits::Request req_;
@@ -133,35 +133,57 @@ class TransactionRpc : public TransactionRpcBase {
   typename Traits::Callback callback_;
 };
 
+void PrepareRequest(...) {}
+
+void PrepareRequest(tserver::UpdateTransactionRequestPB* req) {
+  if (req->state().status() == TransactionStatus::CREATED) {
+    auto id = TransactionId::GenerateRandom();
+    req->mutable_state()->set_transaction_id(id.data(), id.size());
+  }
+}
+
+#define TRANSACTION_RPC_TRAITS_NAME(entry) BOOST_PP_CAT(TRANSACTION_RPC_NAME(entry), Traits)
+
+#define TRANSACTION_RPC_TRAITS_CALL_CALLBACK_HELPER_WITHOUT_REQUEST() \
+    callback(status, response)
+#define TRANSACTION_RPC_TRAITS_CALL_CALLBACK_HELPER_WITH_REQUEST() \
+    callback(status, request, response)
+
+#define TRANSACTION_RPC_TRAITS_CALL_CALLBACK(entry) \
+  BOOST_PP_CAT(TRANSACTION_RPC_TRAITS_CALL_CALLBACK_HELPER_, BOOST_PP_TUPLE_ELEM(2, 1, entry))()
+
 #define TRANSACTION_RPC_TRAITS(i, data, entry) \
-struct BOOST_PP_CAT(entry, Traits) { \
-  static constexpr const char* kName = BOOST_PP_STRINGIZE(entry); \
+struct TRANSACTION_RPC_TRAITS_NAME(entry) { \
+  static constexpr const char* kName = BOOST_PP_STRINGIZE(TRANSACTION_RPC_NAME(entry)); \
   typedef TRANSACTION_RPC_REQUEST_PB(entry) Request; \
   typedef TRANSACTION_RPC_RESPONSE_PB(entry) Response; \
   typedef TRANSACTION_RPC_CALLBACK(entry) Callback; \
   \
   static void CallCallback( \
-      const Callback& callback, const Status& status, const Response& response) { \
-    callback(status, response); \
+      const Callback& callback, const Status& status, const Request& request, \
+      const Response& response) { \
+    TRANSACTION_RPC_TRAITS_CALL_CALLBACK(entry); \
   } \
   \
   static void InvokeAsync(tserver::TabletServerServiceProxy* proxy, \
-                          const Request& request, \
+                          Request* request, \
                           Response* response, \
                           rpc::RpcController* controller, \
                           rpc::ResponseCallback callback) { \
-    proxy->BOOST_PP_CAT(entry, Async)(request, response, controller, std::move(callback)); \
+    PrepareRequest(request); \
+    proxy->BOOST_PP_CAT(TRANSACTION_RPC_NAME(entry), Async)( \
+        *request, response, controller, std::move(callback)); \
   } \
 }; \
 \
-constexpr const char* BOOST_PP_CAT(entry, Traits)::kName;
+constexpr const char* TRANSACTION_RPC_TRAITS_NAME(entry)::kName;
 
 BOOST_PP_SEQ_FOR_EACH(TRANSACTION_RPC_TRAITS, ~, TRANSACTION_RPCS)
 
 } // namespace
 
 #define TRANSACTION_RPC_BODY(entry) { \
-  return std::make_shared<TransactionRpc<BOOST_PP_CAT(entry, Traits)>>( \
+  return std::make_shared<TransactionRpc<TRANSACTION_RPC_TRAITS_NAME(entry)>>( \
       deadline, tablet, client, req, std::move(callback)); \
   }
 

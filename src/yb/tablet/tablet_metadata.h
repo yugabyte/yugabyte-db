@@ -39,10 +39,13 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/callback.h"
@@ -125,16 +128,18 @@ struct TableInfo {
 struct KvStoreInfo {
   explicit KvStoreInfo(const KvStoreId& kv_store_id_) : kv_store_id(kv_store_id_) {}
 
-  KvStoreInfo(const KvStoreId& kv_store_id_, const std::string& rocksdb_dir_)
+  KvStoreInfo(const KvStoreId& kv_store_id_, const std::string& rocksdb_dir_,
+              const std::vector<SnapshotScheduleId>& snapshot_schedules_)
       : kv_store_id(kv_store_id_),
-        rocksdb_dir(rocksdb_dir_) {}
+        rocksdb_dir(rocksdb_dir_),
+        snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
-  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id);
+  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, const TableId& primary_table_id);
 
   CHECKED_STATUS LoadTablesFromPB(
-      google::protobuf::RepeatedPtrField<TableInfoPB> pbs, TableId primary_table_id);
+      const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
 
-  void ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const;
+  void ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const;
 
   KvStoreId kv_store_id;
 
@@ -155,7 +160,22 @@ struct KvStoreInfo {
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
   std::unordered_map<TableId, TableInfoPtr> tables;
+
+  std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> snapshot_schedules;
 };
+
+struct RaftGroupMetadataData {
+  FsManager* fs_manager;
+  TableInfoPtr table_info;
+  RaftGroupId raft_group_id;
+  Partition partition;
+  TabletDataState tablet_data_state;
+  bool colocated = false;
+  std::vector<SnapshotScheduleId> snapshot_schedules;
+};
+
+using RestorationCompleteTimeMap = std::unordered_map<
+    TxnSnapshotRestorationId, HybridTime, TxnSnapshotRestorationIdHash>;
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
 // super block found in the tablets/ directory, and then instantiate
@@ -168,46 +188,19 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // data_root_dir and wal_root_dir dictates which disk this Raft group will
   // use in the respective directories.
   // If empty string is passed in, it will be randomly chosen.
-  static CHECKED_STATUS CreateNew(FsManager* fs_manager,
-                                  const std::string& table_id,
-                                  const RaftGroupId& raft_group_id,
-                                  const std::string& namespace_name,
-                                  const std::string& table_name,
-                                  const TableType table_type,
-                                  const Schema& schema,
-                                  const IndexMap& index_map,
-                                  const PartitionSchema& partition_schema,
-                                  const Partition& partition,
-                                  const boost::optional<IndexInfo>& index_info,
-                                  const uint32_t schema_version,
-                                  const TabletDataState& initial_tablet_data_state,
-                                  RaftGroupMetadataPtr* metadata,
-                                  const std::string& data_root_dir = std::string(),
-                                  const std::string& wal_root_dir = std::string(),
-                                  const bool colocated = false);
+  static Result<RaftGroupMetadataPtr> CreateNew(
+      const RaftGroupMetadataData& data, const std::string& data_root_dir = std::string(),
+      const std::string& wal_root_dir = std::string());
 
   // Load existing metadata from disk.
-  static CHECKED_STATUS Load(FsManager* fs_manager,
-                             const RaftGroupId& raft_group_id,
-                             RaftGroupMetadataPtr* metadata);
+  static Result<RaftGroupMetadataPtr> Load(FsManager* fs_manager, const RaftGroupId& raft_group_id);
 
   // Try to load an existing Raft group. If it does not exist, create it.
   // If it already existed, verifies that the schema of the Raft group matches the
   // provided 'schema'.
   //
   // This is mostly useful for tests which instantiate Raft groups directly.
-  static CHECKED_STATUS LoadOrCreate(FsManager* fs_manager,
-                                     const std::string& table_id,
-                                     const RaftGroupId& raft_group_id,
-                                     const std::string& namespace_name,
-                                     const std::string& table_name,
-                                     const TableType table_type,
-                                     const Schema& schema,
-                                     const PartitionSchema& partition_schema,
-                                     const Partition& partition,
-                                     const boost::optional<IndexInfo>& index_info,
-                                     const TabletDataState& initial_tablet_data_state,
-                                     RaftGroupMetadataPtr* metadata);
+  static Result<RaftGroupMetadataPtr> LoadOrCreate(const RaftGroupMetadataData& data);
 
   Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;
@@ -281,7 +274,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return table_info->schema_version;
   }
 
-  const std::string& indexed_tablet_id(const TableId& table_id = "") const {
+  const std::string& indexed_table_id(const TableId& table_id = "") const {
     DCHECK_NE(state_, kNotLoadedYet);
     static const std::string kEmptyString = "";
     std::lock_guard<MutexType> lock(data_mutex_);
@@ -319,13 +312,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   }
 
   // Returns the partition schema of the Raft group's tables.
-  const std::shared_ptr<PartitionSchema> partition_schema() const {
+  std::shared_ptr<PartitionSchema> partition_schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
     const TableInfoPtr table_info = primary_table_info();
     return std::shared_ptr<PartitionSchema>(table_info, &table_info->partition_schema);
   }
 
-  const std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
+  std::shared_ptr<std::vector<DeletedColumn>> deleted_cols(
       const TableId& table_id = "") const {
     DCHECK_NE(state_, kNotLoadedYet);
     const TableInfoPtr table_info =
@@ -333,14 +326,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return std::shared_ptr<std::vector<DeletedColumn>>(table_info, &table_info->deleted_cols);
   }
 
-  std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
+  const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   std::string intents_rocksdb_dir() const { return kv_store_.rocksdb_dir + kIntentsDBSuffix; }
   std::string snapshots_dir() const { return kv_store_.rocksdb_dir + kSnapshotsDirSuffix; }
 
-  std::string lower_bound_key() const { return kv_store_.lower_bound_key; }
-  std::string upper_bound_key() const { return kv_store_.upper_bound_key; }
+  const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
+  const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
-  std::string wal_dir() const { return wal_dir_; }
+  const std::string& wal_dir() const { return wal_dir_; }
 
   // Set the WAL retention time for the primary table.
   void set_wal_retention_secs(uint32 wal_retention_secs);
@@ -352,7 +345,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   int64_t cdc_min_replicated_index() const;
 
-  CHECKED_STATUS set_is_under_twodc_replication(bool is_under_twodc_replication);
+  CHECKED_STATUS SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
   bool is_under_twodc_replication() const;
 
@@ -364,6 +357,22 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void set_has_been_fully_compacted(const bool& value) {
     std::lock_guard<MutexType> lock(data_mutex_);
     kv_store_.has_been_fully_compacted = value;
+  }
+
+  bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.insert(schedule_id).second;
+  }
+
+  bool RemoveSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.snapshot_schedules.erase(schedule_id) != 0;
+  }
+
+  std::vector<SnapshotScheduleId> SnapshotSchedules() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return std::vector<SnapshotScheduleId>(
+        kv_store_.snapshot_schedules.begin(), kv_store_.snapshot_schedules.end());
   }
 
   // Returns the data root dir for this Raft group, for example:
@@ -404,6 +413,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
 
+  void SetHidden(bool value);
+  bool hidden() const;
+
+  void SetRestorationHybridTime(HybridTime value);
+  HybridTime restoration_hybrid_time() const;
+
   CHECKED_STATUS Flush();
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
@@ -437,7 +452,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   FsManager *fs_manager() const { return fs_manager_; }
 
-  yb::OpId tombstone_last_logged_opid() const { return tombstone_last_logged_opid_; }
+  OpId tombstone_last_logged_opid() const;
 
   // Loads the currently-flushed superblock from disk into the given protobuf.
   CHECKED_STATUS ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const;
@@ -469,10 +484,30 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
     return primary_table_info_unlocked();
   }
 
-  bool colocated() const { return colocated_; }
+  bool colocated() const;
+
+  Result<std::string> TopSnapshotsDir() const;
 
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;
+
+  std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
+
+  OpId split_op_id() const;
+
+  void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
+
+  bool has_active_restoration() const;
+
+  void RegisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+  void UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id);
+
+  // Find whether some of active restorations complete. Returns max complete hybrid time of such
+  // restoration.
+  HybridTime CheckCompleteRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
+
+  // Removes all complete or unknown restorations.
+  bool CleanupRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
  private:
   typedef simple_spinlock MutexType;
@@ -484,25 +519,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   ~RaftGroupMetadata();
 
   // Constructor for creating a new Raft group.
-  //
-  // TODO: get rid of this many-arg constructor in favor of just passing in a
-  // SuperBlock, which already contains all of these fields.
-  RaftGroupMetadata(FsManager* fs_manager,
-                    TableId table_id,
-                    RaftGroupId raft_group_id,
-                    std::string namespace_name,
-                    std::string table_name,
-                    TableType table_type,
-                    const std::string rocksdb_dir,
-                    const std::string wal_dir,
-                    const Schema& schema,
-                    const IndexMap& index_map,
-                    PartitionSchema partition_schema,
-                    Partition partition,
-                    const boost::optional<IndexInfo>& index_info,
-                    const uint32_t schema_version,
-                    const TabletDataState& tablet_data_state,
-                    const bool colocated = false);
+  explicit RaftGroupMetadata(
+      const RaftGroupMetadataData& data, const std::string& data_dir,
+      const std::string& wal_dir);
 
   // Constructor for loading an existing Raft group.
   RaftGroupMetadata(FsManager* fs_manager, RaftGroupId raft_group_id);
@@ -519,7 +538,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   CHECKED_STATUS ReplaceSuperBlockUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
 
   // Requires 'data_mutex_'.
-  void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const;
+  void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);
 
   const TableInfoPtr primary_table_info_unlocked() const {
     const auto& tables = kv_store_.tables;
@@ -543,12 +562,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // If taken together with 'data_mutex_', must be acquired first.
   mutable Mutex flush_lock_;
 
-  RaftGroupId raft_group_id_;
-  std::shared_ptr<Partition> partition_;
+  RaftGroupId raft_group_id_ GUARDED_BY(data_mutex_);
+  std::shared_ptr<Partition> partition_ GUARDED_BY(data_mutex_);
 
   // The primary table id. Primary table is the first table this Raft group is created for.
   // Additional tables can be added to this Raft group to co-locate with this table.
-  TableId primary_table_id_;
+  TableId primary_table_id_ GUARDED_BY(data_mutex_);
 
   // KV-store for this Raft group.
   KvStoreInfo kv_store_;
@@ -556,22 +575,31 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   FsManager* const fs_manager_;
 
   // The directory where the write-ahead log for this Raft group is stored.
-  std::string wal_dir_;
+  std::string wal_dir_ GUARDED_BY(data_mutex_);
 
   // The current state of remote bootstrap for the tablet.
-  TabletDataState tablet_data_state_ = TABLET_DATA_UNKNOWN;
+  TabletDataState tablet_data_state_ GUARDED_BY(data_mutex_) = TABLET_DATA_UNKNOWN;
 
   // Record of the last opid logged by the tablet before it was last tombstoned. Has no meaning for
   // non-tombstoned tablets.
-  yb::OpId tombstone_last_logged_opid_;
+  OpId tombstone_last_logged_opid_ GUARDED_BY(data_mutex_);
 
   // True if the raft group is for a colocated tablet.
-  bool colocated_ = false;
+  bool colocated_ GUARDED_BY(data_mutex_) = false;
 
   // The minimum index that has been replicated by the cdc service.
-  int64_t cdc_min_replicated_index_ = std::numeric_limits<int64_t>::max();
+  int64_t cdc_min_replicated_index_ GUARDED_BY(data_mutex_) = std::numeric_limits<int64_t>::max();
 
-  bool is_under_twodc_replication_ = false;
+  bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
+
+  bool hidden_ GUARDED_BY(data_mutex_) = false;
+
+  HybridTime restoration_hybrid_time_ GUARDED_BY(data_mutex_) = HybridTime::kMin;
+
+  OpId split_op_id_ GUARDED_BY(data_mutex_);
+  std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+
+  std::vector<TxnSnapshotRestorationId> active_restorations_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

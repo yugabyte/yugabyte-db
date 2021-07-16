@@ -59,10 +59,9 @@ export class YBDropZoneWithLabel extends Component {
             touched && error ? 'has-error' : ''
           } ${input.value ? 'has-value' : ''}`}
         >
-          <Dropzone className={this.props.className} name={this.props.name} onDrop={this.onDrop}>
+          <Dropzone className={this.props.className} name={this.props.input.name} onDrop={this.onDrop}>
             <p>{title}</p>
           </Dropzone>
-          {touched && error && <span className="help-block standard-error">{error}</span>}
           {input.value && <span className="drop-zone-file">{input.value.name}</span>}
         </div>
       </YBLabel>

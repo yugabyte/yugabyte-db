@@ -21,15 +21,12 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/transaction_status_cache.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
 namespace yb {
-
-class DocHybridTime;
-class TransactionStatusManager;
-
 namespace docdb {
 
 class Value;
@@ -38,29 +35,6 @@ struct Expiration;
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 YB_DEFINE_ENUM(SeekIntentIterNeeded, (kNoNeed)(kSeek)(kSeekForward));
-
-// Caches transaction statuses fetched by single IntentAwareIterator.
-// Thread safety is not required, because IntentAwareIterator is used in a single thread only.
-class TransactionStatusCache {
- public:
-  TransactionStatusCache(TransactionStatusManager* txn_status_manager,
-                         const ReadHybridTime& read_time,
-                         CoarseTimePoint deadline)
-      : txn_status_manager_(txn_status_manager), read_time_(read_time), deadline_(deadline) {}
-
-  // Returns transaction commit time if already committed by the specified time or HybridTime::kMin
-  // otherwise.
-  Result<HybridTime> GetCommitTime(const TransactionId& transaction_id);
-
- private:
-  HybridTime GetLocalCommitTime(const TransactionId& transaction_id);
-  Result<HybridTime> DoGetCommitTime(const TransactionId& transaction_id);
-
-  TransactionStatusManager* txn_status_manager_;
-  ReadHybridTime read_time_;
-  CoarseTimePoint deadline_;
-  std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
-};
 
 struct FetchKeyResult {
   Slice key;

@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -43,6 +44,7 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams {
     return null;
   }
 
+  @JsonIgnore
   public Provider getProvider() {
     if (getAZ() != null) {
       return getAZ().getProvider();
@@ -52,7 +54,16 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams {
 
   // Less prominent params can be added to properties variable
   private Map<String, String> properties = new HashMap<>();
-  public Map<String, String> getProperties() { return properties; }
-  public void setProperty(String key, String value) { properties.put(key, value); }
-  public String getProperty(String key) { return properties.getOrDefault(key, null); }
+
+  public Map<String, String> getProperties() {
+    return properties;
+  }
+
+  public void setProperty(String key, String value) {
+    properties.put(key, value);
+  }
+
+  public String getProperty(String key) {
+    return properties.getOrDefault(key, null);
+  }
 }

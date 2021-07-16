@@ -133,3 +133,39 @@ YBIsNonTxnCopyEnabled()
 	}
 	return cached_value;
 }
+
+bool
+YBIsAnalyzeCmdEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("FLAGS_ysql_allow_analyze_cmd");
+	}
+	return cached_value;
+}
+
+const char *YBGetCurrentCloud()
+{
+	return getenv("FLAGS_placement_cloud");
+}
+
+const char *YBGetCurrentRegion()
+{
+	return getenv("FLAGS_placement_region");
+}
+
+const char *YBGetCurrentZone()
+{
+	return getenv("FLAGS_placement_zone");
+}
+
+bool
+YBIsCollationEnabled()
+{
+#ifdef USE_ICU
+	return true;
+#else
+	return false;
+#endif
+}

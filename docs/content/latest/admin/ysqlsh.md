@@ -25,11 +25,35 @@ The YugabyteDB SQL shell (`ysqlsh`) provides a CLI for interacting with Yugabyte
 
 `ysqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
+If you prefer, you can install a standalone version using any of the following methods:
+
+* Using Docker:
+
+    ```sh
+    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
+    ```
+
+* Using Homebrew:
+
+    ```sh
+    brew tap yugabyte/yugabytedb
+    brew install yugabytedb-client
+    ysqlsh
+    ```
+
+* Using a shell script:
+
+    ```sh
+    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh 
+    yugabyte*/bin/ysqlsh
+    ```
+
 ### Example
 
 ```sh
 $ ./bin/ysqlsh
 ```
+
 ```
 ysqlsh (11.2-YB-2.0.0.0-b0)
 Type "help" for help.
@@ -43,7 +67,7 @@ Run `ysqlsh --help` to display the online help.
 
 ## Syntax
 
-```
+```sh
 ysqlsh [ <option>...] [ <dbname> [ <username> ]]
 ```
 

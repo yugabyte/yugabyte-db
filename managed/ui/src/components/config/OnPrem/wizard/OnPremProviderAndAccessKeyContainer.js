@@ -50,7 +50,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 
 const mapStateToProps = (state, ownProps) => {
   let initialFormValues = {
-    sshPort: 54422,
+    sshPort: 22,
     airGapInstall: false,
     useHostnames: false,
     installNodeExporter: true,

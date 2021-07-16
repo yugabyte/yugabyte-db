@@ -7,22 +7,16 @@ import tableIcon from '../images/table.png';
 import './ListTables.scss';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { TableAction } from '../../tables';
-
-import { UniverseAction } from '../../universes';
 import { YBPanelItem } from '../../panels';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import _ from 'lodash';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
-import { isDisabled } from '../../../utils/LayoutUtils';
+import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
 
 class TableTitle extends Component {
   render() {
-    const {
-      customer: { currentCustomer }
-    } = this.props;
-    const currentUniverse = this.props.universe.currentUniverse.data;
     const { numCassandraTables, numRedisTables, numPostgresTables } = this.props;
     return (
       <div className="table-container-title clearfix">
@@ -39,17 +33,6 @@ class TableTitle extends Component {
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo" />
             <YBResourceCount kind="YEDIS" size={numRedisTables} />
-          </div>
-        </div>
-        <div className="pull-right">
-          <div className="backup-action-btn-group">
-            <UniverseAction
-              className="table-action"
-              universe={currentUniverse}
-              actionType="toggle-backup"
-              btnClass={'btn-orange'}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.backup')}
-            />
           </div>
         </div>
       </div>
@@ -142,6 +125,7 @@ class ListTableGrid extends Component {
     const actions_disabled =
       isDisabled(currentCustomer.data.features, 'universes.backup') ||
       currentUniverse.universeDetails.backupInProgress;
+    const disableManualBackup = currentUniverse?.universeConfig?.takeBackups === 'true';
     const formatActionButtons = function (item, row, disabled) {
       if (!row.isIndexTable) {
         const actions = [
@@ -149,7 +133,7 @@ class ListTableGrid extends Component {
             key={`${row.tableName}-backup-btn`}
             currentRow={row}
             actionType="create-backup"
-            disabled={actions_disabled}
+            disabled={actions_disabled || !disableManualBackup}
             btnClass={'btn-orange'}
           />
         ];
@@ -308,7 +292,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn dataField={'write'} width="10%" columnClassName={'yb-table-cell'}>
           Write
         </TableHeaderColumn>
-        {!universePaused &&
+        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}
@@ -317,7 +301,7 @@ class ListTableGrid extends Component {
           >
             Actions
           </TableHeaderColumn>
-        }
+        )}
       </BootstrapTable>
     );
     return <Fragment>{tableListDisplay}</Fragment>;

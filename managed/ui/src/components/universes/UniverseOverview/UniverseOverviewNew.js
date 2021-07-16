@@ -236,7 +236,7 @@ class HealthInfoPanel extends PureComponent {
     const { healthCheck, universeInfo } = this.props;
     let disabledUntilStr = '';
     if (getPromiseState(healthCheck).isSuccess()) {
-      const healthCheckData = JSON.parse([...healthCheck.data].reverse()[0]);
+      const healthCheckData = [...healthCheck.data].reverse()[0];
       const lastUpdateDate = moment.utc(healthCheckData.timestamp).local();
       if (universeInfo.universeConfig && 'disableAlertsUntilSecs' in universeInfo.universeConfig) {
         const disabledUntilSecs = Number(universeInfo.universeConfig.disableAlertsUntilSecs);
@@ -698,23 +698,37 @@ export default class UniverseOverviewNew extends Component {
 
   getDatabaseWidget = (universeInfo, tasks) => {
     const lastUpdateDate = this.getLastUpdateDate();
-    const { updateAvailable, currentCustomer } = this.props;
+    const {
+      universe: { currentUniverse },
+      updateAvailable, 
+      currentCustomer
+    } = this.props;
     const showUpdate =
       updateAvailable && !isDisabled(currentCustomer.data.features, 'universes.actions');
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
+    const updateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
 
+    const upgradeLink = () => {
+      return updateInProgress ? (
+        <span>
+          Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
+        </span>
+      ) : (
+        <a
+          onClick={(e) => {
+            this.props.showSoftwareUpgradesModal(e);
+            e.preventDefault();
+          }}
+          href="/"
+        >
+          Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
+        </a>
+      );
+    };
     const infoWidget = (
       <YBWidget
         headerLeft={'Info'}
-        headerRight={
-          showUpdate ? (
-            <a onClick={(e) => {
-              this.props.showSoftwareUpgradesModal(e);
-              e.preventDefault();
-            }} href="/">
-              Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
-            </a>
-          ) : null
-        }
+        headerRight={showUpdate && !universePaused ? upgradeLink() : null}
         body={
           <FlexContainer className={'centered'} direction={'column'}>
             <FlexGrow>
@@ -758,6 +772,7 @@ export default class UniverseOverviewNew extends Component {
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
     return (
       <Fragment>
         <Row>
@@ -792,11 +807,13 @@ export default class UniverseOverviewNew extends Component {
             {this.getTablesWidget(universeInfo)}
           </Col>
         </Row>
-        <Row>
-          <Col lg={12} md={12} sm={12} xs={12}>
-            <QueryDisplayPanel universeUUID={universeInfo.universeUUID} />
-          </Col>
-        </Row>
+        {isQueryMonitoringEnabled &&
+          <Row>
+            <Col lg={12} md={12} sm={12} xs={12}>
+              <QueryDisplayPanel universeUUID={universeInfo.universeUUID} enabled={isQueryMonitoringEnabled} />
+            </Col>
+          </Row>
+        }
       </Fragment>
     );
   }

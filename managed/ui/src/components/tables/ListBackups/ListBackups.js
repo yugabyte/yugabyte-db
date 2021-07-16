@@ -3,20 +3,21 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router';
+import Toggle from 'react-toggle';
 import { DropdownButton, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import { YBCopyButton } from '../../common/descriptors';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isAvailable } from '../../../utils/LayoutUtils';
+import { isAvailable, isNotHidden } from '../../../utils/LayoutUtils';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
 import ListTablesModal from './ListTablesModal';
 import SchedulesContainer from '../../schedules/SchedulesContainer';
-
 import './ListBackups.scss';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
@@ -34,13 +35,16 @@ const getTableType = (text) => {
       return null;
   }
 };
+
 export default class ListBackups extends Component {
   state = {
     selectedRowList: null,
     showModal: false,
     showAlert: false,
     taskUUID: null,
-    alertType: null
+    alertType: null,
+    showDeletedBackups: false,
+    selected: []
   };
 
   static defaultProps = {
@@ -126,26 +130,27 @@ export default class ListBackups extends Component {
     if (direction === 'asc') {
       return (
         <span className="order">
-          <i className="fa fa-caret-up orange-icon"></i>
+          <i className="fa fa-caret-up orange-icon" />
         </span>
       );
     }
     if (direction === 'desc') {
       return (
         <span className="order">
-          <i className="fa fa-caret-down orange-icon"></i>
+          <i className="fa fa-caret-down orange-icon" />
         </span>
       );
     }
     return (
       <span className="order">
-        <i className="fa fa-caret-down orange-icon"></i>
-        <i className="fa fa-caret-up orange-icon"></i>
+        <i className="fa fa-caret-down orange-icon" />
+        <i className="fa fa-caret-up orange-icon" />
       </span>
     );
   };
 
   showMultiTableInfo = (row) => {
+    const { currentCustomer } = this.props;
     let displayTableData = [{ ...row }];
     if (Array.isArray(row.backupList) && row.backupList.length) {
       return (
@@ -175,14 +180,19 @@ export default class ListBackups extends Component {
           >
             Table Name
           </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="storageLocation"
-            dataFormat={this.copyStorageLocation}
-            dataSort
-            dataAlign="left"
-          >
-            Storage Location
-          </TableHeaderColumn>
+          {isNotHidden(
+            currentCustomer.data.features,
+            'universes.details.backups.storageLocation'
+          ) && (
+            <TableHeaderColumn
+              dataField="storageLocation"
+              dataFormat={this.copyStorageLocation}
+              dataSort
+              dataAlign="left"
+            >
+              Storage Location
+            </TableHeaderColumn>
+          )}
         </BootstrapTable>
       );
     } else if (row.tableUUIDList && row.tableUUIDList.length) {
@@ -234,13 +244,18 @@ export default class ListBackups extends Component {
         >
           Table Name
         </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="storageLocation"
-          dataFormat={this.copyStorageLocation}
-          dataAlign="left"
-        >
-          Storage Location
-        </TableHeaderColumn>
+        {isNotHidden(
+          currentCustomer.data.features,
+          'universes.details.backups.storageLocation'
+        ) && (
+          <TableHeaderColumn
+            dataField="storageLocation"
+            dataFormat={this.copyStorageLocation}
+            dataAlign="left"
+          >
+            Storage Location
+          </TableHeaderColumn>
+        )}
       </BootstrapTable>
     );
   };
@@ -248,9 +263,9 @@ export default class ListBackups extends Component {
   expandColumnComponent = ({ isExpandableRow, isExpanded }) => {
     if (isExpandableRow) {
       return isExpanded ? (
-        <i className="fa fa-chevron-down"></i>
+        <i className="fa fa-chevron-down" />
       ) : (
-        <i className="fa fa-chevron-right"></i>
+        <i className="fa fa-chevron-right" />
       );
     } else {
       return <span>&nbsp;</span>;
@@ -258,7 +273,7 @@ export default class ListBackups extends Component {
   };
 
   handleModalSubmit = (type, data) => {
-    const taskUUID = data.taskUUID;
+    const taskUUID = data?.taskUUID || null;
     this.setState({
       taskUUID,
       showAlert: true,
@@ -277,6 +292,41 @@ export default class ListBackups extends Component {
     });
   };
 
+  /**
+   * This method will help us to get the particular backupUUID
+   * for the selected row.
+   *
+   * @param {string} {backupUUID} Backup UUID.
+   * @param {boolean} isSelected Selected row.
+   * @returns Boolean
+   */
+  onRowSelect = ({ backupUUID }, isSelected) => {
+    isSelected
+      ? this.setState({ selected: [...this.state.selected, backupUUID].sort() })
+      : this.setState({ selected: this.state.selected.filter((id) => id !== backupUUID) });
+
+    return true;
+  };
+
+  /**
+   * This method will help us to select all the backups for
+   * the current page.
+   *
+   * @param {boolean} isSelected Selected rows.
+   * @param {Array} rows Number of rows.
+   * @returns Boolean
+   */
+  onSelectAll = (isSelected, rows) => {
+    if (isSelected) {
+      const selected = [...this.state.selected, ...rows.map((row) => row.backupUUID)];
+      this.setState({ selected: selected });
+    } else {
+      this.setState({ selected: [] });
+    }
+
+    return true;
+  };
+
   render() {
     const {
       currentCustomer,
@@ -285,7 +335,26 @@ export default class ListBackups extends Component {
       universeTableTypes,
       title
     } = this.props;
-    const { showModal, taskUUID, showAlert, alertType, selectedRowList } = this.state;
+    const {
+      showModal,
+      taskUUID,
+      showAlert,
+      alertType,
+      selectedRowList,
+      showDeletedBackups,
+      selected
+    } = this.state;
+
+    // Variable to set the checkbox for backup list table.
+    const selectRowProp = {
+      mode: 'checkbox',
+      clickToExpand: true,
+      onSelect: this.onRowSelect,
+      onSelectAll: this.onSelectAll,
+      selected: this.state.selected,
+      unselectable: []
+    };
+
     if (
       getPromiseState(universeBackupList).isLoading() ||
       getPromiseState(universeBackupList).isInit()
@@ -296,7 +365,10 @@ export default class ListBackups extends Component {
     const backupInfos = universeBackupList.data
       .map((b) => {
         const backupInfo = b.backupInfo;
-        if (backupInfo.actionType === 'CREATE') {
+        if (
+          (backupInfo.actionType === 'CREATE' && b.state !== 'Deleted') ||
+          (showDeletedBackups && b.state === 'Deleted')
+        ) {
           backupInfo.backupUUID = b.backupUUID;
           backupInfo.status = b.state;
           backupInfo.createTime = b.createTime;
@@ -319,6 +391,11 @@ export default class ListBackups extends Component {
         return null;
       })
       .filter(Boolean);
+
+    // Check for in-progress backups and mark them as unselctable.
+    selectRowProp.unselectable = backupInfos
+      .filter((backup) => backup.status === 'InProgress')
+      .map((data) => data.backupUUID);
 
     const formatActionButtons = (item, row) => {
       if (row.showActions && isAvailable(currentCustomer.data.features, 'universes.backup')) {
@@ -344,6 +421,21 @@ export default class ListBackups extends Component {
             />
           </DropdownButton>
         );
+      } else if (row.status === 'InProgress' && !row.showActions) {
+        return (
+          <DropdownButton
+            className="btn btn-default"
+            title="Actions"
+            id="bg-nested-dropdown"
+            pullRight
+          >
+            <TableAction
+              currentRow={row}
+              actionType="stop-backup"
+              onError={() => this.handleModalSubmit('Stop')}
+            />
+          </DropdownButton>
+        );
       }
     };
 
@@ -356,19 +448,20 @@ export default class ListBackups extends Component {
       if (row.backupList && row.backupList.length) {
         return (
           <div className="backup-type">
-            <i className="fa fa-globe" aria-hidden="true"></i> {item===YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
+            <i className="fa fa-globe" aria-hidden="true" />{' '}
+            {item === YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
           </div>
         );
       } else if (row.tableUUIDList && row.tableUUIDList.length) {
         return (
           <div className="backup-type">
-            <i className="fa fa-table"></i> Multi-Table backup
+            <i className="fa fa-table" /> Multi-Table backup
           </div>
         );
       } else if (row.tableUUID) {
         return (
           <div className="backup-type">
-            <i className="fa fa-file"></i> Table backup
+            <i className="fa fa-file" /> Table backup
           </div>
         );
       } else if (row.keyspace != null) {
@@ -376,7 +469,7 @@ export default class ListBackups extends Component {
           row.backupType === YSQL_TABLE_TYPE ? 'Namespace backup' : 'Keyspace backup';
         return (
           <div className="backup-type">
-            <i className="fa fa-database"></i> {backupTableType}
+            <i className="fa fa-database" /> {backupTableType}
           </div>
         );
       }
@@ -388,13 +481,15 @@ export default class ListBackups extends Component {
         )}
         {showAlert && (
           <Alert bsStyle={taskUUID ? 'success' : 'danger'} onDismiss={this.handleDismissAlert}>
-            {taskUUID ? (
+            {isNonEmptyArray(taskUUID) && taskUUID.length < 2 ? (
               <div>
                 {alertType} started successfully. See{' '}
                 <Link to={`/tasks/${taskUUID}`}>task progress</Link>
               </div>
             ) : (
-              `${alertType} task failed to initialize.`
+              <div>
+                {alertType} started successfully. See <Link to="/tasks">task progress</Link>
+              </div>
             )}
           </Alert>
         )}
@@ -408,10 +503,13 @@ export default class ListBackups extends Component {
               <div className="pull-right">
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
-                    {!universePaused &&
+                    {!universePaused && (
                       <>
                         <TableAction
-                          disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
+                          disabled={
+                            currentUniverse.universeDetails.backupInProgress ||
+                            currentUniverse.universeConfig.takeBackups === 'false'
+                          }
                           className="table-action"
                           btnClass="btn-orange"
                           actionType="create-backup"
@@ -428,8 +526,34 @@ export default class ListBackups extends Component {
                           onSubmit={(data) => this.handleModalSubmit('Restore', data)}
                           onError={() => this.handleModalSubmit('Restore')}
                         />
+                        <TableAction
+                          disabled={
+                            currentUniverse.universeDetails.backupInProgress ||
+                            this.state.selected.length < 1
+                          }
+                          currentRow={{
+                            type: 'bulkDelete',
+                            data: selected
+                          }}
+                          className="table-action"
+                          btnClass="btn-default"
+                          isMenuItem={false}
+                          actionType="delete-backup"
+                          onSubmit={(data) => this.handleModalSubmit('Delete', data)}
+                          onError={() => this.handleModalSubmit('Delete')}
+                        />
+                        <div className="chk-show-deleted-backups">
+                          <label>Show deleted backups</label>
+                          <Toggle
+                            checked={showDeletedBackups}
+                            label="Show deleted backups"
+                            onChange={(event) => {
+                              this.setState({ showDeletedBackups: event.target.checked });
+                            }}
+                          />
+                        </div>
                       </>
-                    }
+                    )}
                   </div>
                 )}
               </div>
@@ -450,6 +574,7 @@ export default class ListBackups extends Component {
               options={{
                 expandBy: 'column'
               }}
+              selectRow={selectRowProp}
             >
               <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true} />
               <TableHeaderColumn
@@ -501,7 +626,7 @@ export default class ListBackups extends Component {
               >
                 Status
               </TableHeaderColumn>
-              {!universePaused &&
+              {!universePaused && (
                 <TableHeaderColumn
                   dataField={'actions'}
                   columnClassName={'no-border yb-actions-cell'}
@@ -513,7 +638,7 @@ export default class ListBackups extends Component {
                 >
                   Actions
                 </TableHeaderColumn>
-              }
+              )}
             </BootstrapTable>
           }
         />

@@ -35,19 +35,18 @@ public class HealthManager extends DevopsBase {
     public Map<String, String> tserverNodes = new HashMap<>();
     public String ybSoftwareVersion = null;
     public boolean enableTlsClient = false;
+    public boolean rootAndClientRootCASame = true;
     public String sslProtocol = "";
     public boolean enableYSQL = false;
     public int ysqlPort = 5433;
     public int ycqlPort = 9042;
     public boolean enableYEDIS = false;
     public int redisPort = 6379;
+    public boolean enableYSQLAuth = false;
   }
 
   public ShellResponse runCommand(
-    Provider provider,
-    List<ClusterInfo> clusters,
-    Long potentialStartTimeMs
-  ) {
+      Provider provider, List<ClusterInfo> clusters, Long potentialStartTimeMs) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -65,9 +64,13 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(String.valueOf(potentialStartTimeMs));
     }
 
+    if (!provider.code.equals("onprem") && !provider.code.equals("kubernetes")) {
+      commandArgs.add("--check_clock");
+    }
+
     // Start with a copy of the cloud config env vars.
-    HashMap<String, String> extraEnvVars = provider == null ?
-      new HashMap<>() : new HashMap<>(provider.getConfig());
+    HashMap<String, String> extraEnvVars =
+        provider == null ? new HashMap<>() : new HashMap<>(provider.getConfig());
 
     return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
   }

@@ -403,9 +403,13 @@ class Block : public std::enable_shared_from_this<Block> {
     bool has_ok = false;
     bool applied_operations = false;
     // Supposed to be called only once.
-    StatusFunctor callback = BlockCallback(shared_from_this());
+    client::FlushCallback callback = BlockCallback(shared_from_this());
+    auto status_callback = [callback](const Status& status){
+      client::FlushStatus flush_status = {status, {}};
+      callback(&flush_status);
+    };
     for (auto* op : ops_) {
-      has_ok = op->Apply(session_.get(), callback, &applied_operations) || has_ok;
+      has_ok = op->Apply(session_.get(), status_callback, &applied_operations) || has_ok;
     }
     if (has_ok) {
       if (applied_operations) {
@@ -433,9 +437,21 @@ class Block : public std::enable_shared_from_this<Block> {
  private:
   class BlockCallback {
    public:
-    explicit BlockCallback(BlockPtr block) : block_(std::move(block)) {}
+    explicit BlockCallback(BlockPtr block) : block_(std::move(block)) {
+      // We remember block_->context_ to avoid issues with having multiple instances referring the
+      // same block (that is allocated in arena and one of them calling block_->Done while another
+      // still have reference to block and trying to update ref counter for it in destructor.
+      context_ = block_ ? block_->context_ : nullptr;
+    }
 
-    void operator()(const Status& status) {
+    ~BlockCallback() {
+      // We only reset context_ after block_, because resetting context_ could free Arena memory
+      // on which block_ is allocated together with its ref counter.
+      block_.reset();
+      context_.reset();
+    }
+
+    void operator()(client::FlushStatus* status) {
       // Block context owns the arena upon which this block is created.
       // Done is going to free up block's reference to context. So, unless we ensure that
       // the context lives beyond the block_.reset() we might get an error while updating the
@@ -447,27 +463,24 @@ class Block : public std::enable_shared_from_this<Block> {
     }
    private:
     BlockPtr block_;
+    BatchContextPtr context_;
   };
 
-  friend class BlockCallback;
-
-  void Done(const Status& status) {
+  void Done(client::FlushStatus* flush_status) {
     MonoTime now = MonoTime::Now();
     metrics_internal_.handler_latency->Increment(now.GetDeltaSince(start_).ToMicroseconds());
-    VLOG(3) << "Received status from call " << status.ToString(true);
+    VLOG(3) << "Received status from call " << flush_status->status.ToString(true);
 
     std::unordered_map<const client::YBOperation*, Status> op_errors;
     bool tablet_not_found = false;
-    if (!status.ok()) {
-      if (session_ != nullptr) {
-        for (const auto& error : session_->GetAndClearPendingErrors()) {
-          if (error->status().IsNotFound()) {
-            tablet_not_found = true;
-          }
-          op_errors[&error->failed_op()] = std::move(error->status());
-          YB_LOG_EVERY_N_SECS(WARNING, 1) << "Explicit error while inserting: "
-                                          << error->status().ToString();
+    if (!flush_status->status.ok()) {
+      for (const auto& error : flush_status->errors) {
+        if (error->status().IsNotFound()) {
+          tablet_not_found = true;
         }
+        op_errors[&error->failed_op()] = std::move(error->status());
+        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Explicit error while inserting: "
+                                        << error->status().ToString();
       }
     }
 

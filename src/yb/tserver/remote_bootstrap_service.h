@@ -35,7 +35,6 @@
 #include <string>
 #include <unordered_map>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/remote_bootstrap.service.h"
@@ -48,10 +47,6 @@
 
 namespace yb {
 class FsManager;
-
-namespace log {
-class ReadableLogSegment;
-} // namespace log
 
 namespace tserver {
 

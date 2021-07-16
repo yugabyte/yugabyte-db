@@ -13,23 +13,19 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
-
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -39,22 +35,26 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.*;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 
 @Singleton
 public class NodeManager extends DevopsBase {
+  static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
-  private static final List<String> VALID_CONFIGURE_PROCESS_TYPES = ImmutableList.of(
-      ServerType.MASTER.name(),
-      ServerType.TSERVER.name());
+  private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
+      ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
 
-  @Inject
-  ReleaseManager releaseManager;
+  @Inject ReleaseManager releaseManager;
 
   @Override
   protected String getCommandType() {
@@ -73,24 +73,27 @@ public class NodeManager extends DevopsBase {
     Tags,
     InitYSQL,
     Disk_Update,
+    Change_Instance_Type,
     Pause,
     Resume,
+    Create_Root_Volumes,
+    Replace_Root_Volume
   }
+
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject play.Configuration appConfig;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
-    Universe universe = Universe.get(nodeTaskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
       LOG.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
     }
-    return universe.getUniverseDetails()
-                   .getClusterByUuid(nodeDetails.placementUuid)
-                   .userIntent;
+    return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
   }
 
   private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
@@ -139,7 +142,8 @@ public class NodeManager extends DevopsBase {
         subCommand.add(keyInfo.privateKey);
 
         // We only need to include keyPair name for setup server call and if this is aws.
-        if (params instanceof AnsibleSetupServer.Params && userIntent.providerType.equals(Common.CloudType.aws)) {
+        if (params instanceof AnsibleSetupServer.Params
+            && userIntent.providerType.equals(Common.CloudType.aws)) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
           // Also we will add the security group information.
@@ -151,25 +155,25 @@ public class NodeManager extends DevopsBase {
           }
         }
       }
-      if (params instanceof AnsibleSetupServer.Params &&
-          userIntent.providerType.equals(Common.CloudType.azu)) {
+      if (params instanceof AnsibleSetupServer.Params
+          && userIntent.providerType.equals(Common.CloudType.azu)) {
         Region r = params.getRegion();
         String customSecurityGroupId = r.getSecurityGroupId();
-          if (customSecurityGroupId != null) {
-            subCommand.add("--security_group_id");
-            subCommand.add(customSecurityGroupId);
-          }
+        if (customSecurityGroupId != null) {
+          subCommand.add("--security_group_id");
+          subCommand.add(customSecurityGroupId);
+        }
       }
 
-      if (params instanceof AnsibleDestroyServer.Params &&
-          userIntent.providerType.equals(Common.CloudType.onprem)) {
+      if (params instanceof AnsibleDestroyServer.Params
+          && userIntent.providerType.equals(Common.CloudType.onprem)) {
         subCommand.add("--install_node_exporter");
       }
 
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if ((type == NodeCommandType.Provision || type == NodeCommandType.Precheck)
+      if ((type == NodeCommandType.Provision || type == NodeCommandType.Destroy)
           && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
@@ -179,8 +183,14 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--precheck_type");
         if (keyInfo.skipProvisioning) {
           subCommand.add("configure");
+          subCommand.add("--ssh_user");
+          subCommand.add("yugabyte");
         } else {
           subCommand.add("provision");
+          if (keyInfo.sshUser != null) {
+            subCommand.add("--ssh_user");
+            subCommand.add(keyInfo.sshUser);
+          }
         }
 
         if (keyInfo.airGapInstall) {
@@ -214,7 +224,7 @@ public class NodeManager extends DevopsBase {
     if (params.deviceInfo.numVolumes != null && !params.getProvider().code.equals("onprem")) {
       args.add("--num_volumes");
       args.add(Integer.toString(params.deviceInfo.numVolumes));
-    } else if (params.deviceInfo.mountPoints != null)  {
+    } else if (params.deviceInfo.mountPoints != null) {
       args.add("--mount_points");
       args.add(params.deviceInfo.mountPoints);
     }
@@ -240,7 +250,7 @@ public class NodeManager extends DevopsBase {
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
     List<String> subcommand = new ArrayList<String>();
-    Universe universe = Universe.get(taskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
@@ -285,13 +295,13 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
-    switch(taskParam.type) {
+    switch (taskParam.type) {
       case Everything:
-        boolean useHostname = universe.getUniverseDetails()
-          .getPrimaryCluster().userIntent.useHostname;
+        boolean useHostname =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname;
         if (ybServerPackage == null) {
-          throw new RuntimeException("Unable to fetch yugabyte release for version: " +
-              taskParam.ybSoftwareVersion);
+          throw new RuntimeException(
+              "Unable to fetch yugabyte release for version: " + taskParam.ybSoftwareVersion);
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
@@ -312,19 +322,25 @@ public class NodeManager extends DevopsBase {
           subcommand.add(node.cloudInfo.private_ip);
           pgsqlProxyBindAddress = "0.0.0.0";
         }
+
         if (taskParam.enableYSQL) {
           extra_gflags.put("enable_ysql", "true");
-          extra_gflags.put("pgsql_proxy_bind_address", String.format(
-            "%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort
-          ));
+          extra_gflags.put(
+              "pgsql_proxy_bind_address",
+              String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
         } else {
           extra_gflags.put("enable_ysql", "false");
         }
+
+        if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+            && taskParam.setTxnTableWaitCountFlag) {
+          extra_gflags.put(
+              "txn_table_wait_min_ts_count",
+              Integer.toString(
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes));
+        }
+
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
-          CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
-          if (cert == null) {
-            throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
-          }
           if (taskParam.enableNodeToNodeEncrypt) {
             extra_gflags.put("use_node_to_node_encryption", "true");
           }
@@ -332,46 +348,153 @@ public class NodeManager extends DevopsBase {
             extra_gflags.put("use_client_to_server_encryption", "true");
           }
           extra_gflags.put(
-            "allow_insecure_connections",
-            taskParam.allowInsecure ? "true" : "false"
-          );
+              "allow_insecure_connections", taskParam.allowInsecure ? "true" : "false");
           String yb_home_dir = taskParam.getProvider().getYbHome();
 
-          extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-          subcommand.add("--certs_node_dir");
-          subcommand.add(yb_home_dir + "/yugabyte-tls-config");
+          extra_gflags.put("cert_node_filename", node.cloudInfo.private_ip);
 
-          if (cert.certType == CertificateInfo.Type.SelfSigned) {
-            subcommand.add("--rootCA_cert");
-            subcommand.add(cert.certificate);
-            subcommand.add("--rootCA_key");
-            subcommand.add(cert.privateKey);
-            if (taskParam.enableClientToNodeEncrypt) {
-              subcommand.add("--client_cert");
-              subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
-              subcommand.add("--client_key");
-              subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+          if (taskParam.rootAndClientRootCASame) {
+            extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+            subcommand.add("--certs_node_dir");
+            subcommand.add(yb_home_dir + "/yugabyte-tls-config");
+
+            CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
+            if (rootCert == null) {
+              throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
+            }
+
+            switch (rootCert.certType) {
+              case SelfSigned:
+                {
+                  subcommand.add("--rootCA_cert");
+                  subcommand.add(rootCert.certificate);
+                  subcommand.add("--rootCA_key");
+                  subcommand.add(rootCert.privateKey);
+                  break;
+                }
+              case CustomCertHostPath:
+                {
+                  CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                  subcommand.add("--use_custom_certs");
+                  subcommand.add("--root_cert_path");
+                  subcommand.add(customCertInfo.rootCertPath);
+                  subcommand.add("--node_cert_path");
+                  subcommand.add(customCertInfo.nodeCertPath);
+                  subcommand.add("--node_key_path");
+                  subcommand.add(customCertInfo.nodeKeyPath);
+                  if (customCertInfo.clientCertPath != null
+                      && !customCertInfo.clientCertPath.isEmpty()
+                      && customCertInfo.clientKeyPath != null
+                      && !customCertInfo.clientKeyPath.isEmpty()) {
+                    // These client certs are used for node to postgres communication
+                    // These are seprate from clientRoot certs which are used for server to client
+                    // comm
+                    // These are not required anymore as this is not mandatory now and can be
+                    // removed
+                    // The code is still here to mantain backward compatibility
+                    subcommand.add("--client_cert_path");
+                    subcommand.add(customCertInfo.clientCertPath);
+                    subcommand.add("--client_key_path");
+                    subcommand.add(customCertInfo.clientKeyPath);
+                  }
+                  break;
+                }
+              case CustomServerCert:
+                {
+                  throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
+                }
             }
           } else {
-            CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-            subcommand.add("--use_custom_certs");
-            subcommand.add("--root_cert_path");
-            subcommand.add(customCertInfo.rootCertPath);
-            subcommand.add("--node_cert_path");
-            subcommand.add(customCertInfo.nodeCertPath);
-            subcommand.add("--node_key_path");
-            subcommand.add(customCertInfo.nodeKeyPath);
-            if (customCertInfo.clientCertPath != null) {
-              subcommand.add("--client_cert_path");
-              subcommand.add(customCertInfo.clientCertPath);
-              subcommand.add("--client_key_path");
-              subcommand.add(customCertInfo.clientKeyPath);
+            if (taskParam.enableNodeToNodeEncrypt) {
+              extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              subcommand.add("--certs_node_dir");
+              subcommand.add(yb_home_dir + "/yugabyte-tls-config");
+
+              CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
+              if (rootCert == null) {
+                throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
+              }
+
+              switch (rootCert.certType) {
+                case SelfSigned:
+                  {
+                    subcommand.add("--rootCA_cert");
+                    subcommand.add(rootCert.certificate);
+                    subcommand.add("--rootCA_key");
+                    subcommand.add(rootCert.privateKey);
+                    break;
+                  }
+                case CustomCertHostPath:
+                  {
+                    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+                    subcommand.add("--use_custom_certs");
+                    subcommand.add("--root_cert_path");
+                    subcommand.add(customCertInfo.rootCertPath);
+                    subcommand.add("--node_cert_path");
+                    subcommand.add(customCertInfo.nodeCertPath);
+                    subcommand.add("--node_key_path");
+                    subcommand.add(customCertInfo.nodeKeyPath);
+                    break;
+                  }
+                case CustomServerCert:
+                  {
+                    throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
+                  }
+              }
+            }
+            if (taskParam.enableClientToNodeEncrypt) {
+              extra_gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              subcommand.add("--certs_client_dir");
+              subcommand.add(yb_home_dir + "/yugabyte-client-tls-config");
+
+              CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
+              if (clientRootCert == null) {
+                throw new RuntimeException(
+                    "No valid clientRootCA found for " + taskParam.universeUUID);
+              }
+
+              switch (clientRootCert.certType) {
+                case SelfSigned:
+                  {
+                    subcommand.add("--clientRootCA_cert");
+                    subcommand.add(clientRootCert.certificate);
+                    subcommand.add("--clientRootCA_key");
+                    subcommand.add(clientRootCert.privateKey);
+                    break;
+                  }
+                case CustomCertHostPath:
+                  {
+                    CertificateParams.CustomCertInfo customCertInfo =
+                        clientRootCert.getCustomCertInfo();
+                    subcommand.add("--use_custom_client_certs");
+                    subcommand.add("--client_root_cert_path");
+                    subcommand.add(customCertInfo.rootCertPath);
+                    subcommand.add("--client_node_cert_path");
+                    subcommand.add(customCertInfo.nodeCertPath);
+                    subcommand.add("--client_node_key_path");
+                    subcommand.add(customCertInfo.nodeKeyPath);
+                    break;
+                  }
+                case CustomServerCert:
+                  {
+                    CertificateInfo.CustomServerCertInfo customServerCertInfo =
+                        clientRootCert.getCustomServerCertInfo();
+                    subcommand.add("--use_custom_server_certs");
+                    subcommand.add("--server_root_cert");
+                    subcommand.add(clientRootCert.certificate);
+                    subcommand.add("--server_node_cert");
+                    subcommand.add(customServerCertInfo.serverCert);
+                    subcommand.add("--server_node_key");
+                    subcommand.add(customServerCertInfo.serverKey);
+                  }
+              }
             }
           }
         }
-        if (taskParam.callhomeLevel != null){
-          extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());
-          if(taskParam.callhomeLevel.toString().equals("NONE")){
+        if (taskParam.callhomeLevel != null) {
+          extra_gflags.put(
+              "callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());
+          if (taskParam.callhomeLevel.toString().equals("NONE")) {
             extra_gflags.put("callhome_enabled", "false");
           }
         }
@@ -381,8 +504,8 @@ public class NodeManager extends DevopsBase {
       case Software:
         {
           if (ybServerPackage == null) {
-            throw new RuntimeException("Unable to fetch yugabyte release for version: " +
-                taskParam.ybSoftwareVersion);
+            throw new RuntimeException(
+                "Unable to fetch yugabyte release for version: " + taskParam.ybSoftwareVersion);
           }
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
@@ -411,13 +534,16 @@ public class NodeManager extends DevopsBase {
         break;
       case GFlags:
         {
-          if (!taskParam.updateMasterAddrsOnly &&
-              (taskParam.gflags == null || taskParam.gflags.isEmpty()) &&
-              (taskParam.gflagsToRemove == null || taskParam.gflagsToRemove.isEmpty())) {
-            throw new RuntimeException("GFlags data provided for " +
-                                       taskParam.nodeName + "'s " +
-                                       taskParam.getProperty("processType") + " process" +
-                                        " have no changes from existing flags.");
+          if (!taskParam.updateMasterAddrsOnly
+              && (taskParam.gflags == null || taskParam.gflags.isEmpty())
+              && (taskParam.gflagsToRemove == null || taskParam.gflagsToRemove.isEmpty())) {
+            throw new RuntimeException(
+                "GFlags data provided for "
+                    + taskParam.nodeName
+                    + "'s "
+                    + taskParam.getProperty("processType")
+                    + " process"
+                    + " have no changes from existing flags.");
           }
 
           String processType = taskParam.getProperty("processType");
@@ -453,6 +579,9 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--gflags_to_remove");
             subcommand.add(Json.stringify(Json.toJson(taskParam.gflagsToRemove)));
           }
+
+          subcommand.add("--tags");
+          subcommand.add("override_gflags");
         }
         break;
       case Certs:
@@ -480,7 +609,10 @@ public class NodeManager extends DevopsBase {
           subcommand.add(customCertInfo.nodeCertPath);
           subcommand.add("--node_key_path");
           subcommand.add(customCertInfo.nodeKeyPath);
-          if (customCertInfo.clientCertPath != null) {
+          if (customCertInfo.clientCertPath != null
+              && !customCertInfo.clientCertPath.isEmpty()
+              && customCertInfo.clientKeyPath != null
+              && !customCertInfo.clientKeyPath.isEmpty()) {
             subcommand.add("--client_cert_path");
             subcommand.add(customCertInfo.clientCertPath);
             subcommand.add("--client_key_path");
@@ -488,139 +620,308 @@ public class NodeManager extends DevopsBase {
           }
         }
         break;
+      case ToggleTls:
+        String processType = taskParam.getProperty("processType");
+        String subType = taskParam.getProperty("taskSubType");
+
+        if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+          throw new RuntimeException("Invalid processType: " + processType);
+        } else {
+          subcommand.add("--yb_process_type");
+          subcommand.add(processType.toLowerCase());
+        }
+
+        String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
+        String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
+        String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+
+        String certsNodeDir =
+            Provider.getOrBadRequest(
+                        UUID.fromString(
+                            universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                    .getYbHome()
+                + "/yugabyte-tls-config";
+
+        if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+          if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+            CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
+            if (cert == null) {
+              throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
+            }
+
+            subcommand.add("--adding_certs");
+            subcommand.add("--certs_node_dir");
+            subcommand.add(certsNodeDir);
+
+            if (cert.certType == CertificateInfo.Type.SelfSigned) {
+              subcommand.add("--rootCA_cert");
+              subcommand.add(cert.certificate);
+              subcommand.add("--rootCA_key");
+              subcommand.add(cert.privateKey);
+              if (taskParam.enableClientToNodeEncrypt) {
+                subcommand.add("--client_cert");
+                subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+                subcommand.add("--client_key");
+                subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+              }
+            } else {
+              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+              subcommand.add("--use_custom_certs");
+              subcommand.add("--root_cert_path");
+              subcommand.add(customCertInfo.rootCertPath);
+              subcommand.add("--node_cert_path");
+              subcommand.add(customCertInfo.nodeCertPath);
+              subcommand.add("--node_key_path");
+              subcommand.add(customCertInfo.nodeKeyPath);
+              if (customCertInfo.clientCertPath != null
+                  && !customCertInfo.clientCertPath.isEmpty()
+                  && customCertInfo.clientKeyPath != null
+                  && !customCertInfo.clientKeyPath.isEmpty()) {
+                subcommand.add("--client_cert_path");
+                subcommand.add(customCertInfo.clientCertPath);
+                subcommand.add("--client_key_path");
+                subcommand.add(customCertInfo.clientKeyPath);
+              }
+            }
+          } else {
+            throw new RuntimeException("No changes needed for both root cert and client cert.");
+          }
+        } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+          Map<String, String> gflags = new HashMap<>();
+          if (taskParam.nodeToNodeChange > 0) {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", "true");
+            gflags.put("certs_dir", certsNodeDir);
+          } else if (taskParam.nodeToNodeChange < 0) {
+            gflags.put("allow_insecure_connections", "true");
+          } else {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", allowInsecureString);
+            gflags.put("certs_dir", certsNodeDir);
+          }
+
+          subcommand.add("--replace_gflags");
+          subcommand.add("--gflags");
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
+        } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+          Map<String, String> gflags = new HashMap<>();
+          if (taskParam.nodeToNodeChange > 0) {
+            gflags.put("allow_insecure_connections", allowInsecureString);
+          } else if (taskParam.nodeToNodeChange < 0) {
+            gflags.put("use_node_to_node_encryption", nodeToNodeString);
+            gflags.put("use_client_to_server_encryption", clientToNodeString);
+            gflags.put("allow_insecure_connections", allowInsecureString);
+            gflags.put("certs_dir", certsNodeDir);
+          } else {
+            LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+          }
+
+          subcommand.add("--replace_gflags");
+          subcommand.add("--gflags");
+          subcommand.add(Json.stringify(Json.toJson(gflags)));
+        } else {
+          throw new RuntimeException("Invalid taskSubType property: " + subType);
+        }
+        break;
     }
     return subcommand;
   }
 
-  public ShellResponse nodeCommand(NodeCommandType type,
-                                   NodeTaskParams nodeTaskParam) throws RuntimeException {
+  public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    Path bootScriptFile = null;
+
     switch (type) {
-      case Provision: {
-        if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
-          throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
-        }
-        AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
-        Common.CloudType cloudType = userIntent.providerType;
-        if (!cloudType.equals(Common.CloudType.onprem)) {
-          commandArgs.add("--instance_type");
-          commandArgs.add(taskParam.instanceType);
-          commandArgs.add("--cloud_subnet");
-          commandArgs.add(taskParam.subnetId);
-
-          // For now we wouldn't add machine image for aws and fallback on the default
-          // one devops gives us, we need to transition to having this use versioning
-          // like base_image_version [ENG-1859]
-          String ybImage = taskParam.getRegion().ybImage;
-          if (ybImage != null && !ybImage.isEmpty()) {
-            commandArgs.add("--machine_image");
-            commandArgs.add(ybImage);
-          }
-          /*
-          // TODO(bogdan): talk to Ram about this, if we want/use it for kube/onprem?
-          if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
-            commandArgs.add("--machine_image");
-            commandArgs.add(taskParam.getRegion().ybImage);
-          }
-          */
-          if (taskParam.assignPublicIP) {
-            commandArgs.add("--assign_public_ip");
-          }
+      case Replace_Root_Volume:
+        if (!(nodeTaskParam instanceof ReplaceRootVolume.Params)) {
+          throw new RuntimeException("NodeTaskParams is not ReplaceRootVolume.Params");
         }
 
-        if (cloudType.equals(Common.CloudType.aws)) {
-          if (taskParam.useTimeSync) {
+        ReplaceRootVolume.Params rrvParams = (ReplaceRootVolume.Params) nodeTaskParam;
+        commandArgs.add("--replacement_disk");
+        commandArgs.add(rrvParams.replacementDisk);
+        commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, type));
+        break;
+      case Create_Root_Volumes:
+        if (!(nodeTaskParam instanceof CreateRootVolumes.Params)) {
+          throw new RuntimeException("NodeTaskParams is not CreateRootVolumes.Params");
+        }
+
+        CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
+        commandArgs.add("--num_disks");
+        commandArgs.add(String.valueOf(crvParams.numVolumes));
+        // intentional fall-thru
+      case Provision:
+        {
+          if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
+          }
+          AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
+          Common.CloudType cloudType = userIntent.providerType;
+          if (!cloudType.equals(Common.CloudType.onprem)) {
+            commandArgs.add("--instance_type");
+            commandArgs.add(taskParam.instanceType);
+            commandArgs.add("--cloud_subnet");
+            commandArgs.add(taskParam.subnetId);
+
+            Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+
+            if (config.hasPath(BOOT_SCRIPT_PATH)) {
+              String bootScript = config.getString(BOOT_SCRIPT_PATH);
+              commandArgs.add("--boot_script");
+
+              // treat the contents as script body if it starts with a shebang line
+              // otherwise consider the contents to be a path
+              if (bootScript.startsWith("#!")) {
+                try {
+                  bootScriptFile = Files.createTempFile(nodeTaskParam.nodeName, "-boot.sh");
+                  Files.write(bootScriptFile, bootScript.getBytes());
+
+                  commandArgs.add(bootScriptFile.toAbsolutePath().toString());
+                } catch (IOException e) {
+                  LOG.error(e.getMessage(), e);
+                  throw new RuntimeException(e);
+                }
+              } else {
+                commandArgs.add(bootScript);
+              }
+            }
+
+            // For now we wouldn't add machine image for aws and fallback on the default
+            // one devops gives us, we need to transition to having this use versioning
+            // like base_image_version [ENG-1859]
+            String ybImage =
+                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+            if (ybImage != null && !ybImage.isEmpty()) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+            /*
+            // TODO(bogdan): talk to Ram about this, if we want/use it for kube/onprem?
+            if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(taskParam.getRegion().ybImage);
+            }
+            */
+            if (taskParam.assignPublicIP) {
+              commandArgs.add("--assign_public_ip");
+            }
+          }
+
+          if (taskParam.useTimeSync
+              && (cloudType.equals(Common.CloudType.aws)
+                  || cloudType.equals(Common.CloudType.gcp))) {
             commandArgs.add("--use_chrony");
           }
 
-          if (userIntent.instanceTags != null && !userIntent.instanceTags.isEmpty()) {
+          if (cloudType.equals(Common.CloudType.aws)) {
+            if (taskParam.cmkArn != null) {
+              commandArgs.add("--cmk_res_name");
+              commandArgs.add(taskParam.cmkArn);
+            }
+
+            if (taskParam.ipArnString != null) {
+              commandArgs.add("--iam_profile_arn");
+              commandArgs.add(taskParam.ipArnString);
+            }
+
+            if (!taskParam.remotePackagePath.isEmpty()) {
+              commandArgs.add("--remote_package_path");
+              commandArgs.add(taskParam.remotePackagePath);
+            }
+          }
+          if (cloudType.equals(Common.CloudType.azu)) {
+            Region r = taskParam.getRegion();
+            String vnetName = r.getVnetName();
+            if (vnetName != null && !vnetName.isEmpty()) {
+              commandArgs.add("--vpcId");
+              commandArgs.add(vnetName);
+            }
+          }
+
+          if (Provider.InstanceTagsEnabledProviders.contains(cloudType)
+              && userIntent.instanceTags != null
+              && !userIntent.instanceTags.isEmpty()) {
             Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
             commandArgs.add("--instance_tags");
             commandArgs.add(Json.stringify(Json.toJson(useTags)));
           }
 
-          if (taskParam.cmkArn != null) {
-            commandArgs.add("--cmk_res_name");
-            commandArgs.add(taskParam.cmkArn);
-          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+            DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
+            if (deviceInfo.storageType != null) {
+              commandArgs.add("--volume_type");
+              commandArgs.add(deviceInfo.storageType.toString().toLowerCase());
+              if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
+                commandArgs.add("--disk_iops");
+                commandArgs.add(Integer.toString(deviceInfo.diskIops));
+              }
+              if (deviceInfo.storageType.isThroughputProvisioning()
+                  && deviceInfo.throughput != null) {
 
-          if (taskParam.ipArnString != null) {
-            commandArgs.add("--iam_profile_arn");
-            commandArgs.add(taskParam.ipArnString);
-          }
-
-          if (!taskParam.remotePackagePath.isEmpty()) {
-            commandArgs.add("--remote_package_path");
-            commandArgs.add(taskParam.remotePackagePath);
-          }
-        }
-        if (cloudType.equals(Common.CloudType.azu)) {
-          Region r = taskParam.getRegion();
-          String vnetName = r.getVnetName();
-          if (vnetName != null && !vnetName.isEmpty()) {
-            commandArgs.add("--vpcId");
-            commandArgs.add(vnetName);
-          }
-        }
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-        if (nodeTaskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
-          DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
-          if (deviceInfo.storageType != null) {
-            commandArgs.add("--volume_type");
-            commandArgs.add(deviceInfo.storageType.toString().toLowerCase());
-            if (deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1) &&
-                deviceInfo.diskIops != null) {
-              commandArgs.add("--disk_iops");
-              commandArgs.add(Integer.toString(deviceInfo.diskIops));
+                commandArgs.add("--disk_throughput");
+                commandArgs.add(Integer.toString(deviceInfo.throughput));
+              }
             }
           }
-        }
 
-        String localPackagePath = getThirdpartyPackagePath();
-        if (localPackagePath != null) {
-          commandArgs.add("--local_package_path");
-          commandArgs.add(localPackagePath);
-        }
+          String localPackagePath = getThirdpartyPackagePath();
+          if (localPackagePath != null) {
+            commandArgs.add("--local_package_path");
+            commandArgs.add(localPackagePath);
+          }
 
-        break;
-      }
-      case Configure: {
-        if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
-          throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
+          if (taskParam.reprovision) {
+            commandArgs.add("--reuse_host");
+            commandArgs.add("--reprovision");
+          }
+
+          break;
         }
-        AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
-        commandArgs.addAll(getConfigureSubCommand(taskParam));
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-        if (nodeTaskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
-        }
-        break;
-      }
-      case List: {
-        if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+      case Configure:
+        {
+          if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
+          }
+          AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
+          commandArgs.addAll(getConfigureSubCommand(taskParam));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          break;
         }
-        commandArgs.add("--as_json");
-        break;
-      }
-      case Destroy: {
-        if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
-          throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
+      case List:
+        {
+          if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+            if (nodeTaskParam.deviceInfo != null) {
+              commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+            }
+            commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          }
+          commandArgs.add("--as_json");
+          break;
         }
-        AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
-        commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
-        if (taskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(taskParam));
+      case Destroy:
+        {
+          if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
+          }
+          AnsibleDestroyServer.Params taskParam = (AnsibleDestroyServer.Params) nodeTaskParam;
+          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          if (taskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
         }
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-        break;
-      }
-      case Pause: {
+      case Pause:
+        {
           if (!(nodeTaskParam instanceof PauseServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
@@ -632,7 +933,8 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
-        case Resume: {
+      case Resume:
+        {
           if (!(nodeTaskParam instanceof ResumeServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
@@ -644,68 +946,103 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
-      case Control: {
-        if (!(nodeTaskParam instanceof AnsibleClusterServerCtl.Params)) {
-          throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
-        }
-        AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params) nodeTaskParam;
-        commandArgs.add(taskParam.process);
-        commandArgs.add(taskParam.command);
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-        break;
-      }
-      case Tags: {
-        if (!(nodeTaskParam instanceof InstanceActions.Params)) {
-          throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
-        }
-        InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-        if (userIntent.providerType.equals(Common.CloudType.aws)) {
-          if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
-            throw new RuntimeException("Invalid instance tags");
+      case Control:
+        {
+          if (!(nodeTaskParam instanceof AnsibleClusterServerCtl.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
           }
-          Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
-          commandArgs.add("--instance_tags");
-          commandArgs.add(Json.stringify(Json.toJson(useTags)));
-          if (!taskParam.deleteTags.isEmpty()) {
-            commandArgs.add("--remove_tags");
-            commandArgs.add(taskParam.deleteTags);
+          AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params) nodeTaskParam;
+          commandArgs.add(taskParam.process);
+          commandArgs.add(taskParam.command);
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
+        }
+      case Tags:
+        {
+          if (!(nodeTaskParam instanceof InstanceActions.Params)) {
+            throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
           }
+          InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
+          if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
+            if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
+              throw new RuntimeException("Invalid instance tags");
+            }
+            Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
+            commandArgs.add("--instance_tags");
+            commandArgs.add(Json.stringify(Json.toJson(useTags)));
+            if (!taskParam.deleteTags.isEmpty()) {
+              commandArgs.add("--remove_tags");
+              commandArgs.add(taskParam.deleteTags);
+            }
+            if (userIntent.providerType.equals(Common.CloudType.azu)) {
+              commandArgs.addAll(getDeviceArgs(taskParam));
+              commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+            }
+          }
+          break;
         }
-        break;
-      }
-      case Disk_Update: {
-        if (!(nodeTaskParam instanceof InstanceActions.Params)) {
-          throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
+      case Disk_Update:
+        {
+          if (!(nodeTaskParam instanceof InstanceActions.Params)) {
+            throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
+          }
+          InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          if (taskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          break;
         }
-        InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-        commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-        commandArgs.add("--instance_type");
-        commandArgs.add(taskParam.instanceType);
-        if (taskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(taskParam));
+      case Change_Instance_Type:
+        {
+          if (!(nodeTaskParam instanceof ChangeInstanceType.Params)) {
+            throw new RuntimeException("NodeTaskParams is not ResizeNode.Params");
+          }
+          ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
         }
-        break;
-      }
-      case CronCheck: {
-        if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
-          throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
+      case CronCheck:
+        {
+          if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
         }
-        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
-      }
-      case Precheck: {
-        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
-        if (nodeTaskParam.deviceInfo != null) {
-          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+      case Precheck:
+        {
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          }
+          break;
         }
-        break;
-      }
     }
     commandArgs.add(nodeTaskParam.nodeName);
-    return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
-      commandArgs, getCloudArgs(nodeTaskParam));
+    try {
+      return execCommand(
+          nodeTaskParam.getRegion().uuid,
+          null,
+          null,
+          type.toString().toLowerCase(),
+          commandArgs,
+          getCloudArgs(nodeTaskParam));
+    } finally {
+      if (bootScriptFile != null) {
+        try {
+          Files.deleteIfExists(bootScriptFile);
+        } catch (IOException e) {
+          LOG.error(e.getMessage(), e);
+        }
+      }
+    }
   }
 
-  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType){
+  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
     commandArgs.add("--node_ip");

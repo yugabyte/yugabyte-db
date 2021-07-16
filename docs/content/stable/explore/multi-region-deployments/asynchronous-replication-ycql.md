@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link">
+    <a href="../asynchronous-replication-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link active">
+    <a href="../asynchronous-replication-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -31,96 +31,126 @@ showAsideToc: true
 
 </ul>
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments/) in the Architecture section.
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/) in the Architecture section.
 
-This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yb-ctl](../../../admin/yb-ctl) and [yb-admin](../../../admin/yb-admin) utilities.
-
-## Prerequisites
-
-- For the tutorial, use the default database `yugabyte` and the default user `yugabyte`.
+This tutorial simulates a geo-distributed two data center (2DC) deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yugabyted](../../../reference/configuration/yugabyted) and [yb-admin](../../../admin/yb-admin) utilities.
 
 ## 1. Create two "data centers"
 
-Create and start your first local cluster that will simulate "Data Center - East" by running the following `yb-ctl create` command from your YugabyteDB home directory.
+Create and start your first local cluster that will simulate "Data Center - East" by running the following `yugabyted start` command from your YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-ctl create --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-east --ip_start 1
+$ ./bin/yugabyted start \
+                  --base_dir=datacenter-east \
+                  --listen=127.0.0.1
 ```
 
-This will start up a one-node local cluster using the IP address of `127.0.0.1:7100` and create `yb-datacenter-east` as the data directory. Upon starting, you should see a screen like the following.
+This will start up a one-node local cluster using the IP address of `127.0.0.1` and create `datacenter-east` as the base directory. Upon starting, you should see a screen similar to the following.
 
-```
-Creating cluster.
-Waiting for cluster to be ready.
-----------------------------------------------------------------------------------------------------
-| Node Count: 1 | Replication Factor: 1                                                            |
-----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
-| YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/ycqlsh                                                                 |
-| YEDIS Shell         : bin/redis-cli                                                              |
-| Web UI              : http://127.0.0.1:7000/                                                     |
-| Cluster Data        : /Users/yugabyte_user/yugabyte/yb-datacenter-east                           |
-----------------------------------------------------------------------------------------------------
+```output
+Starting yugabyted...
+✅ System checks           
+
++--------------------------------------------------------------------------------------------------+
+|                                            yugabyted                                             |
++--------------------------------------------------------------------------------------------------+
+| Status              : Running. Leader Master is present                                          |
+| Web console         : http://127.0.0.1:7000                                                      |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
+| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
+| YCQL                : bin/ycqlsh   -u cassandra                                                  |
+| Data Dir            : /Users/myuser/yugabyte-2.7.1.1/datacenter-east/data                        |
+| Log Dir             : /Users/myuser/yugabyte-2.7.1.1/datacenter-east/logs                        |
+| Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
++--------------------------------------------------------------------------------------------------+
+🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
+🎉 Join us on Slack at https://www.yugabyte.com/slack
+👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
 ```
 
-Create and start your second local cluster that will simulate "Data Center = West" by running the following `yb-ctl create` command from your YugabyteDB home directory.
+Create and start your second local cluster that will simulate "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-ctl create --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-west --ip_start 2
+$ ./bin/yugabyted start \
+                  --base_dir=datacenter-west \
+                  --listen=127.0.0.2
 ```
 
-This will start up a one-node cluster using IP address of `127.0.0.2` and create `yb-datacenter-west` as the data directory. Upon starting, you should see a screen like the following.
+This will start up a one-node cluster using IP address of `127.0.0.2` and create `datacenter-west` as the base directory. Upon starting, you should see a screen like the following.
 
+```output
+Starting yugabyted...
+✅ System checks           
+
++--------------------------------------------------------------------------------------------------+
+|                                            yugabyted                                             |
++--------------------------------------------------------------------------------------------------+
+| Status              : Running. Leader Master is present                                          |
+| Web console         : http://127.0.0.2:7000                                                      |
+| JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
+| YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
+| YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
+| Data Dir            : /Users/myuser/yugabyte-2.7.1.1/datacenter-west/data                        |
+| Log Dir             : /Users/myuser/yugabyte-2.7.1.1/datacenter-west/logs                        |
+| Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
++--------------------------------------------------------------------------------------------------+
+🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
+🎉 Join us on Slack at https://www.yugabyte.com/slack
+👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
 ```
-Creating cluster.
-Waiting for cluster to be ready.
-----------------------------------------------------------------------------------------------------
-| Node Count: 1 | Replication Factor: 1                                                            |
-----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql://127.0.0.2:5433/postgres                                  |
-| YSQL Shell          : bin/ysqlsh -h 127.0.0.2                                                    |
-| YCQL Shell          : bin/ycqlsh 127.0.0.2                                                        |
-| YEDIS Shell         : bin/redis-cli -h 127.0.0.2                                                 |
-| Web UI              : http://127.0.0.2:7000/                                                     |
-| Cluster Data        : /Users/yugabyte_user/yugabyte/yb-datacenter-west                           |
-----------------------------------------------------------------------------------------------------
-```
 
-## 2. Create database tables
+## 2. Create keyspace and tables
 
-In the default `yugabyte` database, create the database table `users` on the "Data Center - East" cluster.
+Create the keyspace `customers` and table `users` on the "Data Center - East" cluster.
 
-Open `ysqlsh` specifying the host IP address of `127.0.0.1`.
+Open `ycqlsh` specifying the host IP address of `127.0.0.1`.
 
 ```sh
-$ ./bin/ysqlsh -h 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
-Run the following `CREATE TABLE` statement.
+Create the `customers` keyspace.
 
-```plpgsql
-CREATE TABLE users (
-    email varchar(35) PRIMARY KEY,
-    username varchar(20)
-    );
+```sql
+ycqlsh> CREATE KEYSPACE customers;
 ```
 
-Now create the identical database table on cluster B.
+Enter the keyspace.
 
-Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
+```sql
+ycqlsh> USE customers;
+```
+
+Create the `users` table.
+
+``` sql
+CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
+```
+
+Now create the identical database table on the second cluster.
+
+Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`.
 
 ```sh
-$ ./bin/ysqlsh -h 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
-Run the following `CREATE TABLE` statement.
+Create the `customers` keyspace.
 
-```plpgsql
-CREATE TABLE users (
-    email varchar(35) PRIMARY KEY,
-    username varchar(20)
-    );
+```sql
+ycqlsh> CREATE KEYSPACE customers;
+```
+
+Enter the keyspace.
+
+```sql
+ycqlsh> USE customers;
+```
+
+Create the `users` table.
+
+```sql
+CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
 ```
 
 You now have the identical database table on each of your clusters and can now set up 2DC asynchronous replication.
@@ -130,7 +160,7 @@ You now have the identical database table on each of your clusters and can now s
 To configure "Data Center - West" to be the consumer of data changes from the "Data Center - East" cluster, you need to use the `yb-admin` `setup_universe_replication` command. Review the syntax and then you can run the command.
 
 ```sh
-yb-admin -master_addresses <consumer-master-addresses> \ 
+yb-admin -master_addresses <consumer-master-addresses> \
 setup_universe_replication <producer-universe_uuid> <producer_master_addresses> <producer-table-ids>
 ```
 
@@ -152,7 +182,7 @@ setup_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d 127.0.0.1:7100 0
 
 You should see a message like the following:
 
-```
+```output
 Replication setup successfully
 ```
 
@@ -160,29 +190,30 @@ Replication setup successfully
 
 Now that you've configured unidirectional replication, you can now add data to the `users` table on the "Data Center - East" cluster and see the data appear in the `users` table on "Data Center - West" cluster.
 
-To add data to the "Data Center - East" cluster, open `ysqlsh` by running the following command, making sure you are pointing to the new producer host.
+To add data to the "Data Center - East" cluster, open `ycqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
-```plpgsql
-yugabyte=# INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
+```sql
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector');
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('steve@example.com', 'steve');
 ```
 
-On the consumer "Data Center - West" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the consumer "Data Center - West" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
-```plpgsql
-yugabyte=# SELECT * FROM users;
+```sql
+ycqlsh:customers> SELECT * FROM users;
 ```
 
 You should see the following in the results.
 
-```
+```output
        email         | username
 ---------------------+----------
  hector@example.com  | hector
@@ -208,7 +239,7 @@ setup_universe_replication 0a315687-e9bd-430f-b6f4-ac831193a394  127.0.0.2:7100 
 
 You should see a message that shows the following:
 
-```
+```output
 Replication setup successfully
 ```
 
@@ -216,29 +247,30 @@ Replication setup successfully
 
 Now that you've configured bidirectional replication, you can now add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
-To add data to the "Data Center - West" cluster, open`ysqlsh` by running the following command, making sure you are pointing to the new producer host.
+To add data to the "Data Center - West" cluster, open`ycqlsh` by running the following command, making sure you are pointing to the new producer host.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.2
+$ ./bin/ycqlsh 127.0.0.2
 ```
 
 ```plpgsql
-yugabyte=# INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha');
+ycqlsh:customers> INSERT INTO users(email, username) VALUES ('mikhail@example.com', 'mikhail');
 ```
 
-On the new "consumer" cluster, open `ysqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the new "consumer" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
 
 ```sh
-$ ./bin/ysqlsh -host 127.0.0.1
+$ ./bin/ycqlsh 127.0.0.1
 ```
 
-```plpgsql
-yugabyte=# SELECT * FROM users;
+```sql
+ycqlsh:customers> SELECT * FROM users;
 ```
 
 You should see the following in the results.
 
-```
+```output
        email         | username
 ---------------------+----------
  hector@example.com  | hector
@@ -250,27 +282,29 @@ You should see the following in the results.
 
 ## 7. Clean up
 
-At this point, you've finished the tutorial. You can either stop and save your examples or destroy and remove the clusters and their associated data directories.
+At this point, you've finished the tutorial. You can either stop and save your examples or destroy and remove the clusters and their associated directories.
 
-To stop the simulated "data centers", use the `yb-ctl stop` commands using the `--data_dir` option to specify the cluster.
+To stop the simulated "data centers", use the `yugabyted stop` commands using the `--base_dir` option to specify the cluster.
 
-**Example - stopping "Data Center - East"** 
+**Example - stopping "Data Center - East"**
 
 ```sh
-$ ./bin/yb-ctl stop --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-east
+$ ./bin/yugabyted stop \
+                  --base_dir=datacenter-east
 ```
 
-To destroy the simulated "data centers" and remove its associate data directory, use the `yb-ctl destroy` command with the `--data_dir` option to specify the cluster.
+To destroy a simulated "data center" and remove its associated directory, use the `yugabyted destroy` command with the `--base_dir` option to specify the cluster.
 
 **Example — destroying and removing the "Data Center - West"**
 
 ```sh
-$ ./bin/yb-ctl destroy --data_dir /Users/yugabyte_user/yugabyte/yb-datacenter-west
+$ ./bin/yugabyted destroy \
+                  --base_dir=datacenter-west
 ```
 
 ## What's next?
 
 For more information, see the following in the Architecture section:
 
-- [Two data center (2DC) deployments](../../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../../architecture/cdc-architecture)
+- [Asynchronous replication](../../../architecture/docdb-replication/async-replication/)
+- [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)

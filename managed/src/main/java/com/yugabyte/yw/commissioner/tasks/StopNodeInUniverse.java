@@ -10,22 +10,33 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import lombok.extern.slf4j.Slf4j;
 
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.HashSet;
 
+@Slf4j
 public class StopNodeInUniverse extends UniverseTaskBase {
+
+  @Inject
+  protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
-    return (NodeTaskParams)taskParams;
+    return (NodeTaskParams) taskParams;
   }
 
   @Override
@@ -39,13 +50,15 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      LOG.info("Stop Node with name {} from universe {}", taskParams().nodeName,
-               taskParams().universeUUID);
+      log.info(
+          "Stop Node with name {} from universe {}",
+          taskParams().nodeName,
+          taskParams().universeUUID);
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -73,8 +86,11 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       if (currentNode.isMaster) {
-        createChangeConfigTask(currentNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse,
-                               true /* useHostPort */);
+        createChangeConfigTask(
+            currentNode,
+            false /* isAdd */,
+            SubTaskGroupType.ConfigureUniverse,
+            true /* useHostPort */);
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
@@ -83,13 +99,18 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Stopped)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
-      // Mark universe task state to success
-      createMarkUniverseUpdateSuccessTasks()
+      // Update the DNS entry for this universe.
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
+
+      // Mark universe task state to success
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
@@ -101,6 +122,6 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       unlockUniverseForUpdate();
     }
 
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

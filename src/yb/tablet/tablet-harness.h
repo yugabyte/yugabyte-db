@@ -109,20 +109,16 @@ class TabletHarness {
     }
     RETURN_NOT_OK(fs_manager_->Open());
 
-    RaftGroupMetadataPtr metadata;
-    RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(
-        fs_manager_.get(),
-        "YBTableTest",
-        options_.tablet_id,
-        "test",
-        "YBTableTest",
-        options_.table_type,
-        schema_,
-        partition.first,
-        partition.second,
-        boost::none /* index_info */,
-        TABLET_DATA_READY,
-        &metadata));
+    auto table_info = std::make_shared<TableInfo>(
+        "YBTableTest", "test", "YBTableTest", options_.table_type, schema_, IndexMap(), boost::none,
+        0 /* schema_version */, partition.first);
+    auto metadata = VERIFY_RESULT(RaftGroupMetadata::LoadOrCreate(RaftGroupMetadataData {
+      .fs_manager = fs_manager_.get(),
+      .table_info = table_info,
+      .raft_group_id = options_.tablet_id,
+      .partition = partition.second,
+      .tablet_data_state = TABLET_DATA_READY,
+    }));
     if (options_.enable_metrics) {
       metrics_registry_.reset(new MetricRegistry());
     }
@@ -135,17 +131,16 @@ class TabletHarness {
   CHECKED_STATUS Open() {
     RETURN_NOT_OK(tablet_->Open());
     tablet_->MarkFinishedBootstrapping();
-    return tablet_->EnableCompactions(/* operation_pause */ nullptr);
+    return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
   }
 
   Result<TabletPtr> OpenTablet(const TabletId& tablet_id) {
-    RaftGroupMetadataPtr metadata;
-    RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &metadata));
+    auto metadata = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
     TabletOptions tablet_options;
     auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
     RETURN_NOT_OK(tablet->Open());
     tablet->MarkFinishedBootstrapping();
-    RETURN_NOT_OK(tablet->EnableCompactions(/* operation_pause */ nullptr));
+    RETURN_NOT_OK(tablet->EnableCompactions(/* non_abortable_ops_pause */ nullptr));
     return tablet;
   }
 
@@ -191,11 +186,11 @@ class TabletHarness {
  private:
   Options options_;
 
-  gscoped_ptr<MetricRegistry> metrics_registry_;
+  std::unique_ptr<MetricRegistry> metrics_registry_;
 
   scoped_refptr<server::Clock> clock_;
   Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   TabletPtr tablet_;
 };
 

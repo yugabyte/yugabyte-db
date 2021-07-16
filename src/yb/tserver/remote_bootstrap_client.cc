@@ -330,31 +330,23 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                               &data_root_dir,
                                               &wal_root_dir);
     }
-    Status create_status = RaftGroupMetadata::CreateNew(
-        &fs_manager(),
-        table_id,
-        tablet_id_,
-        table.namespace_name(),
-        table.table_name(),
-        table.table_type(),
-        schema,
+    auto table_info = std::make_shared<tablet::TableInfo>(
+        table_id, table.namespace_name(), table.table_name(), table.table_type(), schema,
         IndexMap(table.indexes()),
-        partition_schema,
-        partition,
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
-        table.schema_version(),
-        tablet::TABLET_DATA_COPYING,
-        &meta_,
-        data_root_dir,
-        wal_root_dir,
-        colocated);
-    if (ts_manager != nullptr && !create_status.ok()) {
-      ts_manager->UnregisterDataWalDir(table_id,
-                                       tablet_id_,
-                                       data_root_dir,
-                                       wal_root_dir);
+        table.schema_version(), partition_schema);
+    auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
+        .fs_manager = &fs_manager(),
+        .table_info = table_info,
+        .raft_group_id = tablet_id_,
+        .partition = partition,
+        .tablet_data_state = tablet::TABLET_DATA_COPYING,
+        .colocated = colocated }, data_root_dir, wal_root_dir);
+    if (ts_manager != nullptr && !create_result.ok()) {
+      ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
     }
-    RETURN_NOT_OK(create_status);
+    RETURN_NOT_OK(create_result);
+    meta_ = std::move(*create_result);
 
     vector<DeletedColumn> deleted_cols;
     for (const DeletedColumnPB& col_pb : table.deleted_cols()) {

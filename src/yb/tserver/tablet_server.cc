@@ -130,6 +130,7 @@ DEFINE_bool(start_pgsql_proxy, false,
             "Whether to run a PostgreSQL server as a child process of the tablet server");
 
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+DECLARE_int32(num_concurrent_backfills_allowed);
 
 namespace yb {
 namespace tserver {
@@ -254,7 +255,9 @@ Status TabletServer::Init() {
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
   if (!bound_addresses.empty()) {
-    shared_object_->SetEndpoint(bound_addresses.front());
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
+    shared_object_->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
   }
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
@@ -278,6 +281,13 @@ void TabletServer::AutoInitServiceFlags() {
     FLAGS_tablet_server_svc_num_threads = std::max(64, num_threads);
     LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads to "
               << FLAGS_tablet_server_svc_num_threads;
+  }
+
+  if (FLAGS_num_concurrent_backfills_allowed == -1) {
+    const int32 num_threads = std::min(8, num_cores / 2);
+    FLAGS_num_concurrent_backfills_allowed = std::max(1, num_threads);
+    LOG(INFO) << "Auto setting FLAGS_num_concurrent_backfills_allowed to "
+              << FLAGS_num_concurrent_backfills_allowed;
   }
 
   if (FLAGS_ts_consensus_svc_num_threads == -1) {
@@ -316,6 +326,13 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
+
+  std::unique_ptr<ServiceIf> forward_service =
+    std::make_unique<TabletServerForwardServiceImpl>(tablet_server_service_, this);
+  LOG(INFO) << "yb::tserver::ForwardServiceImpl created at " << forward_service.get();
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
+                                                     std::move(forward_service)));
+
   return Status::OK();
 }
 
@@ -476,11 +493,11 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
 }
 
 Env* TabletServer::GetEnv() {
-  return Env::Default();
+  return opts_.env;
 }
 
 rocksdb::Env* TabletServer::GetRocksDBEnv() {
-  return rocksdb::Env::Default();
+  return opts_.rocksdb_env;
 }
 
 int TabletServer::GetSharedMemoryFd() {

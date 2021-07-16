@@ -56,7 +56,10 @@ void StateWithTablets::InitTablets(
   CheckCompleteness();
 }
 
-Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() {
+Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
+  if (tablets_.empty()) {
+    return InitialStateToTerminalState(initial_state_);
+  }
   SysSnapshotEntryPB::State result = initial_state_;
   bool has_initial = false;
   for (const auto& tablet : tablets_) {
@@ -76,8 +79,17 @@ Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() {
   return has_initial ? initial_state_ : result;
 }
 
-Result<bool> StateWithTablets::Complete() {
+Result<bool> StateWithTablets::Complete() const {
   return VERIFY_RESULT(AggregatedState()) != initial_state_;
+}
+
+Status StateWithTablets::AnyFailure() const {
+  for (const auto& tablet : tablets_) {
+    if (tablet.state == SysSnapshotEntryPB::FAILED) {
+      return tablet.last_error;
+    }
+  }
+  return Status::OK();
 }
 
 bool StateWithTablets::AllTabletsDone() const {
@@ -108,16 +120,6 @@ std::vector<TabletId> StateWithTablets::TabletIdsInState(SysSnapshotEntryPB::Sta
   return result;
 }
 
-void StateWithTablets::TabletsToPB(
-    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* out) {
-  out->Reserve(tablets_.size());
-  for (const auto& tablet : tablets_) {
-    auto* tablet_state = out->Add();
-    tablet_state->set_id(tablet.id);
-    tablet_state->set_state(tablet.state);
-  }
-}
-
 void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
   VLOG(4) << __func__ << "(" << tablet_id << ", " << status << ")";
 
@@ -141,11 +143,11 @@ void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
           it, [terminal_state = InitialStateToTerminalState(initial_state_)](TabletData& data) {
         data.state = terminal_state;
       });
-      LOG(INFO) << "Finished " << InitialStateName() << " snapshot at " << tablet_id;
+      LOG(INFO) << "Finished " << InitialStateName() << " snapshot at " << tablet_id << ", "
+                << num_tablets_in_initial_state_ << " was running";
     } else {
       auto full_status = status.CloneAndPrepend(
           Format("Failed to $0 snapshot at $1", InitialStateName(), tablet_id));
-      LOG(WARNING) << full_status;
       bool terminal = IsTerminalFailure(status);
       tablets_.modify(it, [&full_status, terminal](TabletData& data) {
         if (terminal) {
@@ -153,6 +155,8 @@ void StateWithTablets::Done(const TabletId& tablet_id, const Status& status) {
         }
         data.last_error = full_status;
       });
+      LOG(WARNING) << full_status << ", terminal: " << terminal << ", "
+                   << num_tablets_in_initial_state_ << " was running";
       if (!terminal) {
         return;
       }
@@ -202,6 +206,12 @@ const std::string& StateWithTablets::InitialStateName() const {
 void StateWithTablets::CheckCompleteness() {
   if (num_tablets_in_initial_state_ == 0) {
     complete_at_ = CoarseMonoClock::Now();
+  }
+}
+
+void StateWithTablets::RemoveTablets(const std::vector<std::string>& tablet_ids) {
+  for (const auto& id : tablet_ids) {
+    tablets_.erase(id);
   }
 }
 

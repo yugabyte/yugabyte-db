@@ -169,26 +169,27 @@ class TransactionStatusResolver::Impl {
     }
 
     status_infos_.clear();
-    status_infos_.reserve(request_size);
+    status_infos_.resize(response.status().size());
     auto it = queues_.begin();
     auto& queue = it->second;
     for (size_t i = 0; i != response.status().size(); ++i) {
-      auto txn_status = response.status(i);
-      VLOG_WITH_PREFIX(4)
-          << "Status of " << queue.front() << ": " << TransactionStatus_Name(txn_status);
-      HybridTime status_hybrid_time;
+      auto& status_info = status_infos_[i];
+      status_info.transaction_id = queue.front();
+      status_info.status = response.status(i);
       if (i < response.status_hybrid_time().size()) {
-        status_hybrid_time = HybridTime(response.status_hybrid_time(i));
-      // Could happend only when coordinator has an old version.
-      } else if (txn_status == TransactionStatus::ABORTED) {
-        status_hybrid_time = HybridTime::kMax;
+        status_info.status_ht = HybridTime(response.status_hybrid_time(i));
+      // Could happen only when coordinator has an old version.
+      } else if (status_info.status == TransactionStatus::ABORTED) {
+        status_info.status_ht = HybridTime::kMax;
       } else {
         Complete(STATUS_FORMAT(
             IllegalState, "Missing status hybrid time for transaction status: $0",
-            TransactionStatus_Name(txn_status)));
+            TransactionStatus_Name(status_info.status)));
         return;
       }
-      status_infos_.push_back({queue.front(), txn_status, status_hybrid_time});
+      status_info.coordinator_safe_time = i < response.coordinator_safe_time().size()
+          ? HybridTime::FromPB(response.coordinator_safe_time(i)) : HybridTime();
+      VLOG_WITH_PREFIX(4) << "Status: " << status_info.ToString();
       queue.pop_front();
     }
     if (queue.empty()) {

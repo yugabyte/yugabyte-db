@@ -15,7 +15,12 @@
 
 - name: Do we need chrony?
   set_fact:
-    should_setup_chrony: "{{ cloud_type == 'aws' and use_chrony | bool }}"
+    should_setup_chrony: "{{ ((cloud_type == 'aws' or cloud_type == 'gcp') and \
+                          (use_chrony or \
+                          ((ansible_distribution == 'RedHat') and \
+                          (ansible_distribution_major_version > '7')))) | bool }}"
+    ntp_service_name: "{{ 'ntpd' if ((ansible_distribution != 'Debian') and \
+                      (ansible_distribution != 'Ubuntu')) else 'ntp' }}"
 
 - block:
   - name: Install NTP
@@ -25,19 +30,26 @@
       name: ntp
       state: latest
 
-  - name: Provision | Enable ntpd and restart service.
-    service:
-      enabled: yes
-      name: "{{ 'ntpd' if ansible_distribution != 'Debian' else 'ntp' }}"
-      state: restarted
-    when: ansible_distribution != "Ubuntu"
+  - block:
+    - name: Provision | Stop NTP service
+      service:
+        enabled: yes
+        name: "{{ ntp_service_name }}"
+        state: stopped
 
-  - name: Provision | Enable ntp and restart service.
+    - name: Force date/time synchronization with NTP
+      become: yes
+      become_method: sudo
+      shell: ntpd -gq
+
+    when: ansible_distribution != "Debian"
+
+  - name: Provision | Restart NTP service
     service:
       enabled: yes
-      name: ntp
+      name: "{{ ntp_service_name }}"
       state: restarted
-    when: ansible_distribution == "Ubuntu"
+
   when: "{{ not should_setup_chrony and not air_gap and cloud_type != 'onprem' }}"
 
 - block:
@@ -53,7 +65,16 @@
       name: ansible-chrony
     vars:
       #  per AWS Time Sync docs: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/set-time.html
-      chrony_server: "169.254.169.123 prefer iburst minpoll 4 maxpoll 4"
+      #  per GCP docs:
+      #     https://cloud.google.com/container-optimized-os/docs/how-to/create-configure-instance
+      chrony_server: "{% if cloud_type == 'aws' %}169.254.169.123 \
+                      {% else %}metadata.google.internal \
+                      {% endif %} prefer iburst minpoll 4 maxpoll 4"
+
+  - name: Force date/time synchronization with chrony
+    become: yes
+    become_method: sudo
+    shell: chronyc makestep
   when: should_setup_chrony and not air_gap
 
 - name: Provision | Set swappiness off

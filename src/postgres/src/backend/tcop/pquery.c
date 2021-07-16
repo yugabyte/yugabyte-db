@@ -827,6 +827,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	PG_CATCH();
 	{
 		/* Uncaught error while executing portal: mark it dead */
+		MemoryContextReset(portal->ybRunContext);
 		MarkPortalFailed(portal);
 
 		/* Restore global vars and propagate error */
@@ -854,6 +855,9 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		CurrentResourceOwner = TopTransactionResourceOwner;
 	else
 		CurrentResourceOwner = saveResourceOwner;
+
+	/* Clear runContext as PortalRun is completed */
+	MemoryContextReset(portal->ybRunContext);
 	PortalContext = savePortalContext;
 
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)

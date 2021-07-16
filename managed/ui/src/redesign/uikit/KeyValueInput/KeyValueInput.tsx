@@ -3,7 +3,6 @@ import React, { FC, useState } from 'react';
 import { Input } from '../Input/Input';
 import { PlusButton } from '../PlusButton/PlusButton';
 import { ReactComponent as DeleteIcon } from './clear-24px.svg';
-import { translate } from '../I18n/I18n';
 import './KeyValueInput.scss';
 
 type ValueType = Record<string, string | number>;

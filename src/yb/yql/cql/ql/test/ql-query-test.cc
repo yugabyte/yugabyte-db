@@ -1569,7 +1569,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
 
-  auto ts_manager = cluster_->leader_mini_master()->master()->ts_manager();
+  auto ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->ts_manager();
   NodeInstancePB instance;
   instance.set_permanent_uuid("test");
   instance.set_instance_seqno(0);
@@ -1957,7 +1957,6 @@ TEST_F(TestQLQuery, TestJsonUpdate) {
   ASSERT_OK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
 
   ASSERT_OK(processor->Run("UPDATE test_json SET data =  '{ \"a\": 2, \"b\": 4 }' WHERE k1 = 2"));
-  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' = '3' WHERE k1 = 3"));
 
   // Setting primitive value in JSON column should work
   ASSERT_OK(processor->Run("UPDATE test_json SET data='true' WHERE k1 = 1"));

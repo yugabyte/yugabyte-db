@@ -37,7 +37,7 @@ TEST_F(TestEncryptedEnv, FileOps) {
   auto header_manager = GetMockHeaderManager();
   HeaderManager* hm_ptr = header_manager.get();
 
-  auto env = yb::enterprise::NewEncryptedEnv(std::move(header_manager));
+  auto env = yb::NewEncryptedEnv(std::move(header_manager));
   auto fname_template = "test-fileXXXXXX";
   auto bytes = RandomBytes(kDataSize);
   Slice data(bytes.data(), kDataSize);

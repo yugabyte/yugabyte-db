@@ -16,18 +16,22 @@ yb_home_dir="/home/yugabyte"
 # This should be a comma separated key-value list. Associative arrays were add in bash 4.0 so
 # they might not exist in the provided instance depending on how old it is.
 result_kvs=""
+YB_SUDO_PASS=""
 
 preflight_provision_check() {
   # Check python is installed.
-  sudo /bin/sh -c "/usr/bin/env python --version"
+  echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python --version"
   update_result_json_with_rc "Sudo Access to Python" "$?"
 
   # Check for internet access.
   if [[ "$airgap" = false ]]; then
-    # Send 3 packets with 3 second timeout and return success if any succeed. Do not send
-    # multiple packets at once since ping will return an error if any packet fails.
+    # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
+    # --preserve-status flag will maintain the exit code of the "/dev/tcp" command.
+    HOST="yugabyte.com"
+    PORT=443
+
     for i in 1 2 3; do
-      ping -c 1 -W 3 www.yugabyte.com && break
+      timeout 3 bash -c "cat < /dev/null > /dev/tcp/${HOST}/${PORT}" --preserve-status && break
     done
     update_result_json_with_rc "Internet Connection" "$?"
   fi
@@ -99,11 +103,11 @@ check_filepath() {
     # To reduce sudo footprint, use a format similar to what ansible would execute
     # (e.g. /bin/sh -c */usr/bin/env python *)
     if $check_parent; then
-      sudo /bin/sh -c "/usr/bin/env python -c \"import os; \
+      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
         filepath = '$path' if os.path.exists('$path') else os.path.dirname('$path'); \
         exit(1) if not os.access(filepath, os.W_OK) else exit();\""
     else
-      sudo /bin/sh -c "/usr/bin/env python -c \"import os; \
+      echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python -c \"import os; \
         exit(1) if not os.access('$path', os.W_OK) else exit();\""
     fi
   else
@@ -131,7 +135,6 @@ update_result_json_with_rc() {
   update_result_json "$1" "$check_passed"
 }
 
-
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} --type {configure,provision} [<options>]
@@ -147,9 +150,17 @@ Options:
     Commas separated list of mount paths to check permissions of.
   --yb_home_dir HOME_DIR
     Home directory of yugabyte user.
+  --sudo_pass_file
+    Bash file containing the sudo password variable.
+  --cleanup
+    Deletes this script after being run. Allows `scp` commands to port over new preflight scripts.
   -h, --help
     Show usage.
 EOT
+}
+
+err_msg() {
+  echo $@ >&2
 }
 
 if [[ ! $# -gt 0 ]]; then
@@ -162,8 +173,8 @@ while [[ $# -gt 0 ]]; do
     -t|--type)
       options="provision configure"
       if [[ ! $options =~ (^|[[:space:]])"$2"($|[[:space:]]) ]]; then
-        echo "Invalid option: $2. Must be one of ['configure', 'provision'].\n"
-        show_usage
+        err_msg "Invalid option: $2. Must be one of ['configure', 'provision'].\n"
+        show_usage >&2
         exit 1
       fi
       check_type="$2"
@@ -183,13 +194,25 @@ while [[ $# -gt 0 ]]; do
       yb_home_dir="$2"
       shift
     ;;
+    --sudo_pass_file)
+      if [ -f $2 ]; then
+        . $2
+        rm -rf "$2"
+      else
+        err_msg "Failed to find sudo_pass_file: $2"
+      fi
+      shift
+    ;;
+    --cleanup)
+      trap "rm -- $0" EXIT
+    ;;
     -h|--help)
       show_usage >&2
       exit 1
     ;;
     *)
-      echo "Invalid option: $1\n"
-      show_usage
+      err_msg "Invalid option: $1\n"
+      show_usage >&2
       exit 1
   esac
   shift

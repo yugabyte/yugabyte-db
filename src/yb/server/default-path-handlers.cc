@@ -58,6 +58,8 @@
 #include <gperftools/malloc_extension.h>
 #endif
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
@@ -185,9 +187,19 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
 
+  int max_depth = INT_MAX;
+  string depth = FindWithDefault(req.parsed_args, "max_depth", "");
+  if (depth != "") {
+    max_depth = std::stoi(depth);
+  }
+
   std::vector<MemTrackerData> trackers;
   CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (const auto& data : trackers) {
+    // If the data.depth >= max_depth, skip the info.
+    if (data.depth > max_depth) {
+      continue;
+    }
     const auto& tracker = data.tracker;
     const std::string limit_str =
         tracker->limit() == -1 ? "none" : HumanReadableNumBytes::ToString(tracker->limit());
@@ -225,57 +237,69 @@ static MetricLevel MetricLevelFromName(const std::string& level) {
   }
 }
 
+static void ParseRequestOptions(const Webserver::WebRequest& req,
+                                vector<string> *requested_metrics,
+                                MetricPrometheusOptions *promethus_opts,
+                                MetricJsonOptions *json_opts = nullptr,
+                                JsonWriter::Mode *json_mode = nullptr) {
+
+  if (requested_metrics) {
+    const string* requested_metrics_param = FindOrNull(req.parsed_args, "metrics");
+    if (requested_metrics_param != nullptr) {
+      SplitStringUsing(*requested_metrics_param, ",", requested_metrics);
+    } else {
+      // Default to including all metrics.
+      requested_metrics->push_back("*");
+    }
+  }
+
+  string arg;
+  if (json_opts) {
+    arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
+    json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "include_schema", "false");
+    json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    json_opts->level = MetricLevelFromName(arg);
+  }
+
+  if (promethus_opts) {
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    promethus_opts->level = MetricLevelFromName(arg);
+  }
+
+  if (json_mode) {
+    arg = FindWithDefault(req.parsed_args, "compact", "false");
+    *json_mode =
+        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  }
+}
+
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  const string* requested_metrics_param = FindOrNull(req.parsed_args, "metrics");
   vector<string> requested_metrics;
   MetricJsonOptions opts;
-
-  {
-    string arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
-    opts.include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-  {
-    string arg = FindWithDefault(req.parsed_args, "include_schema", "false");
-    opts.include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-  {
-    string arg = FindWithDefault(req.parsed_args, "level", "debug");
-    opts.level = MetricLevelFromName(arg);
-  }
   JsonWriter::Mode json_mode;
-  {
-    string arg = FindWithDefault(req.parsed_args, "compact", "false");
-    json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
-      JsonWriter::COMPACT : JsonWriter::PRETTY;
-  }
+  ParseRequestOptions(req, &requested_metrics, /* prometheus opts */ nullptr, &opts, &json_mode);
 
+  std::stringstream* output = &resp->output;
   JsonWriter writer(output, json_mode);
-
-  if (requested_metrics_param != nullptr) {
-    SplitStringUsing(*requested_metrics_param, ",", &requested_metrics);
-  } else {
-    // Default to including all metrics.
-    requested_metrics.push_back("*");
-  }
 
   WARN_NOT_OK(metrics->WriteAsJson(&writer, requested_metrics, opts),
               "Couldn't write JSON metrics over HTTP");
 }
 
-static void WriteForPrometheus(const MetricRegistry* const metrics,
+static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  vector<string> requested_metrics;
   MetricPrometheusOptions opts;
+  ParseRequestOptions(req, &requested_metrics, &opts);
 
-  {
-    string arg = FindWithDefault(req.parsed_args, "level", "debug");
-    opts.level = MetricLevelFromName(arg);
-  }
-
+  std::stringstream *output = &resp->output;
   PrometheusWriter writer(output);
-  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, opts),
+  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, requested_metrics, opts),
               "Couldn't write text metrics for Prometheus");
 }
 
@@ -327,7 +351,7 @@ void AddDefaultPathHandlers(Webserver* webserver) {
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   Webserver::PathHandlerCallback prometheus_callback = std::bind(
-      WriteForPrometheus, metrics, _1, _2);
+      WriteMetricsForPrometheus, metrics, _1, _2);
   bool not_styled = false;
   bool not_on_nav_bar = false;
   webserver->RegisterPathHandler("/metrics", "Metrics", callback, not_styled, not_on_nav_bar);
@@ -338,6 +362,37 @@ void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* cons
 
   webserver->RegisterPathHandler(
       "/prometheus-metrics", "Metrics", prometheus_callback, not_styled, not_on_nav_bar);
+}
+
+// Registered to handle "/drives", and prints out paths usage
+static void PathUsageHandler(FsManager* fsmanager,
+                             const Webserver::WebRequest& req,
+                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  *output << "<h1>Drives usage by subsystem</h1>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Path</th><th>Used Space</th>"
+      "<th>Total Space</th></tr>\n";
+
+  Env* env = fsmanager->env();
+  for (const auto& path : fsmanager->GetDataRootDirs()) {
+    const auto stats = env->GetFilesystemStatsBytes(path);
+    if (!stats.ok()) {
+      LOG(WARNING) << stats.status();
+      *output << Format("  <tr><td>$0</td><td>NA</td><td>NA</td></tr>\n", path);
+      continue;
+    }
+    const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);
+    const std::string total_space_str = HumanReadableNumBytes::ToString(stats->total_space);
+    *output << Format("  <tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
+                      path, used_space_str, total_space_str);
+  }
+  *output << "</table>\n";
+}
+
+void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager) {
+  Webserver::PathHandlerCallback callback = std::bind(PathUsageHandler, fsmanager, _1, _2);
+  webserver->RegisterPathHandler("/drives", "Drives", callback, true, false);
 }
 
 } // namespace yb

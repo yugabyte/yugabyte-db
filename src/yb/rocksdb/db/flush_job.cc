@@ -66,7 +66,6 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
@@ -88,6 +87,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
                    const EnvOptions& env_options, VersionSet* versions,
                    InstrumentedMutex* db_mutex,
                    std::atomic<bool>* shutting_down,
+                   std::atomic<bool>* disable_flush_on_shutdown,
                    std::vector<SequenceNumber> existing_snapshots,
                    SequenceNumber earliest_write_conflict_snapshot,
                    MemTableFilter mem_table_flush_filter,
@@ -104,6 +104,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       versions_(versions),
       db_mutex_(db_mutex),
       shutting_down_(shutting_down),
+      disable_flush_on_shutdown_(disable_flush_on_shutdown),
       existing_snapshots_(std::move(existing_snapshots)),
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
       mem_table_flush_filter_(std::move(mem_table_flush_filter)),
@@ -121,16 +122,9 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
 }
 
 FlushJob::~FlushJob() {
-  ThreadStatusUtil::ResetThreadStatus();
 }
 
 void FlushJob::ReportStartedFlush() {
-  ThreadStatusUtil::SetColumnFamily(cfd_, cfd_->ioptions()->env,
-                                    cfd_->options()->enable_thread_tracking);
-  ThreadStatusUtil::SetThreadOperation(ThreadStatus::OP_FLUSH);
-  ThreadStatusUtil::SetThreadOperationProperty(
-      ThreadStatus::COMPACTION_JOB_ID,
-      job_context_->job_id);
   IOSTATS_RESET(bytes_written);
 }
 
@@ -139,14 +133,9 @@ void FlushJob::ReportFlushInputSize(const autovector<MemTable*>& mems) {
   for (auto* mem : mems) {
     input_size += mem->ApproximateMemoryUsage();
   }
-  ThreadStatusUtil::IncreaseThreadOperationProperty(
-      ThreadStatus::FLUSH_BYTES_MEMTABLES,
-      input_size);
 }
 
 void FlushJob::RecordFlushIOStats() {
-  ThreadStatusUtil::SetThreadOperationProperty(
-      ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
 }
 
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
@@ -154,8 +143,6 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
     CHECK(false) << "a flush should not have been scheduled.";
   }
 
-  AutoThreadOperationStageUpdater stage_run(
-      ThreadStatus::STAGE_FLUSH_RUN);
   // Save the contents of the earliest memtable as a new Table
   FileMetaData meta;
   autovector<MemTable*> mems;
@@ -190,10 +177,10 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   // This will release and re-acquire the mutex.
   auto fnum = WriteLevel0Table(mems, edit, &meta);
 
-  if (fnum.ok() &&
-      (shutting_down_->load(std::memory_order_acquire) || cfd_->IsDropped())) {
-    fnum = STATUS(ShutdownInProgress,
-        "Database shutdown or Column family drop during flush");
+  if (fnum.ok() && ((shutting_down_->load(std::memory_order_acquire) &&
+                     disable_flush_on_shutdown_->load(std::memory_order_acquire)) ||
+                    cfd_->IsDropped())) {
+    fnum = STATUS(ShutdownInProgress, "Database shutdown or Column family drop during flush");
   }
 
   if (!fnum.ok()) {
@@ -231,8 +218,6 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
 
 Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
     const autovector<MemTable*>& mems, VersionEdit* edit, FileMetaData* meta) {
-  AutoThreadOperationStageUpdater stage_updater(
-      ThreadStatus::STAGE_FLUSH_WRITE_L0);
   db_mutex_->AssertHeld();
   const uint64_t start_micros = db_options_.env->NowMicros();
   auto file_number_holder = file_numbers_provider_->NewFileNumber();

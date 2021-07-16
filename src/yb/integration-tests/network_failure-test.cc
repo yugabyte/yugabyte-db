@@ -49,7 +49,7 @@ class NetworkFailureTest : public MiniClusterTestWithClient<MiniCluster> {
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 4;
     opts.num_masters = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(CreateClient());
@@ -93,12 +93,12 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
   thread_holder.AddThreadFunctor([
       this, &written, &stop_flag = thread_holder.stop_flag(), &prev_report]() {
     auto session = client_->NewSession();
-    std::deque<std::future<Status>> futures;
+    std::deque<std::future<client::FlushStatus>> futures;
     std::deque<client::YBOperationPtr> ops;
 
     while (!stop_flag.load()) {
       while (!futures.empty() && IsReady(futures.front())) {
-        ASSERT_OK(futures.front().get());
+        ASSERT_OK(futures.front().get().status);
         ASSERT_TRUE(ops.front()->succeeded());
         futures.pop_front();
         ops.pop_front();

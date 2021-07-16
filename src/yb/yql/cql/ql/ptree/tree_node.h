@@ -111,6 +111,11 @@ class TreeNode : public MCBase {
     return false;
   }
 
+  // Is this treenode a top level node that is used to query data from tablet server?
+  virtual bool IsTopLevelReadNode() const {
+    return false;
+  }
+
   // Access functions to this node location.
   const YBLocation& loc() const {
     return *loc_;

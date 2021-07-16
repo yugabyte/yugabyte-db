@@ -14,6 +14,7 @@
 #include <memory>
 #include <string>
 
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
@@ -145,7 +146,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
@@ -185,7 +186,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
@@ -258,7 +259,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2500));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -315,7 +316,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -530,7 +531,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -580,7 +581,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -620,9 +621,7 @@ TEST_F(DocRowwiseIteratorTest, ColocatedTableTombstoneTest) {
   encoded_1_with_tableid.set_pgtable_id(pgtable_id);
 
   ASSERT_OK(dwb.SetPrimitive(
-      DocPath(
-        encoded_1_with_tableid.Encode(),
-        PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+      DocPath(encoded_1_with_tableid.Encode(), PrimitiveValue::kLivenessColumn),
       PrimitiveValue(ValueType::kNullLow)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
@@ -643,7 +642,7 @@ SubDocKey(DocKey(PgTableId=16385, [], ["row1", 11111]), [SystemColumnId(0); HT{ 
     DocRowwiseIterator iter(
         projection, schema_copy, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1500));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
     ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
   }
   // ...but there should be no results after delete.
@@ -651,7 +650,7 @@ SubDocKey(DocKey(PgTableId=16385, [], ["row1", 11111]), [SystemColumnId(0); HT{ 
     DocRowwiseIterator iter(
         projection, schema_copy, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::Max());
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
     ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
@@ -710,7 +709,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, read_time);
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -771,7 +770,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -825,7 +824,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -984,7 +983,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -1028,7 +1027,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
     QLTableRow row;
     QLValue value;
 
@@ -1070,7 +1069,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(6000));
-    ASSERT_OK(iter.Init());
+    ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
     QLTableRow row;
     QLValue value;
@@ -1232,7 +1231,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   DocRowwiseIterator iter(
       projection, kSchemaForIteratorTests, txn_context, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1000));
-  ASSERT_OK(iter.Init());
+  ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
 
   QLTableRow row;
   QLValue value;

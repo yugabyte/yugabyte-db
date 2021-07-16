@@ -76,11 +76,6 @@ PermissionsManager::PermissionsManager(CatalogManager* catalog_manager)
 }
 
 Status PermissionsManager::PrepareDefaultRoles(int64_t term) {
-  // Verify we have the catalog manager lock.
-  if (!catalog_manager_->lock_.is_locked()) {
-    return STATUS(IllegalState, "We don't have the catalog manager lock!");
-  }
-
   if (FindPtrOrNull(roles_map_, kDefaultCassandraUsername) != nullptr) {
     LOG(INFO) << "Role " << kDefaultCassandraUsername
               << " already created, skipping initialization";
@@ -113,7 +108,7 @@ Status PermissionsManager::GrantPermissions(
     const std::vector<PermissionType>& permissions,
     const ResourceType resource_type,
     RespClass* resp) {
-  std::lock_guard<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
   scoped_refptr<RoleInfo> rp;
   rp = FindPtrOrNull(roles_map_, role_name);
@@ -145,8 +140,7 @@ Status PermissionsManager::GrantPermissions(
       }
       current_resource->add_permissions(permission);
     }
-    Status s = catalog_manager_->sys_catalog_->UpdateItem(rp.get(),
-        catalog_manager_->leader_ready_term());
+    Status s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), rp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute(
           "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
@@ -182,25 +176,23 @@ template Status PermissionsManager::GrantPermissions<CreateNamespaceResponsePB>(
 
 // Create a SysVersionInfo object to track the roles versions.
 Status PermissionsManager::IncrementRolesVersionUnlocked() {
-  DCHECK(catalog_manager_->lock_.is_locked()) << "We don't have the catalog manager lock!";
-
   // Prepare write.
   auto l = CHECK_NOTNULL(security_config_.get())->LockForWrite();
-  const uint64_t roles_version = l->mutable_data()->pb.security_config().roles_version();
+  const uint64_t roles_version = l.mutable_data()->pb.security_config().roles_version();
   if (roles_version == std::numeric_limits<uint64_t>::max()) {
     DFATAL_OR_RETURN_NOT_OK(
         STATUS_SUBSTITUTE(IllegalState,
                           "Roles version reached max allowable integer: $0", roles_version));
   }
-  l->mutable_data()->pb.mutable_security_config()->set_roles_version(roles_version + 1);
+  l.mutable_data()->pb.mutable_security_config()->set_roles_version(roles_version + 1);
 
   TRACE("Set CatalogManager's roles version");
 
   // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(catalog_manager_->sys_catalog_->UpdateItem(
-      security_config_.get(), catalog_manager_->leader_ready_term()));
+  RETURN_NOT_OK(catalog_manager_->sys_catalog_->Upsert(
+      catalog_manager_->leader_ready_term(), security_config_));
 
-  l->Commit();
+  l.Commit();
   return Status::OK();
 }
 
@@ -208,8 +200,6 @@ template<class RespClass>
 Status PermissionsManager::RemoveAllPermissionsForResourceUnlocked(
     const std::string& canonical_resource,
     RespClass* resp) {
-
-  DCHECK(catalog_manager_->lock_.is_locked()) << "We don't have the catalog manager lock!";
 
   bool permissions_modified = false;
   for (const auto& e : roles_map_) {
@@ -244,7 +234,7 @@ template<class RespClass>
 Status PermissionsManager::RemoveAllPermissionsForResource(
     const std::string& canonical_resource,
     RespClass* resp) {
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
   return RemoveAllPermissionsForResourceUnlocked(canonical_resource, resp);
 }
 
@@ -266,9 +256,6 @@ Status PermissionsManager::CreateRoleUnlocked(
     const bool superuser,
     int64_t term,
     const bool increment_roles_version) {
-  if (!catalog_manager_->lock_.is_locked()) {
-    return STATUS(IllegalState, "We don't have the catalog manager lock!");
-  }
   // Create Entry.
   SysRoleEntryPB role_entry;
   role_entry.set_role(role_name);
@@ -287,16 +274,18 @@ Status PermissionsManager::CreateRoleUnlocked(
   scoped_refptr<RoleInfo> role = new RoleInfo(role_name);
 
   // Prepare write.
-  auto l = role->LockForWrite();
-  l->mutable_data()->pb = std::move(role_entry);
+  {
+    auto l = role->LockForWrite();
+    l.mutable_data()->pb = std::move(role_entry);
 
-  roles_map_[role_name] = role;
-  TRACE("Inserted new role info into CatalogManager maps");
+    roles_map_[role_name] = role;
+    TRACE("Inserted new role info into CatalogManager maps");
 
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(catalog_manager_->sys_catalog_->AddItem(role.get(), term));
+    // Write to sys_catalog and in memory.
+    RETURN_NOT_OK(catalog_manager_->sys_catalog_->Upsert(term, role));
 
-  l->Commit();
+    l.Commit();
+  }
   BuildRecursiveRolesUnlocked();
   return Status::OK();
 }
@@ -308,11 +297,10 @@ Status PermissionsManager::CreateRole(
 
   LOG(INFO) << "CreateRole from " << RequestorString(rpc) << ": " << req->DebugString();
 
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
   Status s;
   {
     TRACE("Acquired catalog manager lock");
-    std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+    CatalogManager::LockGuard lock(catalog_manager_->mutex_);
     // Only a SUPERUSER role can create another SUPERUSER role. In Apache Cassandra this gets
     // checked before the existence of the new role.
     if (req->superuser()) {
@@ -323,7 +311,7 @@ Status PermissionsManager::CreateRole(
       }
 
       auto clr = creator_role->LockForRead();
-      if (!clr->data().pb.is_superuser()) {
+      if (!clr->pb.is_superuser()) {
         s = STATUS(NotAuthorized, "Only superusers can create a role with superuser status");
         return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
       }
@@ -358,11 +346,10 @@ Status PermissionsManager::AlterRole(
 
   VLOG(1) << "AlterRole from " << RequestorString(rpc) << ": " << req->DebugString();
 
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
   Status s;
 
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
   auto role = FindPtrOrNull(roles_map_, req->name());
   if (role == nullptr) {
@@ -374,55 +361,55 @@ Status PermissionsManager::AlterRole(
   RETURN_NOT_OK(IncrementRolesVersionUnlocked());
 
   // Modify the role.
-  auto l = role->LockForWrite();
+  {
+    auto l = role->LockForWrite();
 
-  // If the role we are trying to alter is a SUPERUSER, and the request is trying to alter the
-  // SUPERUSER field for that role, the role requesting the alter operation must be a SUPERUSER
-  // too.
-  if (req->has_superuser()) {
-    auto current_role = FindPtrOrNull(roles_map_, req->current_role());
-    if (current_role == nullptr) {
-      s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
-                            req->current_role());
-      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    // If the role we are trying to alter is a SUPERUSER, and the request is trying to alter the
+    // SUPERUSER field for that role, the role requesting the alter operation must be a SUPERUSER
+    // too.
+    if (req->has_superuser()) {
+      auto current_role = FindPtrOrNull(roles_map_, req->current_role());
+      if (current_role == nullptr) {
+        s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
+                              req->current_role());
+        return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+      }
+
+      // Fix for https://github.com/yugabyte/yugabyte-db/issues/2505.
+      // A role cannot modify its own superuser status, nor the superuser status of any role granted
+      // to it directly or through inheritance. This check should happen before the next check that
+      // verifies that the role requesting the modification is a superuser.
+      if (l->pb.role() == req->current_role() || IsMemberOf(l->pb.role(), req->current_role())) {
+        s = STATUS(NotAuthorized, "You aren't allowed to alter your own superuser status or that "
+                                  "of a role granted to you");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+      }
+
+      // Don't allow a non-superuser role to modify the superuser status of another role.
+      auto clr = current_role->LockForRead();
+      if (!clr->pb.is_superuser()) {
+        s = STATUS(NotAuthorized, "Only superusers are allowed to alter superuser status");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+      }
     }
 
-    // Fix for https://github.com/yugabyte/yugabyte-db/issues/2505.
-    // A role cannot modify its own superuser status, nor the superuser status of any role granted
-    // to it directly or through inheritance. This check should happen before the next check that
-    // verifies that the role requesting the modification is a superuser.
-    if (l->data().pb.role() == req->current_role() ||
-        IsMemberOf(l->data().pb.role(), req->current_role())) {
-      s = STATUS(NotAuthorized,
-          "You aren't allowed to alter your own superuser status or that of a role granted to you");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    if (req->has_login()) {
+      l.mutable_data()->pb.set_can_login(req->login());
+    }
+    if (req->has_superuser()) {
+      l.mutable_data()->pb.set_is_superuser(req->superuser());
+    }
+    if (req->has_salted_hash()) {
+      l.mutable_data()->pb.set_salted_hash(req->salted_hash());
     }
 
-    // Don't allow a non-superuser role to modify the superuser status of another role.
-    auto clr = current_role->LockForRead();
-    if (!clr->data().pb.is_superuser()) {
-      s = STATUS(NotAuthorized, "Only superusers are allowed to alter superuser status");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), role);
+    if (!s.ok()) {
+      LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
+      return s;
     }
+    l.Commit();
   }
-
-  if (req->has_login()) {
-    l->mutable_data()->pb.set_can_login(req->login());
-  }
-  if (req->has_superuser()) {
-    l->mutable_data()->pb.set_is_superuser(req->superuser());
-  }
-  if (req->has_salted_hash()) {
-    l->mutable_data()->pb.set_salted_hash(req->salted_hash());
-  }
-
-  s = catalog_manager_->sys_catalog_->UpdateItem(role.get(),
-                                                 catalog_manager_->leader_ready_term());
-  if (!s.ok()) {
-    LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
-    return s;
-  }
-  l->Commit();
   VLOG(1) << "Altered role with request: " << req->ShortDebugString();
 
   BuildResourcePermissionsUnlocked();
@@ -436,7 +423,6 @@ Status PermissionsManager::DeleteRole(
 
   LOG(INFO) << "Servicing DeleteRole request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
   Status s;
 
   if (!req->has_name()) {
@@ -445,7 +431,7 @@ Status PermissionsManager::DeleteRole(
   }
 
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
   auto role = FindPtrOrNull(roles_map_, req->name());
   if (role == nullptr) {
@@ -483,8 +469,7 @@ Status PermissionsManager::DeleteRole(
     }
 
     // Update sys-catalog with the new member_of list for this role.
-    s = catalog_manager_->sys_catalog_->UpdateItem(role.get(),
-        catalog_manager_->leader_ready_term());
+    s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), role);
     if (!s.ok()) {
       LOG(ERROR) << "Unable to remove role " << req->name()
                  << " from member_of list for role " << role_name;
@@ -494,36 +479,38 @@ Status PermissionsManager::DeleteRole(
     }
   }
 
-  auto l = role->LockForWrite();
+  {
+    auto l = role->LockForWrite();
 
-  if (l->mutable_data()->pb.is_superuser()) {
-    // If the role we are trying to remove is a SUPERUSER, the role trying to remove it has to be
-    // a SUPERUSER too.
-    auto current_role = FindPtrOrNull(roles_map_, req->current_role());
-    if (current_role == nullptr) {
-      s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
-                            req->current_role());
-      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    if (l.mutable_data()->pb.is_superuser()) {
+      // If the role we are trying to remove is a SUPERUSER, the role trying to remove it has to be
+      // a SUPERUSER too.
+      auto current_role = FindPtrOrNull(roles_map_, req->current_role());
+      if (current_role == nullptr) {
+        s = STATUS_SUBSTITUTE(NotFound, "Internal error: role $0 does not exist",
+                              req->current_role());
+        return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+      }
+
+      auto clr = current_role->LockForRead();
+      if (!clr->pb.is_superuser()) {
+        s = STATUS(NotAuthorized, "Only superusers can drop a role with superuser status");
+        return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+      }
     }
 
-    auto clr = current_role->LockForRead();
-    if (!clr->data().pb.is_superuser()) {
-      s = STATUS(NotAuthorized, "Only superusers can drop a role with superuser status");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NOT_AUTHORIZED, s);
+    // Write to sys_catalog and in memory.
+    RETURN_NOT_OK(catalog_manager_->sys_catalog_->Delete(
+        catalog_manager_->leader_ready_term(), role));
+    // Remove it from the maps.
+    if (roles_map_.erase(role->id()) < 1) {
+      PANIC_RPC(rpc, "Could not remove role from map, role name=" + role->id());
     }
-  }
 
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(catalog_manager_->sys_catalog_->DeleteItem(role.get(),
-      catalog_manager_->leader_ready_term()));
-  // Remove it from the maps.
-  if (roles_map_.erase(role->id()) < 1) {
-    PANIC_RPC(rpc, "Could not remove role from map, role name=" + role->id());
+    // Update the in-memory state.
+    TRACE("Committing in-memory state");
+    l.Commit();
   }
-
-  // Update the in-memory state.
-  TRACE("Committing in-memory state");
-  l->Commit();
   BuildRecursiveRolesUnlocked();
 
   // Remove all the permissions granted on the deleted role to any role. See DeleteTable() comment
@@ -544,7 +531,6 @@ Status PermissionsManager::GrantRevokeRole(
 
   LOG(INFO) << "Servicing " << (req->revoke() ? "RevokeRole" : "GrantRole")
             << " request from " << RequestorString(rpc) << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
 
   // Cannot grant or revoke itself.
   if (req->granted_role() == req->recipient_role()) {
@@ -568,7 +554,7 @@ Status PermissionsManager::GrantRevokeRole(
   {
     constexpr char role_not_found_msg_str[] = "$0 doesn't exist";
     TRACE("Acquired catalog manager lock");
-    std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+    CatalogManager::LockGuard lock(catalog_manager_->mutex_);
 
     scoped_refptr<RoleInfo> granted_role;
     granted_role = FindPtrOrNull(roles_map_, req->granted_role());
@@ -614,8 +600,8 @@ Status PermissionsManager::GrantRevokeRole(
         for (auto member_of : member_of_new_list) {
           metadata->add_member_of(std::move(member_of));
         }
-        s = catalog_manager_->sys_catalog_->UpdateItem(recipient_role.get(),
-            catalog_manager_->leader_ready_term());
+        s = catalog_manager_->sys_catalog_->Upsert(
+            catalog_manager_->leader_ready_term(), recipient_role);
       } else {
         // Let's make sure that we don't have circular dependencies.
         if (IsMemberOf(req->granted_role(), req->recipient_role()) ||
@@ -626,8 +612,8 @@ Status PermissionsManager::GrantRevokeRole(
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
         metadata->add_member_of(req->granted_role());
-        s = catalog_manager_->sys_catalog_->UpdateItem(recipient_role.get(),
-            catalog_manager_->leader_ready_term());
+        s = catalog_manager_->sys_catalog_->Upsert(
+            catalog_manager_->leader_ready_term(), recipient_role);
       }
       if (!s.ok()) {
         s = s.CloneAndPrepend(Substitute(
@@ -679,8 +665,8 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
     const auto& rinfo = roles_map_[role_name];
     {
       auto l = rinfo->LockForRead();
-      role_permissions->set_salted_hash(l->data().pb.salted_hash());
-      role_permissions->set_can_login(l->data().pb.can_login());
+      role_permissions->set_salted_hash(l->pb.salted_hash());
+      role_permissions->set_can_login(l->pb.can_login());
     }
 
     // No permissions on ALL ROLES and ALL KEYSPACES by default.
@@ -690,7 +676,7 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
     for (const auto& granted_role : granted_roles) {
       const auto& role_info = roles_map_[granted_role];
       auto l = role_info->LockForRead();
-      const auto& pb = l->data().pb;
+      const auto& pb = l->pb;
 
       Permissions all_roles_permissions_bitset(role_permissions->all_roles_permissions());
       Permissions all_keyspaces_permissions_bitset(role_permissions->all_keyspaces_permissions());
@@ -745,7 +731,7 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
   }
 
   auto config = CHECK_NOTNULL(security_config_.get())->LockForRead();
-  response->set_version(config->data().pb.security_config().roles_version());
+  response->set_version(config->pb.security_config().roles_version());
   permissions_cache_ = std::move(response);
 }
 
@@ -756,7 +742,7 @@ Status PermissionsManager::GetPermissions(
     rpc::RpcContext* rpc) {
   std::shared_ptr<GetPermissionsResponsePB> permissions_cache;
   {
-    std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+    CatalogManager::LockGuard lock(catalog_manager_->mutex_);
     if (!permissions_cache_) {
       BuildRecursiveRolesUnlocked();
       if (!permissions_cache_) {
@@ -812,12 +798,10 @@ Status PermissionsManager::GrantRevokePermission(
     rpc::RpcContext* rpc) {
   LOG(INFO) << (req->revoke() ? "Revoke" : "Grant") << " permission "
             << RequestorString(rpc) << ": " << req->ShortDebugString();
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
 
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
   TRACE("Acquired catalog manager lock");
   Status s;
-  scoped_refptr<NamespaceInfo> ns;
   scoped_refptr<TableInfo> table;
 
   // Checking if resources exist.
@@ -827,18 +811,19 @@ Status PermissionsManager::GrantRevokePermission(
     // is detected by the semantic analysis in PTQualifiedName::AnalyzeName.
     DCHECK(req->has_namespace_());
     const auto& namespace_info = req->namespace_();
-    s = catalog_manager_->FindNamespaceUnlocked(namespace_info, &ns);
+    auto ns = catalog_manager_->FindNamespaceUnlocked(namespace_info);
 
     if (req->resource_type() == ResourceType::KEYSPACE) {
-      if (ns == nullptr) {
+      if (!ns.ok()) {
         // Matches Apache Cassandra's error.
         s = STATUS_SUBSTITUTE(
             NotFound, "Resource <keyspace $0> doesn't exist", namespace_info.name());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
       }
     } else {
-      if (ns) {
-        table = FindPtrOrNull(catalog_manager_->table_names_map_, {ns->id(), req->resource_name()});
+      if (ns.ok()) {
+        table = FindPtrOrNull(
+            catalog_manager_->table_names_map_, {(**ns).id(), req->resource_name()});
       }
       if (table == nullptr) {
         // Matches Apache Cassandra's error.
@@ -947,8 +932,7 @@ Status PermissionsManager::GrantRevokePermission(
       metadata->mutable_resources()->erase(current_resource_iter);
     }
 
-    s = catalog_manager_->sys_catalog_->UpdateItem(rp.get(),
-        catalog_manager_->leader_ready_term());
+    s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), rp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute(
           "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
@@ -966,7 +950,7 @@ Status PermissionsManager::GrantRevokePermission(
 
 void PermissionsManager::GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles) {
   roles->clear();
-  SharedLock<decltype(catalog_manager_->lock_)> l(catalog_manager_->lock_);
+  CatalogManager::SharedLock lock(catalog_manager_->mutex_);
   for (const RoleInfoMap::value_type& e : roles_map_) {
     roles->push_back(e.second);
   }
@@ -976,7 +960,7 @@ vector<string> PermissionsManager::DirectMemberOf(const RoleName& role) {
   vector<string> roles;
   for (const auto& e : roles_map_) {
     auto l = e.second->LockForRead();
-    const auto& pb = l->data().pb;
+    const auto& pb = l->pb;
     for (const auto& member_of : pb.member_of()) {
       if (member_of == role) {
         roles.push_back(pb.role());
@@ -990,7 +974,7 @@ vector<string> PermissionsManager::DirectMemberOf(const RoleName& role) {
 
 void PermissionsManager::BuildRecursiveRoles() {
   TRACE("Acquired catalog manager lock");
-  std::lock_guard<decltype(catalog_manager_->lock_)> l_big(catalog_manager_->lock_);
+  CatalogManager::LockGuard lock(catalog_manager_->mutex_);
   BuildRecursiveRolesUnlocked();
 }
 
@@ -1009,7 +993,7 @@ void PermissionsManager::TraverseRole(
 
   const auto& role_info = roles_map_[role_name];
   auto l = role_info->LockForRead();
-  const auto& pb = l->data().pb;
+  const auto& pb = l->pb;
   if (pb.member_of().size() == 0) {
     recursive_granted_roles_.insert({role_name, {}});
   } else {
@@ -1049,11 +1033,11 @@ Status PermissionsManager::PrepareDefaultSecurityConfigUnlocked(int64_t term) {
 
     // Prepare write.
     auto l = security_config_->LockForWrite();
-    *l->mutable_data()->pb.mutable_security_config() = std::move(security_config);
+    *l.mutable_data()->pb.mutable_security_config() = std::move(security_config);
 
     // Write to sys_catalog and in memory.
-    RETURN_NOT_OK(catalog_manager_->sys_catalog_->AddItem(security_config_.get(), term));
-    l->Commit();
+    RETURN_NOT_OK(catalog_manager_->sys_catalog_->Upsert(term, security_config_));
+    l.Commit();
   }
   return Status::OK();
 }

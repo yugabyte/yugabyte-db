@@ -3,21 +3,24 @@ package com.yugabyte.yw.models;
 
 import org.junit.Test;
 
+import java.util.UUID;
+
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 public class InstanceTypeKeyTest {
 
   @Test
   public void testEquals() {
-    InstanceTypeKey key1 = InstanceTypeKey.create("it-1", "aws");
-    InstanceTypeKey key2 = InstanceTypeKey.create("it-1", "aws");
-    assertTrue(key1.equals(key2));
+    UUID providerUuid = UUID.randomUUID();
+    InstanceTypeKey key1 = InstanceTypeKey.create("it-1", providerUuid);
+    InstanceTypeKey key2 = InstanceTypeKey.create("it-1", providerUuid);
+    assertEquals(key1, key2);
   }
 
   @Test
   public void testHashCode() {
-    InstanceTypeKey key = InstanceTypeKey.create("it-1", "aws");
-    assertEquals(key.hashCode(), "it-1".hashCode() + "aws".hashCode());
+    UUID providerUuid = UUID.randomUUID();
+    InstanceTypeKey key = InstanceTypeKey.create("it-1", providerUuid);
+    assertEquals(key.hashCode(), providerUuid.hashCode() + "it-1".hashCode());
   }
 }

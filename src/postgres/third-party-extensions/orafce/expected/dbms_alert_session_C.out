@@ -1,0 +1,35 @@
+\set ECHO all
+/* Register alerts */
+SELECT dbms_alert.register('a1');
+ register 
+----------
+ 
+(1 row)
+
+SELECT dbms_alert.register('a2');
+ register 
+----------
+ 
+(1 row)
+
+/* Test: multisession waitone */
+SELECT dbms_alert.waitone('a1',20);
+      waitone      
+-------------------
+ ("Msg1 for a1",0)
+(1 row)
+
+/* Test: multisession waitany */
+SELECT dbms_alert.waitany(10);
+       waitany        
+----------------------
+ (a2,"Msg1 for a2",0)
+(1 row)
+
+/* cleanup */
+SELECT dbms_alert.removeall();
+ removeall 
+-----------
+ 
+(1 row)
+

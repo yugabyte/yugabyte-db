@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.ExternalDaemonLogErrorListener;
 import org.yb.minicluster.LogErrorListener;
-import org.yb.minicluster.LogErrorListenerWrapper;
 import org.yb.minicluster.LogPrinter;
 import org.yb.util.*;
 
@@ -91,9 +90,9 @@ public class PgRegressRunner {
         String line;
         while ((line = scheduleReader.readLine()) != null) {
           line = line.trim();
-          if (line.equals("test: yb_inet") && !TestUtils.IS_LINUX) {
-            // We only support IPv6-specific tests in yb_inet.sql on Linux, not on macOS.
-            line = "test: yb_inet_ipv4only";
+          if (line.equals("test: yb_pg_inet") && !TestUtils.IS_LINUX) {
+            // We only support IPv6-specific tests in yb_pg_inet.sql on Linux, not on macOS.
+            line = "test: yb_pg_inet_ipv4only";
           }
           LOG.info("Schedule output line: " + line);
           scheduleWriter.println(line);
@@ -128,8 +127,7 @@ public class PgRegressRunner {
       Pattern.compile("^test\\s+([a-zA-Z0-9_-]+)\\s+[.]+\\s+FAILED\\s*$");
 
   private LogErrorListener createLogErrorListener() {
-    return new LogErrorListenerWrapper(
-        new ExternalDaemonLogErrorListener("pg_regress with pid " + pgRegressPid)) {
+    return new ExternalDaemonLogErrorListener("pg_regress with pid " + pgRegressPid) {
       @Override
       public void handleLine(String line) {
         super.handleLine(line);

@@ -6,7 +6,8 @@ import {
   BulkImportContainer,
   CreateBackupContainer,
   RestoreBackupContainer,
-  DeleteBackupContainer
+  DeleteBackupContainer,
+  StopBackupContainer
 } from '../../../components/tables';
 import { ImportReleaseContainer, UpdateReleaseContainer } from '../../../components/releases';
 import { ReleaseStateEnum } from '../../releases/UpdateRelease/UpdateRelease';
@@ -101,6 +102,18 @@ export default class TableAction extends Component {
       btnIcon = 'fa fa-upload';
       modalContainer = (
         <CreateBackupContainer
+          visible={this.state.showModal}
+          onHide={this.closeModal}
+          tableInfo={this.state.selectedRow}
+          onSubmit={onSubmit}
+          onError={onError}
+        />
+      );
+    } else if (actionType === 'stop-backup') {
+      btnLabel = 'Stop Backup';
+      btnIcon = 'fa fa-stop';
+      modalContainer = (
+        <StopBackupContainer
           visible={this.state.showModal}
           onHide={this.closeModal}
           tableInfo={this.state.selectedRow}

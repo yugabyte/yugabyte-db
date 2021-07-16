@@ -95,6 +95,7 @@ class YBOperation {
   virtual ~YBOperation();
 
   std::shared_ptr<const YBTable> table() const { return table_; }
+  std::shared_ptr<YBTable> mutable_table() const { return table_; }
 
   void ResetTable(std::shared_ptr<YBTable> new_table);
 
@@ -124,6 +125,9 @@ class YBOperation {
 
   void SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet);
 
+  // Resets tablet, so it will be re-resolved on applying this operation.
+  void ResetTablet();
+
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
 
@@ -137,10 +141,18 @@ class YBOperation {
   // Mark table this op is designated for as having stale partitions.
   void MarkTablePartitionListAsStale();
 
-  // Refreshes partitions of the table this op is designated of in case partitions have been marked
-  // as stale.
-  // Returns whether table partitions have been refreshed.
-  Result<bool> MaybeRefreshTablePartitionList();
+  // If partition_list_version is set YBSession guarantees that this operation instance won't
+  // be applied to the tablet with a different table partition_list_version (meaning serving
+  // different range of partition keys). If versions do not match YBSession will report
+  // ClientError::kTablePartitionListVersionDoesNotMatch.
+  // If partition_list_version is not set - no such check will be performed.
+  void SetPartitionListVersion(PartitionListVersion partition_list_version) {
+    partition_list_version_ = partition_list_version;
+  }
+
+  boost::optional<PartitionListVersion> partition_list_version() const {
+    return partition_list_version_;
+  }
 
   int64_t GetQueryId() const {
     return reinterpret_cast<int64_t>(this);
@@ -155,6 +167,8 @@ class YBOperation {
   friend class internal::AsyncRpc;
 
   scoped_refptr<internal::RemoteTablet> tablet_;
+
+  boost::optional<PartitionListVersion> partition_list_version_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
@@ -540,6 +554,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
   bool should_add_intents(IsolationLevel isolation_level) override;
+  void SetUsedReadTime(const ReadHybridTime& used_time);
+  const ReadHybridTime& used_read_time() const { return used_read_time_; }
 
  protected:
   virtual Type type() const override { return PGSQL_READ; }
@@ -555,6 +571,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   std::unique_ptr<PgsqlReadRequestPB> read_request_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime read_time_;
+  ReadHybridTime used_read_time_;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on

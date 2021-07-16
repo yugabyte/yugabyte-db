@@ -18,40 +18,11 @@
 #include <set>
 #include <utility>
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/util/result.h"
-#include "yb/util/strongly_typed_string.h"
 
 namespace yb {
-
-// TODO: switch many of these to opaque types for additional type safety and efficiency.
-
-using NamespaceName = std::string;
-using TableName = std::string;
-using UDTypeName = std::string;
-using RoleName = std::string;
-
-using NamespaceId = std::string;
-using TableId = std::string;
-using UDTypeId = std::string;
-using CDCStreamId = std::string;
-
-using PeerId = std::string;
-using SnapshotId = std::string;
-using TabletServerId = PeerId;
-using TabletId = std::string;
-using TablegroupId = std::string;
-using TablespaceId = std::string;
-
-YB_STRONGLY_TYPED_STRING(KvStoreId);
-
-// TODO(#79): switch to YB_STRONGLY_TYPED_STRING
-using RaftGroupId = std::string;
-
-using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
-
-using FlushRequestId = std::string;
-
-using RedisConfigKey = std::string;
 
 static const uint32_t kPgSequencesDataTableOid = 0xFFFF;
 static const uint32_t kPgSequencesDataDatabaseOid = 0xFFFF;
@@ -64,6 +35,7 @@ static const uint32_t kPgFirstNormalObjectId = 16384; // Hardcoded in transam.h
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;
+extern const string kPgSequencesDataNamespaceId;
 
 // Get YB namespace id for a Postgres database.
 NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);

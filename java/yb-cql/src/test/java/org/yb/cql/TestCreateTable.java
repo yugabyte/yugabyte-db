@@ -25,9 +25,12 @@ import java.util.Set;
 
 import org.yb.YBTestRunner;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCreateTable extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestCreateTable.class);
 
   @Test
   public void testCreateTable() throws Exception {
@@ -205,7 +208,7 @@ public class TestCreateTable extends BaseCQLTest {
     session.execute("CREATE TABLE test_num_tablets_1 (id int PRIMARY KEY);");
     Set<String> ids =
       miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_1");
-    assertEquals(ids.size(), NUM_TABLET_SERVERS * overridableNumShardsPerTServer());
+    assertEquals(ids.size(), NUM_TABLET_SERVERS * getNumShardsPerTServer());
 
     // Test with tablets table property set.
     session.execute("CREATE TABLE test_num_tablets_2 (id int PRIMARY KEY) WITH tablets = 10;");

@@ -46,6 +46,7 @@ bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_in
   return false;
 }
 
+
 } // namespace enterprise
 } // namespace master
 } // namespace yb

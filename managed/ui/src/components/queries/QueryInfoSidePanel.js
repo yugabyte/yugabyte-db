@@ -44,7 +44,7 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
     <div className={`side-panel ${!visible ? 'panel-hidden' : ''}`}>
       <div className="side-panel__header">
         <span className="side-panel__icon--close" onClick={onHide}>
-          <i className="fa fa-chevron-right" />
+          <i className="fa fa-close" />
         </span>
         <div className="side-panel__title">DETAILS</div>
       </div>
@@ -62,19 +62,20 @@ export const QueryInfoSidePanel = ({ data, visible, onHide }) => {
           />
         </div>
         <ul className="side-panel__details">
-          {data && Object.keys(data).map((key) => {
-            if (key !== 'id' && key !== 'queryid' && key !== 'query') {
-              return (
-                <li key={`details-${key}`}>
-                  <label>
-                    <strong>{statsTextMap[key]}</strong>
-                  </label>
-                  <span>{data[key]}</span>
-                </li>
-              );
-            }
-            return null;
-          })}
+          {data &&
+            Object.keys(data).map((key) => {
+              if (key !== 'id' && key !== 'queryid' && key !== 'query') {
+                return (
+                  <li key={`details-${key}`}>
+                    <label>
+                      <strong>{statsTextMap[key]}</strong>
+                    </label>
+                    <span>{data[key]}</span>
+                  </li>
+                );
+              }
+              return null;
+            })}
         </ul>
       </div>
     </div>

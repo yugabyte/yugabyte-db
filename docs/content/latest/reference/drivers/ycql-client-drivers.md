@@ -9,7 +9,6 @@ menu:
     parent: drivers
     weight: 2942
 aliases:
-  - /latest/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true
 showAsideToc: true
 ---
@@ -51,12 +50,6 @@ For a tutorial on building a sample Go application with this driver, see [Build 
 ## Java
 
 ### Yugabyte Java Driver for YCQL 4.6
-
-{{< note title="Note" >}}
-
-The 4.6 driver is currently a release candidate and is not recommended yet for production environments.
-
-{{< /note >}}
 
 The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.6.0-yb-x/manual/core), version `4.6.0-yb-x`, is based on the [DataStax Java Driver for Apache Cassandra (v4.6)](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
 

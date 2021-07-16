@@ -17,13 +17,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class ApiDiscoveryController extends AuthenticatedController {
 
-  @Inject
-  private Provider<Router> routesProvider;
+  @Inject private Provider<Router> routesProvider;
 
   public Result index() {
     ArrayNode responseJson = Json.newArray();
     List<Router.RouteDocumentation> routeDocs = routesProvider.get().documentation();
-    for (Router.RouteDocumentation docItem: routeDocs) {
+    for (Router.RouteDocumentation docItem : routeDocs) {
       ObjectNode routeJsonNode = Json.newObject();
       routeJsonNode.put("method", docItem.getHttpMethod());
       routeJsonNode.put("path_pattern", docItem.getPathPattern());
@@ -32,5 +31,4 @@ public class ApiDiscoveryController extends AuthenticatedController {
     }
     return ok(responseJson);
   }
-
 }

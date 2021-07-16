@@ -58,6 +58,9 @@ inline ostream& operator<< (ostream& out, const QLOperator& ql_op) {
     case QL_OP_NOT_IN:
       out << "NOT IN";
       break;
+    case QL_OP_NOT_EQUAL:
+      out << "!=";
+      break;
     default:
       out << "";
       break;
@@ -125,8 +128,7 @@ class WhereExprState {
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
                  TreeNodeOpcode statement_type,
-                 MCList<FuncOp> *func_ops,
-                 MCVector<const PTExpr*> *filtering_exprs)
+                 MCList<FuncOp> *func_ops)
     : ops_(ops),
       key_ops_(key_ops),
       subscripted_col_ops_(subscripted_col_ops),
@@ -135,8 +137,7 @@ class WhereExprState {
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
       statement_type_(statement_type),
-      func_ops_(func_ops),
-      filtering_exprs_(filtering_exprs) {
+      func_ops_(func_ops) {
   }
 
   CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
@@ -182,26 +183,6 @@ class WhereExprState {
   TreeNodeOpcode statement_type_;
 
   MCList<FuncOp> *func_ops_;
-
-  // Collecting all expressions that a chosen index must cover to process the statement.
-  MCVector<const PTExpr*> *filtering_exprs_;
-};
-
-// State variables for if clause.
-class IfExprState {
- public:
-  explicit IfExprState(MCVector<const PTExpr*> *filtering_exprs)
-      : filtering_exprs_(filtering_exprs) {
-  }
-
-  void AddFilteringExpr(SemContext *sem_context, const PTRelationExpr *expr) {
-    // Collecting all filtering expressions to help choosing INDEX when processing a DML.
-    filtering_exprs_->push_back(expr);
-  }
-
- private:
-  // Collecting all expressions that a chosen index must cover to process the statement.
-  MCVector<const PTExpr*> *filtering_exprs_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -385,6 +366,10 @@ class PTDmlStmt : public PTCollection {
     } else {
       column_refs_.insert(col_desc.id());
     }
+
+    if (column_ref_cnts_.find(col_desc.id()) == column_ref_cnts_.end())
+      column_ref_cnts_[col_desc.id()] = 0;
+    column_ref_cnts_[col_desc.id()]++;
   }
 
   // Add column ref to be read.
@@ -578,6 +563,11 @@ class PTDmlStmt : public PTCollection {
   MCSet<int32> column_refs_;
   MCSet<int32> static_column_refs_;
 
+  // Ref count of occurrences of cols in where/if clauses. This is used to check, in case of a
+  // partial index scan, if there are more refs of a column after partial index predicate covers
+  // some refs of the col.
+  MCUnorderedMap<int32, uint16> column_ref_cnts_;
+
   // TODO(neil) This should have been a resultset's row descriptor. However, because rowblock is
   // using schema, this must be declared as vector<ColumnSchema>.
   //
@@ -590,9 +580,6 @@ class PTDmlStmt : public PTCollection {
   // indexes that do not.
   MCUnorderedSet<client::YBTablePtr> pk_only_indexes_;
   MCUnorderedSet<TableId> non_pk_only_indexes_;
-
-  // Collecting all expressions that a chosen index must cover to process the statement.
-  MCVector<const PTExpr*> filtering_exprs_;
 
   // For inter-dependency analysis of DMLs in a batch/transaction
   bool modifies_primary_row_ = false;
