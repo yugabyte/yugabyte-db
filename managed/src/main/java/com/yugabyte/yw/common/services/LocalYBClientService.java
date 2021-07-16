@@ -3,11 +3,9 @@
 package com.yugabyte.yw.common.services;
 
 import javax.inject.Singleton;
-
-import org.yb.client.YBClient;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.YBClient;
 
 @Singleton
 public class LocalYBClientService implements YBClientService {

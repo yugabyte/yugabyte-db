@@ -3,14 +3,17 @@ package com.yugabyte.yw.models;
 
 import io.ebean.Finder;
 import io.ebean.Model;
+import java.util.List;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
-
-import javax.persistence.*;
-import java.util.List;
-import java.util.UUID;
 
 @Entity
 public class PriceComponent extends Model {

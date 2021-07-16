@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.forms.ITaskParams;
-
 import javax.inject.Inject;
 
 public abstract class KMSConfigTaskBase extends AbstractTaskBase {

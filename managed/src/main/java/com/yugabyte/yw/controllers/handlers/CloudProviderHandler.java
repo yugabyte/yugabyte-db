@@ -10,6 +10,12 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashMultimap;
@@ -22,27 +28,37 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.persistence.PersistenceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.libs.Json;
-
-import javax.persistence.PersistenceException;
-import java.io.File;
-import java.io.IOException;
-import java.util.*;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 public class CloudProviderHandler {
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);

@@ -14,10 +14,9 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.Common;
-
-import javax.inject.Inject;
 
 @Slf4j
 public class CreateCassandraTable extends UniverseTaskBase {
