@@ -1855,7 +1855,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         : 0;
   }
 
-  private void prepareUniverseForToggleTls(boolean nodeToNode, boolean clientToNode, UUID rootCA)
+  private void prepareUniverseForToggleTls(
+      boolean nodeToNode,
+      boolean clientToNode,
+      boolean rootAndClientRootCASame,
+      UUID rootCA,
+      UUID clientRootCA)
       throws IOException, NoSuchAlgorithmException {
     CertificateInfo.create(
         rootCA,
@@ -1867,6 +1872,18 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         TestHelper.TMP_PATH + "/ca.crt",
         CertificateInfo.Type.SelfSigned);
 
+    if (!rootAndClientRootCASame && !rootCA.equals(clientRootCA)) {
+      CertificateInfo.create(
+          clientRootCA,
+          defaultCustomer.uuid,
+          "test1",
+          new Date(),
+          new Date(),
+          "privateKey",
+          TestHelper.TMP_PATH + "/ca.crt",
+          CertificateInfo.Type.SelfSigned);
+    }
+
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.universeUUID,
@@ -1877,9 +1894,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
               userIntent.enableNodeToNodeEncrypt = nodeToNode;
               userIntent.enableClientToNodeEncrypt = clientToNode;
               universeDetails.allowInsecure = true;
+              universeDetails.rootAndClientRootCASame = rootAndClientRootCASame;
+              if (nodeToNode || (rootAndClientRootCASame && clientToNode)) {
+                universeDetails.rootCA = rootCA;
+              }
+              if (clientToNode) {
+                universeDetails.clientRootCA = clientRootCA;
+              }
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
-                universeDetails.rootCA = rootCA;
               }
               universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
               universe.setUniverseDetails(universeDetails);
@@ -1890,13 +1913,17 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   private UpgradeUniverse.Params getTaskParamsForToggleTls(
       boolean nodeToNode,
       boolean clientToNode,
+      boolean rootAndClientRootCASame,
       UUID rootCA,
+      UUID clientRootCA,
       UpgradeParams.UpgradeOption upgradeOption) {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.upgradeOption = upgradeOption;
     taskParams.enableNodeToNodeEncrypt = nodeToNode;
     taskParams.enableClientToNodeEncrypt = clientToNode;
+    taskParams.rootAndClientRootCASame = rootAndClientRootCASame;
     taskParams.rootCA = rootCA;
+    taskParams.clientRootCA = clientRootCA;
     return taskParams;
   }
 
@@ -1999,33 +2026,79 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   @Parameters({
-    "true, true, false, true",
-    "true, true, false, false",
-    "true, false, false, true",
-    "true, false, false, false",
-    "false, true, true, true",
-    "false, true, true, false",
-    "false, false, true, true",
-    "false, false, true, false",
-    "true, true, true, false",
-    "true, false, true, true",
-    "false, true, false, false",
-    "false, false, false, true"
+    "true, true, false, false, true, true",
+    "true, true, false, false, false, true",
+    "true, false, false, false, true, true",
+    "true, false, false, false, false, true",
+    "false, true, false, true, true, true",
+    "false, true, false, true, false, true",
+    "false, false, false, true, true, true",
+    "false, false, false, true, false, true",
+    "true, true, false, true, false, true",
+    "true, false, false, true, true, true",
+    "false, true, false, false, false, true",
+    "false, false, false, false, true, true",
+    "true, true, true, false, true, true",
+    "true, true, true, false, false, true",
+    "true, false, true, false, true, true",
+    "true, false, true, false, false, true",
+    "false, true, true, true, true, true",
+    "false, true, true, true, false, true",
+    "false, false, true, true, true, true",
+    "false, false, true, true, false, true",
+    "true, true, true, true, false, true",
+    "true, false, true, true, true, true",
+    "false, true, true, false, false, true",
+    "false, false, true, false, true, true",
+    "true, true, true, false, true, false",
+    "true, true, true, false, false, false",
+    "true, false, true, false, true, false",
+    "true, false, true, false, false, false",
+    "false, true, true, true, true, false",
+    "false, true, true, true, false, false",
+    "false, false, true, true, true, false",
+    "false, false, true, true, false, false",
+    "true, true, true, true, false, false",
+    "true, false, true, true, true, false",
+    "false, true, true, false, false, false",
+    "false, false, true, false, true, false",
+    "true, true, false, false, true, false",
+    "true, true, false, false, false, false",
+    "true, false, false, false, true, false",
+    "true, false, false, false, false, false",
+    "false, true, false, true, true, false",
+    "false, true, false, true, false, false",
+    "false, false, false, true, true, false",
+    "false, false, false, true, false, false",
+    "true, true, false, true, false, false",
+    "true, false, false, true, true, false",
+    "false, true, false, false, false, false",
+    "false, false, false, false, true, false"
   })
   @TestCaseName(
       "testToggleTlsNonRollingUpgradeWhen"
-          + "CurrNodeToNode:{0}_CurrClientToNode:{1}_NodeToNode:{2}_ClientToNode:{3}")
+          + "CurrNodeToNode:{0}_CurrClientToNode:{1}_CurrRootAndClientRootCASame:{2}"
+          + "_NodeToNode:{3}_ClientToNode:{4}_RootAndClientRootCASame:{5}")
   public void testToggleTlsNonRollingUpgrade(
       boolean currentNodeToNode,
       boolean currentClientToNode,
+      boolean currRootAndClientRootCASame,
       boolean nodeToNode,
-      boolean clientToNode)
+      boolean clientToNode,
+      boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
     UUID rootCA = UUID.randomUUID();
-    prepareUniverseForToggleTls(currentNodeToNode, currentClientToNode, rootCA);
+    UUID clientRootCA = UUID.randomUUID();
+    prepareUniverseForToggleTls(
+        currentNodeToNode, currentClientToNode, currRootAndClientRootCASame, rootCA, clientRootCA);
     UpgradeUniverse.Params taskParams =
         getTaskParamsForToggleTls(
-            nodeToNode, clientToNode, rootCA, UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE);
+            nodeToNode,
+            clientToNode,
+            rootAndClientRootCASame,
+            rootCA,
+            clientRootCA,
+            UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE);
 
     int nodeToNodeChange = getNodeToNodeChangeForToggleTls(nodeToNode);
     Pair<UpgradeParams.UpgradeOption, UpgradeParams.UpgradeOption> upgrade =
@@ -2061,38 +2134,97 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals((int) expectedValues.first, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    if (nodeToNode || (rootAndClientRootCASame && clientToNode))
+      assertEquals(rootCA, universe.getUniverseDetails().rootCA);
+    else assertNull(universe.getUniverseDetails().rootCA);
+    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    else assertNull(universe.getUniverseDetails().clientRootCA);
+    assertEquals(
+        nodeToNode,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
+    assertEquals(
+        clientToNode,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+    assertEquals(rootAndClientRootCASame, universe.getUniverseDetails().rootAndClientRootCASame);
     verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
   }
 
   @Test
   @Parameters({
-    "true, true, false, true",
-    "true, true, false, false",
-    "true, false, false, true",
-    "true, false, false, false",
-    "false, true, true, true",
-    "false, true, true, false",
-    "false, false, true, true",
-    "false, false, true, false",
-    "true, true, true, false",
-    "true, false, true, true",
-    "false, true, false, false",
-    "false, false, false, true"
+    "true, true, false, false, true, true",
+    "true, true, false, false, false, true",
+    "true, false, false, false, true, true",
+    "true, false, false, false, false, true",
+    "false, true, false, true, true, true",
+    "false, true, false, true, false, true",
+    "false, false, false, true, true, true",
+    "false, false, false, true, false, true",
+    "true, true, false, true, false, true",
+    "true, false, false, true, true, true",
+    "false, true, false, false, false, true",
+    "false, false, false, false, true, true",
+    "true, true, true, false, true, true",
+    "true, true, true, false, false, true",
+    "true, false, true, false, true, true",
+    "true, false, true, false, false, true",
+    "false, true, true, true, true, true",
+    "false, true, true, true, false, true",
+    "false, false, true, true, true, true",
+    "false, false, true, true, false, true",
+    "true, true, true, true, false, true",
+    "true, false, true, true, true, true",
+    "false, true, true, false, false, true",
+    "false, false, true, false, true, true",
+    "true, true, true, false, true, false",
+    "true, true, true, false, false, false",
+    "true, false, true, false, true, false",
+    "true, false, true, false, false, false",
+    "false, true, true, true, true, false",
+    "false, true, true, true, false, false",
+    "false, false, true, true, true, false",
+    "false, false, true, true, false, false",
+    "true, true, true, true, false, false",
+    "true, false, true, true, true, false",
+    "false, true, true, false, false, false",
+    "false, false, true, false, true, false",
+    "true, true, false, false, true, false",
+    "true, true, false, false, false, false",
+    "true, false, false, false, true, false",
+    "true, false, false, false, false, false",
+    "false, true, false, true, true, false",
+    "false, true, false, true, false, false",
+    "false, false, false, true, true, false",
+    "false, false, false, true, false, false",
+    "true, true, false, true, false, false",
+    "true, false, false, true, true, false",
+    "false, true, false, false, false, false",
+    "false, false, false, false, true, false"
   })
   @TestCaseName(
       "testToggleTlsRollingUpgradeWhen"
-          + "CurrNodeToNode:{0}_CurrClientToNode:{1}_NodeToNode:{2}_ClientToNode:{3}")
+          + "CurrNodeToNode:{0}_CurrClientToNode:{1}_CurrRootAndClientRootCASame:{2}"
+          + "_NodeToNode:{3}_ClientToNode:{4}_RootAndClientRootCASame:{5}")
   public void testToggleTlsRollingUpgrade(
       boolean currentNodeToNode,
       boolean currentClientToNode,
+      boolean currRootAndClientRootCASame,
       boolean nodeToNode,
-      boolean clientToNode)
+      boolean clientToNode,
+      boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
     UUID rootCA = UUID.randomUUID();
-    prepareUniverseForToggleTls(currentNodeToNode, currentClientToNode, rootCA);
+    UUID clientRootCA = UUID.randomUUID();
+    prepareUniverseForToggleTls(
+        currentNodeToNode, currentClientToNode, currRootAndClientRootCASame, rootCA, clientRootCA);
     UpgradeUniverse.Params taskParams =
         getTaskParamsForToggleTls(
-            nodeToNode, clientToNode, rootCA, UpgradeParams.UpgradeOption.ROLLING_UPGRADE);
+            nodeToNode,
+            clientToNode,
+            rootAndClientRootCASame,
+            rootCA,
+            clientRootCA,
+            UpgradeParams.UpgradeOption.ROLLING_UPGRADE);
 
     int nodeToNodeChange = getNodeToNodeChangeForToggleTls(nodeToNode);
     Pair<UpgradeParams.UpgradeOption, UpgradeParams.UpgradeOption> upgrade =
@@ -2131,6 +2263,19 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals((int) expectedValues.first, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    if (nodeToNode || (rootAndClientRootCASame && clientToNode))
+      assertEquals(rootCA, universe.getUniverseDetails().rootCA);
+    else assertNull(universe.getUniverseDetails().rootCA);
+    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    else assertNull(universe.getUniverseDetails().clientRootCA);
+    assertEquals(
+        nodeToNode,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
+    assertEquals(
+        clientToNode,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+    assertEquals(rootAndClientRootCASame, universe.getUniverseDetails().rootAndClientRootCASame);
     verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
   }
 
