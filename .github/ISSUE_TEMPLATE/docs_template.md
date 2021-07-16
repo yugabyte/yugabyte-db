@@ -1,5 +1,0 @@
-## Background
-BACKGROUND_OF_CHANGES
-
-## Changes
-- DETAIL_OF_CHANGES
