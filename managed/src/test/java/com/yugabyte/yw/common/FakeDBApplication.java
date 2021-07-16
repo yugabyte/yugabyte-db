@@ -2,14 +2,26 @@
 
 package com.yugabyte.yw.common;
 
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
+
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.cloud.CloudAPI;
-import com.yugabyte.yw.commissioner.*;
+import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.QueryAlerts;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
@@ -20,15 +32,6 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeoutException;
-
-import static org.mockito.Mockito.mock;
-import static play.inject.Bindings.bind;
 
 public class FakeDBApplication extends WithApplication {
   public Commissioner mockCommissioner = mock(Commissioner.class);

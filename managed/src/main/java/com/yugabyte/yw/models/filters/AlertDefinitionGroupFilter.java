@@ -11,12 +11,13 @@ package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
-import lombok.*;
-
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
 
 @Value
 @Builder

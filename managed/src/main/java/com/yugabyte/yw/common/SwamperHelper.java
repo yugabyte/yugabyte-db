@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.writeFile;
+import static com.yugabyte.yw.common.Util.writeJsonFile;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -19,6 +22,19 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -27,19 +43,6 @@ import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.libs.Json;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.Util.writeFile;
-import static com.yugabyte.yw.common.Util.writeJsonFile;
 
 @Singleton
 public class SwamperHelper {

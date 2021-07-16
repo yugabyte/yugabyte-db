@@ -15,9 +15,8 @@ import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import lombok.extern.slf4j.Slf4j;
-
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class SetUniverseKey extends UniverseTaskBase {

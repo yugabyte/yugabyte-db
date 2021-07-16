@@ -5,17 +5,14 @@ package com.yugabyte.yw.common.alerts;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 
+import com.yugabyte.yw.common.EmailHelper;
 import java.util.ArrayList;
 import java.util.Collections;
-
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
-import com.yugabyte.yw.common.EmailHelper;
-
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 
 @RunWith(JUnitParamsRunner.class)
 public class AlertReceiverEmailParamsTest {

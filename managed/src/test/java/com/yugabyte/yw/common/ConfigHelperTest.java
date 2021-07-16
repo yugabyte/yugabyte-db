@@ -1,10 +1,26 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.models.YugawareProperty;
+import static com.yugabyte.yw.common.ReleaseManagerTest.TMP_STORAGE_PATH;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.YugawareProperty;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -12,26 +28,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
 import play.Application;
 import play.libs.Json;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
-
-import static com.yugabyte.yw.common.ReleaseManagerTest.TMP_STORAGE_PATH;
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ConfigHelperTest extends FakeDBApplication {

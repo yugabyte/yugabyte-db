@@ -9,9 +9,12 @@
  */
 package com.yugabyte.yw.common.alerts;
 
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AlertDefinitionLabel;
+import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;

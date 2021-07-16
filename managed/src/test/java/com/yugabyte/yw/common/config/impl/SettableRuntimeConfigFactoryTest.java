@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.common.config.impl;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
@@ -20,14 +23,10 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
-import org.junit.Before;
-import org.junit.Test;
-
 import java.util.Map;
 import java.util.Set;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import org.junit.Before;
+import org.junit.Test;
 
 public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 

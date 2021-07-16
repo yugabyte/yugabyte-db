@@ -10,6 +10,18 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyList;
+import static org.mockito.Mockito.anyMap;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import akka.actor.ActorSystem;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -17,6 +29,13 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import io.ebean.Model;
+import java.io.File;
+import java.net.URL;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import junit.framework.TestCase;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -26,16 +45,6 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import scala.concurrent.ExecutionContext;
-
-import java.io.File;
-import java.net.URL;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.mockito.Mockito.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class PlatformReplicationManagerTest extends TestCase {

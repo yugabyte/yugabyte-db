@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
-
 import java.util.UUID;
 
 public interface ITask extends Runnable {

@@ -19,13 +19,12 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Provider;
-import play.libs.Json;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import play.libs.Json;
 
 public class KubernetesWaitForPod extends AbstractTaskBase {
   public enum CommandType {

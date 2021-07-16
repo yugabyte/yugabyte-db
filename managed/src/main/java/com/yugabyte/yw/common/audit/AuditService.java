@@ -19,14 +19,13 @@ import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Users;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.mvc.Http;
-
-import javax.inject.Singleton;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 
 @Singleton
 public class AuditService {

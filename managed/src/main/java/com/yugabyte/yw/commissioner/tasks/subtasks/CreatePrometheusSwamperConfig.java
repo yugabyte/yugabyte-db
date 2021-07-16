@@ -12,9 +12,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import lombok.extern.slf4j.Slf4j;
-
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class CreatePrometheusSwamperConfig extends UniverseDefinitionTaskBase {

@@ -19,13 +19,12 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.ebean.Ebean;
 import io.ebean.EbeanServer;
+import java.util.List;
 import play.Application;
 import play.libs.Files;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
-
-import java.util.List;
 
 public class FakeApi {
   private final String authToken;
