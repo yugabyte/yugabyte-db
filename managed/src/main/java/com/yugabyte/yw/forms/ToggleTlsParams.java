@@ -21,6 +21,10 @@ public class ToggleTlsParams {
 
   public UUID rootCA = null;
 
+  public UUID clientRootCA = null;
+
+  public Boolean rootAndClientRootCASame = null;
+
   // Verifies the ToggleTlsParams by comparing with the existing
   // UniverseDefinitionTaskParams, returns YWError object if invalid else null
   public YWResults.YWError verifyParams(UniverseDefinitionTaskParams universeParams) {
@@ -29,6 +33,7 @@ public class ToggleTlsParams {
     boolean existingEnableNodeToNodeEncrypt =
         universeParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
     UUID existingRootCA = universeParams.rootCA;
+    UUID existingClientRootCA = universeParams.clientRootCA;
 
     if (upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE) {
@@ -50,6 +55,12 @@ public class ToggleTlsParams {
       return new YWResults.YWError("Cannot update root certificate, if already created.");
     }
 
+    if (existingClientRootCA != null
+        && clientRootCA != null
+        && !existingClientRootCA.equals(clientRootCA)) {
+      return new YWResults.YWError("Cannot update client root certificate, if already created.");
+    }
+
     return null;
   }
 
@@ -59,6 +70,8 @@ public class ToggleTlsParams {
     JsonNode nodeToNode = formData.get("enableNodeToNodeEncrypt");
     JsonNode clientToNode = formData.get("enableClientToNodeEncrypt");
     JsonNode rootCA = formData.get("rootCA");
+    JsonNode clientRootCA = formData.get("clientRootCA");
+    JsonNode rootAndClientRootCASame = formData.get("rootAndClientRootCASame");
 
     if (upgradeOption != null && upgradeOption.isTextual() && !upgradeOption.asText().isEmpty()) {
       try {
@@ -88,6 +101,23 @@ public class ToggleTlsParams {
         params.rootCA = UUID.fromString(rootCA.asText());
       } catch (IllegalArgumentException e) {
         throw new YWServiceException(Http.Status.BAD_REQUEST, "rootCA: Invalid Uuid String.");
+      }
+    }
+
+    if (clientRootCA != null && clientRootCA.isTextual() && !clientRootCA.asText().isEmpty()) {
+      try {
+        params.clientRootCA = UUID.fromString(clientRootCA.asText());
+      } catch (IllegalArgumentException e) {
+        throw new YWServiceException(Http.Status.BAD_REQUEST, "clientRootCA: Invalid Uuid String.");
+      }
+    }
+
+    if (rootAndClientRootCASame != null && rootAndClientRootCASame.isBoolean()) {
+      try {
+        params.rootAndClientRootCASame = rootAndClientRootCASame.asBoolean();
+      } catch (IllegalArgumentException e) {
+        throw new YWServiceException(
+            Http.Status.BAD_REQUEST, "rootAndClientRootCASame: Invalid Boolean.");
       }
     }
 

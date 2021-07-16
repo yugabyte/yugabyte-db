@@ -8,6 +8,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -166,15 +168,21 @@ public class CertificateHelper {
     return createRootCA(nodePrefix + CLIENT_NODE_SUFFIX, customerUUID, storagePath);
   }
 
-  public static CertificateDetails createClientCertificate(
-      UUID rootCA, String storagePath, String username, Date certStart, Date certExpiry) {
+  public static CertificateDetails createSignedCertificate(
+      UUID rootCA,
+      String storagePath,
+      String username,
+      Date certStart,
+      Date certExpiry,
+      String certFileName,
+      String certKeyName) {
     LOG.info(
-        "Creating client certificate signed by root CA {} and user {} at path {}",
+        "Creating signed certificate signed by root CA {} and user {} at path {}",
         rootCA,
         username,
         storagePath);
     try {
-      // Add the security provider in case createClientCertificate was never called.
+      // Add the security provider in case createSignedCertificate was never called.
       KeyPair clientKeyPair = getKeyPairObject();
 
       Calendar cal = Calendar.getInstance();
@@ -251,10 +259,10 @@ public class CertificateHelper {
       JcaPEMWriter clientKeyWriter;
       StringWriter certWriter = new StringWriter();
       StringWriter keyWriter = new StringWriter();
-      CertificateDetails bodyJson = new CertificateDetails();
+      CertificateDetails certificateDetails = new CertificateDetails();
       if (storagePath != null) {
-        String clientCertPath = String.format("%s/%s", storagePath, CLIENT_CERT);
-        String clientKeyPath = String.format("%s/%s", storagePath, CLIENT_KEY);
+        String clientCertPath = String.format("%s/%s", storagePath, certFileName);
+        String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
         File clientCertfile = new File(clientCertPath);
         File clientKeyfile = new File(clientKeyPath);
         clientCertWriter = new JcaPEMWriter(new FileWriter(clientCertfile));
@@ -268,11 +276,11 @@ public class CertificateHelper {
       clientKeyWriter.writeObject(clientKeyPair.getPrivate());
       clientKeyWriter.flush();
       if (storagePath == null) {
-        bodyJson.crt = certWriter.toString();
-        bodyJson.key = keyWriter.toString();
+        certificateDetails.crt = certWriter.toString();
+        certificateDetails.key = keyWriter.toString();
       }
       LOG.info("Created Client CA for username {} signed by root CA {}.", username, rootCA);
-      return bodyJson;
+      return certificateDetails;
 
     } catch (NoSuchAlgorithmException
         | IOException
@@ -284,6 +292,24 @@ public class CertificateHelper {
       LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not create client cert.");
     }
+  }
+
+  public static CertificateDetails createClientCertificate(
+      UUID rootCA, String storagePath, String username, Date certStart, Date certExpiry) {
+    return createSignedCertificate(
+        rootCA, storagePath, username, certStart, certExpiry, CLIENT_CERT, CLIENT_KEY);
+  }
+
+  public static CertificateDetails createServerCertificate(
+      UUID rootCA,
+      String storagePath,
+      String username,
+      Date certStart,
+      Date certExpiry,
+      String certFileName,
+      String certKeyName) {
+    return createSignedCertificate(
+        rootCA, storagePath, username, certStart, certExpiry, certFileName, certKeyName);
   }
 
   public static UUID uploadRootCA(
@@ -522,6 +548,24 @@ public class CertificateHelper {
       LOG.error(e.getMessage());
       throw new RuntimeException("Unable to get Private Key");
     }
+  }
+
+  public static boolean isRootCARequired(AnsibleConfigureServers.Params taskParams) {
+    return taskParams.enableNodeToNodeEncrypt
+        || (taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt);
+  }
+
+  public static boolean isRootCARequired(UniverseSetTlsParams.Params taskParams) {
+    return taskParams.enableNodeToNodeEncrypt
+        || (taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt);
+  }
+
+  public static boolean isClientRootCARequired(AnsibleConfigureServers.Params taskParams) {
+    return !taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt;
+  }
+
+  public static boolean isClientRootCARequired(UniverseSetTlsParams.Params taskParams) {
+    return !taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt;
   }
 
   public static void writeKeyFileContentToKeyPath(PrivateKey keyContent, String keyPath) {

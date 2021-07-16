@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import play.libs.Json;
 
 import java.io.File;
@@ -51,6 +52,8 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
+  public static final String CERT_LOCATION_NODE = "node";
+  public static final String CERT_LOCATION_PLATFORM = "platform";
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
 
@@ -247,6 +250,188 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
+  // Return the List of Strings which gives the certificate paths for the specific taskParams
+  private List<String> getCertificatePaths(
+      AnsibleConfigureServers.Params taskParam, String nodeIP, String yb_home_dir) {
+    ArrayList<String> subcommandStrings = new ArrayList<String>();
+
+    String serverCertFile = String.format("node.%s.crt", nodeIP);
+    String serverKeyFile = String.format("node.%s.key", nodeIP);
+
+    if (CertificateHelper.isRootCARequired(taskParam)) {
+      subcommandStrings.add("--certs_node_dir");
+      subcommandStrings.add(yb_home_dir + "/yugabyte-tls-config");
+
+      CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
+      if (rootCert == null) {
+        throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
+      }
+
+      String rootCertPath, serverCertPath, serverKeyPath, certsLocation;
+
+      switch (rootCert.certType) {
+        case SelfSigned:
+          {
+            try {
+              // Creating a temp directory to save Server Cert and Key from Root for the node
+              Path tempStorageDirectory =
+                  Files.createTempDirectory(String.format("SelfSigned%s", taskParam.rootCA))
+                      .toAbsolutePath();
+              CertificateHelper.createServerCertificate(
+                  taskParam.rootCA,
+                  tempStorageDirectory.toString(),
+                  nodeIP,
+                  null,
+                  null,
+                  serverCertFile,
+                  serverKeyFile);
+              rootCertPath = rootCert.certificate;
+              serverCertPath =
+                  String.format("%s/%s", tempStorageDirectory.toString(), serverCertFile);
+              serverKeyPath =
+                  String.format("%s/%s", tempStorageDirectory.toString(), serverKeyFile);
+              certsLocation = CERT_LOCATION_PLATFORM;
+
+              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
+                // These client certs are used for node to postgres communication
+                // These are seprate from clientRoot certs which are used for server to client
+                // communication These are not required anymore as this is not mandatory now and
+                // can be removed
+                // The code is still here to mantain backward compatibility
+                subcommandStrings.add("--client_cert_path");
+                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+                subcommandStrings.add("--client_key_path");
+                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+              }
+            } catch (IOException e) {
+              LOG.error(e.getMessage(), e);
+              throw new RuntimeException(e);
+            }
+            break;
+          }
+        case CustomCertHostPath:
+          {
+            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+            rootCertPath = customCertInfo.rootCertPath;
+            serverCertPath = customCertInfo.nodeCertPath;
+            serverKeyPath = customCertInfo.nodeKeyPath;
+            certsLocation = CERT_LOCATION_NODE;
+            if (taskParam.rootAndClientRootCASame
+                && taskParam.enableClientToNodeEncrypt
+                && customCertInfo.clientCertPath != null
+                && !customCertInfo.clientCertPath.isEmpty()
+                && customCertInfo.clientKeyPath != null
+                && !customCertInfo.clientKeyPath.isEmpty()) {
+              // These client certs are used for node to postgres communication
+              // These are seprate from clientRoot certs which are used for server to client
+              // communication These are not required anymore as this is not mandatory now and
+              // can be removed
+              // The code is still here to mantain backward compatibility
+              subcommandStrings.add("--client_cert_path");
+              subcommandStrings.add(customCertInfo.clientCertPath);
+              subcommandStrings.add("--client_key_path");
+              subcommandStrings.add(customCertInfo.clientKeyPath);
+            }
+            break;
+          }
+        case CustomServerCert:
+          {
+            throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
+          }
+        default:
+          {
+            throw new RuntimeException("certType should be valid.");
+          }
+      }
+
+      // These Server Certs are used for TLS Encryption for Node to Node and
+      // (in legacy nodes) client to node as well
+      subcommandStrings.add("--root_cert_path");
+      subcommandStrings.add(rootCertPath);
+      subcommandStrings.add("--server_cert_path");
+      subcommandStrings.add(serverCertPath);
+      subcommandStrings.add("--server_key_path");
+      subcommandStrings.add(serverKeyPath);
+      subcommandStrings.add("--certs_location");
+      subcommandStrings.add(certsLocation);
+    }
+    if (CertificateHelper.isClientRootCARequired(taskParam)) {
+      subcommandStrings.add("--certs_client_dir");
+      subcommandStrings.add(yb_home_dir + "/yugabyte-client-tls-config");
+
+      CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
+      if (clientRootCert == null) {
+        throw new RuntimeException("No valid clientRootCA found for " + taskParam.universeUUID);
+      }
+
+      String rootCertPath, serverCertPath, serverKeyPath, certsLocation;
+
+      switch (clientRootCert.certType) {
+        case SelfSigned:
+          {
+            try {
+              // Creating a temp directory to save Server Cert and Key from Root for the node
+              Path tempStorageDirectory =
+                  Files.createTempDirectory(String.format("SelfSignedClient%s", taskParam.rootCA))
+                      .toAbsolutePath();
+              CertificateHelper.createServerCertificate(
+                  taskParam.clientRootCA,
+                  tempStorageDirectory.toString(),
+                  nodeIP,
+                  null,
+                  null,
+                  serverCertFile,
+                  serverKeyFile);
+              rootCertPath = clientRootCert.certificate;
+              serverCertPath =
+                  String.format("%s/%s", tempStorageDirectory.toString(), serverCertFile);
+              serverKeyPath =
+                  String.format("%s/%s", tempStorageDirectory.toString(), serverKeyFile);
+              certsLocation = CERT_LOCATION_PLATFORM;
+            } catch (IOException e) {
+              LOG.error(e.getMessage(), e);
+              throw new RuntimeException(e);
+            }
+            break;
+          }
+        case CustomCertHostPath:
+          {
+            CertificateParams.CustomCertInfo customCertInfo = clientRootCert.getCustomCertInfo();
+            rootCertPath = customCertInfo.rootCertPath;
+            serverCertPath = customCertInfo.nodeCertPath;
+            serverKeyPath = customCertInfo.nodeKeyPath;
+            certsLocation = CERT_LOCATION_NODE;
+            break;
+          }
+        case CustomServerCert:
+          {
+            CertificateInfo.CustomServerCertInfo customServerCertInfo =
+                clientRootCert.getCustomServerCertInfo();
+            rootCertPath = clientRootCert.certificate;
+            serverCertPath = customServerCertInfo.serverCert;
+            serverKeyPath = customServerCertInfo.serverKey;
+            certsLocation = CERT_LOCATION_PLATFORM;
+          }
+        default:
+          {
+            throw new RuntimeException("certType should be valid.");
+          }
+      }
+
+      // These Server Certs are used for TLS Encryption for Client to Node
+      subcommandStrings.add("--root_cert_path_client_to_server");
+      subcommandStrings.add(rootCertPath);
+      subcommandStrings.add("--server_cert_path_client_to_server");
+      subcommandStrings.add(serverCertPath);
+      subcommandStrings.add("--server_key_path_client_to_server");
+      subcommandStrings.add(serverKeyPath);
+      subcommandStrings.add("--certs_location_client_to_server");
+      subcommandStrings.add(certsLocation);
+    }
+
+    return subcommandStrings;
+  }
+
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
     List<String> subcommand = new ArrayList<String>();
@@ -353,143 +538,13 @@ public class NodeManager extends DevopsBase {
 
           extra_gflags.put("cert_node_filename", node.cloudInfo.private_ip);
 
-          if (taskParam.rootAndClientRootCASame) {
+          if (CertificateHelper.isRootCARequired(taskParam)) {
             extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-            subcommand.add("--certs_node_dir");
-            subcommand.add(yb_home_dir + "/yugabyte-tls-config");
-
-            CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
-            if (rootCert == null) {
-              throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
-            }
-
-            switch (rootCert.certType) {
-              case SelfSigned:
-                {
-                  subcommand.add("--rootCA_cert");
-                  subcommand.add(rootCert.certificate);
-                  subcommand.add("--rootCA_key");
-                  subcommand.add(rootCert.privateKey);
-                  break;
-                }
-              case CustomCertHostPath:
-                {
-                  CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
-                  subcommand.add("--use_custom_certs");
-                  subcommand.add("--root_cert_path");
-                  subcommand.add(customCertInfo.rootCertPath);
-                  subcommand.add("--node_cert_path");
-                  subcommand.add(customCertInfo.nodeCertPath);
-                  subcommand.add("--node_key_path");
-                  subcommand.add(customCertInfo.nodeKeyPath);
-                  if (customCertInfo.clientCertPath != null
-                      && !customCertInfo.clientCertPath.isEmpty()
-                      && customCertInfo.clientKeyPath != null
-                      && !customCertInfo.clientKeyPath.isEmpty()) {
-                    // These client certs are used for node to postgres communication
-                    // These are seprate from clientRoot certs which are used for server to client
-                    // comm
-                    // These are not required anymore as this is not mandatory now and can be
-                    // removed
-                    // The code is still here to mantain backward compatibility
-                    subcommand.add("--client_cert_path");
-                    subcommand.add(customCertInfo.clientCertPath);
-                    subcommand.add("--client_key_path");
-                    subcommand.add(customCertInfo.clientKeyPath);
-                  }
-                  break;
-                }
-              case CustomServerCert:
-                {
-                  throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
-                }
-            }
-          } else {
-            if (taskParam.enableNodeToNodeEncrypt) {
-              extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-              subcommand.add("--certs_node_dir");
-              subcommand.add(yb_home_dir + "/yugabyte-tls-config");
-
-              CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
-              if (rootCert == null) {
-                throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
-              }
-
-              switch (rootCert.certType) {
-                case SelfSigned:
-                  {
-                    subcommand.add("--rootCA_cert");
-                    subcommand.add(rootCert.certificate);
-                    subcommand.add("--rootCA_key");
-                    subcommand.add(rootCert.privateKey);
-                    break;
-                  }
-                case CustomCertHostPath:
-                  {
-                    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
-                    subcommand.add("--use_custom_certs");
-                    subcommand.add("--root_cert_path");
-                    subcommand.add(customCertInfo.rootCertPath);
-                    subcommand.add("--node_cert_path");
-                    subcommand.add(customCertInfo.nodeCertPath);
-                    subcommand.add("--node_key_path");
-                    subcommand.add(customCertInfo.nodeKeyPath);
-                    break;
-                  }
-                case CustomServerCert:
-                  {
-                    throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
-                  }
-              }
-            }
-            if (taskParam.enableClientToNodeEncrypt) {
-              extra_gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
-              subcommand.add("--certs_client_dir");
-              subcommand.add(yb_home_dir + "/yugabyte-client-tls-config");
-
-              CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
-              if (clientRootCert == null) {
-                throw new RuntimeException(
-                    "No valid clientRootCA found for " + taskParam.universeUUID);
-              }
-
-              switch (clientRootCert.certType) {
-                case SelfSigned:
-                  {
-                    subcommand.add("--clientRootCA_cert");
-                    subcommand.add(clientRootCert.certificate);
-                    subcommand.add("--clientRootCA_key");
-                    subcommand.add(clientRootCert.privateKey);
-                    break;
-                  }
-                case CustomCertHostPath:
-                  {
-                    CertificateParams.CustomCertInfo customCertInfo =
-                        clientRootCert.getCustomCertInfo();
-                    subcommand.add("--use_custom_client_certs");
-                    subcommand.add("--client_root_cert_path");
-                    subcommand.add(customCertInfo.rootCertPath);
-                    subcommand.add("--client_node_cert_path");
-                    subcommand.add(customCertInfo.nodeCertPath);
-                    subcommand.add("--client_node_key_path");
-                    subcommand.add(customCertInfo.nodeKeyPath);
-                    break;
-                  }
-                case CustomServerCert:
-                  {
-                    CertificateInfo.CustomServerCertInfo customServerCertInfo =
-                        clientRootCert.getCustomServerCertInfo();
-                    subcommand.add("--use_custom_server_certs");
-                    subcommand.add("--server_root_cert");
-                    subcommand.add(clientRootCert.certificate);
-                    subcommand.add("--server_node_cert");
-                    subcommand.add(customServerCertInfo.serverCert);
-                    subcommand.add("--server_node_key");
-                    subcommand.add(customServerCertInfo.serverKey);
-                  }
-              }
-            }
           }
+          if (CertificateHelper.isClientRootCARequired(taskParam)) {
+            extra_gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+          }
+          subcommand.addAll(getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
         }
         if (taskParam.callhomeLevel != null) {
           extra_gflags.put(
@@ -601,7 +656,6 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
           CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-          subcommand.add("--use_custom_certs");
           subcommand.add("--rotating_certs");
           subcommand.add("--root_cert_path");
           subcommand.add(customCertInfo.rootCertPath);
@@ -609,7 +663,11 @@ public class NodeManager extends DevopsBase {
           subcommand.add(customCertInfo.nodeCertPath);
           subcommand.add("--node_key_path");
           subcommand.add(customCertInfo.nodeKeyPath);
-          if (customCertInfo.clientCertPath != null
+          subcommand.add("--certs_location");
+          subcommand.add(CERT_LOCATION_NODE);
+          if (taskParam.rootAndClientRootCASame
+              && taskParam.enableClientToNodeEncrypt
+              && customCertInfo.clientCertPath != null
               && !customCertInfo.clientCertPath.isEmpty()
               && customCertInfo.clientKeyPath != null
               && !customCertInfo.clientKeyPath.isEmpty()) {
@@ -635,71 +693,42 @@ public class NodeManager extends DevopsBase {
         String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
         String allowInsecureString = String.valueOf(taskParam.allowInsecure);
 
-        String certsNodeDir =
+        String yb_home_dir =
             Provider.getOrBadRequest(
-                        UUID.fromString(
-                            universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
-                    .getYbHome()
-                + "/yugabyte-tls-config";
+                    UUID.fromString(
+                        universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                .getYbHome();
+        String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
 
         if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
           if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
-            CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
-            if (cert == null) {
-              throw new RuntimeException("No valid rootCA found for " + taskParam.universeUUID);
-            }
-
             subcommand.add("--adding_certs");
-            subcommand.add("--certs_node_dir");
-            subcommand.add(certsNodeDir);
-
-            if (cert.certType == CertificateInfo.Type.SelfSigned) {
-              subcommand.add("--rootCA_cert");
-              subcommand.add(cert.certificate);
-              subcommand.add("--rootCA_key");
-              subcommand.add(cert.privateKey);
-              if (taskParam.enableClientToNodeEncrypt) {
-                subcommand.add("--client_cert");
-                subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
-                subcommand.add("--client_key");
-                subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
-              }
-            } else {
-              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-              subcommand.add("--use_custom_certs");
-              subcommand.add("--root_cert_path");
-              subcommand.add(customCertInfo.rootCertPath);
-              subcommand.add("--node_cert_path");
-              subcommand.add(customCertInfo.nodeCertPath);
-              subcommand.add("--node_key_path");
-              subcommand.add(customCertInfo.nodeKeyPath);
-              if (customCertInfo.clientCertPath != null
-                  && !customCertInfo.clientCertPath.isEmpty()
-                  && customCertInfo.clientKeyPath != null
-                  && !customCertInfo.clientKeyPath.isEmpty()) {
-                subcommand.add("--client_cert_path");
-                subcommand.add(customCertInfo.clientCertPath);
-                subcommand.add("--client_key_path");
-                subcommand.add(customCertInfo.clientKeyPath);
-              }
-            }
-          } else {
-            throw new RuntimeException("No changes needed for both root cert and client cert.");
           }
+          subcommand.addAll(getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
         } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
           Map<String, String> gflags = new HashMap<>();
           if (taskParam.nodeToNodeChange > 0) {
             gflags.put("use_node_to_node_encryption", nodeToNodeString);
             gflags.put("use_client_to_server_encryption", clientToNodeString);
             gflags.put("allow_insecure_connections", "true");
-            gflags.put("certs_dir", certsNodeDir);
+            if (CertificateHelper.isRootCARequired(taskParam)) {
+              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+            }
+            if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+            }
           } else if (taskParam.nodeToNodeChange < 0) {
             gflags.put("allow_insecure_connections", "true");
           } else {
             gflags.put("use_node_to_node_encryption", nodeToNodeString);
             gflags.put("use_client_to_server_encryption", clientToNodeString);
             gflags.put("allow_insecure_connections", allowInsecureString);
-            gflags.put("certs_dir", certsNodeDir);
+            if (CertificateHelper.isRootCARequired(taskParam)) {
+              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+            }
+            if (CertificateHelper.isClientRootCARequired(taskParam)) {
+              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+            }
           }
 
           subcommand.add("--replace_gflags");

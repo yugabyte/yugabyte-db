@@ -152,10 +152,40 @@ public class UniverseActionsHandler {
 
     if (requestParams.rootCA != null
         && CertificateInfo.get(requestParams.rootCA).certType
+            == CertificateInfo.Type.CustomServerCert) {
+      throw new YWServiceException(
+          Http.Status.BAD_REQUEST,
+          "CustomServerCert are only supported for Client to Server Communication.");
+    }
+
+    if (requestParams.rootCA != null
+        && CertificateInfo.get(requestParams.rootCA).certType
             == CertificateInfo.Type.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
       throw new YWServiceException(
-          Http.Status.BAD_REQUEST, "Custom certificates are only supported for on-prem providers.");
+          Http.Status.BAD_REQUEST,
+          "CustomCertHostPath certificates are only supported for on-prem providers.");
+    }
+
+    if (requestParams.clientRootCA != null
+        && CertificateInfo.get(requestParams.clientRootCA).certType
+            == CertificateInfo.Type.CustomCertHostPath
+        && !userIntent.providerType.equals(Common.CloudType.onprem)) {
+      throw new YWServiceException(
+          Http.Status.BAD_REQUEST,
+          "CustomCertHostPath certificates are only supported for on-prem providers.");
+    }
+
+    if (requestParams.rootAndClientRootCASame != null
+        && requestParams.rootAndClientRootCASame
+        && requestParams.enableNodeToNodeEncrypt
+        && requestParams.enableClientToNodeEncrypt
+        && requestParams.rootCA != null
+        && requestParams.clientRootCA != null
+        && requestParams.rootCA != requestParams.clientRootCA) {
+      throw new YWServiceException(
+          Http.Status.BAD_REQUEST,
+          "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
     }
 
     TaskType taskType = TaskType.UpgradeUniverse;
@@ -166,6 +196,10 @@ public class UniverseActionsHandler {
     taskParams.expectedUniverseVersion = -1;
     taskParams.enableNodeToNodeEncrypt = requestParams.enableNodeToNodeEncrypt;
     taskParams.enableClientToNodeEncrypt = requestParams.enableClientToNodeEncrypt;
+    taskParams.rootAndClientRootCASame =
+        requestParams.rootAndClientRootCASame != null
+            ? requestParams.rootAndClientRootCASame
+            : universeDetails.rootAndClientRootCASame;
     taskParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
 
@@ -173,36 +207,68 @@ public class UniverseActionsHandler {
       throw new YWServiceException(Http.Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
     }
 
-    if (!universeDetails.rootAndClientRootCASame
-        || (universeDetails.rootCA != null
-            && !universeDetails.rootCA.equals(universeDetails.clientRootCA))) {
-      throw new YWServiceException(
-          Http.Status.BAD_REQUEST, "RootCA and ClientRootCA cannot be different for Upgrade.");
+    if (requestParams.enableNodeToNodeEncrypt) {
+      // Setting the rootCA to the already existing rootCA as we do not
+      // support root certificate rotation through ToggleTLS.
+      // There is a check for different new and existing root cert already.
+      taskParams.rootCA = universeDetails.rootCA;
+      if (taskParams.rootCA == null) {
+        // create self signed rootCA in case it is not provided by the user
+        taskParams.rootCA =
+            requestParams.rootCA != null
+                ? requestParams.rootCA
+                : CertificateHelper.createRootCA(
+                    universeDetails.nodePrefix,
+                    customer.uuid,
+                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+      }
     }
 
-    // Create root certificate if not exist
-    taskParams.rootCA = universeDetails.rootCA;
-    if (taskParams.rootCA == null) {
-      taskParams.rootCA =
-          requestParams.rootCA != null
-              ? requestParams.rootCA
-              : CertificateHelper.createRootCA(
-                  universeDetails.nodePrefix,
-                  customer.uuid,
-                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
-    }
+    if (requestParams.enableClientToNodeEncrypt) {
+      // Setting the ClientRootCA to the already existing clientRootCA as we do not
+      // support root certificate rotation through ToggleTLS.
+      // There is a check for different new and existing root cert already.
+      taskParams.clientRootCA = universeDetails.clientRootCA;
+      if (taskParams.clientRootCA == null) {
+        if (requestParams.clientRootCA == null) {
+          if (taskParams.rootCA != null
+              && requestParams.rootAndClientRootCASame != null
+              && requestParams.rootAndClientRootCASame) {
+            // Setting ClientRootCA to RootCA incase rootAndClientRootCA is true
+            taskParams.clientRootCA = taskParams.rootCA;
+          } else {
+            // create self signed clientRootCA in case it is not provided by the user
+            // and rootCA and clientRootCA needs to be different
+            taskParams.clientRootCA =
+                CertificateHelper.createClientRootCA(
+                    universeDetails.nodePrefix,
+                    customer.uuid,
+                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+          }
+        } else {
+          // Set the ClientRootCA to the user provided ClientRootCA if it exists
+          taskParams.clientRootCA = requestParams.clientRootCA;
+        }
+      }
+      // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
+      // This is necessary to set to ensure backward compatibity as existing parts of
+      // codebase uses rootCA for Client to Node Encryption
+      if (taskParams.rootCA == null
+          && requestParams.rootAndClientRootCASame != null
+          && requestParams.rootAndClientRootCASame) {
+        taskParams.rootCA = taskParams.clientRootCA;
+      }
 
-    // Create client certificate if not exists
-    if (!userIntent.enableClientToNodeEncrypt && requestParams.enableClientToNodeEncrypt) {
-      CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+      // If client encryption is enabled, generate the client cert file for each node.
+      CertificateInfo cert = CertificateInfo.get(taskParams.clientRootCA);
       if (cert.certType == CertificateInfo.Type.SelfSigned) {
         CertificateHelper.createClientCertificate(
-            taskParams.rootCA,
+            taskParams.clientRootCA,
             String.format(
                 CertificateHelper.CERT_PATH,
                 runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
                 customer.uuid.toString(),
-                taskParams.rootCA.toString()),
+                taskParams.clientRootCA.toString()),
             CertificateHelper.DEFAULT_CLIENT,
             null,
             null);
