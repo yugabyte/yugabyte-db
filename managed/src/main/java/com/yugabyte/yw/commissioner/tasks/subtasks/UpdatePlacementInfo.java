@@ -25,17 +25,16 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.Common;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ProtobufHelper;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
-
-import javax.inject.Inject;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 
 @Slf4j
 public class UpdatePlacementInfo extends UniverseTaskBase {

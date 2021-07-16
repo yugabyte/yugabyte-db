@@ -2,9 +2,9 @@
 
 package com.yugabyte.yw.models;
 
-import javax.persistence.Embeddable;
 import java.io.Serializable;
 import java.util.UUID;
+import javax.persistence.Embeddable;
 
 @Embeddable
 public class InstanceTypeKey implements Serializable {

@@ -12,7 +12,8 @@ package com.yugabyte.yw.models.filters;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
-import lombok.*;
+import lombok.Builder;
+import lombok.Value;
 
 @Value
 @Builder

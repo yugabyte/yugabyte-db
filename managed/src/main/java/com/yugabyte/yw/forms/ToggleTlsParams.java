@@ -6,10 +6,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.CertificateInfo;
+import java.util.UUID;
 import play.data.validation.Constraints;
 import play.mvc.Http;
-
-import java.util.UUID;
 
 /** Class to capture request params for toggle_tls API */
 public class ToggleTlsParams {

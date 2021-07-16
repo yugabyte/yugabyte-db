@@ -2,13 +2,11 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.UrlValidator;
-
 import com.fasterxml.jackson.annotation.JsonTypeName;
-
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.UrlValidator;
 
 @EqualsAndHashCode(callSuper = false)
 @ToString

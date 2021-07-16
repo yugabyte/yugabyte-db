@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-import java.util.Map;
-
 import static com.yugabyte.yw.models.Users.Role;
+
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Map;
+import play.data.validation.Constraints;
 
 /** This class will be used by the API and UI Form Elements to validate constraints are met */
 @ApiModel(value = "User Register", description = "User registration data")

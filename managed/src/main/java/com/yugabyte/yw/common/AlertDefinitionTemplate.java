@@ -6,10 +6,9 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
 import com.yugabyte.yw.models.common.Unit;
-import lombok.Getter;
-
 import java.util.EnumSet;
 import java.util.Map;
+import lombok.Getter;
 
 @Getter
 public enum AlertDefinitionTemplate {

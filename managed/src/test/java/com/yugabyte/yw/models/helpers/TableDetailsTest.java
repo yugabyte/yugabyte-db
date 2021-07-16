@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static org.junit.Assert.assertEquals;
+
 import com.yugabyte.yw.common.ApiUtils;
 import org.junit.Test;
 import org.yb.ColumnSchema;
-
-import static org.junit.Assert.assertEquals;
 
 public class TableDetailsTest {
 

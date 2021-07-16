@@ -2,17 +2,15 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.EnumValue;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-
-import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.ebean.*;
-import io.ebean.annotation.*;
-
 import play.data.validation.Constraints;
 
 /**

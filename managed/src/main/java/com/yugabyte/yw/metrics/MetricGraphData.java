@@ -3,8 +3,8 @@
 package com.yugabyte.yw.metrics;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import play.libs.Json;
 import java.util.Map;
+import play.libs.Json;
 
 public class MetricGraphData {
   public String name;
