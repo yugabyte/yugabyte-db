@@ -1,28 +1,32 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import io.ebean.Ebean;
+import io.ebean.ExpressionList;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.Query;
+import io.ebean.RawSql;
+import io.ebean.RawSqlBuilder;
+import io.ebean.SqlUpdate;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Entity
 @ApiModel(description = "Node instance attched to provider and zones")

@@ -3,19 +3,16 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.inject.Inject;
-import java.util.UUID;
-
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PersistResizeNode extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(PersistResizeNode.class);

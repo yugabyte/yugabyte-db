@@ -1,27 +1,24 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.ModelFactory;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
-import static org.junit.Assert.assertTrue;
 import org.junit.runner.RunWith;
-import static org.mockito.Mockito.spy;
 import org.mockito.runners.MockitoJUnitRunner;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import play.api.Play;
 import play.libs.Json;
 

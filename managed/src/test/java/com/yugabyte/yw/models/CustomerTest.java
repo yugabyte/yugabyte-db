@@ -2,26 +2,26 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.junit.Test;
-import org.mindrot.jbcrypt.BCrypt;
-import play.libs.Json;
-
-import com.yugabyte.yw.common.FakeDBApplication;
-
-import javax.persistence.PersistenceException;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
+import javax.persistence.PersistenceException;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.Test;
+import play.libs.Json;
 
 public class CustomerTest extends FakeDBApplication {
 

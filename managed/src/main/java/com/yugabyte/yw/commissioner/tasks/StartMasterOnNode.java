@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
@@ -18,13 +20,10 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.HashSet;
-
-import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Allows the addition of the master server to a node. Spawns master the process and ensures
 // the task waits for the right set of load balance primitives.

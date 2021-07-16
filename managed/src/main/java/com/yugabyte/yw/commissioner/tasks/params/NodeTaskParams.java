@@ -2,15 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks.params;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class NodeTaskParams extends UniverseDefinitionTaskParams {
   // The AZ in which the node should be. This can be used to find the region.

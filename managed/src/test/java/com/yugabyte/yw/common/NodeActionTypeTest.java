@@ -2,17 +2,17 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.models.CustomerTask;
-import org.junit.Test;
-
+import static com.yugabyte.yw.models.helpers.TaskType.AddNodeToUniverse;
 import static com.yugabyte.yw.models.helpers.TaskType.DeleteNodeFromUniverse;
+import static com.yugabyte.yw.models.helpers.TaskType.ReleaseInstanceFromUniverse;
+import static com.yugabyte.yw.models.helpers.TaskType.RemoveNodeFromUniverse;
+import static com.yugabyte.yw.models.helpers.TaskType.StartMasterOnNode;
 import static com.yugabyte.yw.models.helpers.TaskType.StartNodeInUniverse;
 import static com.yugabyte.yw.models.helpers.TaskType.StopNodeInUniverse;
-import static com.yugabyte.yw.models.helpers.TaskType.AddNodeToUniverse;
-import static com.yugabyte.yw.models.helpers.TaskType.RemoveNodeFromUniverse;
-import static com.yugabyte.yw.models.helpers.TaskType.ReleaseInstanceFromUniverse;
-import static com.yugabyte.yw.models.helpers.TaskType.StartMasterOnNode;
 import static org.junit.Assert.assertEquals;
+
+import com.yugabyte.yw.models.CustomerTask;
+import org.junit.Test;
 
 public class NodeActionTypeTest {
   @Test

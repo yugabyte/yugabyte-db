@@ -9,6 +9,13 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.models.Alert.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -18,24 +25,16 @@ import com.yugabyte.yw.models.paging.AlertPagedQuery;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
-
-import javax.inject.Singleton;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.Alert.createQueryByFilter;
-import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
-import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
-import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
-import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j

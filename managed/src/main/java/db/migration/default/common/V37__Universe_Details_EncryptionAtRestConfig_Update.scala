@@ -2,17 +2,14 @@
 
 package db.migration.default.common
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil
-import com.yugabyte.yw.common.kms.util.KeyProvider
-import com.yugabyte.yw.models.Universe
 import java.sql.Connection
 import java.util.UUID
-import play.api.libs.json._
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.yugabyte.yw.common.kms.util.{AwsEARServiceUtil, EncryptionAtRestUtil, KeyProvider}
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
+import play.api.libs.json._
 
 class V37__Universe_Details_EncryptionAtRestConfig_Update extends JdbcMigration {
     /**

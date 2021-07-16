@@ -10,21 +10,19 @@
 
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.commissioner.tasks.CreateUniverse;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
-import org.junit.Before;
-import org.junit.Test;
-import play.libs.Json;
-
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import org.junit.Before;
+import org.junit.Test;
+import play.libs.Json;
 
 public class KmsHistoryTest extends FakeDBApplication {
 

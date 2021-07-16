@@ -10,12 +10,11 @@
 package com.yugabyte.yw.metrics.data;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.time.ZonedDateTime;
+import java.util.Map;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
-
-import java.time.ZonedDateTime;
-import java.util.Map;
 
 @Value
 @Jacksonized

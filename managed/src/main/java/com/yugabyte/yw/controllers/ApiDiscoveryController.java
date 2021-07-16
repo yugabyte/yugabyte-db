@@ -2,18 +2,14 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.List;
-
-import com.google.inject.Inject;
-import com.google.inject.Provider;
-
-import play.mvc.Result;
-import play.routing.Router;
-import play.routing.Router.RouteDocumentation;
-import play.libs.Json;
-
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
+import com.google.inject.Provider;
+import java.util.List;
+import play.libs.Json;
+import play.mvc.Result;
+import play.routing.Router;
 
 public class ApiDiscoveryController extends AuthenticatedController {
 

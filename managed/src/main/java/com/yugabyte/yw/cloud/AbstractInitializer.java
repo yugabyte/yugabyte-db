@@ -14,14 +14,13 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.Provider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.mvc.Result;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.mvc.Result;
 
 public abstract class AbstractInitializer {
   public static final Logger LOG = LoggerFactory.getLogger(AbstractInitializer.class);

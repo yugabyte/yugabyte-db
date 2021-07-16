@@ -11,6 +11,17 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static junit.framework.TestCase.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static play.libs.Files.singletonTemporaryFileCreator;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
@@ -23,16 +34,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import play.libs.Json;
-import play.mvc.Result;
-import play.test.Helpers;
-
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -46,15 +47,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
-
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static junit.framework.TestCase.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static play.libs.Files.singletonTemporaryFileCreator;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.fakeRequest;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+import play.libs.Json;
+import play.mvc.Result;
+import play.test.Helpers;
 
 public class InternalHAControllerTest extends FakeDBApplication {
   private static final String UPLOAD_ENDPOINT = "/api/settings/ha/internal/upload";

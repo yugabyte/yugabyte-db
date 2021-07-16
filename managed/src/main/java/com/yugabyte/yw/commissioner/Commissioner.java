@@ -2,34 +2,31 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Map.Entry;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.TaskInfo;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Singleton;
-
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
-
-import static play.mvc.Http.Status.*;
 
 @Singleton
 public class Commissioner {

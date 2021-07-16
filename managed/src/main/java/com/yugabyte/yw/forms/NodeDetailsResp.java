@@ -17,7 +17,6 @@ import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.util.Set;
 
 public class NodeDetailsResp {

@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
+
 import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -36,8 +39,6 @@ import javax.validation.Validator;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.UrlValidator;
 import play.libs.Json;
-import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
-import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
 
 @Singleton
 public class CustomerConfigValidator {

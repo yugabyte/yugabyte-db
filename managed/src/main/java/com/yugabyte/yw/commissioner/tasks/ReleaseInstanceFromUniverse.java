@@ -20,12 +20,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Allows the removal of the instance from a universe. That node is already not part of the
 // universe and is in Removed state.

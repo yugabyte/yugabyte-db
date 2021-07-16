@@ -1,7 +1,7 @@
 package com.yugabyte.yw.common; // Copyright (c) YugaByte, Inc.
 
-import com.google.inject.Singleton;
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import java.io.InputStream;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;

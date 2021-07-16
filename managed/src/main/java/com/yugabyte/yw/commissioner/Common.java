@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.common.ConfigHelper;
-
 import java.util.Optional;
 
 public class Common {

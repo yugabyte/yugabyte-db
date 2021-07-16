@@ -10,22 +10,21 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
+
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.mvc.Http;
-
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 
 public class AllowedActionsHelper {
   private static final Logger LOG = LoggerFactory.getLogger(AllowedActionsHelper.class);

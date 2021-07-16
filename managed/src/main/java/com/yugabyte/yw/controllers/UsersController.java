@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.models.Users.Role;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
@@ -12,20 +14,21 @@ import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Environment;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.List;
-import java.util.UUID;
-import io.swagger.annotations.*;
-
-import static com.yugabyte.yw.models.Users.Role;
 
 @Api(value = "Users", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UsersController extends AuthenticatedController {

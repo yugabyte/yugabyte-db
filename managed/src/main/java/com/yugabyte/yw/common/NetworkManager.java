@@ -2,17 +2,16 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import javax.inject.Singleton;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Singleton
 public class NetworkManager extends DevopsBase {

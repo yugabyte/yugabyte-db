@@ -5,17 +5,15 @@ package com.yugabyte.yw.common.alerts;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
+import com.yugabyte.yw.models.AlertReceiver.TargetType;
 import java.util.EnumSet;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertReceiverManagerTest extends FakeDBApplication {

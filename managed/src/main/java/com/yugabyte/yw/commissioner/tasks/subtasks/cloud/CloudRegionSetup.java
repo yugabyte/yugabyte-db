@@ -21,13 +21,12 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import play.api.Play;
-import play.libs.Json;
-
-import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import javax.inject.Inject;
+import play.api.Play;
+import play.libs.Json;
 
 public class CloudRegionSetup extends CloudTaskBase {
   @Inject

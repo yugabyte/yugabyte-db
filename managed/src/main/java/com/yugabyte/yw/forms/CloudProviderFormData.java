@@ -5,10 +5,9 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
 import com.yugabyte.yw.commissioner.Common;
-import play.data.validation.Constraints;
-
 import java.util.HashMap;
 import java.util.Map;
+import play.data.validation.Constraints;
 
 /**
  * This class will be used by the API and UI Form Elements to validate constraints for CloudProvider

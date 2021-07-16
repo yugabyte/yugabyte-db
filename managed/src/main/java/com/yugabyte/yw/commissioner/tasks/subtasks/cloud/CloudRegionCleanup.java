@@ -16,9 +16,8 @@ import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.models.Region;
-import play.api.Play;
-
 import javax.inject.Inject;
+import play.api.Play;
 
 public class CloudRegionCleanup extends CloudTaskBase {
   @Inject

@@ -11,14 +11,13 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.yugabyte.yw.common.YWServiceException;
+import java.util.UUID;
 import play.libs.Json;
 import play.mvc.Http;
-
-import java.util.UUID;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class EncryptionAtRestKeyParams extends UniverseTaskParams {
 

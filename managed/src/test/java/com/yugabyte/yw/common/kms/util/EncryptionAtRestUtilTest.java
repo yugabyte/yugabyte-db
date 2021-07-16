@@ -1,25 +1,20 @@
 package com.yugabyte.yw.common.kms.util;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.Universe;
-
-import java.util.Base64;
-import java.util.UUID;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Universe;
+import java.util.Base64;
+import java.util.UUID;
+import org.junit.Before;
+import org.junit.Test;
 import play.libs.Json;
 
 public class EncryptionAtRestUtilTest extends FakeDBApplication {

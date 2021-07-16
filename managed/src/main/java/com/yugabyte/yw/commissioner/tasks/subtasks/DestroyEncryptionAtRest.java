@@ -16,10 +16,9 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyEncryptionAtRest extends AbstractTaskBase {

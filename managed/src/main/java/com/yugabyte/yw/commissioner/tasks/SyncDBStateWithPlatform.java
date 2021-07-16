@@ -4,10 +4,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.inject.Inject;
 
 public class SyncDBStateWithPlatform extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(SyncDBStateWithPlatform.class);

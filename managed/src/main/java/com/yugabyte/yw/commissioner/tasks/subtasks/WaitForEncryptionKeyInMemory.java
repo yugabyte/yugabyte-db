@@ -16,10 +16,9 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-
-import javax.inject.Inject;
 
 @Slf4j
 public class WaitForEncryptionKeyInMemory extends NodeTaskBase {

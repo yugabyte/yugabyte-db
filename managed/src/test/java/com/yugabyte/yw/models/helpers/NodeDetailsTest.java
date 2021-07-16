@@ -1,17 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models.helpers;
 
-import com.yugabyte.yw.common.ApiUtils;
-import org.junit.Before;
-import org.junit.Test;
-
-import java.util.HashSet;
-import java.util.Set;
-
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.AllOf.allOf;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+
+import com.yugabyte.yw.common.ApiUtils;
+import java.util.HashSet;
+import java.util.Set;
+import org.junit.Before;
+import org.junit.Test;
 
 public class NodeDetailsTest {
   private NodeDetails nd;

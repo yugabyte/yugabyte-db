@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.models.TaskInfo;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-
-import com.yugabyte.yw.models.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

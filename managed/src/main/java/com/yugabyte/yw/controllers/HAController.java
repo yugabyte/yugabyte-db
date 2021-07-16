@@ -18,15 +18,14 @@ import com.yugabyte.yw.forms.HAConfigFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import java.util.Optional;
-import java.util.UUID;
 
 public class HAController extends AuthenticatedController {
 

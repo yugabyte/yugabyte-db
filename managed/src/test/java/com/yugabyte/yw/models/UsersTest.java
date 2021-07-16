@@ -2,18 +2,18 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.Users.Role;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import javax.persistence.PersistenceException;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
-
-import com.yugabyte.yw.common.FakeDBApplication;
-
-import javax.persistence.PersistenceException;
-
-import static com.yugabyte.yw.models.Users.Role;
-import static org.junit.Assert.*;
 
 public class UsersTest extends FakeDBApplication {
 

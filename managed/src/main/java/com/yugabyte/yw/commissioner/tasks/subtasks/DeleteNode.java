@@ -10,6 +10,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.isNodeRemovable;
+import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
+import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.NodeManager;
@@ -18,12 +22,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.Set;
-
-import static com.yugabyte.yw.common.PlacementInfoUtil.*;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DeleteNode extends NodeTaskBase {

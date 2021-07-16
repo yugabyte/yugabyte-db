@@ -2,12 +2,10 @@
 
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-
-import java.util.List;
-
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
+import play.data.validation.Constraints;
 
 @ApiModel(value = "Metrics", description = "Metrics details")
 public class MetricQueryParams {

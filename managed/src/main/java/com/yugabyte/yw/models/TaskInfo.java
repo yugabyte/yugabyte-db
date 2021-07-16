@@ -2,6 +2,10 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -19,14 +23,17 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
 import play.data.validation.Constraints;
-
-import javax.persistence.*;
-import java.util.*;
-
-import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Entity
 @ApiModel(description = "Task Information.")

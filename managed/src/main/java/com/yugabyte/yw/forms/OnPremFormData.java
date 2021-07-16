@@ -2,12 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
-import java.util.ArrayList;
-import java.util.UUID;
-import java.util.List;
-
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.InstanceType;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import play.data.validation.Constraints;
 
 /** This class describes the fields we need to setup an on-prem deployment. */

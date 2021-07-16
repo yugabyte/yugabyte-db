@@ -14,11 +14,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ChangeLoadBalancerStateResponse;
 import org.yb.client.YBClient;
-
-import javax.inject.Inject;
 
 // This class runs the task that helps modify the load balancer state maintained
 // on the master leader.

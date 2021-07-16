@@ -10,11 +10,23 @@
 
 package com.yugabyte.yw;
 
+import static java.util.stream.Collectors.joining;
+import static junit.framework.TestCase.assertEquals;
+import static junit.framework.TestCase.assertSame;
+
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Rule;
@@ -25,19 +37,6 @@ import play.Environment;
 import play.Mode;
 import play.api.Configuration;
 import play.libs.Scala;
-
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-
-import static java.util.stream.Collectors.joining;
-import static junit.framework.TestCase.assertEquals;
-import static junit.framework.TestCase.assertSame;
 
 @RunWith(JUnitParamsRunner.class)
 public class ConfigTest {

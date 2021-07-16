@@ -2,26 +2,22 @@
 
 package com.yugabyte.yw.models;
 
-import play.mvc.Http;
-import play.mvc.Result;
-import io.ebean.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.yugabyte.yw.common.YWServiceException;
+import io.ebean.Finder;
+import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.YWServiceException;
-
-import play.data.validation.Constraints;
-
+import java.util.List;
+import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
-import java.util.List;
-import java.util.UUID;
-
-import static play.mvc.Http.Status.*;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import play.data.validation.Constraints;
 
 @Entity
 @ApiModel(

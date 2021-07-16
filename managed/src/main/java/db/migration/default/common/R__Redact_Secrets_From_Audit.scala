@@ -1,15 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 package db.migration.default.common
 
-import com.sangupta.murmur.Murmur3
+import java.sql.Connection
+
 import com.yugabyte.yw.common.audit.AuditService
 import org.apache.commons.lang3.StringUtils
 import org.flywaydb.core.api.migration.MigrationChecksumProvider
-
-import java.sql.Connection
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 
-import java.util.Objects
 import scala.util.hashing.MurmurHash3
 
 class R__Redact_Secrets_From_Audit extends JdbcMigration with MigrationChecksumProvider {

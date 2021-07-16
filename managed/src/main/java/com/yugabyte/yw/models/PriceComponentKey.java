@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import javax.persistence.Embeddable;
-import javax.persistence.Entity;
 import java.io.Serializable;
 import java.util.UUID;
+import javax.persistence.Embeddable;
+import javax.persistence.Entity;
 
 @Entity
 @Embeddable

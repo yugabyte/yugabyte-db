@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.YWServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @ApiModel(value = "Device info", description = "Device information")
 public class DeviceInfo {

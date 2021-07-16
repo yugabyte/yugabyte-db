@@ -18,9 +18,8 @@ import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudProviderCleanup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionCleanup;
-
-import javax.inject.Inject;
 import java.util.List;
+import javax.inject.Inject;
 
 public class CloudCleanup extends CloudTaskBase {
   @Inject

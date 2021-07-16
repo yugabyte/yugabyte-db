@@ -2,11 +2,10 @@
 
 package controllers;
 
+import javax.inject.Inject;
 import play.api.mvc.AnyContent;
 import play.mvc.Controller;
 import play.mvc.Result;
-
-import javax.inject.Inject;
 
 public class UIController extends Controller {
   @Inject Assets assets;

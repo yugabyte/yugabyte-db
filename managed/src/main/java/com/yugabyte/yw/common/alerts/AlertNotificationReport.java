@@ -9,11 +9,10 @@
  */
 package com.yugabyte.yw.common.alerts;
 
-import lombok.ToString;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import lombok.ToString;
 
 @ToString
 public class AlertNotificationReport {

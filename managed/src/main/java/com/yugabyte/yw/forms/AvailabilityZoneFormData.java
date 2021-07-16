@@ -2,11 +2,10 @@
 
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-
-import java.util.List;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
+import play.data.validation.Constraints;
 
 /**
  * This class will be used by the API and UI Form Elements to validate constraints for

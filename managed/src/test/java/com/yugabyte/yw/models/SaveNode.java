@@ -4,11 +4,7 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import java.lang.Runnable;
 import java.util.UUID;
-import java.util.concurrent.*;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

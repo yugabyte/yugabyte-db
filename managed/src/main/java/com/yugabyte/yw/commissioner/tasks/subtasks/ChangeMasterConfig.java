@@ -15,11 +15,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.YBClient;
-
-import javax.inject.Inject;
 
 @Slf4j
 public class ChangeMasterConfig extends AbstractTaskBase {

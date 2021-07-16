@@ -8,16 +8,15 @@ import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.models.AsyncReplicationRelationship;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import io.ebean.annotation.EnumValue;
-import play.data.validation.Constraints;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import play.data.validation.Constraints;
 
 @ApiModel(value = "Universe task", description = "Universe task")
 public class UniverseTaskParams extends AbstractTaskParams {

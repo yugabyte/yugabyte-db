@@ -2,17 +2,16 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import org.yb.ColumnSchema;
-import org.yb.Schema;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import org.yb.ColumnSchema;
+import org.yb.Schema;
 
 @ApiModel(value = "Table details", description = "Table details")
 public class TableDetails {

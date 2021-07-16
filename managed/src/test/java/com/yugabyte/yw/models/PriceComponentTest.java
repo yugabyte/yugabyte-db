@@ -2,19 +2,18 @@
 
 package com.yugabyte.yw.models;
 
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import org.junit.Before;
-import org.junit.Test;
-
-import java.util.Map;
-
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import java.util.Map;
+import org.junit.Before;
+import org.junit.Test;
 
 public class PriceComponentTest extends FakeDBApplication {
   private static final Map<String, PriceComponent.PriceDetails.Unit> EXPECTED_UNIT_STRINGS =

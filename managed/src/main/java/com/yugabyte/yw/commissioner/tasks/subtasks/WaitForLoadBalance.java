@@ -14,11 +14,10 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import java.util.concurrent.TimeUnit;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-
-import javax.inject.Inject;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class WaitForLoadBalance extends AbstractTaskBase {

@@ -3,8 +3,6 @@
 package db.migration.default.common
 
 import java.sql.Connection
-import java.util.UUID
-import play.api.libs.json._
 
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 

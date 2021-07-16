@@ -19,16 +19,15 @@ import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import java.io.File;
+import java.net.URL;
+import java.util.Optional;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.mvc.Result;
-
-import java.io.File;
-import java.net.URL;
-import java.util.Optional;
-import java.util.UUID;
 
 public class PlatformInstanceController extends AuthenticatedController {
 

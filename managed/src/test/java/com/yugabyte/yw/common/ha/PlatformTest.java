@@ -10,6 +10,17 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static junit.framework.TestCase.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+import static play.libs.Files.singletonTemporaryFileCreator;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,20 +35,6 @@ import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
 import io.ebean.Ebean;
 import io.ebean.EbeanServer;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
-import play.Application;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Result;
-import play.test.Helpers;
-
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -51,15 +48,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
-
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static junit.framework.TestCase.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.when;
-import static play.libs.Files.singletonTemporaryFileCreator;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.fakeRequest;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.Application;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Result;
+import play.test.Helpers;
 
 @RunWith(MockitoJUnitRunner.StrictStubs.class)
 public class PlatformTest extends FakeDBApplication {

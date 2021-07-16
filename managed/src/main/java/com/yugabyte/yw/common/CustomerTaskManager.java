@@ -2,14 +2,14 @@
 
 package com.yugabyte.yw.common;
 
-import io.ebean.Ebean;
+import static com.yugabyte.yw.models.CustomerTask.TargetType;
+
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import static com.yugabyte.yw.models.CustomerTask.TargetType;
+import io.ebean.Ebean;
 import javax.inject.Singleton;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

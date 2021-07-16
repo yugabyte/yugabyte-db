@@ -20,13 +20,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
-
-import javax.inject.Inject;
 import java.lang.reflect.Field;
 import java.util.Iterator;
 import java.util.Map.Entry;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class AnsibleUpdateNodeInfo extends NodeTaskBase {

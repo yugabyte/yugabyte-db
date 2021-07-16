@@ -16,9 +16,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Provider;
-
-import javax.inject.Inject;
 import java.util.Map;
+import javax.inject.Inject;
 
 public abstract class CloudTaskBase extends AbstractTaskBase {
   private Provider provider;

@@ -1,5 +1,8 @@
 package com.yugabyte.yw.common;
 
+import static play.libs.Json.newObject;
+import static play.libs.Json.toJson;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Singleton;
@@ -21,8 +24,6 @@ import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
-import static play.libs.Json.newObject;
-import static play.libs.Json.toJson;
 
 @Singleton
 public class YsqlQueryExecutor {

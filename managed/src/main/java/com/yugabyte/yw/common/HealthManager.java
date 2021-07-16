@@ -2,18 +2,14 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.models.Provider;
-
 import com.google.inject.Singleton;
-
+import com.yugabyte.yw.models.Provider;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
-
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
 
 @Singleton

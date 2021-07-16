@@ -3,12 +3,11 @@ package com.yugabyte.yw.models;
 import com.google.common.annotations.VisibleForTesting;
 import io.ebean.Finder;
 import io.ebean.Model;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.util.UUID;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This bean is a parent for ConfigEntries bean. Intent is to identify the scope of the child
