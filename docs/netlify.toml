@@ -6,7 +6,8 @@
 
 [context.deploy-preview.environment]
   HUGO_VERSION = "0.84.4"
-  NODE_VERSION = "14"
+  NODE_VERSION = "16"
+  CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.84.4"
