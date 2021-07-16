@@ -18,6 +18,8 @@
 
 #include "yb/tserver/tserver_service.proxy.h"
 
+DEFINE_CAPABILITY(GracefulCleanup, 0x5512d2a9);
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -69,6 +71,12 @@ class TransactionCleanup : public std::enable_shared_from_this<TransactionCleanu
     std::lock_guard<std::mutex> lock(mutex_);
     calls_.reserve(calls_.size() + remote_tablet_servers.size());
     for (auto* server : remote_tablet_servers) {
+      if (type_ == CleanupType::kGraceful && !server->HasCapability(CAPABILITY_GracefulCleanup)) {
+        VLOG_WITH_PREFIX(1)
+            << "Skipping graceful cleanup at T " << (**remote_tablet).tablet_id() << " P "
+            << server->permanent_uuid() << " because server does support it";
+        continue;
+      }
       VLOG_WITH_PREFIX(2) << "Sending cleanup to T " << (**remote_tablet).tablet_id() << " P "
                           << server->permanent_uuid();
       auto status = server->InitProxy(client_);

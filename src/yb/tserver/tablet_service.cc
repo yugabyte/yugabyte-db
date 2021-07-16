@@ -1004,9 +1004,23 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
       std::move(context), resp, server_->Clock()));
 
   if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
-    tablet.tablet->transaction_participant()->Handle(std::move(state), tablet.leader_term);
+    auto* participant = tablet.tablet->transaction_participant();
+    if (participant) {
+      participant->Handle(std::move(state), tablet.leader_term);
+    } else {
+      state->CompleteWithStatus(STATUS_FORMAT(
+          InvalidArgument, "Does not have transaction participant to process $0",
+          req->state().status()));
+    }
   } else {
-    tablet.tablet->transaction_coordinator()->Handle(std::move(state), tablet.leader_term);
+    auto* coordinator = tablet.tablet->transaction_coordinator();
+    if (coordinator) {
+      coordinator->Handle(std::move(state), tablet.leader_term);
+    } else {
+      state->CompleteWithStatus(STATUS_FORMAT(
+          InvalidArgument, "Does not have transaction coordinator to process $0",
+          req->state().status()));
+    }
   }
 }
 
