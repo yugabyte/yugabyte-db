@@ -226,6 +226,7 @@ public class UniverseCRUDHandler {
       if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
         if (taskParams.clientRootCA == null) {
           if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
+            // Setting ClientRootCA to RootCA incase rootAndClientRootCA is true
             taskParams.clientRootCA = taskParams.rootCA;
           } else {
             // create self signed clientRootCA in case it is not provided by the user
