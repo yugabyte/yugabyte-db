@@ -35,11 +35,13 @@ Result<bool> SnapshotTestUtil::IsSnapshotDone(const TxnSnapshotId& snapshot_id) 
 }
 
 Result<Snapshots> SnapshotTestUtil::ListSnapshots(
-    const TxnSnapshotId& snapshot_id, bool list_deleted) {
+    const TxnSnapshotId& snapshot_id, ListDeleted list_deleted,
+    PrepareForBackup prepare_for_backup) {
   master::ListSnapshotsRequestPB req;
   master::ListSnapshotsResponsePB resp;
 
   req.set_list_deleted_snapshots(list_deleted);
+  req.set_prepare_for_backup(prepare_for_backup);
   if (!snapshot_id.IsNil()) {
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   }

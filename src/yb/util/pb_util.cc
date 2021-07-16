@@ -593,7 +593,7 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
     if (oneline) {
       *os << count++ << "\t" << msg->ShortDebugString() << endl;
     } else {
-      *os << "Message " << count << endl;
+      *os << pb_type_ << " " << count << endl;
       *os << "-------" << endl;
       *os << msg->DebugString() << endl;
       count++;
@@ -647,15 +647,35 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
   return Status::OK();
 }
 
+namespace {
 
-Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
+Status ReadPBContainer(
+    Env* env, const std::string& path, Message* msg, const std::string* pb_type_name = nullptr) {
   std::unique_ptr<RandomAccessFile> file;
   RETURN_NOT_OK(env->NewRandomAccessFile(path, &file));
 
   ReadablePBContainerFile pb_file(std::move(file));
   RETURN_NOT_OK(pb_file.Init());
+
+  if (pb_type_name && pb_file.pb_type() != *pb_type_name) {
+    WARN_NOT_OK(pb_file.Close(), "Could not Close() PB container file");
+    return STATUS(InvalidArgument,
+                  Substitute("Wrong PB type: $0, expected $1", pb_file.pb_type(), *pb_type_name));
+  }
+
   RETURN_NOT_OK(pb_file.ReadNextPB(msg));
   return pb_file.Close();
+}
+
+} // namespace
+
+Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
+  return ReadPBContainer(env, path, msg);
+}
+
+Status ReadPBContainerFromPath(
+    Env* env, const std::string& path, const std::string& pb_type_name, Message* msg) {
+  return ReadPBContainer(env, path, msg, &pb_type_name);
 }
 
 Status WritePBContainerToPath(Env* env, const std::string& path,

@@ -37,6 +37,8 @@ constexpr auto kSnapshotInterval = 10s * kTimeMultiplier;
 constexpr auto kSnapshotRetention = 20h;
 
 YB_STRONGLY_TYPED_BOOL(WaitSnapshot);
+YB_STRONGLY_TYPED_BOOL(ListDeleted);
+YB_STRONGLY_TYPED_BOOL(PrepareForBackup);
 
 class SnapshotTestUtil {
  public:
@@ -55,7 +57,9 @@ class SnapshotTestUtil {
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id);
   Result<Snapshots> ListSnapshots(
-      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool list_deleted = true);
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(),
+      ListDeleted list_deleted = ListDeleted::kTrue,
+      PrepareForBackup prepare_for_backup = PrepareForBackup::kFalse);
   CHECKED_STATUS VerifySnapshot(
       const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state,
       size_t expected_num_tablets, size_t expected_num_namespaces = 1,

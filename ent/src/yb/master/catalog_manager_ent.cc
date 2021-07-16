@@ -479,8 +479,34 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
     }
   }
 
-  return snapshot_coordinator_.ListSnapshots(
-      txn_snapshot_id, req->list_deleted_snapshots(), resp);
+  if (req->prepare_for_backup() && (!req->has_snapshot_id() || !txn_snapshot_id)) {
+    return STATUS(
+        InvalidArgument, "Request must have correct snapshot_id", (req->has_snapshot_id() ?
+        req->snapshot_id() : "None"), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshots(
+      txn_snapshot_id, req->list_deleted_snapshots(), resp));
+
+  if (req->prepare_for_backup()) {
+    // Repack & extend the backup row entries.
+    for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
+      snapshot.set_format_version(2);
+      SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
+      snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
+
+      for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+        BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+        backup_entry->mutable_entry()->Swap(&entry);
+        // Setup other BackupRowEntryPB fields.
+        // E.g.:  backup_entry->set_pg_schema_name(...);
+      }
+
+      sys_entry.clear_entries();
+    }
+  }
+
+  return Status::OK();
 }
 
 Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
@@ -716,11 +742,12 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
                                                 ImportSnapshotMetaResponsePB* resp,
                                                 NamespaceMap* namespace_map,
                                                 ExternalTableSnapshotDataMap* tables_data) {
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
       case SysRowEntry::NAMESPACE: // Recreate NAMESPACE.
         RETURN_NOT_OK(ImportNamespaceEntry(entry, namespace_map));
@@ -762,13 +789,14 @@ Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapsh
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotCreateObject(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
                                                   ImportSnapshotMetaResponsePB* resp,
                                                   NamespaceMap* namespace_map,
                                                   ExternalTableSnapshotDataMap* tables_data,
                                                   CreateObjects create_objects) {
   // Create ONLY TABLES or ONLY INDEXES in accordance to the argument.
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntry::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if ((create_objects == CreateObjects::kOnlyIndexes) == data.is_index()) {
@@ -780,10 +808,11 @@ Status CatalogManager::ImportSnapshotCreateObject(const SysSnapshotEntryPB& snap
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotWaitForTables(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
                                                    ImportSnapshotMetaResponsePB* resp,
                                                    ExternalTableSnapshotDataMap* tables_data) {
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntry::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if (!data.is_index()) {
@@ -795,10 +824,11 @@ Status CatalogManager::ImportSnapshotWaitForTables(const SysSnapshotEntryPB& sna
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotProcessTablets(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                                     ImportSnapshotMetaResponsePB* resp,
                                                     ExternalTableSnapshotDataMap* tables_data) {
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntry::TABLET) {
       // Create tablets IDs map.
       RETURN_NOT_OK(ImportTabletEntry(entry, tables_data));
@@ -878,7 +908,17 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
     }
   });
 
-  const SysSnapshotEntryPB& snapshot_pb = req->snapshot().entry();
+  const SnapshotInfoPB& snapshot_pb = req->snapshot();
+
+  if (!snapshot_pb.has_format_version() || snapshot_pb.format_version() != 2) {
+    return STATUS(InternalError, "Expected snapshot data in format 2",
+        snapshot_pb.ShortDebugString(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  if (snapshot_pb.backup_entries_size() == 0) {
+    return STATUS(InternalError, "Expected snapshot data prepared for backup",
+        snapshot_pb.ShortDebugString(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
 
   // PHASE 1: Recreate namespaces, create table's meta data.
   RETURN_NOT_OK(ImportSnapshotPreprocess(snapshot_pb, resp, &namespace_map, &tables_data));
