@@ -136,6 +136,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
       const string& keyspace, const string& table_name, const string& index_name,
       bool same_ids = false);
 
+  void DoTestImportSnapshot(const string& format = "");
   void DoTestExportImportIndexSnapshot(Transactional transactional);
 
  private:
@@ -176,7 +177,7 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
   ASSERT_OK(BackupServiceProxy().ListSnapshots(req, &resp, &rpc));
   ASSERT_EQ(resp.snapshots_size(), 1);
 
-  LOG(INFO) << "Test TestCreateSnapshot finished.";
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 Result<ListSnapshotsResponsePB> WaitForAllSnapshots(MasterBackupServiceProxy* proxy) {
@@ -250,7 +251,7 @@ void AdminCliTest::ImportTableAs(const string& snapshot_file,
   CheckAndDeleteImportedTable(keyspace, table_name);
 }
 
-TEST_F(AdminCliTest, TestImportSnapshot) {
+void AdminCliTest::DoTestImportSnapshot(const string& format) {
   CreateTable(Transactional::kFalse);
   const string& table_name = table_.name().table_name();
   const string& keyspace = table_.name().namespace_name();
@@ -262,7 +263,13 @@ TEST_F(AdminCliTest, TestImportSnapshot) {
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
-  ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
+
+  if (format.empty()) {
+    ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
+  } else {
+    ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file,
+                                  "-TEST_metadata_file_format_version=" + format));
+  }
 
   // Import snapshot into the existing table.
   ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
@@ -279,8 +286,16 @@ TEST_F(AdminCliTest, TestImportSnapshot) {
   ImportTableAs(snapshot_file, keyspace, table_name + "_new");
   // Import snapshot into already existing namespace and table.
   ImportTableAs(snapshot_file, keyspace, table_name);
+}
 
-  LOG(INFO) << "Test TestImportSnapshot finished.";
+TEST_F(AdminCliTest, TestImportSnapshot) {
+  DoTestImportSnapshot();
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(AdminCliTest, TestImportSnapshotInOldFormat1) {
+  DoTestImportSnapshot("1");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(AdminCliTest, TestExportImportSnapshot) {
@@ -303,7 +318,7 @@ TEST_F(AdminCliTest, TestExportImportSnapshot) {
   CheckImportedTable(table_.get(), yb_table_name, /* same_ids */ true);
   ASSERT_EQ(1, ASSERT_RESULT(NumTables(table_name)));
 
-  LOG(INFO) << "Test TestExportImportSnapshot finished.";
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(AdminCliTest, TestRestoreSnapshotBasic) {
@@ -544,13 +559,13 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
 TEST_F(AdminCliTest, TestExportImportIndexSnapshot) {
   // Test non-transactional table.
   DoTestExportImportIndexSnapshot(Transactional::kFalse);
-  LOG(INFO) << "Test TestExportImportIndexSnapshot finished.";
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(AdminCliTest, TestExportImportIndexSnapshot_ForTransactional) {
   // Test the recreated transactional table.
   DoTestExportImportIndexSnapshot(Transactional::kTrue);
-  LOG(INFO) << "Test TestExportImportIndexSnapshot_ForTransactional finished.";
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 Result<SysSnapshotEntryPB::State> WaitForRestoration(MasterBackupServiceProxy* proxy) {
@@ -606,7 +621,7 @@ TEST_F(AdminCliTest, TestFailedRestoration) {
   LOG(INFO) << "Restoration: " << SysSnapshotEntryPB::State_Name(state);
   ASSERT_EQ(state, SysSnapshotEntryPB::FAILED);
 
-  LOG(INFO) << "Test TestFailedRestoration finished.";
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 // Configures two clusters with clients for the producer and consumer side of xcluster replication.

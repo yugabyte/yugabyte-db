@@ -226,7 +226,8 @@ TEST_F(SnapshotScheduleTest, GC) {
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
   while (all_snapshot_ids.size() < 4) {
-    auto snapshots = ASSERT_RESULT(ListSnapshots(TxnSnapshotId::Nil(), false));
+    auto snapshots = ASSERT_RESULT(
+        ListSnapshots(TxnSnapshotId::Nil(), ListDeleted::kFalse));
     for (const auto& snapshot : snapshots) {
       all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
     }

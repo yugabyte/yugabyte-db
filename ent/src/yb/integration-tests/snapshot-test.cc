@@ -64,6 +64,7 @@ using client::YBTableName;
 using master::MasterBackupServiceProxy;
 using master::MasterServiceProxy;
 using master::SysRowEntry;
+using master::BackupRowEntryPB;
 using master::TableInfo;
 using master::TabletInfo;
 using rpc::Messenger;
@@ -530,6 +531,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   ListSnapshotsRequestPB list_req;
   ListSnapshotsResponsePB list_resp;
   list_req.set_snapshot_id(snapshot_id);
+  list_req.set_prepare_for_backup(true);
   ASSERT_OK(proxy_backup_->ListSnapshots(list_req, &list_resp, ResetAndGetController()));
   LOG(INFO) << "Requested available snapshots.";
   SCOPED_TRACE(list_resp.DebugString());
@@ -543,7 +545,8 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   const int old_table_num_tablets = snapshot_pb.tablet_snapshots_size();
   string old_table_name, old_namespace_name;
 
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
       case SysRowEntry::NAMESPACE: { // Get NAMESPACE name.
         SysNamespaceEntryPB meta;

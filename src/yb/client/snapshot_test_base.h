@@ -24,6 +24,9 @@ namespace client {
 using Snapshots = google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>;
 constexpr auto kWaitTimeout = std::chrono::seconds(15);
 
+YB_STRONGLY_TYPED_BOOL(ListDeleted);
+YB_STRONGLY_TYPED_BOOL(PrepareForBackup);
+
 class SnapshotTestBase : public TransactionTestBase<MiniCluster> {
  protected:
   master::MasterBackupServiceProxy MakeBackupServiceProxy();
@@ -31,7 +34,9 @@ class SnapshotTestBase : public TransactionTestBase<MiniCluster> {
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id);
   Result<Snapshots> ListSnapshots(
-      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool list_deleted = true);
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(),
+      ListDeleted list_deleted = ListDeleted::kTrue,
+      PrepareForBackup prepare_for_backup = PrepareForBackup::kFalse);
   CHECKED_STATUS VerifySnapshot(
       const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state);
   CHECKED_STATUS WaitSnapshotInState(
