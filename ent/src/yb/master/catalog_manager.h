@@ -217,19 +217,19 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   typedef std::map<NamespaceId, NamespaceData> NamespaceMap;
   typedef std::map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 
-  CHECKED_STATUS ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapshot_pb,
+  CHECKED_STATUS ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
                                           ImportSnapshotMetaResponsePB* resp,
                                           NamespaceMap* namespace_map,
                                           ExternalTableSnapshotDataMap* tables_data);
-  CHECKED_STATUS ImportSnapshotCreateObject(const SysSnapshotEntryPB& snapshot_pb,
+  CHECKED_STATUS ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
                                             ImportSnapshotMetaResponsePB* resp,
                                             NamespaceMap* namespace_map,
                                             ExternalTableSnapshotDataMap* tables_data,
                                             CreateObjects create_objects);
-  CHECKED_STATUS ImportSnapshotWaitForTables(const SysSnapshotEntryPB& snapshot_pb,
+  CHECKED_STATUS ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
                                              ImportSnapshotMetaResponsePB* resp,
                                              ExternalTableSnapshotDataMap* tables_data);
-  CHECKED_STATUS ImportSnapshotProcessTablets(const SysSnapshotEntryPB& snapshot_pb,
+  CHECKED_STATUS ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                               ImportSnapshotMetaResponsePB* resp,
                                               ExternalTableSnapshotDataMap* tables_data);
   void DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,

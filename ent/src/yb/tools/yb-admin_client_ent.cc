@@ -31,6 +31,7 @@
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
@@ -41,6 +42,9 @@
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/encryption_util.h"
+
+DEFINE_test_flag(int32, metadata_file_format_version, 0,
+                 "Used in 'export_snapshot' metadata file format (0 means using latest format).");
 
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -87,6 +91,7 @@ using master::RestoreSnapshotResponsePB;
 using master::SnapshotInfoPB;
 using master::SysNamespaceEntryPB;
 using master::SysRowEntry;
+using master::BackupRowEntryPB;
 using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
 
@@ -588,6 +593,13 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListSnapshotsRequestPB req;
     req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+
+    // Format 0 - latest format (== Format 2 at the moment).
+    // Format 1 - old format.
+    // Format 2 - new format.
+    if (FLAGS_TEST_metadata_file_format_version != 1) {
+      req.set_prepare_for_backup(true);
+    }
     return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
   }));
 
@@ -615,7 +627,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(
       Env::Default(), file_name, *snapshot, pb_util::OVERWRITE, pb_util::SYNC));
 
-  cout << "Snapshot meta data was saved into file: " << file_name << endl;
+  cout << "Snapshot metadata was saved into file: " << file_name << endl;
   return Status::OK();
 }
 
@@ -631,12 +643,31 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   // Read snapshot protobuf from given path.
   RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(Env::Default(), file_name, snapshot_info));
 
+  if (!snapshot_info->has_format_version()) {
+    SCHECK_EQ(
+        0, snapshot_info->backup_entries_size(), InvalidArgument,
+        Format("Metadata file in Format 1 has backup entries from Format 2: $0",
+        snapshot_info->backup_entries_size()));
+
+    // Repack PB data loaded in the old format.
+    // Init BackupSnapshotPB based on loaded SnapshotInfoPB.
+    SysSnapshotEntryPB& sys_entry = *snapshot_info->mutable_entry();
+    snapshot_info->mutable_backup_entries()->Reserve(sys_entry.entries_size());
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      snapshot_info->add_backup_entries()->mutable_entry()->Swap(&entry);
+    }
+
+    sys_entry.clear_entries();
+    snapshot_info->set_format_version(2);
+  }
+
   cout << "Importing snapshot " << SnapshotIdToString(snapshot_info->id())
        << " (" << snapshot_info->entry().state() << ")" << endl;
 
   int table_index = 0;
   bool was_table_renamed = false;
-  for (SysRowEntry& entry : *snapshot_info->mutable_entry()->mutable_entries()) {
+  for (BackupRowEntryPB& backup_entry : *snapshot_info->mutable_backup_entries()) {
+    SysRowEntry& entry = *backup_entry.mutable_entry();
     const YBTableName table_name = table_index < tables.size()
         ? tables[table_index] : YBTableName();
 
