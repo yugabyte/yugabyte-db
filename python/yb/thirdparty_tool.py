@@ -55,6 +55,7 @@ TAG_RE = re.compile(
 SHA_FOR_LOCAL_CHECKOUT_KEY = 'sha_for_local_checkout'
 
 UBUNTU_OS_TYPE_RE = re.compile(r'^(ubuntu)([0-9]{2})([0-9]{2})$')
+RHEL_FAMILY_RE = re.compile(r'^(almalinux|centos|rhel)([0-9]+)$')
 
 
 def get_archive_name_from_tag(tag: str) -> str:
@@ -67,6 +68,14 @@ def adjust_os_type(os_type: str) -> str:
         # Convert e.g. ubuntu2004 -> ubuntu20.04 for clarity.
         return f'{match.group(1)}{match.group(2)}.{match.group(3)}'
     return os_type
+
+
+def compatible_os(archive_os: str, target_os: str) -> bool:
+    centos_like = RHEL_FAMILY_RE.match(target_os)
+    if centos_like:
+        target_os = f'centos{centos_like.group(2)}'
+
+    return archive_os == target_os
 
 
 class YBDependenciesRelease:
@@ -332,7 +341,7 @@ def get_download_url(
     candidates: List[Any] = []
     available_archives = metadata['archives']
     for archive in available_archives:
-        if archive['os_type'] == os_type and archive['compiler_type'] == compiler_type:
+        if compatible_os(archive['os_type'], os_type) and archive['compiler_type'] == compiler_type:
             candidates.append(archive)
 
     if len(candidates) == 1:
