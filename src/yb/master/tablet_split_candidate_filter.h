@@ -28,7 +28,7 @@ class TabletSplitCandidateFilterIf {
   virtual ~TabletSplitCandidateFilterIf() {}
 
   // Returns OK status if the tablet is one which we know how to split.
-  virtual CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) const = 0;
+  virtual CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) = 0;
   // Returns true if we should split a tablet based on the provided drive_info.
   virtual bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;

@@ -208,6 +208,9 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
     SHARED_LIB "${PROFILER_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS tcmalloc profiler)
   ADD_CXX_FLAGS("-DTCMALLOC_ENABLED")
+  # Each executable should link with tcmalloc directly so that it does not allocate memory using
+  # system malloc before loading a library that depends on tcmalloc.
+  ADD_EXE_LINKER_FLAGS("-ltcmalloc")
 else()
   message("Not using tcmalloc, YB_TCMALLOC_ENABLED is '${YB_TCMALLOC_ENABLED}'")
 endif()
@@ -262,7 +265,7 @@ endif()
 
 # Find Boost static libraries.
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost COMPONENTS system thread REQUIRED)
+find_package(Boost COMPONENTS system thread atomic REQUIRED)
 show_found_boost_details("static")
 
 set(BOOST_STATIC_LIBS ${Boost_LIBRARIES})
@@ -271,7 +274,7 @@ list(SORT BOOST_STATIC_LIBS)
 
 # Find Boost shared libraries.
 set(Boost_USE_STATIC_LIBS OFF)
-find_package(Boost COMPONENTS system thread REQUIRED)
+find_package(Boost COMPONENTS system thread atomic REQUIRED)
 show_found_boost_details("shared")
 set(BOOST_SHARED_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_SHARED_LIBS BOOST_SHARED_LIBS_LEN)

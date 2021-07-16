@@ -65,13 +65,23 @@ public class CustomerControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testListCustomersWithAuth() {
+  public void testListCustomersUuidsWithAuth() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("GET", rootRoute + "_uuids").cookie(validCookie));
+    assertEquals(OK, result.status());
+    ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
+    assertEquals(json.get(0).textValue(), customer.uuid.toString());
+  }
+
+  @Test
+  public void testListWithDataCustomersWithAuth() {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", rootRoute).cookie(validCookie));
     assertEquals(OK, result.status());
     ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
-    assertEquals(json.get(0).textValue(), customer.uuid.toString());
+    assertEquals(json.get(0).get("uuid").textValue(), customer.uuid.toString());
   }
 
   // check that invalid creds is failing to do that

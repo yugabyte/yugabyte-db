@@ -885,7 +885,7 @@ Status ExternalMiniCluster::AddTServerToLeaderBlacklist(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::EmptyBlacklist(
+Status ExternalMiniCluster::ClearBlacklist(
     ExternalMaster* master) {
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
@@ -1679,7 +1679,7 @@ void ExternalMiniCluster::ConfigureClientBuilder(client::YBClientBuilder* builde
   }
 }
 
-HostPort ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+Result<HostPort> ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return GetLeaderMaster()->bound_rpc_addr();
 }
 

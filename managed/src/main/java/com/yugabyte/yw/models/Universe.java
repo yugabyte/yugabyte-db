@@ -262,7 +262,11 @@ public class Universe extends Model {
   }
 
   public static Optional<Universe> maybeGetUniverseByName(String universeName) {
-    return find.query().where().eq("name", universeName).findOneOrEmpty();
+    return find.query()
+        .where()
+        .eq("name", universeName)
+        .findOneOrEmpty()
+        .map(Universe::fillUniverseDetails);
   }
 
   /**
@@ -810,7 +814,7 @@ public class Universe extends Model {
     return universe.getUniverseDetails().universePaused;
   }
 
-  private static void fillUniverseDetails(Universe universe) {
+  private static Universe fillUniverseDetails(Universe universe) {
     JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
     universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
 
@@ -825,5 +829,6 @@ public class Universe extends Model {
           Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
       universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
     }
+    return universe;
   }
 }

@@ -161,6 +161,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                         GetUniverseReplicationResponsePB* resp,
                                         rpc::RpcContext* rpc);
 
+  // Checks if the universe is in an active state or has failed during setup.
+  CHECKED_STATUS IsSetupUniverseReplicationDone(const IsSetupUniverseReplicationDoneRequestPB* req,
+                                                IsSetupUniverseReplicationDoneResponsePB* resp,
+                                                rpc::RpcContext* rpc);
+
   // Find all the CDC streams that have been marked as DELETED.
   CHECKED_STATUS FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -285,6 +290,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   int64_t LeaderTerm() override;
 
+  Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override;
+
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type) override;
 
@@ -354,7 +361,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> info);
   void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
-  void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe);
+  void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe,
+                                     const Status& failure_status);
 
   CHECKED_STATUS CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);

@@ -386,8 +386,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_ALTERNATIVE_SUBPLAN,
 		&&CASE_EEOP_AGG_STRICT_DESERIALIZE,
 		&&CASE_EEOP_AGG_DESERIALIZE,
-		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK_ARGS,
-		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK_NULLS,
+		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK,
 		&&CASE_EEOP_AGG_INIT_TRANS,
 		&&CASE_EEOP_AGG_STRICT_TRANS_CHECK,
 		&&CASE_EEOP_AGG_PLAIN_TRANS_BYVAL,
@@ -667,14 +666,14 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		EEO_CASE(EEOP_FUNCEXPR_STRICT)
 		{
 			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
-			NullableDatum *args = fcinfo->args;
+			bool	   *argnull = fcinfo->argnull;
 			int			argno;
 			Datum		d;
 
 			/* strict function, so check for NULL args */
 			for (argno = 0; argno < op->d.func.nargs; argno++)
 			{
-				if (args[argno].isnull)
+				if (argnull[argno])
 				{
 					*op->resnull = true;
 					goto strictfail;
@@ -1090,8 +1089,8 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 				FunctionCallInfo fcinfo_out;
 
 				fcinfo_out = op->d.iocoerce.fcinfo_data_out;
-				fcinfo_out->args[0].value = *op->resvalue;
-				fcinfo_out->args[0].isnull = false;
+				fcinfo_out->arg[0] = *op->resvalue;
+				fcinfo_out->argnull[0] = false;
 
 				fcinfo_out->isnull = false;
 				str = DatumGetCString(FunctionCallInvoke(fcinfo_out));
@@ -1107,8 +1106,8 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 				Datum		d;
 
 				fcinfo_in = op->d.iocoerce.fcinfo_data_in;
-				fcinfo_in->args[0].value = PointerGetDatum(str);
-				fcinfo_in->args[0].isnull = *op->resnull;
+				fcinfo_in->arg[0] = PointerGetDatum(str);
+				fcinfo_in->argnull[0] = *op->resnull;
 				/* second and third arguments are already set up */
 
 				fcinfo_in->isnull = false;
@@ -1135,23 +1134,23 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			/*
 			 * IS DISTINCT FROM must evaluate arguments (already done into
-			 * fcinfo->args) to determine whether they are NULL; if either is
-			 * NULL then the result is determined.  If neither is NULL, then
-			 * proceed to evaluate the comparison function, which is just the
-			 * type's standard equality operator.  We need not care whether
-			 * that function is strict.  Because the handling of nulls is
-			 * different, we can't just reuse EEOP_FUNCEXPR.
+			 * fcinfo->arg/argnull) to determine whether they are NULL; if
+			 * either is NULL then the result is determined.  If neither is
+			 * NULL, then proceed to evaluate the comparison function, which
+			 * is just the type's standard equality operator.  We need not
+			 * care whether that function is strict.  Because the handling of
+			 * nulls is different, we can't just reuse EEOP_FUNCEXPR.
 			 */
 			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
 
 			/* check function arguments for NULLness */
-			if (fcinfo->args[0].isnull && fcinfo->args[1].isnull)
+			if (fcinfo->argnull[0] && fcinfo->argnull[1])
 			{
 				/* Both NULL? Then is not distinct... */
 				*op->resvalue = BoolGetDatum(false);
 				*op->resnull = false;
 			}
-			else if (fcinfo->args[0].isnull || fcinfo->args[1].isnull)
+			else if (fcinfo->argnull[0] || fcinfo->argnull[1])
 			{
 				/* Only one is NULL? Then is distinct... */
 				*op->resvalue = BoolGetDatum(true);
@@ -1177,12 +1176,12 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
 
-			if (fcinfo->args[0].isnull && fcinfo->args[1].isnull)
+			if (fcinfo->argnull[0] && fcinfo->argnull[1])
 			{
 				*op->resvalue = BoolGetDatum(true);
 				*op->resnull = false;
 			}
-			else if (fcinfo->args[0].isnull || fcinfo->args[1].isnull)
+			else if (fcinfo->argnull[0] || fcinfo->argnull[1])
 			{
 				*op->resvalue = BoolGetDatum(false);
 				*op->resnull = false;
@@ -1203,12 +1202,12 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		EEO_CASE(EEOP_NULLIF)
 		{
 			/*
-			 * The arguments are already evaluated into fcinfo->args.
+			 * The arguments are already evaluated into fcinfo->arg/argnull.
 			 */
 			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
 
 			/* if either argument is NULL they can't be equal */
-			if (!fcinfo->args[0].isnull && !fcinfo->args[1].isnull)
+			if (!fcinfo->argnull[0] && !fcinfo->argnull[1])
 			{
 				Datum		result;
 
@@ -1226,8 +1225,8 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			}
 
 			/* Arguments aren't equal, so return the first one */
-			*op->resvalue = fcinfo->args[0].value;
-			*op->resnull = fcinfo->args[0].isnull;
+			*op->resvalue = fcinfo->arg[0];
+			*op->resnull = fcinfo->argnull[0];
 
 			EEO_NEXT();
 		}
@@ -1293,7 +1292,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 
 			/* force NULL result if strict fn and NULL input */
 			if (op->d.rowcompare_step.finfo->fn_strict &&
-				(fcinfo->args[0].isnull || fcinfo->args[1].isnull))
+				(fcinfo->argnull[0] || fcinfo->argnull[1]))
 			{
 				*op->resnull = true;
 				EEO_JUMP(op->d.rowcompare_step.jumpnull);
@@ -1532,8 +1531,10 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		/* evaluate a strict aggregate deserialization function */
 		EEO_CASE(EEOP_AGG_STRICT_DESERIALIZE)
 		{
+			bool	   *argnull = op->d.agg_deserialize.fcinfo_data->argnull;
+
 			/* Don't call a strict deserialization function with NULL input */
-			if (op->d.agg_deserialize.fcinfo_data->args[0].isnull)
+			if (argnull[0])
 				EEO_JUMP(op->d.agg_deserialize.jumpnull);
 
 			/* fallthrough */
@@ -1563,7 +1564,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		 * Check that a strict aggregate transition / combination function's
 		 * input is not NULL.
 		 */
-		EEO_CASE(EEOP_AGG_STRICT_INPUT_CHECK_NULLS)
+		EEO_CASE(EEOP_AGG_STRICT_INPUT_CHECK)
 		{
 			int			argno;
 			bool	   *nulls = op->d.agg_strict_input_check.nulls;
@@ -1572,20 +1573,6 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			for (argno = 0; argno < nargs; argno++)
 			{
 				if (nulls[argno])
-					EEO_JUMP(op->d.agg_strict_input_check.jumpnull);
-			}
-			EEO_NEXT();
-		}
-
-		EEO_CASE(EEOP_AGG_STRICT_INPUT_CHECK_ARGS)
-		{
-			int			argno;
-			NullableDatum *args = op->d.agg_strict_input_check.args;
-			int			nargs = op->d.agg_strict_input_check.nargs;
-
-			for (argno = 0; argno < nargs; argno++)
-			{
-				if (args[argno].isnull)
 					EEO_JUMP(op->d.agg_strict_input_check.jumpnull);
 			}
 			EEO_NEXT();
@@ -1661,7 +1648,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 
 			Assert(pertrans->transtypeByVal);
 
-			fcinfo = pertrans->transfn_fcinfo;
+			fcinfo = &pertrans->transfn_fcinfo;
 
 			/* cf. select_current_set() */
 			aggstate->curaggcontext = op->d.agg_trans.aggcontext;
@@ -1673,8 +1660,8 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			/* invoke transition function in per-tuple context */
 			oldContext = MemoryContextSwitchTo(aggstate->tmpcontext->ecxt_per_tuple_memory);
 
-			fcinfo->args[0].value = pergroup->transValue;
-			fcinfo->args[0].isnull = pergroup->transValueIsNull;
+			fcinfo->arg[0] = pergroup->transValue;
+			fcinfo->argnull[0] = pergroup->transValueIsNull;
 			fcinfo->isnull = false; /* just in case transfn doesn't set it */
 
 			newVal = FunctionCallInvoke(fcinfo);
@@ -1712,7 +1699,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 
 			Assert(!pertrans->transtypeByVal);
 
-			fcinfo = pertrans->transfn_fcinfo;
+			fcinfo = &pertrans->transfn_fcinfo;
 
 			/* cf. select_current_set() */
 			aggstate->curaggcontext = op->d.agg_trans.aggcontext;
@@ -1724,8 +1711,8 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			/* invoke transition function in per-tuple context */
 			oldContext = MemoryContextSwitchTo(aggstate->tmpcontext->ecxt_per_tuple_memory);
 
-			fcinfo->args[0].value = pergroup->transValue;
-			fcinfo->args[0].isnull = pergroup->transValueIsNull;
+			fcinfo->arg[0] = pergroup->transValue;
+			fcinfo->argnull[0] = pergroup->transValueIsNull;
 			fcinfo->isnull = false; /* just in case transfn doesn't set it */
 
 			newVal = FunctionCallInvoke(fcinfo);
@@ -2104,7 +2091,7 @@ ExecJustApplyFuncToCase(ExprState *state, ExprContext *econtext, bool *isnull)
 {
 	ExprEvalStep *op = &state->steps[0];
 	FunctionCallInfo fcinfo;
-	NullableDatum *args;
+	bool	   *argnull;
 	int			argno;
 	Datum		d;
 
@@ -2118,12 +2105,12 @@ ExecJustApplyFuncToCase(ExprState *state, ExprContext *econtext, bool *isnull)
 	op++;
 
 	fcinfo = op->d.func.fcinfo_data;
-	args = fcinfo->args;
+	argnull = fcinfo->argnull;
 
 	/* strict function, so check for NULL args */
 	for (argno = 0; argno < op->d.func.nargs; argno++)
 	{
-		if (args[argno].isnull)
+		if (argnull[argno])
 		{
 			*isnull = true;
 			return (Datum) 0;
@@ -2249,14 +2236,14 @@ ExecEvalFuncExprStrictFusage(ExprState *state, ExprEvalStep *op,
 
 	FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
 	PgStat_FunctionCallUsage fcusage;
-	NullableDatum *args = fcinfo->args;
+	bool	   *argnull = fcinfo->argnull;
 	int			argno;
 	Datum		d;
 
 	/* strict function, so check for NULL args */
 	for (argno = 0; argno < op->d.func.nargs; argno++)
 	{
-		if (args[argno].isnull)
+		if (argnull[argno])
 		{
 			*op->resnull = true;
 			return;
@@ -2346,8 +2333,8 @@ ExecEvalParamExtern(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 void
 ExecEvalSQLValueFunction(ExprState *state, ExprEvalStep *op)
 {
-	LOCAL_FCINFO(fcinfo, 0);
 	SQLValueFunction *svf = op->d.sqlvaluefunction.svf;
+	FunctionCallInfoData fcinfo;
 
 	*op->resnull = false;
 
@@ -2379,24 +2366,24 @@ ExecEvalSQLValueFunction(ExprState *state, ExprEvalStep *op)
 		case SVFOP_CURRENT_ROLE:
 		case SVFOP_CURRENT_USER:
 		case SVFOP_USER:
-			InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
-			*op->resvalue = current_user(fcinfo);
-			*op->resnull = fcinfo->isnull;
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			*op->resvalue = current_user(&fcinfo);
+			*op->resnull = fcinfo.isnull;
 			break;
 		case SVFOP_SESSION_USER:
-			InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
-			*op->resvalue = session_user(fcinfo);
-			*op->resnull = fcinfo->isnull;
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			*op->resvalue = session_user(&fcinfo);
+			*op->resnull = fcinfo.isnull;
 			break;
 		case SVFOP_CURRENT_CATALOG:
-			InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
-			*op->resvalue = current_database(fcinfo);
-			*op->resnull = fcinfo->isnull;
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			*op->resvalue = current_database(&fcinfo);
+			*op->resnull = fcinfo.isnull;
 			break;
 		case SVFOP_CURRENT_SCHEMA:
-			InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
-			*op->resvalue = current_schema(fcinfo);
-			*op->resnull = fcinfo->isnull;
+			InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+			*op->resvalue = current_schema(&fcinfo);
+			*op->resnull = fcinfo.isnull;
 			break;
 	}
 }
@@ -2832,8 +2819,8 @@ ExecEvalMinMax(ExprState *state, ExprEvalStep *op)
 	int			off;
 
 	/* set at initialization */
-	Assert(fcinfo->args[0].isnull == false);
-	Assert(fcinfo->args[1].isnull == false);
+	Assert(fcinfo->argnull[0] == false);
+	Assert(fcinfo->argnull[1] == false);
 
 	/* default to null result */
 	*op->resnull = true;
@@ -2855,8 +2842,8 @@ ExecEvalMinMax(ExprState *state, ExprEvalStep *op)
 			int			cmpresult;
 
 			/* apply comparison function */
-			fcinfo->args[0].value = *op->resvalue;
-			fcinfo->args[1].value = values[off];
+			fcinfo->arg[0] = *op->resvalue;
+			fcinfo->arg[1] = values[off];
 
 			fcinfo->isnull = false;
 			cmpresult = DatumGetInt32(FunctionCallInvoke(fcinfo));
@@ -3356,7 +3343,7 @@ ExecEvalConvertRowtype(ExprState *state, ExprEvalStep *op, ExprContext *econtext
  * Evaluate "scalar op ANY/ALL (array)".
  *
  * Source array is in our result area, scalar arg is already evaluated into
- * fcinfo->args[0].
+ * fcinfo->arg[0]/argnull[0].
  *
  * The operator always yields boolean, and we combine the results across all
  * array elements using OR and AND (for ANY and ALL respectively).  Of course
@@ -3408,7 +3395,7 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 	 * If the scalar is NULL, and the function is strict, return NULL; no
 	 * point in iterating the loop.
 	 */
-	if (fcinfo->args[0].isnull && strictfunc)
+	if (fcinfo->argnull[0] && strictfunc)
 	{
 		*op->resnull = true;
 		return;
@@ -3448,20 +3435,20 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 		/* Get array element, checking for NULL */
 		if (bitmap && (*bitmap & bitmask) == 0)
 		{
-			fcinfo->args[1].value = (Datum) 0;
-			fcinfo->args[1].isnull = true;
+			fcinfo->arg[1] = (Datum) 0;
+			fcinfo->argnull[1] = true;
 		}
 		else
 		{
 			elt = fetch_att(s, typbyval, typlen);
 			s = att_addlength_pointer(s, typlen, s);
 			s = (char *) att_align_nominal(s, typalign);
-			fcinfo->args[1].value = elt;
-			fcinfo->args[1].isnull = false;
+			fcinfo->arg[1] = elt;
+			fcinfo->argnull[1] = false;
 		}
 
 		/* Call comparison function */
-		if (fcinfo->args[1].isnull && strictfunc)
+		if (fcinfo->argnull[1] && strictfunc)
 		{
 			fcinfo->isnull = true;
 			thisresult = (Datum) 0;
@@ -4060,7 +4047,7 @@ ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 void
 ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup pergroup)
 {
-	FunctionCallInfo fcinfo = pertrans->transfn_fcinfo;
+	FunctionCallInfo fcinfo = &pertrans->transfn_fcinfo;
 	MemoryContext oldContext;
 
 	/*
@@ -4071,7 +4058,7 @@ ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup
 	 */
 	oldContext = MemoryContextSwitchTo(
 									   aggstate->curaggcontext->ecxt_per_tuple_memory);
-	pergroup->transValue = datumCopy(fcinfo->args[1].value,
+	pergroup->transValue = datumCopy(fcinfo->arg[1],
 									 pertrans->transtypeByVal,
 									 pertrans->transtypeLen);
 	pergroup->transValueIsNull = false;

@@ -23,9 +23,6 @@
 
 namespace yb {
 
-class DocHybridTime;
-class TransactionStatusManager;
-
 namespace docdb {
 
 class BoundedRocksDbIterator : public rocksdb::Iterator {

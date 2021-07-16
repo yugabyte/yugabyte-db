@@ -41,8 +41,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.*;
 
 @Slf4j
 public class UniverseInfoHandler {
@@ -129,7 +128,12 @@ public class UniverseInfoHandler {
     // Get and return Leader IP
     try {
       client = ybService.getClient(hostPorts, certificate);
-      return client.getLeaderMasterHostAndPort();
+      HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
+      if (leaderMasterHostAndPort == null) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Leader master not found for universe " + universe.universeUUID);
+      }
+      return leaderMasterHostAndPort;
     } catch (RuntimeException e) {
       throw new YWServiceException(BAD_REQUEST, e.getMessage());
     } finally {
@@ -182,7 +186,10 @@ public class UniverseInfoHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     log.debug("Retrieving logs for " + nodeName);
-    NodeDetails node = universe.getNode(nodeName);
+    NodeDetails node =
+        universe
+            .maybeGetNode(nodeName)
+            .orElseThrow(() -> new YWServiceException(NOT_FOUND, nodeName));
     String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
     String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
     Path targetFile = Paths.get(storagePath + "/" + tarFileName);

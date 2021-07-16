@@ -29,7 +29,10 @@ public class ReleaseController extends AuthenticatedController {
 
   @Inject ValidatingFormFactory formFactory;
 
-  @ApiOperation(value = "Create release", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Create release",
+      response = YWResults.YWSuccess.class,
+      nickname = "createRelease")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
@@ -53,7 +56,11 @@ public class ReleaseController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  @ApiOperation(value = "Get list of releases", response = Object.class, responseContainer = "Map")
+  @ApiOperation(
+      value = "Get list of releases",
+      response = Object.class,
+      responseContainer = "Map",
+      nickname = "getReleases")
   public Result list(UUID customerUUID, Boolean includeMetadata) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
@@ -67,7 +74,10 @@ public class ReleaseController extends AuthenticatedController {
     return YWResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
-  @ApiOperation(value = "Update release", response = ReleaseManager.ReleaseMetadata.class)
+  @ApiOperation(
+      value = "Update release",
+      response = ReleaseManager.ReleaseMetadata.class,
+      nickname = "updateRelease")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",

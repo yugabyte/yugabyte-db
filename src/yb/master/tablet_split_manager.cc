@@ -50,7 +50,7 @@ int32 GetCandidateQueueLimit() {
 } // namespace
 
 TabletSplitManager::TabletSplitManager(
-    const TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver):
+    TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver):
     filter_(filter),
     driver_(driver) {}
 
@@ -90,6 +90,7 @@ Status TabletSplitManager::ScheduleSplitIfNeeded(
   if (is_tablet_leader_drive_info
       && filter_->ValidateSplitCandidate(tablet_info).ok()
       && filter_->ShouldSplitValidCandidate(tablet_info, drive_info)) {
+    LOG(INFO) << "Adding tablet into split queue: " << tablet_id;
     candidates_.push_back(tablet_id);
   }
   return Status::OK();
