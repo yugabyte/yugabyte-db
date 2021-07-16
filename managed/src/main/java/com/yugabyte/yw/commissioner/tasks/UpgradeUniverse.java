@@ -1052,8 +1052,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
@@ -1130,8 +1132,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     } else if (type == UpgradeTaskType.ToggleTls) {
       params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
       params.allowInsecure = taskParams().allowInsecure;
       params.rootCA = taskParams().rootCA;
+      params.clientRootCA = taskParams().clientRootCA;
       params.nodeToNodeChange = getNodeToNodeChangeForToggleTls(userIntent, taskParams());
     }
 
