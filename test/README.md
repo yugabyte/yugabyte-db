@@ -6,5 +6,5 @@ docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f test/Dockerfil
 ```
 Then run the test:
 ```
-docker run -it -v $(pwd):/pgaudit pgaudit-test /pgaudit/test/test.sh
+docker run --rm -v $(pwd):/pgaudit pgaudit-test /pgaudit/test/test.sh
 ```
