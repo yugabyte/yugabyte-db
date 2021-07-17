@@ -49,7 +49,7 @@ class ConcurrentPod {
  private:
   const std::chrono::steady_clock::duration timeout_;
   T value_;
-  std::atomic<CoarseTimePoint> time_{CoarseTimePoint::min() + MonoDelta::FromMilliseconds(1)};
+  std::atomic<CoarseTimePoint> time_{CoarseTimePoint()};
 };
 
 } // namespace yb

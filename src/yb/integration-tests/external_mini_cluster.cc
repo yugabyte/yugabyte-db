@@ -1172,7 +1172,7 @@ Status ExternalMiniCluster::StartMasters() {
 
 Status ExternalMiniCluster::WaitForInitDb() {
   const auto start_time = std::chrono::steady_clock::now();
-  const auto kTimeout = NonTsanVsTsan(900s, 1800s);
+  const auto kTimeout = NonTsanVsTsan(1200s, 1800s);
   int num_timeouts = 0;
   const int kMaxTimeouts = 10;
   while (true) {
