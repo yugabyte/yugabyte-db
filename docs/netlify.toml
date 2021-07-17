@@ -11,9 +11,13 @@
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.84.4"
+  NODE_VERSION = "16"
+  CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
   HUGO_VERSION = "0.84.4"
+  NODE_VERSION = "16"
+  CXXFLAGS = "-std=c++17"
 
 # Redirects
 # - Default status is a 301 unless otherwise specified.
