@@ -40,7 +40,7 @@
         "restartUniverse": "disabled",
         "metricsInterval": 15000,
         "editUniverse": "hidden",
-        "pausedUniverse": "enabled",
+        "pausedUniverse": "hidden",
         "deleteUniverse": "disabled"
       }
     },
