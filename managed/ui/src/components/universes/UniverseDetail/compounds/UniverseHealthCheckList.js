@@ -225,8 +225,7 @@ const detailsFormatter = (cell, row) => {
 
 // For performance optimization, move this to a Redux reducer, so that it doesn't get run on each render.
 function prepareData(data) {
-  return data.map((timeDataJson) => {
-    const timeData = JSON.parse(timeDataJson);
+  return data.map((timeData) => {
     const timestampMoment = moment.utc(timeData.timestamp).local();
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {
