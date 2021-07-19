@@ -869,30 +869,45 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
 
   MemoryUsage current, latest_before_realloc;
 
-  const auto allocated_bytes_initial = GetCurrentAllocatedBytes();
-  while (current.allocated_bytes < 1_MB) {
+  StartAllocationsTracking();
+  const auto heap_allocated_bytes_initial = MemTracker::GetTCMallocCurrentAllocatedBytes();
+  while (current.heap_allocated_bytes < 1_MB) {
     auto data_ptr = std::make_shared<StringOutboundData>(
         kEmptyMsgLengthPrefix, kMsgLengthPrefixLength, "Empty message");
     sending.emplace_back(data_ptr, tracker);
 
-    const auto allocated_bytes = GetCurrentAllocatedBytes() - allocated_bytes_initial;
-    if (allocated_bytes != current.allocated_bytes) {
+    const auto heap_allocated_bytes =
+        MemTracker::GetTCMallocCurrentAllocatedBytes() - heap_allocated_bytes_initial;
+    if (heap_allocated_bytes != current.heap_allocated_bytes) {
       latest_before_realloc = current;
     }
-    current.allocated_bytes = allocated_bytes;
+    current.heap_allocated_bytes = heap_allocated_bytes;
+    current.heap_requested_bytes = GetHeapRequestedBytes();
     current.tracked_consumption += sending.back().consumption.consumption();
     // Account data_ptr as well.
     current.tracked_consumption += sizeof(data_ptr);
     current.entities_count = sending.size();
   }
+  StopAllocationsTracking();
 
   LOG(INFO) << DumpMemoryUsage(latest_before_realloc);
 
-  // Amount of memory really allocated from tcmalloc could be higher due to round up.
+  LOG(INFO) << "Tracked consumption: " << latest_before_realloc.tracked_consumption;
+  LOG(INFO) << "Requested bytes: " << latest_before_realloc.heap_requested_bytes;
+  LOG(INFO) << "Allocated bytes: " << latest_before_realloc.heap_allocated_bytes;
+
+  ASSERT_LE(latest_before_realloc.tracked_consumption, latest_before_realloc.heap_requested_bytes);
+  // We should track at least kDynamicMemoryUsageAccuracyLowLimit memory requested from heap.
   ASSERT_GT(
       latest_before_realloc.tracked_consumption,
-      size_t(latest_before_realloc.allocated_bytes / kHighMemoryAllocationAccuracyLimit));
-  ASSERT_LE(latest_before_realloc.tracked_consumption, latest_before_realloc.allocated_bytes);
+      size_t(latest_before_realloc.heap_requested_bytes * kDynamicMemoryUsageAccuracyLowLimit));
+
+  ASSERT_LE(latest_before_realloc.heap_requested_bytes, latest_before_realloc.heap_allocated_bytes);
+  // Expect TCMalloc to allocate more memory than requested due to roundup, but limited by
+  // kMemoryAllocationAccuracyHighLimit.
+  ASSERT_LE(
+      latest_before_realloc.heap_allocated_bytes,
+      latest_before_realloc.heap_requested_bytes * kMemoryAllocationAccuracyHighLimit);
 }
 
 #endif

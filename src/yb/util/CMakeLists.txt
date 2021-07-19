@@ -318,6 +318,7 @@ add_dependencies(yb_util gen_version_info)
 
 add_library(yb_test_util
   logging_test_util.cc
+  memory/memory_usage_test_util.cc
   test_util.cc)
 target_link_libraries(yb_test_util
   gflags

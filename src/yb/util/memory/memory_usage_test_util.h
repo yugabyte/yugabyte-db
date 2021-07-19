@@ -16,37 +16,28 @@
 #ifndef YB_UTIL_MEMORY_MEMORY_USAGE_TEST_UTIL_H
 #define YB_UTIL_MEMORY_MEMORY_USAGE_TEST_UTIL_H
 
-#include "yb/util/mem_tracker.h"
+#include <string>
 
 namespace yb {
 
-#if defined(TCMALLOC_ENABLED)
-
-size_t GetCurrentAllocatedBytes() {
-  return MemTracker::GetTCMallocProperty("generic.current_allocated_bytes");
-}
-
-#endif
+void StartAllocationsTracking();
+void StopAllocationsTracking();
+size_t GetHeapRequestedBytes();
 
 struct MemoryUsage {
-  size_t allocated_bytes = 0;
+  size_t heap_requested_bytes = 0;
+  size_t heap_allocated_bytes = 0;
   size_t tracked_consumption = 0;
   size_t entities_count = 0;
 };
 
-std::string DumpMemoryUsage(const MemoryUsage& memory_usage) {
-  std::ostringstream ss;
-  ss << "Entities: " << memory_usage.entities_count << std::endl;
-  ss << "Memory allocated: " << memory_usage.allocated_bytes
-     << ", per entity: " << memory_usage.allocated_bytes / memory_usage.entities_count << std::endl;
-  ss << "Tracked memory: " << memory_usage.tracked_consumption
-     << ", per entity: " << memory_usage.tracked_consumption / memory_usage.entities_count
-     << std::endl;
-  return ss.str();
-}
+std::string DumpMemoryUsage(const MemoryUsage& memory_usage);
 
 // tcmalloc could allocate more memory than requested due to round up.
-const auto kHighMemoryAllocationAccuracyLimit = 1.125;
+const auto kMemoryAllocationAccuracyHighLimit = 1.15;
+
+// DynamicMemoryUsage should track at least 95% of heap memory requested to allocate.
+const auto kDynamicMemoryUsageAccuracyLowLimit = 0.95;
 
 }  // namespace yb
 
