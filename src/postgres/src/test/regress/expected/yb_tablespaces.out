@@ -422,7 +422,7 @@ DROP TABLESPACE regress_tblspace_renamed;
 */
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA testschema CASCADE;
-NOTICE:  drop cascades to 7 other objects
+NOTICE:  drop cascades to 9 other objects
 \set VERBOSITY default
 DROP ROLE regress_tablespace_user1;
 ERROR:  role "regress_tablespace_user1" cannot be dropped because some objects depend on it
