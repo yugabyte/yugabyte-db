@@ -25,6 +25,7 @@
 #ifndef PG_YB_UTILS_H
 #define PG_YB_UTILS_H
 
+#include "c.h"
 #include "postgres.h"
 
 #include "access/reloptions.h"
@@ -187,6 +188,11 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
+ * Whether to allow users to use SAVEPOINT commands at the query layer.
+ */
+extern bool YBSavepointsEnabled();
+
+/*
  * Given a status returned by YB C++ code, reports that status as a PG/YSQL
  * ERROR using ereport if it is not OK.
  */
@@ -248,6 +254,10 @@ extern void YBCCommitTransaction();
  * Aborts the current YugaByte-level transaction.
  */
 extern void YBCAbortTransaction();
+
+extern void YBCSetActiveSubTransaction(SubTransactionId id);
+
+extern void YBCRollbackSubTransaction(SubTransactionId id);
 
 /*
  * Return true if we want to allow PostgreSQL's own locking. This is needed

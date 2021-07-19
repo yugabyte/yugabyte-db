@@ -343,6 +343,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
 
+  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
  private:
   using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;
 

@@ -50,11 +50,16 @@ struct InFlightOpsGroup {
   std::string ToString() const;
 };
 
+struct InFlightOpsTransactionMetadata {
+  TransactionMetadata transaction;
+  boost::optional<SubTransactionMetadata> subtransaction;
+};
+
 struct InFlightOpsGroupsWithMetadata {
   static const size_t kPreallocatedCapacity = 40;
 
   boost::container::small_vector<InFlightOpsGroup, kPreallocatedCapacity> groups;
-  TransactionMetadata metadata;
+  InFlightOpsTransactionMetadata metadata;
 };
 
 typedef StatusFunctor Waiter;
@@ -187,6 +192,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Creates transaction by metadata, could be used in pair with release to transfer transaction
   // between application instances.
   static YBTransactionPtr Take(TransactionManager* manager, const TransactionMetadata& metadata);
+
+  void SetSubTransactionMetadata(const SubTransactionMetadata& subtransaction);
 
  private:
   class Impl;

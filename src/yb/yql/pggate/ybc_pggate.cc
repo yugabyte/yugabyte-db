@@ -829,6 +829,14 @@ YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
   return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(success));
 }
 
+YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->SetActiveSubTransaction(id));
+}
+
+YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->RollbackSubTransaction(id));
+}
+
 // Referential Integrity Caching
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *source) {
   return ProcessYbctid(*source, [](auto table_id, const auto& ybctid){

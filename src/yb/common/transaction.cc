@@ -79,6 +79,19 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
   return out << metadata.ToString();
 }
 
+void SubTransactionMetadata::ToPB(SubTransactionMetadataPB* dest) const {
+  dest->set_subtransaction_id(subtransaction_id);
+}
+
+bool SubTransactionMetadata::IsDefaultState() const {
+  DCHECK(subtransaction_id >= kMinSubTransactionId);
+  return subtransaction_id == kMinSubTransactionId;
+}
+
+std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata) {
+  return out << metadata.ToString();
+}
+
 MonoDelta TransactionRpcTimeout() {
   return FLAGS_transaction_rpc_timeout_ms * 1ms * kTimeMultiplier;
 }

@@ -34,6 +34,7 @@ message ApplyExternalTransactionPB {
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
   optional TransactionMetadataPB transaction = 2;
+  optional SubTransactionMetadataPB subtransaction = 8;
   optional bool DEPRECATED_may_have_metadata = 3;
   // Used by serializable isolation transactions and row locking statements to store read intents.
   // In case of read-modify-write operation both read_pairs and write_pairs could present.

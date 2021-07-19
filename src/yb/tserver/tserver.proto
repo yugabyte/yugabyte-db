@@ -290,6 +290,8 @@ message ReadRequestPB {
 
   optional TransactionMetadataPB transaction = 7;
 
+  optional SubTransactionMetadataPB subtransaction = 15;
+
   optional fixed64 propagated_hybrid_time = 8;
 
   // See ReadHybridTime for explation of next two fields.

@@ -1857,6 +1857,11 @@ AtSubCleanup_Memory(void)
  * ----------------------------------------------------------------
  */
 
+static void
+YBUpdateActiveSubTransaction(TransactionState s) {
+	YBCSetActiveSubTransaction(s->subTransactionId);
+}
+
 /*
  * Do a Yugabyte-specific initialization of transaction when it starts,
  * called as a part of StartTransaction
@@ -4338,6 +4343,8 @@ RollbackToSavepoint(const char *name)
 	else
 		elog(FATAL, "RollbackToSavepoint: unexpected state %s",
 			 BlockStateAsString(xact->blockState));
+
+	YBCRollbackSubTransaction(target->subTransactionId);
 }
 
 /*
@@ -5094,6 +5101,7 @@ PushTransaction(void)
 	s->parallelModeLevel = 0;
 
 	CurrentTransactionState = s;
+	YBUpdateActiveSubTransaction(CurrentTransactionState);
 
 	/*
 	 * AbortSubTransaction and CleanupSubTransaction have to be able to cope
@@ -5123,6 +5131,7 @@ PopTransaction(void)
 		elog(FATAL, "PopTransaction with no parent");
 
 	CurrentTransactionState = s->parent;
+	YBUpdateActiveSubTransaction(CurrentTransactionState);
 
 	/* Let's just make sure CurTransactionContext is good */
 	CurTransactionContext = s->parent->curTransactionContext;

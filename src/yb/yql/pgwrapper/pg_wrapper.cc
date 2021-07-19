@@ -36,8 +36,7 @@
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_bool(pg_transactions_enabled, true,
-            "True to enable transactions in YugaByte PostgreSQL API. This should eventually "
-            "be set to true by default.");
+            "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");

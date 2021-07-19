@@ -180,9 +180,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   YBTransactionPtr transaction() const;
 
-  const TransactionMetadata& transaction_metadata() const {
-    return ops_info_.metadata;
-  }
+  const InFlightOpsGroupsWithMetadata& in_flight_ops() const { return ops_info_; }
 
   void set_allow_local_calls_in_curr_thread(bool flag) { allow_local_calls_in_curr_thread_ = flag; }
 

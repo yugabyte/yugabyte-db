@@ -294,7 +294,10 @@ class YBTransaction::Impl final {
       SetReadTimeIfNeeded(ops_info->groups.size() > 1 || force_consistent_read);
     }
 
-    ops_info->metadata = metadata_;
+    ops_info->metadata = {
+      metadata_,
+      subtransaction_ ? boost::make_optional(*subtransaction_) : boost::none,
+    };
 
     return true;
   }
@@ -621,6 +624,10 @@ class YBTransaction::Impl final {
     RequestStatusTablet(TransactionRpcDeadline());
   }
 
+  void SetSubTransactionMetadata(const SubTransactionMetadata& subtransaction) {
+    subtransaction_ = &subtransaction;
+  }
+
  private:
   void CompleteConstruction() {
     log_prefix_ = Format("$0$1: ", metadata_.transaction_id, child_ ? " (CHILD)" : "");
@@ -677,6 +684,7 @@ class YBTransaction::Impl final {
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
+    // TODO(savepoints) -- Attach metadata about aborted subtransactions to commit message.
     state.set_status(seal_only ? TransactionStatus::SEALED : TransactionStatus::COMMITTED);
     state.mutable_tablets()->Reserve(tablets_.size());
     for (const auto& tablet : tablets_) {
@@ -948,6 +956,7 @@ class YBTransaction::Impl final {
     req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
+    // TODO(savepoints) -- Attach metadata about aborted subtransactions in heartbeat.
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(status);
     manager_->rpcs().RegisterAndStart(
@@ -1106,6 +1115,10 @@ class YBTransaction::Impl final {
 
   TransactionMetadata metadata_;
   ConsistentReadPoint read_point_;
+
+  // Pointer to SubTransactionMetadata tracking savepoint-related state for the scope of this
+  // transaction.
+  const SubTransactionMetadata* subtransaction_ = nullptr;
 
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
@@ -1302,6 +1315,10 @@ YBTransactionPtr YBTransaction::Take(
   auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
   result->impl_->StartHeartbeat();
   return result;
+}
+
+void YBTransaction::SetSubTransactionMetadata(const SubTransactionMetadata& subtransaction) {
+  return impl_->SetSubTransactionMetadata(subtransaction);
 }
 
 } // namespace client

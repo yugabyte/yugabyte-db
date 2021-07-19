@@ -22,6 +22,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/async_initializer.h"
 #include "yb/common/clock.h"
+#include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/util/result.h"
@@ -79,6 +80,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op,
                                                   bool needs_pessimistic_locking = false);
 
+  void SetActiveSubTransaction(SubTransactionId id);
+
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
 
   bool IsDdlMode() const { return ddl_session_.get() != nullptr; }
@@ -130,6 +133,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
 
   PgCallbacks pg_callbacks_;
+
+  // The SubTransactionMetadata tracking the current state of savepoint related data. A pointer to
+  // this is passed to every newly created YBTransaction and its state is snapshotted at the time of
+  // flushing RPCs from the batcher to be sent with those RPCs to the tserver. Before modifying this
+  // state, we should take care to flush all pending operations since pending operations would have
+  // been sent with the active state before a user issued any SubTransactionMetadata modifying
+  // commands.
+  SubTransactionMetadata sub_txn_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

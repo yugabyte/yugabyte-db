@@ -503,6 +503,10 @@ message TransactionMetadataPB {
   optional fixed64 metadata_write_time = 6;
 }
 
+message SubTransactionMetadataPB {
+  optional uint32 subtransaction_id = 1;
+}
+
 // See ReadHybridTime for explation of this message.
 message ReadHybridTimePB {
   optional fixed64 read_ht = 1;

@@ -1339,6 +1339,14 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
   return Status::OK();
 }
 
+Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
+  return pg_session_->SetActiveSubTransaction(id);
+}
+
+Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
+  return pg_session_->RollbackSubTransaction(id);
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }
