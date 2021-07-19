@@ -10,6 +10,16 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.models.Backup.BackupState.Completed;
+import static com.yugabyte.yw.models.Backup.BackupState.Deleted;
+import static com.yugabyte.yw.models.Backup.BackupState.FailedToDelete;
+import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -17,17 +27,11 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-
-import java.util.UUID;
-
-import static com.yugabyte.yw.models.Backup.BackupState.*;
-import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DeleteBackupTest extends FakeDBApplication {
