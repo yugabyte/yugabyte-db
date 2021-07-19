@@ -66,6 +66,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   YBClient mockClient;
 
   String nodePrefix = "demo-universe";
+  String ybSoftwareVersion = "1.0.0";
   String nodePrefix1, nodePrefix2, nodePrefix3;
   String ns, ns1, ns2, ns3;
 
@@ -89,7 +90,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-    userIntent.ybSoftwareVersion = "1.0.0";
+    userIntent.ybSoftwareVersion = ybSoftwareVersion;
     userIntent.enableYEDIS = enabledYEDIS;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
@@ -160,7 +161,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-    userIntent.ybSoftwareVersion = "1.0.0";
+    userIntent.ybSoftwareVersion = ybSoftwareVersion;
     userIntent.enableYEDIS = enabledYEDIS;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
@@ -220,7 +221,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private void setupCommon() {
     ShellResponse response = new ShellResponse();
     when(mockKubernetesManager.createNamespace(anyMap(), any())).thenReturn(response);
-    when(mockKubernetesManager.helmInstall(anyMap(), any(), any(), any(), any()))
+    when(mockKubernetesManager.helmInstall(any(), anyMap(), any(), any(), any(), any()))
         .thenReturn(response);
     // Table RPCs.
     mockClient = mock(YBClient.class);
@@ -369,6 +370,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(ybSoftwareVersion),
             eq(config1),
             eq(defaultProvider.uuid),
             eq(nodePrefix1),
@@ -376,6 +378,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(ybSoftwareVersion),
             eq(config2),
             eq(defaultProvider.uuid),
             eq(nodePrefix2),
@@ -383,6 +386,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(ybSoftwareVersion),
             eq(config3),
             eq(defaultProvider.uuid),
             eq(nodePrefix3),
@@ -435,6 +439,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
+            eq(ybSoftwareVersion),
             eq(config),
             eq(defaultProvider.uuid),
             eq(nodePrefix),

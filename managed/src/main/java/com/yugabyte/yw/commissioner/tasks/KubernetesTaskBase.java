@@ -64,6 +64,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       ServerType serverType,
       PlacementInfo activeZones) {
 
+    String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
     boolean edit = currPlacement != null;
     boolean isMultiAz = masterAddresses != null;
 
@@ -151,7 +153,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 tempPI,
                 azCode,
                 masterAddresses,
-                null,
+                ybSoftwareVersion,
                 serverType,
                 config,
                 masterPartition,
@@ -189,6 +191,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 tempPI,
                 azCode,
                 masterAddresses,
+                ybSoftwareVersion,
                 config));
 
         // Add zone to active configs.
@@ -324,6 +327,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement newPlacement,
       boolean userIntentChange) {
 
+    String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
     boolean edit = newPlacement != null;
     boolean isMultiAz = masterAddresses != null;
 
@@ -370,7 +375,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             newPlacement.masters.getOrDefault(azUUID, 0);
         helmDeletes.addTask(
             createKubernetesExecutorTask(
-                CommandType.HELM_UPGRADE, tempPI, azCode, masterAddresses, config));
+                CommandType.HELM_UPGRADE,
+                tempPI,
+                azCode,
+                masterAddresses,
+                ybSoftwareVersion,
+                config));
         podsWait.addTask(
             createKubernetesCheckPodNumTask(
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
@@ -472,22 +482,23 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   // Create Kubernetes Executor task for creating the namespaces and pull secrets.
   public KubernetesCommandExecutor createKubernetesExecutorTask(
       KubernetesCommandExecutor.CommandType commandType, String az, Map<String, String> config) {
-    return createKubernetesExecutorTask(commandType, null, az, null, config);
+    return createKubernetesExecutorTask(commandType, null, az, null, null, config);
   }
 
   // Create the Kubernetes Executor task for the helm deployments. (USED)
   public KubernetesCommandExecutor createKubernetesExecutorTask(
-      KubernetesCommandExecutor.CommandType commandType,
+      CommandType commandType,
       PlacementInfo pi,
       String az,
       String masterAddresses,
+      String ybSoftwareVersion,
       Map<String, String> config) {
     return createKubernetesExecutorTaskForServerType(
         commandType,
         pi,
         az,
         masterAddresses,
-        null,
+        ybSoftwareVersion,
         ServerType.EITHER,
         config,
         0 /* master partition */,

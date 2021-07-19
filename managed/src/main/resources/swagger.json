@@ -57,13 +57,13 @@
           "type" : "string"
         },
         "groupType" : {
-          "description" : "Alert definition group type",
+          "description" : "Alert definition group type.",
           "enum" : [ "CUSTOMER", "UNIVERSE" ],
           "readOnly" : true,
           "type" : "string"
         },
         "groupUuid" : {
-          "description" : "Alert group Uuid",
+          "description" : "Alert group Uuid.",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -81,6 +81,30 @@
         },
         "name" : {
           "description" : "Alert name.",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "nextNotificationTime" : {
+          "description" : "Time of the nex notification attempt.",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "notificationAttemptTime" : {
+          "description" : "Time of the last notification attempt.",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "notificationsFailed" : {
+          "description" : "Count of failures to send a notification.",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "notifiedState" : {
+          "description" : "Alert state in last sent notification.",
+          "enum" : [ "CREATED", "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -2874,6 +2898,10 @@
     "Release data" : {
       "description" : "Release data",
       "properties" : {
+        "chartPath" : {
+          "description" : "Helm chart path",
+          "type" : "string"
+        },
         "filePath" : {
           "description" : "Release file path",
           "type" : "string"
