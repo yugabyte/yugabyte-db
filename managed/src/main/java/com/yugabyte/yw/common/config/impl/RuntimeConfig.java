@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.common.config.impl;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.models.Customer;
@@ -19,8 +21,6 @@ import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
 /**
  * This class implements most (but not all) methods of com.typesafe.config.Config In addition this

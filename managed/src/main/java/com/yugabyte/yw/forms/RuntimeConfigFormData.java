@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.forms;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -18,15 +20,12 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
-import play.mvc.Http;
-
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
-
-import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+import play.mvc.Http;
 
 @ApiModel(value = "Runtime config data", description = "Runtime config data")
 public class RuntimeConfigFormData {

@@ -2,29 +2,18 @@
 
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import static com.yugabyte.yw.models.Schedule.State.Active;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
-
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import static com.yugabyte.yw.models.Schedule.State.Active;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
 
 public class ScheduleTest extends FakeDBApplication {
   private Customer defaultCustomer;

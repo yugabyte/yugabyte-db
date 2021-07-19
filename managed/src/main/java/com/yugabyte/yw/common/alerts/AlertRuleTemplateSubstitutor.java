@@ -14,11 +14,10 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
 import com.yugabyte.yw.models.AlertDefinitionLabel;
-import lombok.RequiredArgsConstructor;
-
 import java.text.DecimalFormat;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 
 public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
 

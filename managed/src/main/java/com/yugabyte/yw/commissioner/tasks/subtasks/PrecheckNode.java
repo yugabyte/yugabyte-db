@@ -14,9 +14,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
-
-import javax.inject.Inject;
 import java.util.Map;
+import javax.inject.Inject;
 
 public class PrecheckNode extends UniverseTaskBase {
   @Inject
