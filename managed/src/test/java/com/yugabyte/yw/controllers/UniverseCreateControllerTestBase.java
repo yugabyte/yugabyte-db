@@ -18,6 +18,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static junit.framework.TestCase.assertFalse;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -45,6 +46,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -60,12 +62,16 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -75,6 +81,21 @@ import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
+
+  static String TMP_CHART_PATH = "/tmp/yugaware_tests/UniverseUiOnlyControllerTest/charts";
+
+  @Before
+  public void setUp() {
+    super.setUp();
+    new File(TMP_CHART_PATH).mkdirs();
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    FileUtils.deleteDirectory(new File(TMP_CHART_PATH));
+    super.tearDown();
+  }
+
   public abstract Result sendCreateRequest(ObjectNode bodyJson);
 
   public abstract Result sendPrimaryCreateConfigureRequest(ObjectNode topJson);
@@ -396,6 +417,11 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
+    when(mockReleaseManager.getReleaseByVersion("1.0.0"))
+        .thenReturn(
+            ReleaseManager.ReleaseMetadata.create("1.0.0")
+                .withChartPath(TMP_CHART_PATH + "/yugabyte-1.0.0-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
 
     Provider p;
     switch (cloudType) {
@@ -436,7 +462,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "1.0.0");
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ObjectNode deviceInfo =

@@ -124,14 +124,15 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   }
 
   private void createUpgradeTask(UserIntent userIntent, Universe universe, PlacementInfo pi) {
-    String version = null;
+    String ybSoftwareVersion = null;
     boolean masterChanged = false;
     boolean tserverChanged = false;
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      version = taskParams().ybSoftwareVersion;
+      ybSoftwareVersion = taskParams().ybSoftwareVersion;
       masterChanged = true;
       tserverChanged = true;
     } else {
+      ybSoftwareVersion = userIntent.ybSoftwareVersion;
       if (!taskParams().masterGFlags.equals(userIntent.masterGFlags)) {
         masterChanged = true;
       }
@@ -164,7 +165,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           masterAddresses,
           null,
           ServerType.MASTER,
-          version,
+          ybSoftwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
           masterChanged,
           tserverChanged);
@@ -179,7 +180,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           masterAddresses,
           null,
           ServerType.TSERVER,
-          version,
+          ybSoftwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
           false /* master change is false since it has already been upgraded.*/,
           tserverChanged);

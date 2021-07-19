@@ -1,16 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { DropdownButton } from 'react-bootstrap';
+import React, {Component} from 'react';
+import {BootstrapTable, TableHeaderColumn} from 'react-bootstrap-table';
+import {DropdownButton} from 'react-bootstrap';
 
-import { YBPanelItem } from '../../../components/panels';
-import { YBButton, YBTextInput } from '../../../components/common/forms/fields';
-import { TableAction } from '../../../components/tables';
-import { YBLoadingCircleIcon } from '../../../components/common/indicators';
-import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isAvailable } from '../../../utils/LayoutUtils';
-import { showOrRedirect } from '../../../utils/LayoutUtils';
+import {YBPanelItem} from '../../../components/panels';
+import {YBButton, YBTextInput} from '../../../components/common/forms/fields';
+import {TableAction} from '../../../components/tables';
+import {YBLoadingCircleIcon} from '../../../components/common/indicators';
+import {getPromiseState} from '../../../utils/PromiseUtils';
+import {isAvailable, showOrRedirect} from '../../../utils/LayoutUtils';
 
 import './ReleaseList.scss';
 
@@ -218,9 +217,18 @@ export default class ReleaseList extends Component {
               tdStyle={{ whiteSpace: 'normal' }}
               columnClassName="no-border name-column"
               className="no-border"
-              width="550px"
+              width="225px"
             >
               File Path
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="chartPath"
+              tdStyle={{ whiteSpace: 'normal' }}
+              columnClassName="no-border name-column"
+              className="no-border"
+              width="225px"
+            >
+              Chart Path
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="imageTag"

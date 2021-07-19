@@ -26,6 +26,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
@@ -97,6 +98,7 @@ public class UniverseControllerTestBase extends WithApplication {
   protected PlayCacheSessionStore mockSessionStore;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected Config mockRuntimeConfig;
+  protected ReleaseManager mockReleaseManager;
 
   @Override
   protected Application provideApplication() {
@@ -114,6 +116,7 @@ public class UniverseControllerTestBase extends WithApplication {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     mockRuntimeConfig = mock(Config.class);
+    mockReleaseManager = mock(ReleaseManager.class);
     healthChecker = mock(HealthChecker.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
@@ -138,6 +141,7 @@ public class UniverseControllerTestBase extends WithApplication {
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockRuntimeConfig)))
+        .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .build();
   }
