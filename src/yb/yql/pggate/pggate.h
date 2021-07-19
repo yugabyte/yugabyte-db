@@ -441,6 +441,8 @@ class PgApiImpl {
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
   CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
