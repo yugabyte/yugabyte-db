@@ -10792,7 +10792,9 @@ TransactionStmt:
 				}
 			| SAVEPOINT ColId
 				{
-					parser_ybc_signal_unsupported(@1, "SAVEPOINT <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "SAVEPOINT <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_SAVEPOINT;
 					n->savepoint_name = $2;
@@ -10800,7 +10802,9 @@ TransactionStmt:
 				}
 			| RELEASE SAVEPOINT ColId
 				{
-					parser_ybc_signal_unsupported(@1, "RELEASE SAVEPOINT <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "RELEASE SAVEPOINT <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $3;
@@ -10808,7 +10812,9 @@ TransactionStmt:
 				}
 			| RELEASE ColId
 				{
-					parser_ybc_signal_unsupported(@1, "RELEASE <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "RELEASE <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $2;
@@ -10816,6 +10822,7 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
+					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
 					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
@@ -10824,6 +10831,7 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO ColId
 				{
+					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
 					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;

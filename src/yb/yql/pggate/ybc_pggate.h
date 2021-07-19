@@ -429,6 +429,8 @@ YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode(bool success);
+YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
+YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
