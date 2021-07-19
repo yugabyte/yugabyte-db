@@ -1,11 +1,13 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AsyncReplicationRelationship;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.junit.After;
@@ -14,14 +16,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.cdc.CdcConsumer;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
-import org.yb.master.Master;
-
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ResetUniverseVersionTest extends FakeDBApplication {

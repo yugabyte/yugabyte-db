@@ -1,5 +1,21 @@
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.commissioner.TaskGarbageCollector.CUSTOMER_TASK_METRIC_NAME;
+import static com.yugabyte.yw.commissioner.TaskGarbageCollector.CUSTOMER_UUID_LABEL;
+import static com.yugabyte.yw.commissioner.TaskGarbageCollector.EXPORT_PROM_METRIC;
+import static com.yugabyte.yw.commissioner.TaskGarbageCollector.NUM_TASK_GC_ERRORS;
+import static com.yugabyte.yw.commissioner.TaskGarbageCollector.NUM_TASK_GC_RUNS;
+import static com.yugabyte.yw.commissioner.TaskGarbageCollector.TASK_INFO_METRIC_NAME;
+import static com.yugabyte.yw.commissioner.TaskGarbageCollector.YB_TASK_GC_GC_CHECK_INTERVAL;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.when;
+
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.typesafe.config.Config;
@@ -7,6 +23,9 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import io.prometheus.client.CollectorRegistry;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.UUID;
 import junit.framework.TestCase;
 import org.junit.Before;
 import org.junit.Test;
@@ -14,14 +33,6 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import scala.concurrent.ExecutionContext;
-
-import java.time.Duration;
-import java.util.Collections;
-import java.util.UUID;
-
-import static com.yugabyte.yw.commissioner.TaskGarbageCollector.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TaskGarbageCollectorTest extends TestCase {

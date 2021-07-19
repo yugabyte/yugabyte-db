@@ -4,19 +4,16 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
-
-import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.TaskInfo;
-
 import play.libs.Json;
 
 public class TaskTest extends FakeDBApplication {
