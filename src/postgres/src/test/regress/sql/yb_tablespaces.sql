@@ -99,6 +99,16 @@ CREATE TABLE testschema.foo_pk_default_tblspc (i int, PRIMARY KEY(i));
 \d testschema.foo_pk_default_tblspc;
 SET default_tablespace TO '';
 
+-- Verify that USING INDEX TABLESPACE is not supported for primary keys.
+CREATE TABLE testschema.using_index1 (a int PRIMARY KEY USING INDEX TABLESPACE regress_tblspace);
+CREATE TABLE testschema.using_index1 (a int, PRIMARY KEY(a) USING INDEX TABLESPACE regress_tblspace);
+
+-- Verify that USING INDEX TABLESPACE is supported for other constraints.
+CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regress_tblspace);
+CREATE TABLE testschema.using_index3 (a int, UNIQUE(a) USING INDEX TABLESPACE regress_tblspace);
+\d testschema.using_index2;
+\d testschema.using_index3;
+
 -- index
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
@@ -213,7 +223,7 @@ DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
 
 /*
-Testing to make sure that an index on a "near" tablespace whose placements are 
+Testing to make sure that an index on a "near" tablespace whose placements are
 all on the current cloud/region/zone is preferred over "far" indexes.
 */
 CREATE TABLESPACE near WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');

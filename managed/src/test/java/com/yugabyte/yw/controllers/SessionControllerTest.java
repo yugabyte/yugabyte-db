@@ -12,6 +12,11 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -43,15 +48,16 @@ import static play.test.Helpers.*;
 
 public class SessionControllerTest {
 
-  HealthChecker mockHealthChecker;
-  Scheduler mockScheduler;
-  CallHome mockCallHome;
-  CallbackController mockCallbackController;
-  PlayCacheSessionStore mockSessionStore;
-  QueryAlerts mockQueryAlerts;
-  AlertConfigurationWriter mockAlertConfigurationWriter;
+  private HealthChecker mockHealthChecker;
+  private Scheduler mockScheduler;
+  private CallHome mockCallHome;
+  private CallbackController mockCallbackController;
+  private PlayCacheSessionStore mockSessionStore;
+  private QueryAlerts mockQueryAlerts;
+  private AlertConfigurationWriter mockAlertConfigurationWriter;
+  private AlertRouteService alertRouteService;
 
-  Application app;
+  private Application app;
 
   private void startApp(boolean isMultiTenant) {
     mockHealthChecker = mock(HealthChecker.class);
@@ -75,6 +81,13 @@ public class SessionControllerTest {
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();
     Helpers.start(app);
+
+    AlertService alertService = new AlertService();
+    AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
+    AlertDefinitionGroupService alertDefinitionGroupService =
+        new AlertDefinitionGroupService(
+            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
+    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
   }
 
   @After
@@ -202,7 +215,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertAuditEntry(0, c1.uuid);
-    assertNotNull(AlertRoute.getDefaultRoute(c1.uuid));
+    assertNotNull(alertRouteService.getDefaultRoute(c1.uuid));
   }
 
   @Test

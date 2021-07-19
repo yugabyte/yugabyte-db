@@ -61,10 +61,11 @@ public class AlertManagerTest extends FakeDBApplication {
 
   private AlertRoute defaultRoute;
 
+  private AlertRouteService alertRouteService;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultRoute = AlertRoute.createDefaultRoute(defaultCustomer.uuid);
     when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
 
     universe = ModelFactory.createUniverse();
@@ -76,8 +77,16 @@ public class AlertManagerTest extends FakeDBApplication {
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    am = new AlertManager(emailHelper, alertService, alertDefinitionGroupService, receiversManager);
+    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    am =
+        new AlertManager(
+            emailHelper,
+            alertService,
+            alertDefinitionGroupService,
+            alertRouteService,
+            receiversManager);
 
+    defaultRoute = alertRouteService.createDefaultRoute(defaultCustomer.uuid);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
   }
@@ -204,7 +213,7 @@ public class AlertManagerTest extends FakeDBApplication {
     AlertReceiver receiver1 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 1");
     AlertReceiver receiver2 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 2");
     AlertRoute route =
-        AlertRoute.create(
+        ModelFactory.createAlertRoute(
             defaultCustomer.uuid, ALERT_ROUTE_NAME, ImmutableList.of(receiver1, receiver2));
     group.setRouteUUID(route.getUuid());
     group.save();

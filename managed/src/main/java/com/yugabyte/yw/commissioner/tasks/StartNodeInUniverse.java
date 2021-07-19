@@ -125,11 +125,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
               new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Update the swamper target file.
-      // It is required because the node could be removed from the swamper file
-      // between the Stop/Start actions as Inactive.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-
       // Update all server conf files with new master information.
       if (masterAdded) {
         createMasterInfoUpdateTask(universe, currentNode);
@@ -144,6 +139,11 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+
+      // Update the swamper target file.
+      // It is required because the node could be removed from the swamper file
+      // between the Stop/Start actions as Inactive.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);

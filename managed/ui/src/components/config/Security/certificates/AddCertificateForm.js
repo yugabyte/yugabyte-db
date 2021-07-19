@@ -11,6 +11,7 @@ import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtil
 import { Field } from 'formik';
 
 import MomentLocaleUtils, { formatDate, parseDate } from 'react-day-picker/moment';
+import './AddCertificateForm.scss';
 
 const initialValues = {
   certName: '',
@@ -42,8 +43,24 @@ export default class AddCertificateForm extends Component {
   };
 
   state = {
-    tab: 'selfSigned'
-  }
+    tab: 'selfSigned',
+    suggestionText: {
+      rootCACert: '',
+      nodeCertPath: '',
+      nodeCertPrivate: '',
+      clientCertPath: '',
+      clientKeyPath: ''
+    },
+    isDatePickerFocused: false
+  };
+
+  placeholderObject = {
+    rootCACert: '/opt/yugabyte/keys/cert1/ca.crt',
+    nodeCertPath: '/opt/yugabyte/keys/cert1/node.key',
+    nodeCertPrivate: '/opt/yugabyte/keys/cert1/node.crt',
+    clientCertPath: '/opt/yugabyte/yugaware/data/cert1/client.crt',
+    clientKeyPath: '/opt/yugabyte/yugaware/data/cert1/client.key'
+  };
 
   readUploadedFileAsText = (inputFile, isRequired) => {
     const fileReader = new FileReader();
@@ -104,13 +121,15 @@ export default class AddCertificateForm extends Component {
         }
       };
 
-      this.readUploadedFileAsText(certificateFile, false).then(content => {
-        formValues.certContent = content;
-        self.props.addCertificate(formValues, setSubmitting);
-      }).catch((err) => {
-        console.warn(`File Upload gone wrong. ${err}`);
-        setSubmitting(false);
-      });
+      this.readUploadedFileAsText(certificateFile, false)
+        .then((content) => {
+          formValues.certContent = content;
+          self.props.addCertificate(formValues, setSubmitting);
+        })
+        .catch((err) => {
+          console.warn(`File Upload gone wrong. ${err}`);
+          setSubmitting(false);
+        });
     }
   };
 
@@ -147,7 +166,7 @@ export default class AddCertificateForm extends Component {
     }
 
     return errors;
-  }
+  };
 
   onHide = () => {
     this.props.onHide();
@@ -164,12 +183,17 @@ export default class AddCertificateForm extends Component {
       setFieldValue('clientCertPath', '');
       setFieldValue('clientKeyPath', '', false);
       if (values.certExpiry instanceof Date) {
-        setFieldValue('certExpiry',
-          new Date(values.certExpiry.toLocaleDateString('default', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-          })), false);
+        setFieldValue(
+          'certExpiry',
+          new Date(
+            values.certExpiry.toLocaleDateString('default', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric'
+            })
+          ),
+          false
+        );
       }
       delete newErrors.rootCACert;
       delete newErrors.nodeCertPath;
@@ -178,12 +202,17 @@ export default class AddCertificateForm extends Component {
       setFieldValue('keyContent', null, false);
       delete newErrors.keyContent;
       if (values.certExpiry instanceof Date) {
-        setFieldValue('certExpiry',
-          new Date(values.certExpiry.toLocaleDateString('default', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-          })), false);
+        setFieldValue(
+          'certExpiry',
+          new Date(
+            values.certExpiry.toLocaleDateString('default', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric'
+            })
+          ),
+          false
+        );
       }
     }
     setFieldTouched('keyContent', false);
@@ -193,8 +222,50 @@ export default class AddCertificateForm extends Component {
     setFieldTouched('clientCertPath', false);
     setFieldTouched('clientKeyPath', false);
     setErrors(newErrors);
-    this.setState({tab: newTabKey});
-  }
+    this.setState({ tab: newTabKey });
+  };
+
+  handleOnBlur = (event) => {
+    this.setState({
+      ...this.state,
+      suggestionText: {
+        [event.target.name]: ''
+      }
+    });
+  };
+
+  handleOnKeyUp = (event, formikProps) => {
+    const { setFieldValue } = formikProps;
+    const value = event.target.value;
+    const name = event.target.name;
+    var regex = new RegExp('^' + value, 'i');
+    const term = this.placeholderObject[name];
+    if( event.key === 'ArrowRight' && this.state.suggestionText[name]) {
+      setFieldValue(name, term);
+      this.setState({
+        ...this.state,
+        suggestionText: {
+          [name]: ''
+        }
+      });
+      return false
+    }
+    if (regex.test(term) && value) {
+      this.setState({
+        ...this.state,
+        suggestionText: {
+          [name]: `${value + term.slice(value.length)}`
+        }
+      });
+      return false;
+    }
+    this.setState({
+      ...this.state,
+      suggestionText: {
+        [name]: ''
+      }
+    });
+  };
 
   render() {
     const {
@@ -229,7 +300,13 @@ export default class AddCertificateForm extends Component {
                 onSelect={(k) => this.tabSelect(k, props)}
               >
                 <Tab eventKey="selfSigned" title="Self Signed">
-                  <Field name="certName" component={YBFormInput} type="text" label="Certificate Name" required />
+                  <Field
+                    name="certName"
+                    component={YBFormInput}
+                    type="text"
+                    label="Certificate Name"
+                    required
+                  />
                   <Field
                     name="certExpiry"
                     component={YBFormDatePicker}
@@ -263,16 +340,23 @@ export default class AddCertificateForm extends Component {
                     title="Upload Key"
                     required
                   />
-                  {getPromiseState(addCertificate).isError() && isNonEmptyObject(addCertificate.error) && (
-                    <Alert bsStyle="danger" variant="danger">
-                      Certificate adding has been failed:
-                      <br />
-                      {JSON.stringify(addCertificate.error)}
-                    </Alert>
-                  )}
+                  {getPromiseState(addCertificate).isError() &&
+                    isNonEmptyObject(addCertificate.error) && (
+                      <Alert bsStyle="danger" variant="danger">
+                        Certificate adding has been failed:
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                 </Tab>
                 <Tab eventKey="caSigned" title="CA Signed">
-                  <Field name="certName" component={YBFormInput} type="text" label="Certificate Name" required />
+                  <Field
+                    name="certName"
+                    component={YBFormInput}
+                    type="text"
+                    label="Certificate Name"
+                    required
+                  />
                   <Field
                     name="certExpiry"
                     component={YBFormDatePicker}
@@ -291,6 +375,8 @@ export default class AddCertificateForm extends Component {
                     required
                     onDayChange={(val) => props.setFieldValue('certExpiry', val)}
                     pickerComponent={DatePickerInput}
+                    onDayPickerShow={() => this.setState({ isDatePickerFocused: true })}
+                    onDayPickerHide={() => this.setState({ isDatePickerFocused: false })}
                   />
                   <Field
                     name="certContent"
@@ -299,45 +385,77 @@ export default class AddCertificateForm extends Component {
                     title="Upload Root Certificate"
                     required
                   />
-                  <Field
-                    name="rootCACert"
-                    component={YBFormInput}
-                    label="Root CA Certificate"
-                    placeholder="/opt/yugabyte/keys/cert1/ca.crt"
-                    required
-                  />
-                  <Field
-                    name="nodeCertPath"
-                    component={YBFormInput}
-                    label="Database Node Certificate Path"
-                    placeholder="/opt/yugabyte/keys/cert1/node.crt"
-                    required
-                  />
-                  <Field
-                    name="nodeCertPrivate"
-                    component={YBFormInput}
-                    label="Database Node Certificate Private Key"
-                    placeholder="/opt/yugabyte/keys/cert1/node.key"
-                    required
-                  />
-                  <Field
-                    name="clientCertPath"
-                    component={YBFormInput}
-                    label="Client Certificate"
-                    placeholder="/opt/yugabyte/yugaware/data/cert1/client.crt"
-                  />
-                  <Field name="clientKeyPath"
-                    component={YBFormInput}
-                    label="Client Certificate Private Key"
-                    placeholder="/opt/yugabyte/yugaware/data/cert1/client.key"
-                  />
-                  {getPromiseState(addCertificate).isError() && isNonEmptyObject(addCertificate.error) && (
-                    <Alert bsStyle="danger" variant="danger">
-                      Certificate adding has been failed:
-                      <br />
-                      {JSON.stringify(addCertificate.error)}
-                    </Alert>
-                  )}
+                  <div className="search-container">
+                    <Field
+                      name="rootCACert"
+                      component={YBFormInput}
+                      label="Root CA Certificate"
+                      placeholder={this.placeholderObject['rootCACert']}
+                      required
+                      onKeyUp={(e) => this.handleOnKeyUp(e, props)}
+                      onBlur={this.handleOnBlur}
+                      className={this.state.isDatePickerFocused ? null : 'search'}
+                    />
+                    <div className="suggestion">{this.state.suggestionText['rootCACert']}</div>
+                  </div>
+                  <div className="search-container">
+                    <Field
+                      name="nodeCertPath"
+                      component={YBFormInput}
+                      label="Database Node Certificate Path"
+                      placeholder={this.placeholderObject['nodeCertPath']}
+                      required
+                      onKeyUp={(e) => this.handleOnKeyUp(e, props)}
+                      onBlur={this.handleOnBlur}
+                      className={this.state.isDatePickerFocused ? null : 'search'}
+                    />
+                    <div className="suggestion">{this.state.suggestionText['nodeCertPath']}</div>
+                  </div>
+                  <div className="search-container">
+                    <Field
+                      name="nodeCertPrivate"
+                      component={YBFormInput}
+                      label="Database Node Certificate Private Key"
+                      placeholder={this.placeholderObject['nodeCertPrivate']}
+                      required
+                      onKeyUp={(e) => this.handleOnKeyUp(e, props)}
+                      onBlur={this.handleOnBlur}
+                      className="search"
+                    />
+                    <div className="suggestion">{this.state.suggestionText['nodeCertPrivate']}</div>
+                  </div>
+                  <div className="search-container">
+                    <Field
+                      name="clientCertPath"
+                      component={YBFormInput}
+                      label="Client Certificate"
+                      placeholder={this.placeholderObject['clientCertPath']}
+                      onKeyUp={(e) => this.handleOnKeyUp(e, props)}
+                      onBlur={this.handleOnBlur}
+                      className="search"
+                    />
+                    <div className="suggestion">{this.state.suggestionText['clientCertPath']}</div>
+                  </div>
+                  <div className="search-container">
+                    <Field
+                      name="clientKeyPath"
+                      component={YBFormInput}
+                      label="Client Certificate Private Key"
+                      placeholder={this.placeholderObject['clientKeyPath']}
+                      onKeyUp={(e) => this.handleOnKeyUp(e, props)}
+                      onBlur={this.handleOnBlur}
+                      className="search"
+                    />
+                    <div className="suggestion">{this.state.suggestionText['clientKeyPath']}</div>
+                  </div>
+                  {getPromiseState(addCertificate).isError() &&
+                    isNonEmptyObject(addCertificate.error) && (
+                      <Alert bsStyle="danger" variant="danger">
+                        Certificate adding has been failed:
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                 </Tab>
               </Tabs>
             );

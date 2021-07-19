@@ -17,7 +17,9 @@ import {
   CREATE_BACKUP_TABLE,
   CREATE_BACKUP_TABLE_RESPONSE,
   RESTORE_TABLE_BACKUP,
-  RESTORE_TABLE_BACKUP_RESPONSE
+  RESTORE_TABLE_BACKUP_RESPONSE,
+  STOP_BACKUP,
+  STOP_BACKUP_RESPONSE
 } from '../actions/tables';
 import { getInitialState, setLoadingState, setPromiseResponse } from '../utils/PromiseUtils';
 
@@ -28,7 +30,8 @@ const INITIAL_STATE = {
   currentTableView: 'list',
   bulkImport: getInitialState({}),
   createBackup: getInitialState({}),
-  restoreBackup: getInitialState({})
+  restoreBackup: getInitialState({}),
+  stopBackup: getInitialState({})
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -78,6 +81,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'restoreBackup', {});
     case RESTORE_TABLE_BACKUP_RESPONSE:
       return setPromiseResponse(state, 'restoreBackup', action);
+    case STOP_BACKUP:
+      return setLoadingState(state, 'stopBackup', {});
+    case STOP_BACKUP_RESPONSE:
+      return setPromiseResponse(state, 'stopBackup', action);
     default:
       return state;
   }

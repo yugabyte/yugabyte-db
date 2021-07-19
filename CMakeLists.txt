@@ -414,11 +414,8 @@ ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 # For all builds:
 # For CMAKE_BUILD_TYPE=Debug
 #   -ggdb: Enable gdb debugging
-#   -O1: Enable minimum optimization
-#   -fno-omit-frame-pointer
-#       use frame pointers to allow simple stack frame walking for backtraces.
 # For CMAKE_BUILD_TYPE=FastDebug
-#   Same as DEBUG (TODO: remove fastdebug build type, use debug instead)
+#   Same as DEBUG, except with some optimizations on.
 # For CMAKE_BUILD_TYPE=Release
 #   -O3: Enable all compiler optimizations
 #   -g: Enable symbols for profiler tools (TODO: remove for shipping)
@@ -432,8 +429,8 @@ ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 #   2. Run the benchmarks (generates *.gcda profiling data).
 #   3. Build again with CMAKE_BUILD_TYPE_PROFILE_BUILD
 #     -fprofile-use: Compiler will use the profile outputs for optimizations
-set(CXX_FLAGS_DEBUG "-ggdb -O1 -fno-omit-frame-pointer")
-set(CXX_FLAGS_FASTDEBUG ${CXX_FLAGS_DEBUG})
+set(CXX_FLAGS_DEBUG "-ggdb")
+set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer")
 set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
 
 # Nullify CMake's predefined flags since we are handling different build types on our own.
@@ -724,7 +721,7 @@ if (USING_LINUXBREW)
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
 endif()
 
-message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
+message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")
 
 # Define full paths to libpq and libyb_pgbackend shared libraries. These libraries are built as part
 # of building PostgreSQL. We need to declare these as by-products of running the PostgreSQL build
