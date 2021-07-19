@@ -286,12 +286,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         PlacementInfoUtil.computeMasterAddresses(
             newPI, newPlacement.masters, taskParams().nodePrefix, provider, masterRpcPort);
 
+    String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
     upgradePodsTask(
         newPlacement,
         masterAddresses,
         currPlacement,
         serverType,
-        null,
+        ybSoftwareVersion,
         DEFAULT_WAIT_TIME_MS,
         masterChanged,
         tserverChanged);
