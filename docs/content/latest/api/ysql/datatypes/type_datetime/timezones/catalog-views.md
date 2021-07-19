@@ -1,7 +1,7 @@
 ---
 title: Catalog views for timezone information [YSQL]
-headerTitle: Catalog views for timezone information—pg_timezone_names and pg_timezone_abbrevs
-linkTitle: catalog views
+headerTitle: The pg_timezone_names and pg_timezone_abbrevs catalog views
+linkTitle: Catalog views
 description: Explains the information content of the pg_timezone_names and pg_timezone_abbrevs catalog views. [YSQL]
 menu:
   latest:
