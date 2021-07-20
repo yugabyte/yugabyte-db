@@ -151,27 +151,26 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
   result.intent_prefix = decoded_intent_key.intent_prefix;
   result.intent_types = decoded_intent_key.intent_types;
   if (result.intent_types.Test(IntentType::kStrongWrite)) {
-    result.intent_value = intent_iter->value();
-    auto txn_id = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&result.intent_value));
-    result.same_transaction = txn_id == txn_op_context.transaction_id;
-    if (result.intent_value.size() < 1 + sizeof(IntraTxnWriteId) ||
-        result.intent_value[0] != ValueTypeAsChar::kWriteId) {
-      return STATUS_FORMAT(
-          Corruption, "Write id is missing in $0", intent_iter->value().ToDebugHexString());
-    }
-    result.intent_value.consume_byte();
-    IntraTxnWriteId in_txn_write_id = BigEndian::Load32(result.intent_value.data());
-    result.intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+    auto intent_value = intent_iter->value();
+    auto decoded_intent_value = VERIFY_RESULT(DecodeIntentValue(intent_value));
+
+    auto decoded_txn_id = decoded_intent_value.transaction_id;
+
+    result.intent_value = decoded_intent_value.body;
     result.intent_time = decoded_intent_key.doc_ht;
+    result.same_transaction = decoded_txn_id == txn_op_context.transaction_id;
+
     if (result.intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
       result.value_time = DocHybridTime::kMin;
     } else if (result.same_transaction) {
       result.value_time = decoded_intent_key.doc_ht;
     } else {
-      auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(txn_id));
+      auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(decoded_txn_id));
       result.value_time = DocHybridTime(
-          commit_ht, commit_ht != HybridTime::kMin ? in_txn_write_id : 0);
-      VLOG(4) << "Transaction id: " << txn_id << ", value time: " << result.value_time
+          commit_ht, commit_ht != HybridTime::kMin ? decoded_intent_value.write_id : 0);
+      VLOG(4) << "Transaction id: " << decoded_txn_id
+              << ", subtransaction id: " << decoded_intent_value.subtransaction_id
+              << ", value time: " << result.value_time
               << ", value: " << result.intent_value.ToDebugHexString();
     }
   } else {
