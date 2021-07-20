@@ -332,11 +332,10 @@ public class SessionController extends Controller {
   public Result getPasswordPolicy() {
     // PasswordPolicyService passwordPolicyService;
     PasswordPolicyFormData validPolicy = passwordPolicyService.getPasswordPolicyData();
-     if (validPolicy != null) {
+    if (validPolicy != null) {
       return YWResults.withData(validPolicy);
     }
-    return ApiResponse.error(
-      INTERNAL_SERVER_ERROR, "Failed to get validation policy");
+    return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
   }
 
   private Result registerCustomer(CustomerRegisterFormData data, boolean isSuper) {

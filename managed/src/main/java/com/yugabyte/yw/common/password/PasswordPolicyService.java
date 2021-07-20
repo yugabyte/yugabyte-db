@@ -121,8 +121,8 @@ public class PasswordPolicyService {
 
     JsonNode policyJson = Json.toJson(effectivePolicy);
     ObjectMapper mapper = new ObjectMapper();
-    
-     try {
+
+    try {
       policyData = mapper.treeToValue(policyJson, PasswordPolicyFormData.class);
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Can not pretty print a Json object.");
