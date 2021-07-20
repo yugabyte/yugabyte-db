@@ -34,6 +34,14 @@
 namespace yb {
 namespace master {
 
+YB_DEFINE_ENUM(TableModificationType, (kCreate)(kDrop)(kAlter))
+
+struct ModifiedTable {
+  TableName name;
+  TableType type;
+  TableModificationType modification;
+};
+
 struct SnapshotScheduleRestoration {
   TxnSnapshotId snapshot_id;
   HybridTime restore_at;
@@ -44,6 +52,7 @@ struct SnapshotScheduleRestoration {
   SnapshotScheduleFilterPB filter;
   std::vector<TabletId> obsolete_tablets;
   std::vector<TableId> obsolete_tables;
+  std::vector<ModifiedTable> modified_tables;
   std::unordered_map<std::string, SysRowEntry::Type> objects_to_restore;
 };
 
@@ -70,7 +79,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+      int64_t leader_term, const tablet::SnapshotOperation& operation,
+      Status* complete_status) override;
 
   CHECKED_STATUS ListSnapshots(
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);

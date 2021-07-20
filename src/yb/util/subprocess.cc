@@ -44,6 +44,8 @@
 #include <memory>
 #include <string>
 
+#include <boost/container/small_vector.hpp>
+
 #include <glog/logging.h>
 
 #if defined(__linux__)
@@ -473,16 +475,17 @@ Status Subprocess::Call(const vector<string>& argv) {
   }
 }
 
-Status Subprocess::Call(const vector<string>& argv, string* output, bool read_stderr) {
+Status Subprocess::Call(const vector<string>& argv, string* output, StdFdTypes read_fds) {
   Subprocess p(argv[0], argv);
-  return p.Call(output, read_stderr);
+  return p.Call(output, read_fds);
 }
 
-Status Subprocess::Call(string* output, bool read_stderr) {
-  if (read_stderr) {
-    ShareParentStderr(false);
-  } else {
-    ShareParentStdout(false);
+Status Subprocess::Call(string* output, StdFdTypes read_fds) {
+  if (read_fds.Test(StdFdType::kIn)) {
+    return STATUS(InvalidArgument, "Cannot read from child stdin");
+  }
+  for (const auto fd_type : read_fds) {
+    SetFdShared(to_underlying(fd_type), false);
   }
 
   RETURN_NOT_OK_PREPEND(Start(), "Unable to fork " + argv_[0]);
@@ -493,25 +496,26 @@ Status Subprocess::Call(string* output, bool read_stderr) {
 
   output->clear();
   char buf[1024];
-  int fd = -1;
-  if (read_stderr) {
-    fd = from_child_stderr_fd();
-  } else {
-    fd = from_child_stdout_fd();
+  boost::container::small_vector<int, 2> fds;
+  for (const auto fd_type : read_fds) {
+    fds.push_back(CheckAndOffer(to_underlying(fd_type)));
   }
 
-  while (true) {
-    ssize_t n = read(fd, buf, arraysize(buf));
-    if (n == 0) {
-      // EOF
-      break;
+  while (!fds.empty()) {
+    auto it = fds.end();
+    while (it != fds.begin()) {
+      auto fd = *--it;
+      ssize_t n = read(fd, buf, arraysize(buf));
+      if (n < 0) {
+        if (errno == EINTR) continue;
+        return STATUS(IOError, "IO error reading from " + argv_[0], Errno(errno));
+      }
+      if (n == 0) {
+        fds.erase(it);
+        continue;
+      }
+      output->append(buf, n);
     }
-    if (n < 0) {
-      if (errno == EINTR) continue;
-      return STATUS(IOError, "IO error reading from " + argv_[0], Errno(errno));
-    }
-
-    output->append(buf, n);
   }
 
   int retcode = 0;

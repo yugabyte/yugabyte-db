@@ -46,7 +46,10 @@ std::string AdminTestBase::GetMasterAddresses() const {
 Result<std::string> AdminTestBase::CallAdminVec(const std::vector<std::string>& args) {
   std::string result;
   LOG(INFO) << "Execute: " << AsString(args);
-  RETURN_NOT_OK(Subprocess::Call(args, &result));
+  auto status = Subprocess::Call(args, &result, StdFdTypes{StdFdType::kOut, StdFdType::kErr});
+  if (!status.ok()) {
+    return status.CloneAndAppend(result);
+  }
   return result;
 }
 

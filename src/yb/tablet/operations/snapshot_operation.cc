@@ -105,7 +105,7 @@ Result<SnapshotCoordinator&> GetSnapshotCoordinator(SnapshotOperation* operation
   return *snapshot_coordinator;
 }
 
-Status SnapshotOperation::Apply(int64_t leader_term) {
+Status SnapshotOperation::Apply(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY SNAPSHOT: Starting");
   auto operation = request()->operation();
   switch (operation) {
@@ -115,7 +115,7 @@ Status SnapshotOperation::Apply(int64_t leader_term) {
       return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().DeleteReplicated(leader_term, *this);
     case TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG:
       return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().RestoreSysCatalogReplicated(
-          leader_term, *this);
+          leader_term, *this, complete_status);
     case TabletSnapshotOpRequestPB::CREATE_ON_TABLET:
       return tablet()->snapshots().Create(this);
     case TabletSnapshotOpRequestPB::RESTORE_ON_TABLET:
@@ -196,7 +196,7 @@ Status SnapshotOperation::DoAborted(const Status& status) {
 }
 
 Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
-  RETURN_NOT_OK(Apply(leader_term));
+  RETURN_NOT_OK(Apply(leader_term, complete_status));
   // Record the fact that we've executed the "create snapshot" Raft operation. We are not forcing
   // the flushed frontier to have this exact value, although in practice it will, since this is the
   // latest operation we've ever executed in this Raft group. This way we keep the current value

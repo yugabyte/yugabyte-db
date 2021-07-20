@@ -85,6 +85,30 @@ class TableNameResolver {
   std::unique_ptr<Impl> impl_;
 };
 
+HAS_MEMBER_FUNCTION(error);
+HAS_MEMBER_FUNCTION(status);
+
+template<class Response>
+CHECKED_STATUS ResponseStatus(
+    const Response& response,
+    typename std::enable_if<HasMemberFunction_error<Response>::value, void*>::type = nullptr) {
+  // Response has has_error method, use status from it.
+  if (response.has_error()) {
+    return StatusFromPB(response.error().status());
+  }
+  return Status::OK();
+}
+
+template<class Response>
+CHECKED_STATUS ResponseStatus(
+    const Response& response,
+    typename std::enable_if<HasMemberFunction_status<Response>::value, void*>::type = nullptr) {
+  if (response.has_status()) {
+    return StatusFromPB(response.status());
+  }
+  return Status::OK();
+}
+
 class ClusterAdminClient {
  public:
   enum PeerMode {
@@ -282,6 +306,38 @@ class ClusterAdminClient {
   CHECKED_STATUS StartElection(const std::string& tablet_id);
 
   CHECKED_STATUS WaitUntilMasterLeaderReady();
+
+  template <class Resp, class F>
+  CHECKED_STATUS RequestMasterLeader(Resp* resp, const F& f) {
+    auto deadline = CoarseMonoClock::now() + timeout_;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    for (;;) {
+      resp->Clear();
+      RETURN_NOT_OK(f(&rpc));
+
+      auto status = ResponseStatus(*resp);
+      if (status.ok()) {
+        return Status::OK();
+      }
+
+      if (!status.IsLeaderHasNoLease() && !status.IsLeaderNotReadyToServe() &&
+          !status.IsServiceUnavailable()) {
+        return status;
+      }
+
+      auto timeout = deadline - CoarseMonoClock::now();
+      if (timeout <= MonoDelta::kZero) {
+        return status;
+      }
+
+      rpc.Reset();
+      rpc.set_timeout(timeout);
+      ResetMasterProxy();
+    }
+  }
+
+  void ResetMasterProxy();
 
   std::string master_addr_list_;
   HostPort init_master_addr_;

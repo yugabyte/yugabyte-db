@@ -1439,7 +1439,7 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
 }
 
 Status CatalogManager::RestoreSysCatalog(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
   // Restore master snapshot and load it to RocksDB.
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
@@ -1460,6 +1460,17 @@ Status CatalogManager::RestoreSysCatalog(
   // catalog state.
   RETURN_NOT_OK(state.LoadExistingObjects(schema(), tablet->doc_db()));
   RETURN_NOT_OK(state.Process());
+
+  for (const auto& table : restoration->modified_tables) {
+    if (table.type != TableType::PGSQL_TABLE_TYPE) {
+      continue;
+    }
+    *complete_status = STATUS_EC_FORMAT(
+        NotSupported, MasterError(MasterErrorPB::INVALID_TABLE_TYPE),
+        "Unable to restore DDL for YSQL database: $0 $1", table.name, table.modification);
+
+    return Status::OK();
+  }
 
   // Generate write batch.
   docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);

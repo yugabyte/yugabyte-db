@@ -274,7 +274,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) override;
 
   CHECKED_STATUS RestoreSysCatalog(
-      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) override;
+      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+      Status* complete_status) override;
+
   CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) override;
 
   void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) override;
