@@ -121,6 +121,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="colocated-tables/macos/">
       <div class="head">
@@ -132,6 +133,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
+-->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="observability/">
