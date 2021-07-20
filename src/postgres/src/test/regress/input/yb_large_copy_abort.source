@@ -5,7 +5,7 @@
 TRUNCATE TABLE airports;
 
 -- should fail once it reaches corrupt input on last line
-COPY airports FROM '@abs_builddir@/data/airport-codes-corrupt.csv' CSV HEADER;
+COPY airports FROM '@abs_srcdir@/data/airport-codes-corrupt.csv' CSV HEADER;
 
 -- table should be empty
 SELECT COUNT(*) FROM airports;
@@ -13,11 +13,11 @@ SELECT COUNT(*) FROM airports;
 --
 -- Verify COPY fails if duplicate key error is hit.
 --
-COPY airports FROM '@abs_builddir@/data/airport-codes.csv' CSV HEADER;
+COPY airports FROM '@abs_srcdir@/data/airport-codes.csv' CSV HEADER;
 DELETE FROM airports WHERE ident != '9LA6';
 
 -- should fail with duplicate key error
-COPY airports FROM '@abs_builddir@/data/airport-codes.csv' CSV HEADER;
+COPY airports FROM '@abs_srcdir@/data/airport-codes.csv' CSV HEADER;
 
 -- table should just have one row
 SELECT COUNT(*) FROM airports;
