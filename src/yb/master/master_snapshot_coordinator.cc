@@ -201,7 +201,7 @@ class MasterSnapshotCoordinator::Impl {
 
     RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));
     if (sys_catalog_snapshot_data) {
-      RETURN_NOT_OK(context_.CreateSysCatalogSnapshot(*sys_catalog_snapshot_data));
+      RETURN_NOT_OK(operation.tablet()->snapshots().Create(*sys_catalog_snapshot_data));
     }
 
     ExecuteOperations(operations, leader_term);
@@ -343,14 +343,22 @@ class MasterSnapshotCoordinator::Impl {
 
     docdb::KeyValueWriteBatchPB write_batch;
     TabletSnapshotOperations operations;
+    bool delete_sys_catalog_snapshot;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
+      if (snapshot.schedule_id()) {
+        delete_sys_catalog_snapshot = true;
+      }
       snapshot.SetInitialTabletsState(SysSnapshotEntryPB::DELETING);
       RETURN_NOT_OK(snapshot.StoreToWriteBatch(&write_batch));
       if (leader_term >= 0) {
         snapshot.PrepareOperations(&operations);
       }
+    }
+
+    if (delete_sys_catalog_snapshot) {
+      RETURN_NOT_OK(operation.tablet()->snapshots().Delete(operation));
     }
 
     RETURN_NOT_OK(operation.tablet()->ApplyOperation(operation, /* batch_idx= */ -1, write_batch));

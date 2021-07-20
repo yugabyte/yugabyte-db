@@ -1438,10 +1438,6 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
   WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
 }
 
-Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) {
-  return tablet_peer()->tablet()->snapshots().Create(data);
-}
-
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
