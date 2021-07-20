@@ -369,7 +369,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) {
+      int64_t leader_term, const tablet::SnapshotOperation& operation, Status* complete_status) {
     auto restoration = std::make_shared<SnapshotScheduleRestoration>(SnapshotScheduleRestoration {
       .snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id())),
       .restore_at = HybridTime::FromPB(operation.request()->snapshot_hybrid_time()),
@@ -391,8 +391,9 @@ class MasterSnapshotCoordinator::Impl {
         postponed_restores_.push_back(restoration);
       }
     }
-    RETURN_NOT_OK_PREPEND(context_.RestoreSysCatalog(restoration.get(), operation.tablet()),
-                          "Restore sys catalog failed");
+    RETURN_NOT_OK_PREPEND(
+        context_.RestoreSysCatalog(restoration.get(), operation.tablet(), complete_status),
+        "Restore sys catalog failed");
     return Status::OK();
   }
 
@@ -934,9 +935,11 @@ class MasterSnapshotCoordinator::Impl {
     context_.Submit(std::move(operation), leader_term);
   }
 
-  void SubmitRestore(const TxnSnapshotId& snapshot_id, HybridTime restore_at,
-                     const TxnSnapshotRestorationId& restoration_id, int64_t leader_term,
-                     const std::shared_ptr<Synchronizer>& synchronizer) {
+  CHECKED_STATUS SubmitRestore(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at,
+      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term) {
+    auto synchronizer = std::make_shared<Synchronizer>();
+
     auto operation = std::make_unique<tablet::SnapshotOperation>(nullptr);
     auto request = operation->AllocateRequest();
 
@@ -951,6 +954,8 @@ class MasterSnapshotCoordinator::Impl {
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
 
     context_.Submit(std::move(operation), leader_term);
+
+    return synchronizer->Wait();
   }
 
   void DeleteSnapshotAborted(
@@ -1093,27 +1098,27 @@ class MasterSnapshotCoordinator::Impl {
     // If sys catalog is restored, then tablets data will be restored after that using postponed
     // restores.
     if (restore_sys_catalog) {
-      SubmitRestore(snapshot_id, restore_at, restoration_id, leader_term, nullptr);
-    } else {
-      auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();
-      SendMetadata send_metadata(phase == RestorePhase::kPostSysCatalogLoad);
-      LOG(INFO) << "Restore tablets: " << AsString(tablet_infos);
-      for (const auto& tablet : tablet_infos) {
-        // If this tablet did not participate in snapshot, i.e. was deleted.
-        // We just change hybrid hybrid time limit and clear hide state.
-        auto task = context_.CreateAsyncTabletSnapshotOp(
-            tablet, snapshot_tablets.count(tablet->id()) ? snapshot_id_str : std::string(),
-            tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
-            MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id(),
-                             std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
-        task->SetSnapshotHybridTime(restore_at);
-        task->SetRestorationId(restoration_id);
-        if (send_metadata) {
-          task->SetMetadata(tablet->table()->LockForRead()->pb);
-        }
+      return SubmitRestore(snapshot_id, restore_at, restoration_id, leader_term);
+    }
 
-        context_.ScheduleTabletSnapshotOp(task);
+    auto snapshot_id_str = snapshot_id.AsSlice().ToBuffer();
+    SendMetadata send_metadata(phase == RestorePhase::kPostSysCatalogLoad);
+    LOG(INFO) << "Restore tablets: " << AsString(tablet_infos);
+    for (const auto& tablet : tablet_infos) {
+      // If this tablet did not participate in snapshot, i.e. was deleted.
+      // We just change hybrid hybrid time limit and clear hide state.
+      auto task = context_.CreateAsyncTabletSnapshotOp(
+          tablet, snapshot_tablets.count(tablet->id()) ? snapshot_id_str : std::string(),
+          tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
+          MakeDoneCallback(&mutex_, restorations_, restoration_id, tablet->tablet_id(),
+                           std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
+      task->SetSnapshotHybridTime(restore_at);
+      task->SetRestorationId(restoration_id);
+      if (send_metadata) {
+        task->SetMetadata(tablet->table()->LockForRead()->pb);
       }
+
+      context_.ScheduleTabletSnapshotOp(task);
     }
 
     return Status::OK();
@@ -1196,8 +1201,8 @@ Status MasterSnapshotCoordinator::DeleteReplicated(
 }
 
 Status MasterSnapshotCoordinator::RestoreSysCatalogReplicated(
-    int64_t leader_term, const tablet::SnapshotOperation& operation) {
-  return impl_->RestoreSysCatalogReplicated(leader_term, operation);
+    int64_t leader_term, const tablet::SnapshotOperation& operation, Status* complete_status) {
+  return impl_->RestoreSysCatalogReplicated(leader_term, operation, complete_status);
 }
 
 Status MasterSnapshotCoordinator::ListSnapshots(

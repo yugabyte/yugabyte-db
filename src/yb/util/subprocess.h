@@ -43,10 +43,17 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+#include "yb/util/enums.h"
 #include "yb/util/result.h"
 
 namespace yb {
+
+YB_DEFINE_ENUM(StdFdType,
+               ((kIn, STDIN_FILENO))
+               ((kOut, STDOUT_FILENO))
+               ((kErr, STDERR_FILENO)));
+
+using StdFdTypes = EnumBitSet<StdFdType>;
 
 // Wrapper around a spawned subprocess.
 //
@@ -145,8 +152,9 @@ class Subprocess {
   // Same as above, but collects the output from the child process stdout into
   // the output parameter.
   // If read_stderr is set to true, stderr is collected instead.
-  static CHECKED_STATUS Call(const std::vector<std::string>& argv,
-                     std::string* output, bool read_stderr = false);
+  static CHECKED_STATUS Call(
+      const std::vector<std::string>& argv,
+      std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
 
   // Return the pipe fd to the child's standard stream.
   // Stream should not be disabled or shared.
@@ -169,7 +177,7 @@ class Subprocess {
 
   // Issues Start() then Wait() and collects the output from the child process
   // (stdout or stderr) into the output parameter.
-  CHECKED_STATUS Call(std::string* output, bool read_stderr = false);
+  CHECKED_STATUS Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
 
  private:
   enum State {
