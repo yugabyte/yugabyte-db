@@ -1,11 +1,12 @@
 package com.yugabyte.yw.controllers;
 
+import static play.mvc.Results.forbidden;
+import static play.mvc.Results.unauthorized;
+
 import org.pac4j.core.context.HttpConstants;
 import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.http.DefaultHttpActionAdapter;
 import play.mvc.Result;
-
-import static play.mvc.Results.*;
 
 public class PlatformHttpActionAdapter extends DefaultHttpActionAdapter {
 

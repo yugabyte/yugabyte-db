@@ -2,13 +2,27 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
+
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.SwamperHelper;
+import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
@@ -18,6 +32,8 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.mockito.Mock;
 import org.pac4j.play.CallbackController;
@@ -32,13 +48,6 @@ import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
 import play.test.WithApplication;
-
-import java.util.Map;
-import java.util.UUID;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 
 public abstract class CommissionerBaseTest extends WithApplication {
   private int maxRetryCount = 200;

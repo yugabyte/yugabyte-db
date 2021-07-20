@@ -9,27 +9,30 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.models.AlertDefinition.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import io.ebean.annotation.Transactional;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.AlertDefinition.createQueryByFilter;
-import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
-import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j

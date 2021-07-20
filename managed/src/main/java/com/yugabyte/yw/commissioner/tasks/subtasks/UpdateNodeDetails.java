@@ -7,7 +7,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import javax.inject.Inject;
 
 public class UpdateNodeDetails extends NodeTaskBase {

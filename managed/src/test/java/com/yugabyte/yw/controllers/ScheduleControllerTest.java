@@ -2,24 +2,30 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static org.junit.Assert.assertEquals;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static org.junit.Assert.assertEquals;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
 
 public class ScheduleControllerTest extends FakeDBApplication {
 

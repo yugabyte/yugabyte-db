@@ -10,6 +10,13 @@
 
 package com.yugabyte.yw.cloud;
 
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP2_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_THROUGHPUT;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
+
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -22,14 +29,11 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.UUID;
-
-import static com.yugabyte.yw.cloud.PublicCloudConstants.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @ApiModel(value = "UniverseResource", description = "Universe Resource")
 public class UniverseResourceDetails {

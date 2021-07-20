@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static org.junit.Assert.assertEquals;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import junitparams.JUnitParamsRunner;
@@ -10,8 +12,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
-
-import static org.junit.Assert.assertEquals;
 
 @RunWith(JUnitParamsRunner.class)
 public class CustomerConfigValidatorTest {

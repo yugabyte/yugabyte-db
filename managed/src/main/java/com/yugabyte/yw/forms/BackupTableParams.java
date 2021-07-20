@@ -6,13 +6,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.Backup;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import org.yb.Common.TableType;
-import play.data.validation.Constraints;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.yb.Common.TableType;
+import play.data.validation.Constraints;
 
 @ApiModel(value = "Backup table params", description = "Backup table params")
 public class BackupTableParams extends TableManagerParams {

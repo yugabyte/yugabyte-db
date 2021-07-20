@@ -2,30 +2,30 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.NOT_FOUND;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+import static play.test.Helpers.route;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-
+import java.util.Arrays;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
-
-import java.util.Arrays;
-
-import static org.hamcrest.CoreMatchers.*;
-import static play.test.Helpers.*;
-import static org.junit.Assert.*;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.NOT_FOUND;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.fakeRequest;
 
 public class ApiDiscoveryControllerTest extends FakeDBApplication {
 
