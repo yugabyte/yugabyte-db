@@ -2,7 +2,6 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.UUID;
 
 @ApiModel(value = "Table params", description = "Table params")

@@ -14,12 +14,15 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.UniqueKeyListValue;
 import io.ebean.Model;
+import java.util.Objects;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.ManyToOne;
+import javax.persistence.MapsId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
-
-import javax.persistence.*;
-import java.util.Objects;
 
 @Entity
 @Data

@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
@@ -27,16 +30,12 @@ import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
-import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {

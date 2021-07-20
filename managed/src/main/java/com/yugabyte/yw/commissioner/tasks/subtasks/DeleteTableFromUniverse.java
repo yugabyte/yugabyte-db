@@ -14,10 +14,9 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.TableTaskParams;
 import com.yugabyte.yw.models.Universe;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-
-import javax.inject.Inject;
 
 @Slf4j
 public class DeleteTableFromUniverse extends AbstractTaskBase {

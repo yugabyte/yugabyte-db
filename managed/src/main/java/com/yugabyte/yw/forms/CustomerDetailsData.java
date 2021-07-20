@@ -2,14 +2,16 @@
 
 package com.yugabyte.yw.forms;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.*;
-
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 
 /** This class will be used by Customer details API. */
 @ApiModel(value = "Customer Detail", description = "Customers features and Universe UUID.")

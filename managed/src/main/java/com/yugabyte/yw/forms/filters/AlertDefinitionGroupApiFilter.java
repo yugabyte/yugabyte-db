@@ -12,12 +12,11 @@ package com.yugabyte.yw.forms.filters;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
+import java.util.Set;
+import java.util.UUID;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.collections.CollectionUtils;
-
-import java.util.Set;
-import java.util.UUID;
 
 @Data
 @NoArgsConstructor

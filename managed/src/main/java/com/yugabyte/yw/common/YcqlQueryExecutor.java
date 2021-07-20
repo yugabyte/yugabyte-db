@@ -1,5 +1,8 @@
 package com.yugabyte.yw.common;
 
+import static play.libs.Json.newObject;
+import static play.libs.Json.toJson;
+
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ColumnDefinitions;
 import com.datastax.driver.core.ResultSet;
@@ -22,8 +25,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
-import static play.libs.Json.newObject;
-import static play.libs.Json.toJson;
 
 @Singleton
 public class YcqlQueryExecutor {

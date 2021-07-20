@@ -2,6 +2,28 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.forms.BackupTableParams.ActionType.RESTORE;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,16 +34,16 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-import play.libs.Json;
-import play.mvc.Result;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,16 +53,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.forms.BackupTableParams.ActionType.RESTORE;
-import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-import static org.junit.Assert.assertThrows;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+import play.libs.Json;
+import play.mvc.Result;
 
 public class BackupsControllerTest extends FakeDBApplication {
 

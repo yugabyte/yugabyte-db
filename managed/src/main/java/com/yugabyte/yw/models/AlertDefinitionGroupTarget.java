@@ -10,12 +10,11 @@
 
 package com.yugabyte.yw.models;
 
+import java.util.Set;
+import java.util.UUID;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
-
-import java.util.Set;
-import java.util.UUID;
 
 @Data
 @EqualsAndHashCode(callSuper = false)

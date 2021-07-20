@@ -17,9 +17,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import play.libs.Json;
-
 import javax.inject.Inject;
+import play.libs.Json;
 
 public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   private final NodeManager nodeManager;

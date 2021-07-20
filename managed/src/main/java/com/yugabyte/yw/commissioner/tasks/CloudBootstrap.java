@@ -10,7 +10,11 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.*;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
@@ -19,14 +23,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.ApiModel;
-import play.libs.Json;
-
-import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
+import play.libs.Json;
 
 public class CloudBootstrap extends CloudTaskBase {
   @Inject

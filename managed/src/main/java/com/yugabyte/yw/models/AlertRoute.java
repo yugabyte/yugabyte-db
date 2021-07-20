@@ -2,13 +2,17 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import io.ebean.ExpressionList;
+import io.ebean.Finder;
+import io.ebean.Model;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.FetchType;
@@ -16,12 +20,6 @@ import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
-
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import io.ebean.ExpressionList;
-import io.ebean.Finder;
-import io.ebean.Model;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.EqualsAndHashCode;

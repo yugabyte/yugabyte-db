@@ -3,12 +3,11 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.google.common.collect.ImmutableSet;
-import org.yb.ColumnSchema;
-import org.yb.Type;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.Set;
+import org.yb.ColumnSchema;
+import org.yb.Type;
 
 @ApiModel(value = "Column details", description = "Column details")
 public class ColumnDetails {

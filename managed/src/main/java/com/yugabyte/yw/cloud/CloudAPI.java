@@ -2,13 +2,12 @@ package com.yugabyte.yw.cloud;
 
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import java.util.Map;
 import java.util.Set;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public interface CloudAPI {
 
