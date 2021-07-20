@@ -699,9 +699,17 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 		plan_nested_level++;
 		PG_TRY();
 		{
-    		if (planner_hook_next)
-        		result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
-    		result = standard_planner(parse, query_string, cursorOptions, boundParams);
+			/*
+			 * If there is a previous installed hook, then assume it's going to call
+			 * standard_planner() function, otherwise we call the function here.
+			 * This is to avoid calling standard_planner() function twice, since it
+			 * modifies the first argument (Query *), the second call would trigger an
+			 * assertion failure.
+			 */
+			if (planner_hook_next)
+				result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
+			else
+				result = standard_planner(parse, query_string, cursorOptions, boundParams);
 		}
 		PG_FINALLY();
 		{
@@ -734,9 +742,17 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 	}
 	else
 	{
+		/*
+		* If there is a previous installed hook, then assume it's going to call
+		* standard_planner() function, otherwise we call the function here.
+		* This is to avoid calling standard_planner() function twice, since it
+		* modifies the first argument (Query *), the second call would trigger an
+		* assertion failure.
+		*/
 		if (planner_hook_next)
 			result = planner_hook_next(parse, query_string, cursorOptions, boundParams);
-		result = standard_planner(parse, query_string, cursorOptions, boundParams);
+		else
+			result = standard_planner(parse, query_string, cursorOptions, boundParams);
 	}
 	return result;
 }
