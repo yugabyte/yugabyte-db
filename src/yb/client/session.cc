@@ -153,10 +153,16 @@ void FlushBatcherAsync(
     const internal::IsWithinTransactionRetry is_within_transaction_retry);
 
 void MoveErrorsAndRunCallback(
-    CollectedErrors errors, FlushCallback callback, const Status& status) {
-  for (auto& error : errors) {
-    VLOG(4) << "Operation " << AsString(error->failed_op())
-            << " failed with: " << AsString(error->status());
+    const internal::BatcherPtr& done_batcher, CollectedErrors errors, FlushCallback callback,
+    const Status& status) {
+  const auto vlog_level = status.ok() ? 4 : 3;
+  VLOG_WITH_FUNC(vlog_level) << "Invoking callback, batcher: " << done_batcher->LogPrefix()
+                             << ", num_errors: " << errors.size() << " status: " << status;
+  if (VLOG_IS_ON(5)) {
+    for (auto& error : errors) {
+      VLOG(5) << "Operation " << AsString(error->failed_op())
+              << " failed with: " << AsString(error->status());
+    }
   }
   // TODO: before enabling transaction sealing we might need to call Transaction::Flushed
   // for ops that we have retried, failed again and decided not to retry due to deadline.
@@ -177,9 +183,13 @@ void BatcherFlushDone(
   }
   if (errors.size() > retriable_errors_count || errors.empty()) {
     // We only retry failed ops if all of them failed with retriable errors.
-    MoveErrorsAndRunCallback(std::move(errors), std::move(callback), s);
+    MoveErrorsAndRunCallback(done_batcher, std::move(errors), std::move(callback), s);
     return;
   }
+
+  VLOG_WITH_FUNC(3) << "Retrying " << errors.size() << " operations from batcher "
+                    << done_batcher->LogPrefix() << " due to: " << s
+                    << ": (first op error: " << errors[0]->status() << ")";
 
   internal::BatcherPtr retry_batcher;
   const auto deadline = done_batcher->deadline();
@@ -188,7 +198,7 @@ void BatcherFlushDone(
     retry_batcher->SetDeadline(deadline);
     Status batcher_add_status = Status::OK();
     for (auto& error : errors) {
-      VLOG(4) << "Retrying " << AsString(error->failed_op())
+      VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
               << " due to: " << error->status();
       const auto op = error->shared_failed_op();
       op->ResetTablet();
@@ -203,7 +213,7 @@ void BatcherFlushDone(
         } else {
           // Replace original retriable error with non-retriable occurred during retry.
           error.reset(new YBError(error->shared_failed_op(), batcher_add_status));
-          MoveErrorsAndRunCallback(std::move(errors), std::move(callback), s);
+          MoveErrorsAndRunCallback(done_batcher, std::move(errors), std::move(callback), s);
           return;
         }
       }
@@ -218,7 +228,7 @@ void BatcherFlushDone(
   LOG(INFO) << STATUS_FORMAT(
       TimedOut, "Timed out when retrying due to error: $0, now: $1, deadline: $2",
       s, CoarseMonoClock::now(), deadline);
-  MoveErrorsAndRunCallback(std::move(errors), std::move(callback), s);
+  MoveErrorsAndRunCallback(done_batcher, std::move(errors), std::move(callback), s);
 }
 
 void FlushBatcherAsync(

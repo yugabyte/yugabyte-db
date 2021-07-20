@@ -20,7 +20,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 
-#include "yb/util/backoff_waiter.h"
+#include "yb/util/unique_lock.h"
 #include "yb/util/status.h"
 
 DEFINE_int32(
@@ -226,34 +226,55 @@ PartitionKeyPtr YBTable::FindPartitionStart(
   return std::shared_ptr<const std::string>(partitions_, &partitions_->keys[idx]);
 }
 
-Result<bool> YBTable::MaybeRefreshPartitions() {
-  if (!partitions_are_stale_) {
-    return false;
-  }
-  std::unique_lock<decltype(partitions_refresh_mutex_)> refresh_lock(partitions_refresh_mutex_);
-  if (!partitions_are_stale_) {
-    // Has been refreshed by concurrent thread.
-    return true;
-  }
-  const auto partitions_result = FetchPartitions();
-  if (!partitions_result.ok()) {
-    return partitions_result.status();
-  }
-  const auto& partitions = *partitions_result;
+void YBTable::InvokeRefreshPartitionsCallbacks(const Status& status) {
+  std::vector<StdStatusCallback> callbacks;
   {
-    std::lock_guard<rw_spinlock> partitions_lock(mutex_);
-    if (partitions->version < partitions_->version) {
-      // This might happen if another split happens after we had fetched partition in the current
-      // thread from master leader and partition list has been concurrently updated to version
-      // newer than version we got in current thread.
-      // In this case we can safely skip outdated partition list.
-      LOG(INFO) << Format("Received table $0 partition list version: $1, ours is newer: $2", id(),
-          partitions->version, partitions_->version);
-    }
-    partitions_ = partitions;
+    UniqueLock<decltype(refresh_partitions_callbacks_mutex_)> lock(
+        refresh_partitions_callbacks_mutex_);
+    refresh_partitions_callbacks_.swap(callbacks);
   }
-  partitions_are_stale_ = false;
-  return true;
+  for (auto& callback : callbacks) {
+    callback(status);
+  }
+}
+
+void YBTable::RefreshPartitions(StdStatusCallback callback) {
+  UniqueLock<decltype(refresh_partitions_callbacks_mutex_)> lock(
+      refresh_partitions_callbacks_mutex_);
+  bool was_empty = refresh_partitions_callbacks_.empty();
+  refresh_partitions_callbacks_.emplace_back(std::move(callback));
+  if (!was_empty) {
+    VLOG_WITH_FUNC(2) << Format(
+        "FetchPartitions is in progress for table $0 ($1), added callback", info_.table_name,
+        info_.table_id);
+    return;
+  }
+
+  VLOG_WITH_FUNC(2) << Format(
+      "Calling FetchPartitions for table $0 ($1)", info_.table_name, info_.table_id);
+  FetchPartitions([this](const FetchPartitionsResult& result) {
+    if (!result.ok()) {
+      InvokeRefreshPartitionsCallbacks(result.status());
+      return;
+    }
+    const auto& partitions = result->first;
+    {
+      std::lock_guard<rw_spinlock> partitions_lock(mutex_);
+      if (partitions->version < partitions_->version) {
+        // This might happen if another split happens after we had fetched partition in the current
+        // thread from master leader and partition list has been concurrently updated to version
+        // newer than version we got in current thread.
+        // In this case we can safely skip outdated partition list.
+        LOG(INFO) << Format(
+            "Received table $0 partition list version: $1, ours is newer: $2", id(),
+            partitions->version, partitions_->version);
+        return;
+      }
+      partitions_ = result->first;
+      partitions_are_stale_ = false;
+    }
+    InvokeRefreshPartitionsCallbacks(Status::OK());
+  });
 }
 
 void YBTable::MarkPartitionsAsStale() {
@@ -264,123 +285,63 @@ bool YBTable::ArePartitionsStale() const {
   return partitions_are_stale_;
 }
 
-Result<std::shared_ptr<const VersionedTablePartitionList>> YBTable::FetchPartitions(
-    const bool set_table_type) {
+void YBTable::FetchPartitions(FetchPartitionsCallback callback) {
   // TODO: fetch the schema from the master here once catalog is available.
-  auto partitions = std::make_shared<VersionedTablePartitionList>();
-
-  master::GetTableLocationsRequestPB req;
-  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
-  master::GetTableLocationsResponsePB resp;
-
-  auto deadline = CoarseMonoClock::Now() + client_->default_admin_operation_timeout();
-
-  req.mutable_table()->set_table_id(info_.table_id);
   // TODO(tsplit): consider optimizing this to not wait for all tablets to be running in case
   // of some tablet has been split and post-split tablets are not yet running.
-  req.set_require_tablets_running(true);
-  Status s;
-
-  CoarseBackoffWaiter waiter(deadline, std::chrono::seconds(1) /* max_wait */);
-  // TODO: replace this with Async RPC-retrier based RPC in the next revision,
-  // adding exponential backoff and allowing this to be used safely in a
-  // a reactor thread.
-  while (true) {
-    rpc::RpcController rpc;
-
-    // Have we already exceeded our deadline?
-    auto now = CoarseMonoClock::Now();
-
-    // See YBClient::Data::SyncLeaderMasterRpc().
-    auto rpc_deadline = now + client_->default_rpc_timeout();
-    rpc.set_deadline(std::min(rpc_deadline, deadline));
-
-    s = client_->data_->master_proxy()->GetTableLocations(req, &resp, &rpc);
-    if (!s.ok()) {
-      // Various conditions cause us to look for the leader master again.
-      // It's ok if that eventually fails; we'll retry over and over until
-      // the deadline is reached.
-
-      if (s.IsNetworkError()) {
-        LOG(WARNING) << "Network error talking to the leader master ("
-                     << client_->data_->leader_master_hostport().ToString() << "): "
-                     << s.ToString();
-        if (client_->IsMultiMaster()) {
-          LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
-                      "Failed to determine new Master");
-          continue;
+  client_->GetTableLocations(
+      info_.table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
+      RequireTabletsRunning::kTrue,
+      [this,
+       callback = std::move(callback)](const Result<master::GetTableLocationsResponsePB*>& result) {
+        if (!result.ok()) {
+          callback(result.status());
+          return;
         }
-      }
+        const auto& resp = **result;
 
-      if (s.IsTimedOut() && CoarseMonoClock::Now() < deadline) {
-        // If the RPC timed out and the operation deadline expired, we'll loop
-        // again and time out for good above.
-        LOG(WARNING) << "Timed out talking to the leader master ("
-                     << client_->data_->leader_master_hostport().ToString() << "): "
-                     << s.ToString();
-        if (client_->IsMultiMaster()) {
-          LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
-                      "Failed to determine new Master");
-          continue;
+        VLOG_WITH_FUNC(2) << Format(
+            "Fetched partitions for table $0 ($1), found $2 tablets", info_.table_name,
+            info_.table_id, resp.tablet_locations_size());
+
+        YBTableType table_type;
+        auto s = PBToClientTableType(resp.table_type(), &table_type);
+        if (!s.ok()) {
+          callback(s.CloneAndPrepend(Format(
+              "Invalid table type $0 for table $1 ($2)", resp.table_type(), info_.table_name,
+              info_.table_id)));
+          return;
         }
-      }
-    }
-    if (s.ok() && resp.has_error()) {
-      if (resp.error().code() == master::MasterErrorPB::NOT_THE_LEADER ||
-          resp.error().code() == master::MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
-        LOG(WARNING) << "Master " << client_->data_->leader_master_hostport().ToString()
-                     << " is no longer the leader master.";
-        if (client_->IsMultiMaster()) {
-          LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(deadline),
-                      "Failed to determine new Master");
-          continue;
+
+        auto partitions = std::make_shared<VersionedTablePartitionList>();
+        partitions->version = resp.partition_list_version();
+        partitions->keys.reserve(resp.tablet_locations().size());
+        for (const auto& tablet_location : resp.tablet_locations()) {
+          partitions->keys.push_back(tablet_location.partition().partition_key_start());
         }
-      }
-      s = StatusFromPB(resp.error().status());
-      if (s.IsShutdownInProgress() || s.IsNotFound()) {
-        // Return without retry in case of permanent errors.
-        // We can get ShutdownInProgress when catalog manager is in process of shutting down.
-        // And when table has been deleted - we get NotFound and no need to retry it.
-        return s;
-      }
-    }
-    if (!s.ok()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 10) << "Error getting table locations: " << s << ", retrying.";
-    } else if (resp.tablet_locations_size() > 0) {
-      partitions->version = resp.partition_list_version();
-      partitions->keys.reserve(resp.tablet_locations().size());
-      for (const auto& tablet_location : resp.tablet_locations()) {
-        partitions->keys.push_back(tablet_location.partition().partition_key_start());
-      }
-      std::sort(partitions->keys.begin(), partitions->keys.end());
-      break;
-    }
+        std::sort(partitions->keys.begin(), partitions->keys.end());
 
-    if (!waiter.Wait()) {
-      const char* msg = "OpenTable timed out";
-      LOG(ERROR) << msg;
-      return STATUS(TimedOut, msg);
-    }
-  }
-
-  if (set_table_type) {
-    RETURN_NOT_OK_PREPEND(PBToClientTableType(resp.table_type(), &table_type_),
-      strings::Substitute("Invalid table type for table '$0'", info_.table_name.ToString()));
-  }
-
-  VLOG(2) << "Fetched partitions for table " << info_.table_name.ToString() << ", found "
-          << resp.tablet_locations_size() << " tablets";
-  return partitions;
+        callback(std::make_pair(partitions, table_type));
+      });
 }
 
 Status YBTable::Open() {
-  std::lock_guard<rw_spinlock> partitions_lock(mutex_);
-  partitions_ = VERIFY_RESULT(FetchPartitions(/* set_table_type = */ true));
-  partitions_are_stale_ = false;
-  return Status::OK();
+  Synchronizer synchronizer;
+
+  FetchPartitions([this, callback = synchronizer.AsStdStatusCallback()](
+                      const FetchPartitionsResult& result) {
+    Status status;
+    if (result.ok()) {
+      std::lock_guard<rw_spinlock> partitions_lock(mutex_);
+      partitions_ = result->first;
+      table_type_ = result->second;
+      partitions_are_stale_ = false;
+    } else {
+      status = result.status();
+    }
+    callback(status);
+  });
+  return synchronizer.Wait();
 }
 
 //--------------------------------------------------------------------------------------------------

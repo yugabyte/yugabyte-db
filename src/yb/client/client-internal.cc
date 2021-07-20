@@ -1831,6 +1831,69 @@ class DeleteTabletRpc
   StdStatusCallback user_cb_;
 };
 
+class GetTableLocationsRpc
+    : public ClientMasterRpc<
+          master::GetTableLocationsRequestPB, master::GetTableLocationsResponsePB> {
+ public:
+  GetTableLocationsRpc(
+      YBClient* client, const TableId& table_id, int32_t max_tablets,
+      RequireTabletsRunning require_tablets_running, GetTableLocationsCallback user_cb,
+      CoarseTimePoint deadline, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache)
+      : ClientMasterRpc(client, deadline, messenger, proxy_cache), user_cb_(std::move(user_cb)) {
+    req_.mutable_table()->set_table_id(table_id);
+    req_.set_max_returned_locations(max_tablets);
+    req_.set_require_tablets_running(require_tablets_running);
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "GetTableLocationsRpc(table_id: $0, max_tablets: $1, require_tablets_running: $2, "
+        "num_attempts: $3)", req_.table().table_id(), req_.max_returned_locations(),
+        req_.require_tablets_running(), num_attempts());
+  }
+
+  virtual ~GetTableLocationsRpc() = default;
+
+ private:
+  void CallRemoteMethod() override {
+    master_proxy()->GetTableLocationsAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&GetTableLocationsRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (status.IsShutdownInProgress() || status.IsNotFound() || status.IsAborted()) {
+      // Return without retry in case of permanent errors.
+      // We can get:
+      // - ShutdownInProgress when catalog manager is in process of shutting down.
+      // - Aborted when client is shutting down.
+      // - NotFound when table has been deleted.
+      LOG(WARNING) << ToString() << " failed: " << status;
+      user_cb_(status);
+      return;
+    }
+    if (!status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << ToString() << ": error getting table locations: " << status << ", retrying.";
+    } else if (resp_.tablet_locations_size() > 0) {
+      user_cb_(&resp_);
+      return;
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << ToString() << ": got zero table locations, retrying.";
+    }
+    if (CoarseMonoClock::Now() > retrier().deadline()) {
+      const auto error_msg = ToString() + " timed out";
+      LOG(ERROR) << error_msg;
+      user_cb_(STATUS(TimedOut, error_msg));
+      return;
+    }
+    mutable_retrier()->mutable_controller()->Reset();
+    SendRpc();
+  }
+
+  GetTableLocationsCallback user_cb_;
+};
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -2060,6 +2123,21 @@ void YBClient::Data::DeleteTablet(
   auto rpc = rpc::StartRpc<internal::DeleteTabletRpc>(
       client,
       tablet_id,
+      callback,
+      deadline,
+      messenger_,
+      proxy_cache_.get());
+}
+
+void YBClient::Data::GetTableLocations(
+    YBClient* client, const TableId& table_id, const int32_t max_tablets,
+    const RequireTabletsRunning require_tablets_running, const CoarseTimePoint deadline,
+    GetTableLocationsCallback callback) {
+  auto rpc = rpc::StartRpc<internal::GetTableLocationsRpc>(
+      client,
+      table_id,
+      max_tablets,
+      require_tablets_running,
       callback,
       deadline,
       messenger_,
