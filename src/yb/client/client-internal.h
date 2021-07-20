@@ -288,6 +288,11 @@ class YBClient::Data {
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
       StdStatusCallback callback);
 
+  void GetTableLocations(
+      YBClient* client, const TableId& table_id, int32_t max_tablets,
+      RequireTabletsRunning require_tablets_running, CoarseTimePoint deadline,
+      GetTableLocationsCallback callback);
+
   CHECKED_STATUS InitLocalHostNames();
 
   bool IsLocalHostPort(const HostPort& hp) const;

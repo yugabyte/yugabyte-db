@@ -2519,9 +2519,12 @@ TEST_F(ClientTest, RefreshPartitions) {
     while(!stop_requested) {
       const auto table = client_table_.table();
       table->MarkPartitionsAsStale();
-      const auto result = table->MaybeRefreshPartitions();
-      if (!result.ok()) {
-        LOG(INFO) << AsString(result.status());
+
+      Synchronizer synchronizer;
+      table->RefreshPartitions(synchronizer.AsStdStatusCallback());
+      const auto status = synchronizer.Wait();
+      if (!status.ok()) {
+        LOG(INFO) << status;
       }
     }
   };

@@ -57,6 +57,8 @@ struct VersionedTablePartitionList {
 };
 
 typedef std::shared_ptr<const VersionedTablePartitionList> VersionedTablePartitionListPtr;
+typedef Result<std::pair<VersionedTablePartitionListPtr, YBTableType>> FetchPartitionsResult;
+typedef std::function<void(const FetchPartitionsResult&)> FetchPartitionsCallback;
 
 // A YBTable represents a table on a particular cluster. It holds the current
 // schema of the table. Any given YBTable instance belongs to a specific YBClient
@@ -137,9 +139,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   void MarkPartitionsAsStale();
   bool ArePartitionsStale() const;
 
-  // Refreshes table partitions if stale.
-  // Returns whether table partitions have been refreshed.
-  Result<bool> MaybeRefreshPartitions();
+  // Asynchronously refreshes table partitions.
+  void RefreshPartitions(StdStatusCallback callback);
 
   //------------------------------------------------------------------------------------------------
   // Postgres support
@@ -163,7 +164,9 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   CHECKED_STATUS Open();
 
   // Fetches tablet partitions from master using GetTableLocations RPC.
-  Result<VersionedTablePartitionListPtr> FetchPartitions(bool set_table_type = false);
+  void FetchPartitions(FetchPartitionsCallback callback);
+
+  void InvokeRefreshPartitionsCallbacks(const Status& status);
 
   size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
 
@@ -176,7 +179,10 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   VersionedTablePartitionListPtr partitions_ GUARDED_BY(mutex_);
 
   std::atomic<bool> partitions_are_stale_{false};
-  std::mutex partitions_refresh_mutex_;
+
+  std::mutex refresh_partitions_callbacks_mutex_;
+  std::vector<StdStatusCallback> refresh_partitions_callbacks_
+      GUARDED_BY(refresh_partitions_callbacks_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(YBTable);
 };
