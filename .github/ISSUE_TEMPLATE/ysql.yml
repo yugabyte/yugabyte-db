@@ -1,0 +1,14 @@
+name: Core-YSQL
+description: Choose this template to create a YSQL issue.
+title: "[YSQL] Title"
+labels: "area/ysql"
+body:
+- type: textarea
+  id: ysql
+  attributes:
+    label: Description
+    placeholder: |
+      **Provide a detailed description of the issue you want to report related to YSQL.**
+      **Include steps to reproduce the issue.**
+  validations:
+    required: true

@@ -1,0 +1,14 @@
+name: Yugabyte UI
+description: Choose this template to create a UI issue.
+title: "[UI] Title"
+labels: "area/ui"
+body:
+- type: textarea
+  id: ui
+  attributes:
+    label: Description
+    placeholder: |
+      **Provide a clear description of the issue you want to report related to the UI in Yugabyte.**
+      **NOTE: For example, if it is a platform issue, you could include it in your issue title like: [UI][Platform] Title**
+  validations:
+    required: true 
