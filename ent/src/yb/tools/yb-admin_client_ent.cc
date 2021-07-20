@@ -93,18 +93,15 @@ using master::SysSnapshotEntryPB;
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
 Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
+  ListSnapshotsResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    ListSnapshotsRequestPB req;
+    req.set_list_deleted_snapshots(flags.Test(ListSnapshotsFlag::SHOW_DELETED));
+    return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
+  }));
+
   rapidjson::Document document(rapidjson::kObjectType);
   bool json = flags.Test(ListSnapshotsFlag::JSON);
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  ListSnapshotsRequestPB req;
-  req.set_list_deleted_snapshots(flags.Test(ListSnapshotsFlag::SHOW_DELETED));
-  ListSnapshotsResponsePB resp;
-  RETURN_NOT_OK(master_backup_proxy_->ListSnapshots(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
 
   if (resp.has_current_snapshot_id()) {
     if (json) {
@@ -175,11 +172,11 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
     }
   }
 
-  rpc.Reset();
-  rpc.set_timeout(timeout_);
-  ListSnapshotRestorationsRequestPB rest_req;
   ListSnapshotRestorationsResponsePB rest_resp;
-  RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(rest_req, &rest_resp, &rpc));
+  RETURN_NOT_OK(RequestMasterLeader(&rest_resp, [&](RpcController* rpc) {
+    ListSnapshotRestorationsRequestPB rest_req;
+    return master_backup_proxy_->ListSnapshotRestorations(rest_req, &rest_resp, rpc);
+  }));
 
   if (json) {
     std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
@@ -221,44 +218,34 @@ Status ClusterAdminClient::CreateSnapshot(
     }
   }
 
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  CreateSnapshotRequestPB req;
   CreateSnapshotResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    CreateSnapshotRequestPB req;
+    for (const YBTableName& table_name : tables) {
+      table_name.SetIntoTableIdentifierPB(req.add_tables());
+    }
 
-  for (const YBTableName& table_name : tables) {
-    table_name.SetIntoTableIdentifierPB(req.add_tables());
-  }
-
-  req.set_add_indexes(add_indexes);
-  req.set_transaction_aware(true);
-  RETURN_NOT_OK(master_backup_proxy_->CreateSnapshot(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+    req.set_add_indexes(add_indexes);
+    req.set_transaction_aware(true);
+    return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
+  }));
 
   cout << "Started snapshot creation: " << SnapshotIdToString(resp.snapshot_id()) << endl;
   return Status::OK();
 }
 
 Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  ListTablesRequestPB req;
   ListTablesResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    ListTablesRequestPB req;
 
-  req.mutable_namespace_()->set_name(ns.name);
-  req.mutable_namespace_()->set_database_type(ns.db_type);
-  req.set_exclude_system_tables(true);
-  req.add_relation_type_filter(master::USER_TABLE_RELATION);
-  req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
-  RETURN_NOT_OK(master_proxy_->ListTables(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    cout << "Error getting tables from namespace: " << resp.error().status().message() << endl;
-    return StatusFromPB(resp.error().status());
-  }
+    req.mutable_namespace_()->set_name(ns.name);
+    req.mutable_namespace_()->set_database_type(ns.db_type);
+    req.set_exclude_system_tables(true);
+    req.add_relation_type_filter(master::USER_TABLE_RELATION);
+    req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    return master_proxy_->ListTables(req, &resp, rpc);
+  }));
 
   if (resp.tables_size() == 0) {
     return STATUS_FORMAT(InvalidArgument, "No tables found in namespace: $0", ns.name);
@@ -285,27 +272,14 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
 
 Result<rapidjson::Document> ClusterAdminClient::ListSnapshotRestorations(
     const TxnSnapshotRestorationId& restoration_id) {
-  auto deadline = CoarseMonoClock::Now() + timeout_;
-
-  master::ListSnapshotRestorationsRequestPB req;
-  if (restoration_id) {
-    req.set_restoration_id(restoration_id.data(), restoration_id.size());
-  }
   master::ListSnapshotRestorationsResponsePB resp;
-  while (CoarseMonoClock::Now() < deadline) {
-    RpcController rpc;
-    rpc.set_deadline(deadline);
-    RETURN_NOT_OK(master_backup_proxy_->ListSnapshotRestorations(req, &resp, &rpc));
-    if (resp.has_status()) {
-      auto status = StatusFromPB(resp.status());
-      // If master is not yet ready, just wait and try another one.
-      if (status.IsServiceUnavailable()) {
-        std::this_thread::sleep_for(100ms);
-        continue;
-      }
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::ListSnapshotRestorationsRequestPB req;
+    if (restoration_id) {
+      req.set_restoration_id(restoration_id.data(), restoration_id.size());
     }
-    break;
-  }
+    return master_backup_proxy_->ListSnapshotRestorations(req, &resp, rpc);
+  }));
 
   rapidjson::Document result;
   result.SetObject();
@@ -331,22 +305,18 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotRestorations(
 
 Result<rapidjson::Document> ClusterAdminClient::CreateSnapshotSchedule(
     const client::YBTableName& keyspace, MonoDelta interval, MonoDelta retention) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  master::CreateSnapshotScheduleRequestPB req;
   master::CreateSnapshotScheduleResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::CreateSnapshotScheduleRequestPB req;
 
-  auto& options = *req.mutable_options();
-  auto& filter_tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
-  keyspace.SetIntoTableIdentifierPB(filter_tables.Add());
+    auto& options = *req.mutable_options();
+    auto& filter_tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
+    keyspace.SetIntoTableIdentifierPB(filter_tables.Add());
 
-  options.set_interval_sec(interval.ToSeconds());
-  options.set_retention_duration_sec(retention.ToSeconds());
-  RETURN_NOT_OK(master_backup_proxy_->CreateSnapshotSchedule(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+    options.set_interval_sec(interval.ToSeconds());
+    options.set_retention_duration_sec(retention.ToSeconds());
+    return master_backup_proxy_->CreateSnapshotSchedule(req, &resp, rpc);
+  }));
 
   rapidjson::Document document;
   document.SetObject();
@@ -360,19 +330,14 @@ Result<rapidjson::Document> ClusterAdminClient::CreateSnapshotSchedule(
 
 Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
     const SnapshotScheduleId& schedule_id) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  master::ListSnapshotSchedulesRequestPB req;
   master::ListSnapshotSchedulesResponsePB resp;
-  if (schedule_id) {
-    req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
-  }
-
-  RETURN_NOT_OK(master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [this, &resp, &schedule_id](RpcController* rpc) {
+    master::ListSnapshotSchedulesRequestPB req;
+    if (schedule_id) {
+      req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+    }
+    return master_backup_proxy_->ListSnapshotSchedules(req, &resp, rpc);
+  }));
 
   rapidjson::Document result;
   result.SetObject();
@@ -449,17 +414,13 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
 
 Result<rapidjson::Document> ClusterAdminClient::DeleteSnapshotSchedule(
     const SnapshotScheduleId& schedule_id) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  master::DeleteSnapshotScheduleRequestPB req;
   master::DeleteSnapshotScheduleResponsePB resp;
-  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [this, &resp, &schedule_id](RpcController* rpc) {
+    master::DeleteSnapshotScheduleRequestPB req;
+    req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
 
-  RETURN_NOT_OK(master_backup_proxy_->DeleteSnapshotSchedule(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+    return master_backup_proxy_->DeleteSnapshotSchedule(req, &resp, rpc);
+  }));
 
   rapidjson::Document document;
   document.SetObject();
@@ -589,20 +550,15 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
 
 Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id,
                                            HybridTime timestamp) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-
-  RestoreSnapshotRequestPB req;
   RestoreSnapshotResponsePB resp;
-  req.set_snapshot_id(StringToSnapshotId(snapshot_id));
-  if (timestamp) {
-    req.set_restore_ht(timestamp.ToUint64());
-  }
-  RETURN_NOT_OK(master_backup_proxy_->RestoreSnapshot(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    RestoreSnapshotRequestPB req;
+    req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+    if (timestamp) {
+      req.set_restore_ht(timestamp.ToUint64());
+    }
+    return master_backup_proxy_->RestoreSnapshot(req, &resp, rpc);
+  }));
 
   cout << "Started restoring snapshot: " << snapshot_id << endl
        << "Restoration id: " << FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()) << endl;
@@ -613,17 +569,12 @@ Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id,
 }
 
 Status ClusterAdminClient::DeleteSnapshot(const std::string& snapshot_id) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-
-  DeleteSnapshotRequestPB req;
   DeleteSnapshotResponsePB resp;
-  req.set_snapshot_id(StringToSnapshotId(snapshot_id));
-  RETURN_NOT_OK(master_backup_proxy_->DeleteSnapshot(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    DeleteSnapshotRequestPB req;
+    req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+    return master_backup_proxy_->DeleteSnapshot(req, &resp, rpc);
+  }));
 
   cout << "Deleted snapshot: " << snapshot_id << endl;
   return Status::OK();
@@ -631,16 +582,12 @@ Status ClusterAdminClient::DeleteSnapshot(const std::string& snapshot_id) {
 
 Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
                                                   const string& file_name) {
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  ListSnapshotsRequestPB req;
   ListSnapshotsResponsePB resp;
-  req.set_snapshot_id(StringToSnapshotId(snapshot_id));
-  RETURN_NOT_OK(master_backup_proxy_->ListSnapshots(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    ListSnapshotsRequestPB req;
+    req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+    return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
+  }));
 
   const SnapshotInfoPB* snapshot = nullptr;
   for (const auto& snapshot_entry : resp.snapshots()) {
@@ -676,7 +623,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   cout << "Read snapshot meta file " << file_name << endl;
 
   ImportSnapshotMetaRequestPB req;
-  ImportSnapshotMetaResponsePB resp;
 
   SnapshotInfoPB* const snapshot_info = req.mutable_snapshot();
 
@@ -769,13 +715,10 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     }
   }
 
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_backup_proxy_->ImportSnapshotMeta(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  ImportSnapshotMetaResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    return master_backup_proxy_->ImportSnapshotMeta(req, &resp, rpc);
+  }));
 
   const int kObjectColumnWidth = 16;
   const auto pad_object_type = [](const string& s) {
@@ -831,12 +774,9 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   snapshot_req.set_transaction_aware(true);
   snapshot_req.set_imported(true);
   // Create new snapshot.
-  rpc.Reset();
-  RETURN_NOT_OK(master_backup_proxy_->CreateSnapshot(snapshot_req, &snapshot_resp, &rpc));
-
-  if (snapshot_resp.has_error()) {
-    return StatusFromPB(snapshot_resp.error().status());
-  }
+  RETURN_NOT_OK(RequestMasterLeader(&snapshot_resp, [&](RpcController* rpc) {
+    return master_backup_proxy_->CreateSnapshot(snapshot_req, &snapshot_resp, rpc);
+  }));
 
   cout << pad_object_type("Snapshot") << kColumnSep
        << SnapshotIdToString(snapshot_info->id()) << kColumnSep
@@ -848,17 +788,14 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
 Status ClusterAdminClient::ListReplicaTypeCounts(const YBTableName& table_name) {
   vector<string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
-  rpc::RpcController rpc;
-  master::GetTabletLocationsRequestPB req;
   master::GetTabletLocationsResponsePB resp;
-  rpc.set_timeout(timeout_);
-  for (const auto& tablet_id : tablet_ids) {
-    req.add_tablet_ids(tablet_id);
-  }
-  RETURN_NOT_OK(master_proxy_->GetTabletLocations(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::GetTabletLocationsRequestPB req;
+    for (const auto& tablet_id : tablet_ids) {
+      req.add_tablet_ids(tablet_id);
+    }
+    return master_proxy_->GetTabletLocations(req, &resp, rpc);
+  }));
 
   struct ReplicaCounts {
     int live_count;
