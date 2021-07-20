@@ -121,7 +121,7 @@ Status SnapshotOperation::Apply(int64_t leader_term) {
     case TabletSnapshotOpRequestPB::RESTORE_ON_TABLET:
       return tablet()->snapshots().Restore(this);
     case TabletSnapshotOpRequestPB::DELETE_ON_TABLET:
-      return tablet()->snapshots().Delete(this);
+      return tablet()->snapshots().Delete(*this);
     case TabletSnapshotOpRequestPB::RESTORE_FINISHED:
       return tablet()->snapshots().RestoreFinished(this);
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;

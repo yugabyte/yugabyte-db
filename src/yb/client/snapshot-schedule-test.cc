@@ -17,6 +17,7 @@
 #include "yb/client/session.h"
 
 #include "yb/client/txn-test-base.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/mini_master.h"
@@ -142,6 +143,19 @@ TEST_F(SnapshotScheduleTest, GC) {
       all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
     }
     ASSERT_LE(snapshots.size(), 2);
+
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+    peers.push_back(master_leader->master()->catalog_manager()->tablet_peer());
+    for (const auto& peer : peers) {
+      if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+        continue;
+      }
+      auto dir = ASSERT_RESULT(peer->tablet_metadata()->TopSnapshotsDir());
+      auto children = ASSERT_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
+      ASSERT_LE(children.size(), 2) << AsString(children);
+    }
+
     std::this_thread::sleep_for(100ms);
   }
 }

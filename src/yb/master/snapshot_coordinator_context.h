@@ -63,7 +63,6 @@ class SnapshotCoordinatorContext {
   virtual Result<SysRowEntries> CollectEntriesForSnapshot(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
-  virtual CHECKED_STATUS CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) = 0;
   virtual CHECKED_STATUS RestoreSysCatalog(
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) = 0;
   virtual CHECKED_STATUS VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) = 0;
