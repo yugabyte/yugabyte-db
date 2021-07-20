@@ -1,5 +1,12 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -18,10 +25,6 @@ import org.yb.cdc.CdcConsumer;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
-
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AsyncReplicationPlatformSyncTest extends FakeDBApplication {

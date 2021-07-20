@@ -13,17 +13,20 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.UniqueKeyListValue;
 import io.ebean.Model;
+import java.util.Objects;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.ManyToOne;
+import javax.persistence.MapsId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
-import javax.persistence.*;
-import java.util.Objects;
-
 @Entity
 @Data
-@EqualsAndHashCode(exclude = "alert", callSuper = false)
-@ToString(exclude = "alert")
+@EqualsAndHashCode(callSuper = false)
+@ToString
 public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> {
 
   @EmbeddedId private AlertLabelKey key;
@@ -34,6 +37,8 @@ public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> 
   @ManyToOne
   @MapsId("alert")
   @JsonIgnore
+  @EqualsAndHashCode.Exclude
+  @ToString.Exclude
   private Alert alert;
 
   public AlertLabel() {

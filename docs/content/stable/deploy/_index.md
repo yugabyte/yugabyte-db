@@ -64,7 +64,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docker/">
+    <a class="section-link icon-offset" href="docker/docker-swarm/">
       <div class="head">
         <div class="icon">
           <i class="fab fa-docker"></i>
@@ -90,18 +90,5 @@ menu:
       </div>
     </a>
   </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc/">
-      <div class="head">
-        <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
-        <div class="title">Change data capture (CDC)</div>
-      </div>
-      <div class="body">
-          Use change data capture (CDC) to asynchronously replicate data changes between data centers.
-      </div>
-    </a>
-  </div>
-
 
 </div>

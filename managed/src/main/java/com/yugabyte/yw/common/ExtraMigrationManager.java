@@ -2,14 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 /*
  * This is a manager to hold injected resources needed for extra migrations.

@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.Users.Role;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -14,13 +16,26 @@ import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
+import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import play.libs.Json;
-
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -28,8 +43,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.Users.Role;
+import play.libs.Json;
 
 public class ModelFactory {
 
@@ -273,6 +287,7 @@ public class ModelFactory {
                     new AlertDefinitionGroupThreshold()
                         .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
                         .setThreshold(1)))
+            .setThresholdUnit(Unit.PERCENT)
             .generateUUID();
     modifier.accept(group);
     group.save();
@@ -320,14 +335,16 @@ public class ModelFactory {
         new Alert()
             .setCustomerUUID(customer.getUuid())
             .setErrCode(code)
-            .setType(KnownAlertTypes.Error)
+            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .setSendEmail(true)
             .generateUUID();
     if (definition != null) {
       AlertDefinitionGroup group =
           AlertDefinitionGroup.db().find(AlertDefinitionGroup.class, definition.getGroupUUID());
-      alert.setDefinitionUUID(definition.getUuid());
+      alert.setGroupUuid(definition.getGroupUUID());
+      alert.setGroupType(group.getTargetType());
+      alert.setDefinitionUuid(definition.getUuid());
       List<AlertLabel> labels =
           definition
               .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
@@ -353,6 +370,18 @@ public class ModelFactory {
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = EmailFixtures.createSmtpData();
     return AlertReceiver.create(customer.uuid, name, params);
+  }
+
+  public static AlertRoute createAlertRoute(
+      UUID customerUUID, String name, List<AlertReceiver> receivers) {
+    AlertRoute route =
+        new AlertRoute()
+            .generateUUID()
+            .setCustomerUUID(customerUUID)
+            .setName(name)
+            .setReceiversList(receivers);
+    route.save();
+    return route;
   }
 
   /*

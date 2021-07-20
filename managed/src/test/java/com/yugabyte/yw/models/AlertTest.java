@@ -1,6 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.ModelFactory.createAlertDefinitionGroup;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasItems;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.junit.Assert.assertTrue;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -8,7 +20,9 @@ import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
 import org.hamcrest.Matchers;
 import org.junit.Before;
@@ -18,15 +32,6 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import static com.yugabyte.yw.common.ModelFactory.createAlertDefinitionGroup;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertTrue;
 
 @RunWith(JUnitParamsRunner.class)
 public class AlertTest extends FakeDBApplication {
@@ -187,6 +192,29 @@ public class AlertTest extends FakeDBApplication {
     queryAndAssertByFilter(filter, definition);
   }
 
+  @Test
+  public void testAcknowledge() {
+    Alert alert = createAlert();
+    alert = alertService.save(alert);
+
+    AlertFilter filter = AlertFilter.builder().uuid(alert.getUuid()).build();
+    alertService.acknowledge(filter);
+
+    Alert queriedAlert = alertService.get(alert.getUuid());
+
+    assertThat(queriedAlert.getState(), equalTo(Alert.State.ACKNOWLEDGED));
+    assertThat(queriedAlert.getTargetState(), equalTo(Alert.State.ACKNOWLEDGED));
+
+    alertService.markResolved(filter);
+    alertService.acknowledge(filter);
+
+    queriedAlert = alertService.get(alert.getUuid());
+
+    // Resolved without sending email.
+    assertThat(queriedAlert.getState(), equalTo(Alert.State.RESOLVED));
+    assertThat(queriedAlert.getTargetState(), equalTo(Alert.State.RESOLVED));
+  }
+
   private void queryAndAssertByFilter(AlertFilter filter, AlertDefinition definition) {
     List<Alert> alerts = alertService.list(filter);
     assertThat(alerts, hasSize(1));
@@ -208,10 +236,12 @@ public class AlertTest extends FakeDBApplication {
     return new Alert()
         .setCustomerUUID(definition.getCustomerUUID())
         .setErrCode(KnownAlertCodes.CUSTOMER_ALERT)
-        .setType(KnownAlertTypes.Error)
+        .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
         .setMessage("Universe on fire!")
         .setSendEmail(true)
-        .setDefinitionUUID(definition.getUuid())
+        .setDefinitionUuid(definition.getUuid())
+        .setGroupUuid(group.getUuid())
+        .setGroupType(group.getTargetType())
         .setLabels(labels);
   }
 
@@ -246,15 +276,15 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.TARGET_TYPE.labelName(),
             definition.getLabelValue(KnownAlertLabels.TARGET_TYPE));
-    AlertLabel alertTypeLabel =
-        new AlertLabel(
-            alert, KnownAlertLabels.ALERT_TYPE.labelName(), KnownAlertTypes.Error.name());
     AlertLabel errorCodeLabel =
         new AlertLabel(
             alert, KnownAlertLabels.ERROR_CODE.labelName(), KnownAlertCodes.CUSTOMER_ALERT.name());
     AlertLabel groupUuidLabel =
         new AlertLabel(
             alert, KnownAlertLabels.GROUP_UUID.labelName(), definition.getGroupUUID().toString());
+    AlertLabel groupTypeLabel =
+        new AlertLabel(
+            alert, KnownAlertLabels.GROUP_TYPE.labelName(), group.getTargetType().name());
     AlertLabel severityLabel =
         new AlertLabel(
             alert,
@@ -272,9 +302,10 @@ public class AlertTest extends FakeDBApplication {
         new AlertLabel(alert, KnownAlertLabels.DEFINITION_NAME.labelName(), group.getName());
     assertThat(alert.getCustomerUUID(), is(cust1.uuid));
     assertThat(alert.getErrCode(), is(KnownAlertCodes.CUSTOMER_ALERT.name()));
-    assertThat(alert.getType(), is(KnownAlertTypes.Error.name()));
+    assertThat(alert.getSeverity(), is(AlertDefinitionGroup.Severity.SEVERE));
     assertThat(alert.getMessage(), is("Universe on fire!"));
-    assertThat(alert.getDefinitionUUID(), equalTo(definition.getUuid()));
+    assertThat(alert.getDefinitionUuid(), equalTo(definition.getUuid()));
+    assertThat(alert.getGroupUuid(), equalTo(group.getUuid()));
     assertTrue(alert.isSendEmail());
     assertThat(
         alert.getLabels(),
@@ -285,9 +316,9 @@ public class AlertTest extends FakeDBApplication {
             targetUuidLabel,
             targetNameLabel,
             targetTypeLabel,
-            alertTypeLabel,
             errorCodeLabel,
             groupUuidLabel,
+            groupTypeLabel,
             severityLabel,
             definitionUuidLabel,
             definitionNameLabel,

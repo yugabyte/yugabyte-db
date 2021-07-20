@@ -10,19 +10,22 @@
 
 package com.yugabyte.yw.controllers;
 
+import static junit.framework.TestCase.fail;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.route;
+
 import com.yugabyte.yw.common.FakeDBApplication;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
 import play.mvc.Result;
 import play.test.Helpers;
-
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-
-import static junit.framework.TestCase.fail;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
 
 /**
  * Unittest can be run like this: [yugaware] $ testOnly com.yugabyte.yw.controllers.SwaggerGenTest

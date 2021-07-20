@@ -17,10 +17,9 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.List;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class AnsibleSetupServer extends NodeTaskBase {

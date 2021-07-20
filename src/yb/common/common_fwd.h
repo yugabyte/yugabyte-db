@@ -19,10 +19,12 @@
 namespace yb {
 
 class ClockBase;
+class DocHybridTime;
 class HybridTime;
 class IndexInfo;
 class IndexMap;
 class PartitionSchema;
+class TransactionStatusManager;
 
 class Schema;
 typedef std::shared_ptr<Schema> SchemaPtr;

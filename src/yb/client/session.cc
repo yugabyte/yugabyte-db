@@ -189,31 +189,36 @@ void BatcherFlushDone(
     Status batcher_add_status = Status::OK();
     for (auto& error : errors) {
       VLOG(4) << "Retrying " << AsString(error->failed_op())
-              << " due to: " << AsString(error->status());
+              << " due to: " << error->status();
       const auto op = error->shared_failed_op();
       op->ResetTablet();
       batcher_add_status = retry_batcher->Add(op);
       if (!batcher_add_status.ok()) {
-        LOG(INFO) << Format(
-            "Failed to add operation $0 to batcher for retry: $1", op, batcher_add_status);
+        YB_LOG_EVERY_N_SECS(INFO, 1) << Format(
+            "Failed to add operation $0 to batcher for retry: $1 (retry reason: $2)", op,
+            batcher_add_status, error->status());
         if (ShouldSessionRetryError(batcher_add_status)) {
-          continue;
+          // Will retry whole batch in outer while loop if we are still under deadline.
+          break;
         } else {
-          MoveErrorsAndRunCallback(std::move(errors), std::move(callback), batcher_add_status);
+          // Replace original retriable error with non-retriable occurred during retry.
+          error.reset(new YBError(error->shared_failed_op(), batcher_add_status));
+          MoveErrorsAndRunCallback(std::move(errors), std::move(callback), s);
           return;
         }
       }
     }
-
-    FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
-        internal::IsWithinTransactionRetry::kTrue);
-    return;
+    if (batcher_add_status.ok()) {
+      FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
+          internal::IsWithinTransactionRetry::kTrue);
+      return;
+    }
   }
 
-  const auto timed_out = STATUS_FORMAT(
-      TimedOut, "Timed out when retrying, now: $0, deadline: $1", CoarseMonoClock::now(), deadline);
-  LOG(INFO) << timed_out;
-  MoveErrorsAndRunCallback(std::move(errors), std::move(callback), timed_out);
+  LOG(INFO) << STATUS_FORMAT(
+      TimedOut, "Timed out when retrying due to error: $0, now: $1, deadline: $2",
+      s, CoarseMonoClock::now(), deadline);
+  MoveErrorsAndRunCallback(std::move(errors), std::move(callback), s);
 }
 
 void FlushBatcherAsync(

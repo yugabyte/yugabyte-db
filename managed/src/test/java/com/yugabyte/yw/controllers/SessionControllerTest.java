@@ -2,6 +2,33 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.models.Users.Role;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+import static play.test.Helpers.route;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -12,10 +39,23 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.scheduler.Scheduler;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.After;
 import org.junit.Test;
 import org.pac4j.play.CallbackController;
@@ -27,31 +67,18 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 
-import java.util.Map;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.models.Users.Role;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.mock;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.*;
-import static play.test.Helpers.*;
-
 public class SessionControllerTest {
 
-  HealthChecker mockHealthChecker;
-  Scheduler mockScheduler;
-  CallHome mockCallHome;
-  CallbackController mockCallbackController;
-  PlayCacheSessionStore mockSessionStore;
-  QueryAlerts mockQueryAlerts;
-  AlertConfigurationWriter mockAlertConfigurationWriter;
+  private HealthChecker mockHealthChecker;
+  private Scheduler mockScheduler;
+  private CallHome mockCallHome;
+  private CallbackController mockCallbackController;
+  private PlayCacheSessionStore mockSessionStore;
+  private QueryAlerts mockQueryAlerts;
+  private AlertConfigurationWriter mockAlertConfigurationWriter;
+  private AlertRouteService alertRouteService;
 
-  Application app;
+  private Application app;
 
   private void startApp(boolean isMultiTenant) {
     mockHealthChecker = mock(HealthChecker.class);
@@ -75,6 +102,13 @@ public class SessionControllerTest {
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();
     Helpers.start(app);
+
+    AlertService alertService = new AlertService();
+    AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
+    AlertDefinitionGroupService alertDefinitionGroupService =
+        new AlertDefinitionGroupService(
+            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
+    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
   }
 
   @After
@@ -202,7 +236,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertAuditEntry(0, c1.uuid);
-    assertNotNull(AlertRoute.getDefaultRoute(c1.uuid));
+    assertNotNull(alertRouteService.getDefaultRoute(c1.uuid));
   }
 
   @Test

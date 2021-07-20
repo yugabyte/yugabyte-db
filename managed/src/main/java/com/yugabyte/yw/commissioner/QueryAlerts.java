@@ -23,24 +23,35 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
 import io.jsonwebtoken.lang.Collections;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import scala.concurrent.ExecutionContext;
+import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -150,13 +161,13 @@ public class QueryAlerts {
       AlertFilter alertFilter =
           AlertFilter.builder()
               .definitionUuids(definitionUuids)
-              .targetState(Alert.State.ACTIVE)
+              .targetState(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
               .build();
       Map<UUID, Alert> existingAlertsByDefinitionUuid =
           alertService
               .list(alertFilter)
               .stream()
-              .collect(Collectors.toMap(Alert::getDefinitionUUID, Function.identity()));
+              .collect(Collectors.toMap(Alert::getDefinitionUuid, Function.identity()));
 
       AlertDefinitionFilter definitionFilter =
           AlertDefinitionFilter.builder().uuids(definitionUuids).build();
@@ -238,6 +249,13 @@ public class QueryAlerts {
     return alertData.getLabels().get(KnownAlertLabels.DEFINITION_UUID.labelName());
   }
 
+  private String getGroupUuid(AlertData alertData) {
+    if (Collections.isEmpty(alertData.getLabels())) {
+      return null;
+    }
+    return alertData.getLabels().get(KnownAlertLabels.GROUP_UUID.labelName());
+  }
+
   private AlertDefinitionGroup.Severity getSeverity(AlertData alertData) {
     if (Collections.isEmpty(alertData.getLabels())) {
       return AlertDefinitionGroup.Severity.SEVERE;
@@ -245,6 +263,15 @@ public class QueryAlerts {
     return Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.SEVERITY.labelName()))
         .map(AlertDefinitionGroup.Severity::valueOf)
         .orElse(AlertDefinitionGroup.Severity.SEVERE);
+  }
+
+  private AlertDefinitionGroup.TargetType getGroupType(AlertData alertData) {
+    if (Collections.isEmpty(alertData.getLabels())) {
+      return AlertDefinitionGroup.TargetType.UNIVERSE;
+    }
+    return Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.GROUP_TYPE.labelName()))
+        .map(AlertDefinitionGroup.TargetType::valueOf)
+        .orElse(AlertDefinitionGroup.TargetType.UNIVERSE);
   }
 
   private Alert processAlert(
@@ -258,6 +285,11 @@ public class QueryAlerts {
       log.error("Alert {} has no definition uuid", alertData);
       return null;
     }
+    String groupUuidStr = getGroupUuid(alertData);
+    if (groupUuidStr == null) {
+      log.error("Alert {} has no group uuid", alertData);
+      return null;
+    }
     if (alertData.getState() == AlertState.pending) {
       log.debug("Alert {} is in pending state - skip for now", alertData);
       return null;
@@ -268,7 +300,8 @@ public class QueryAlerts {
       log.debug("Definition is missing for alert {}", alertData);
       return null;
     }
-    AlertDefinitionGroup group = groupsByUuid.get(definition.getGroupUUID());
+    UUID groupUuid = UUID.fromString(groupUuidStr);
+    AlertDefinitionGroup group = groupsByUuid.get(groupUuid);
     if (group == null || !group.isActive()) {
       log.debug("Definition group is missing or inactive for alert {}", alertData);
       return null;
@@ -285,7 +318,8 @@ public class QueryAlerts {
           new Alert()
               .setCreateTime(Date.from(alertData.getActiveAt().toInstant()))
               .setCustomerUUID(UUID.fromString(customerUuid))
-              .setDefinitionUUID(definitionUuid);
+              .setDefinitionUuid(definitionUuid)
+              .setGroupUuid(groupUuid);
     }
     String definitionActive =
         Optional.ofNullable(
@@ -294,9 +328,8 @@ public class QueryAlerts {
     String errorCode =
         Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.ERROR_CODE.labelName()))
             .orElse(KnownAlertCodes.CUSTOMER_ALERT.name());
-    String alertType =
-        Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.ALERT_TYPE.labelName()))
-            .orElse(KnownAlertTypes.Error.name());
+    AlertDefinitionGroup.Severity severity = getSeverity(alertData);
+    AlertDefinitionGroup.TargetType groupType = getGroupType(alertData);
     String message = alertData.getAnnotations().get(SUMMARY_ANNOTATION_NAME);
 
     List<AlertLabel> labels =
@@ -309,7 +342,8 @@ public class QueryAlerts {
             .collect(Collectors.toList());
     alert
         .setErrCode(errorCode)
-        .setType(alertType)
+        .setSeverity(severity)
+        .setGroupType(groupType)
         .setMessage(message)
         .setSendEmail(Boolean.parseBoolean(definitionActive))
         .setLabels(labels);

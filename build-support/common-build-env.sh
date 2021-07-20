@@ -935,7 +935,7 @@ find_compiler_by_type() {
         fatal "Invalid GCC major version: '$gcc_major_version'" \
               "(from compiler type '$YB_COMPILER_TYPE')."
       fi
-      if is_centos; then
+      if is_redhat_family; then
         local gcc_bin_dir
         if [[ -d /opt/rh/gcc-toolset-$gcc_major_version ]]; then
           gcc_bin_dir=/opt/rh/gcc-toolset-$gcc_major_version/root/usr/bin
@@ -1155,7 +1155,7 @@ download_thirdparty() {
   yb_thirdparty_dir_origin=" (downloaded from $YB_THIRDPARTY_URL)"
   save_thirdparty_info_to_build_dir
 
-  if ! is_centos; then
+  if ! is_redhat_family; then
     return
   fi
   download_toolchain
@@ -1256,7 +1256,13 @@ detect_brew() {
     return
   fi
   if is_linux; then
-    detect_linuxbrew
+    local cpu_type
+    cpu_type=$( uname --processor )
+    if [[ $cpu_type == "x86_64" ]]; then
+      detect_linuxbrew
+    else
+      disable_linuxbrew
+    fi
   fi
 }
 

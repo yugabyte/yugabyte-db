@@ -153,8 +153,12 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
 
   // Wait for the add task to be processed (at least one replica reporting on the new tserver).
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
+    if (!leader_mini_master.ok()) {
+      return false;
+    }
     scoped_refptr<master::TableInfo> tbl_info =
-      mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+      (*leader_mini_master)->master()->catalog_manager()->
           GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                     table_name().namespace_name(),
                                                     table_name().table_name());
@@ -175,7 +179,10 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   // (this could happen normally from a late heartbeat).
   master::TSDescriptorVector ts_descs;
   master::TSDescriptorPtr ts3_desc;
-  mini_cluster_->leader_mini_master()->master()->ts_manager()->GetAllReportedDescriptors(&ts_descs);
+  ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())
+      ->master()
+      ->ts_manager()
+      ->GetAllReportedDescriptors(&ts_descs);
   for (const auto& ts_desc : ts_descs) {
     if (ts_desc->permanent_uuid() == ts3_uuid) {
       ts_desc->SetRemoved();
@@ -240,24 +247,38 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
   LOG(INFO) << "Table deleted successfully.";
 
   // We should be able to find the deleted table in the list of skipped tables now.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    const auto tables = mini_cluster_->leader_mini_master()->master()->catalog_manager()
-                                      ->load_balancer()->GetAllTablesLoadBalancerSkipped();
-    for (const auto& table : tables) {
-      if (table->name() == table_name().table_name() &&
-          table->namespace_name() == table_name().namespace_name()) {
-        return true;
-      }
-    }
-    return false;
-  }, kDefaultTimeout, "IsLBSkippingDeletedTables"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
+        if (!leader_mini_master.ok()) {
+          return false;
+        }
+        const auto tables = (*leader_mini_master)
+                                ->master()
+                                ->catalog_manager()
+                                ->load_balancer()
+                                ->GetAllTablesLoadBalancerSkipped();
+        for (const auto& table : tables) {
+          if (table->name() == table_name().table_name() &&
+              table->namespace_name() == table_name().namespace_name()) {
+            return true;
+          }
+        }
+        return false;
+      },
+      kDefaultTimeout,
+      "IsLBSkippingDeletedTables"));
 }
 
 // Check flow tablet size data from tserver to master
 TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
+    if (!leader_mini_master.ok()) {
+      return false;
+    }
     scoped_refptr<master::TableInfo> tbl_info =
-      mini_cluster()->leader_mini_master()->master()->catalog_manager()->
+      (*leader_mini_master)->master()->catalog_manager()->
           GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                     table_name().namespace_name(),
                                                     table_name().table_name());

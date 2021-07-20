@@ -16,17 +16,21 @@ import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponses;
+import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 @Api(value = "Region", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
@@ -43,7 +47,8 @@ public class RegionController extends AuthenticatedController {
   @ApiOperation(
       value = "list Regions for a specific provider",
       response = Region.class,
-      responseContainer = "List")
+      responseContainer = "List",
+      nickname = "getRegion")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
@@ -83,7 +88,7 @@ public class RegionController extends AuthenticatedController {
    *
    * @return JSON response of newly created region
    */
-  @ApiOperation(value = "create new region", response = Region.class)
+  @ApiOperation(value = "create new region", response = Region.class, nickname = "createRegion")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "region",
@@ -159,7 +164,7 @@ public class RegionController extends AuthenticatedController {
    * @param regionUUID Region UUID
    * @return JSON response on whether or not delete region was sucessful or not.
    */
-  @ApiOperation(value = "delete", response = Object.class)
+  @ApiOperation(value = "delete", response = Object.class, nickname = "deleteRegion")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     region.disableRegionAndZones();

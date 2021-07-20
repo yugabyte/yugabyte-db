@@ -10,16 +10,19 @@ import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
-import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Api(value = "Release", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class ReleaseController extends AuthenticatedController {
@@ -29,7 +32,10 @@ public class ReleaseController extends AuthenticatedController {
 
   @Inject ValidatingFormFactory formFactory;
 
-  @ApiOperation(value = "Create release", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Create release",
+      response = YWResults.YWSuccess.class,
+      nickname = "createRelease")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
@@ -53,7 +59,11 @@ public class ReleaseController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  @ApiOperation(value = "Get list of releases", response = Object.class, responseContainer = "Map")
+  @ApiOperation(
+      value = "Get list of releases",
+      response = Object.class,
+      responseContainer = "Map",
+      nickname = "getReleases")
   public Result list(UUID customerUUID, Boolean includeMetadata) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
@@ -67,7 +77,10 @@ public class ReleaseController extends AuthenticatedController {
     return YWResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
-  @ApiOperation(value = "Update release", response = ReleaseManager.ReleaseMetadata.class)
+  @ApiOperation(
+      value = "Update release",
+      response = ReleaseManager.ReleaseMetadata.class,
+      nickname = "updateRelease")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",

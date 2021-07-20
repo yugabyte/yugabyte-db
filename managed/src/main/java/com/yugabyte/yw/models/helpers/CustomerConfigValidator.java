@@ -2,31 +2,30 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
+import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
+
+import com.amazonaws.SdkClientException;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.SdkClientException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Singleton;
-import com.google.auth.Credentials;
-import com.google.cloud.storage.Storage;
-import com.google.cloud.storage.StorageOptions;
 import com.google.api.gax.paging.Page;
+import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageException;
+import com.google.cloud.storage.StorageOptions;
+import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.UrlValidator;
-import play.libs.Json;
-import javax.inject.Inject;
-import javax.validation.ConstraintViolation;
-import javax.validation.Validator;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -34,12 +33,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.AWSCredentials;
-
-import static com.yugabyte.yw.models.CustomerConfig.ConfigType.PASSWORD_POLICY;
-import static com.yugabyte.yw.models.CustomerConfig.ConfigType.STORAGE;
+import javax.inject.Inject;
+import javax.validation.ConstraintViolation;
+import javax.validation.Validator;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.UrlValidator;
+import play.libs.Json;
 
 @Singleton
 public class CustomerConfigValidator {
@@ -137,10 +136,18 @@ public class CustomerConfigValidator {
                 create(
                     data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
                     data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
-            ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
-            if (result.getKeyCount() == 0) {
-              errorJson.set(
-                  fieldName, Json.newArray().add("S3 URI path " + s3Uri + " doesn't exist"));
+            // Only the bucket has been given, with no subdir.
+            if (bucketSplit.length == 1) {
+              if (!s3Client.doesBucketExistV2(bucketName)) {
+                errorJson.set(
+                    fieldName, Json.newArray().add("S3 URI path " + s3Uri + " doesn't exist"));
+              }
+            } else {
+              ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
+              if (result.getKeyCount() == 0) {
+                errorJson.set(
+                    fieldName, Json.newArray().add("S3 URI path " + s3Uri + " doesn't exist"));
+              }
             }
           } catch (AmazonS3Exception s3Exception) {
             String errMessage = s3Exception.getErrorMessage();
@@ -267,18 +274,26 @@ public class CustomerConfigValidator {
                     new ByteArrayInputStream(gcpCredentials.getBytes("UTF-8")));
             Storage storage =
                 StorageOptions.newBuilder().setCredentials(credentials).build().getService();
-            Page<Blob> blobs =
-                storage.list(
-                    bucketName,
-                    Storage.BlobListOption.prefix(prefix),
-                    Storage.BlobListOption.currentDirectory());
-            if (!blobs.getValues().iterator().hasNext()) {
-              errorJson.set(
-                  fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+            // Only the bucket has been given, with no subdir.
+            if (bucketSplit.length == 1) {
+              // Check if the bucket exists by calling a list.
+              // If the bucket exists, the call will return nothing,
+              // If the creds are incorrect, it will throw an exception
+              // saying no access.
+              storage.list(bucketName);
+            } else {
+              Page<Blob> blobs =
+                  storage.list(
+                      bucketName,
+                      Storage.BlobListOption.prefix(prefix),
+                      Storage.BlobListOption.currentDirectory());
+              if (!blobs.getValues().iterator().hasNext()) {
+                errorJson.set(
+                    fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exist"));
+              }
             }
           } catch (StorageException exp) {
-            errorJson.set(
-                fieldName, Json.newArray().add("GS Uri path " + gsUri + " doesn't exists"));
+            errorJson.set(fieldName, Json.newArray().add(exp.getMessage()));
           } catch (Exception e) {
             errorJson.set(fieldName, Json.newArray().add("Invalid GCP Credential Json."));
           }

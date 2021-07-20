@@ -2,39 +2,40 @@
 
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import io.ebean.*;
-import io.ebean.annotation.*;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.annotation.JsonFormat;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.data.validation.Constraints;
-
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Enumerated;
-import javax.persistence.EnumType;
-import javax.persistence.Id;
-
+import com.yugabyte.yw.forms.CertificateParams;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
+import play.libs.Json;
 
-import static play.mvc.Http.Status.*;
-
+@ApiModel(description = "Certificate used by the universe to send sensitive information")
 @Entity
 public class CertificateInfo extends Model {
 
@@ -64,40 +65,63 @@ public class CertificateInfo extends Model {
     }
   }
 
+  @ApiModelProperty(value = "Certificate uuid", accessMode = READ_ONLY)
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
   public UUID uuid;
 
+  @ApiModelProperty(
+      value = "Customer UUID of the backup which it belongs to",
+      accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   public UUID customerUUID;
 
+  @ApiModelProperty(
+      value = "Certificate label",
+      example = "yb-admin-example",
+      accessMode = READ_WRITE)
   @Column(unique = true)
   public String label;
 
+  @ApiModelProperty(value = "Certificate created date", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   public Date startDate;
 
+  @ApiModelProperty(value = "Expiry date of the Certificate", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   public Date expiryDate;
 
+  @ApiModelProperty(
+      value = "Private key path",
+      example = "/opt/yugaware/..../example.key.pem",
+      accessMode = READ_WRITE)
   @Column(nullable = true)
   public String privateKey;
 
+  @ApiModelProperty(
+      value = "Certificate path",
+      example = "/opt/yugaware/certs/.../ca.root.cert",
+      accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   public String certificate;
 
+  @ApiModelProperty(
+      value = "Type of the certificate",
+      example = "SelfSigned",
+      accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   public CertificateInfo.Type certType;
 
+  @ApiModelProperty(value = "Checksome of a cert file", accessMode = READ_ONLY)
   @Column(nullable = true)
   public String checksum;
 
@@ -108,6 +132,7 @@ public class CertificateInfo extends Model {
     }
   }
 
+  @ApiModelProperty(value = "Details about the Certificate", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
   public JsonNode customCertInfo;
@@ -272,11 +297,17 @@ public class CertificateInfo extends Model {
     return true;
   }
 
+  @ApiModelProperty(
+      value = "Indicates whether the Certificate is in use or not",
+      accessMode = READ_ONLY)
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
     return Universe.existsCertificate(this.uuid, this.customerUUID);
   }
 
+  @ApiModelProperty(
+      value = "Associated universe details of the Certificate",
+      accessMode = READ_ONLY)
   public ArrayNode getUniverseDetails() {
     Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
     return Util.getUniverseDetails(universes);

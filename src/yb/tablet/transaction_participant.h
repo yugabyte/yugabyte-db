@@ -245,6 +245,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   std::string DumpTransactions() const;
 
+  const TabletId& tablet_id() const override;
+
   size_t TEST_GetNumRunningTransactions() const;
 
   // Returns pair of number of intents and number of transactions.

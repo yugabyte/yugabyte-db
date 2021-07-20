@@ -10,18 +10,33 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.common.alerts.*;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertNotificationReport;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverInterface;
+import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.YWValidateException;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
-
-import lombok.extern.slf4j.Slf4j;
-
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.*;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 
 @Singleton
@@ -31,6 +46,7 @@ public class AlertManager {
   private final EmailHelper emailHelper;
   private final AlertService alertService;
   private final AlertDefinitionGroupService alertDefinitionGroupService;
+  private final AlertRouteService alertRouteService;
   private final AlertReceiverManager receiversManager;
 
   @Inject
@@ -38,10 +54,12 @@ public class AlertManager {
       EmailHelper emailHelper,
       AlertService alertService,
       AlertDefinitionGroupService alertDefinitionGroupService,
+      AlertRouteService alertRouteService,
       AlertReceiverManager receiversManager) {
     this.emailHelper = emailHelper;
     this.alertService = alertService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
+    this.alertRouteService = alertRouteService;
     this.receiversManager = receiversManager;
   }
 
@@ -95,7 +113,7 @@ public class AlertManager {
     if (group.getRouteUUID() == null) {
       return Optional.empty();
     }
-    AlertRoute route = AlertRoute.get(group.getCustomerUUID(), group.getRouteUUID());
+    AlertRoute route = alertRouteService.get(group.getCustomerUUID(), group.getRouteUUID());
     if (route == null) {
       log.warn("Missing route {} for alert {}", group.getRouteUUID(), alert.getUuid());
       return Optional.empty();
@@ -117,7 +135,7 @@ public class AlertManager {
       }
 
       // Getting receivers from the default route.
-      AlertRoute defaultRoute = AlertRoute.getDefaultRoute(alert.getCustomerUUID());
+      AlertRoute defaultRoute = alertRouteService.getDefaultRoute(alert.getCustomerUUID());
       if (defaultRoute == null) {
         log.warn(
             "Unable to notify about alert {}, there is no default route specified.",
@@ -125,7 +143,7 @@ public class AlertManager {
         createOrUpdateAlertForCustomer(
             customer,
             "Unable to notify about alert(s), there is no default route specified.",
-            KnownAlertTypes.Error);
+            AlertDefinitionGroup.Severity.SEVERE);
         return;
       }
       resolveAlert(customer, customer.getUuid());
@@ -139,7 +157,7 @@ public class AlertManager {
             customer,
             "Unable to notify about alert(s) using default route, "
                 + "there are no recipients configured in the customer's profile.",
-            KnownAlertTypes.Warning);
+            AlertDefinitionGroup.Severity.WARNING);
         return;
       }
 
@@ -156,7 +174,10 @@ public class AlertManager {
         }
         report.failReceiver(receiver.getUuid());
         createOrUpdateAlertForReceiver(
-            customer, receiver, "Misconfigured alert receiver: " + e, KnownAlertTypes.Error);
+            customer,
+            receiver,
+            "Misconfigured alert receiver: " + e,
+            AlertDefinitionGroup.Severity.SEVERE);
         continue;
       }
 
@@ -172,7 +193,10 @@ public class AlertManager {
         }
         report.failReceiver(receiver.getUuid());
         createOrUpdateAlertForReceiver(
-            customer, receiver, "Error sending notification: " + e, KnownAlertTypes.Error);
+            customer,
+            receiver,
+            "Error sending notification: " + e,
+            AlertDefinitionGroup.Severity.SEVERE);
       }
     }
     if (!atLeastOneSucceeded) {
@@ -181,23 +205,23 @@ public class AlertManager {
   }
 
   private void createOrUpdateAlertForReceiver(
-      Customer c, AlertReceiver receiver, String details, KnownAlertTypes errorType) {
+      Customer c, AlertReceiver receiver, String details, AlertDefinitionGroup.Severity severity) {
     createOrUpdateAlert(
         c,
         receiver.getUuid(),
         details,
         AlertDefinitionLabelsBuilder.create().appendTarget(receiver).getAlertLabels(),
-        errorType);
+        severity);
   }
 
   private void createOrUpdateAlertForCustomer(
-      Customer c, String details, KnownAlertTypes errorType) {
+      Customer c, String details, AlertDefinitionGroup.Severity severity) {
     createOrUpdateAlert(
         c,
         c.getUuid(),
         details,
         AlertDefinitionLabelsBuilder.create().appendTarget(c).getAlertLabels(),
-        errorType);
+        severity);
   }
 
   private void createOrUpdateAlert(
@@ -205,7 +229,7 @@ public class AlertManager {
       UUID targetUUID,
       String details,
       List<AlertLabel> labels,
-      KnownAlertTypes errorType) {
+      AlertDefinitionGroup.Severity severity) {
     AlertFilter filter =
         AlertFilter.builder()
             .customerUuid(c.getUuid())
@@ -221,7 +245,7 @@ public class AlertManager {
                 new Alert()
                     .setCustomerUUID(c.getUuid())
                     .setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-                    .setType(errorType));
+                    .setSeverity(severity));
     alert.setMessage(details).setLabels(labels);
     alertService.save(alert);
   }

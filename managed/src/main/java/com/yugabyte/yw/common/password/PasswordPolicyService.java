@@ -10,10 +10,13 @@
 
 package com.yugabyte.yw.common.password;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
+
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.ValidationError;
@@ -21,16 +24,16 @@ import play.libs.Json;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.core.JsonProcessingException;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class PasswordPolicyService {

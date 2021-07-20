@@ -12,11 +12,10 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.ebean.Model;
+import java.util.UUID;
+import javax.persistence.Embeddable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-
-import javax.persistence.Embeddable;
-import java.util.UUID;
 
 @Embeddable
 @Data

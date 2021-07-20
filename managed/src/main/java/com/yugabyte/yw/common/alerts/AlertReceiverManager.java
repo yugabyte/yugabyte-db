@@ -2,13 +2,12 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import java.util.EnumMap;
-import java.util.Optional;
-
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
 import com.yugabyte.yw.models.AlertReceiver.TargetType;
+import java.util.EnumMap;
+import java.util.Optional;
 
 @Singleton
 public class AlertReceiverManager {

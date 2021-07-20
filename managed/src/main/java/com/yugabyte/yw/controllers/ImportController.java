@@ -14,7 +14,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
@@ -29,19 +28,25 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.ImportUniverseFormData.State;
+import com.yugabyte.yw.forms.ImportUniverseResponseData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -51,23 +56,27 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadFactory;
-
-@Api
+@Api(value = "Import", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class ImportController extends AuthenticatedController {
 
@@ -88,14 +97,15 @@ public class ImportController extends AuthenticatedController {
 
   @Inject ConfigHelper configHelper;
 
-  @ApiOperation(value = "import", response = Object.class)
+  @ApiOperation(value = "import", response = ImportUniverseFormData.class)
   public Result importUniverse(UUID customerUUID) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =
         formFactory.getFormDataOrBadRequest(ImportUniverseFormData.class);
-    ObjectNode results = Json.newObject();
-    ObjectNode checks = Json.newObject();
-    results.put("checks", checks);
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+    ImportUniverseResponseData results = new ImportUniverseResponseData();
     ImportUniverseFormData importForm = formData.get();
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -121,7 +131,7 @@ public class ImportController extends AuthenticatedController {
         case IMPORTED_TSERVERS:
           return finishUniverseImport(importForm, customer, results);
         case FINISHED:
-          return YWResults.withRawData(results);
+          return YWResults.withData(results);
         default:
           throw new YWServiceException(
               BAD_REQUEST, "Unknown current state: " + importForm.currentState.toString());
@@ -157,7 +167,7 @@ public class ImportController extends AuthenticatedController {
   // Helper function to verify masters are up and running on the saved set of nodes.
   // Returns true if there are no errors.
   private boolean verifyMastersRunning(
-      UniverseDefinitionTaskParams taskParams, ObjectNode results) {
+      UniverseDefinitionTaskParams taskParams, ImportUniverseResponseData results) {
     CheckMasters checkMasters = AbstractTaskBase.createTask(CheckMasters.class);
     checkMasters.initialize(taskParams);
     // Execute the task. If it fails, sets the error in the results.
@@ -167,7 +177,7 @@ public class ImportController extends AuthenticatedController {
   // Helper function to check that a master leader exists.
   // Returns true if there are no errors.
   private boolean verifyMasterLeaderExists(
-      UniverseDefinitionTaskParams taskParams, ObjectNode results) {
+      UniverseDefinitionTaskParams taskParams, ImportUniverseResponseData results) {
     CheckMasterLeader checkMasterLeader = AbstractTaskBase.createTask(CheckMasterLeader.class);
     checkMasterLeader.initialize(taskParams);
     // Execute the task. If it fails, return an error.
@@ -176,7 +186,7 @@ public class ImportController extends AuthenticatedController {
 
   /** Given the master addresses, create a basic universe object. */
   private Result importUniverseMasters(
-      ImportUniverseFormData importForm, Customer customer, ObjectNode results) {
+      ImportUniverseFormData importForm, Customer customer, ImportUniverseResponseData results) {
     String universeName = importForm.universeName;
     String masterAddresses = importForm.masterAddresses;
 
@@ -230,13 +240,12 @@ public class ImportController extends AuthenticatedController {
         provider = providerList.get(0);
       } else {
         // Understand about this better.
-        results.with("checks").put("is_provider_present", "FAILURE");
-        results.put(
-            "error",
+        results.checks.put("is_provider_present", "FAILURE");
+        results.error =
             String.format(
                 "Providers for the customer: %s and type: %s" + " are not present",
-                customer.uuid, importForm.providerType));
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+                customer.uuid, importForm.providerType);
+        throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
       }
 
       Region region = Region.getByCode(provider, importForm.regionCode);
@@ -246,12 +255,12 @@ public class ImportController extends AuthenticatedController {
       universe =
           addServersToUniverse(
               userMasterIpPorts, taskParams, provider, region, zone, true /*isMaster*/);
-      results.with("checks").put("create_db_entry", "OK");
-      results.put("universeUUID", universe.universeUUID.toString());
+      results.checks.put("create_db_entry", "OK");
+      results.universeUUID = universe.universeUUID;
     } catch (Exception e) {
-      results.with("checks").put("create_db_entry", "FAILURE");
-      results.put("error", e.getMessage());
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+      results.checks.put("create_db_entry", "FAILURE");
+      results.error = e.getMessage();
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
     taskParams = universe.getUniverseDetails();
 
@@ -259,24 +268,24 @@ public class ImportController extends AuthenticatedController {
     // Verify the master processes are running on the master nodes.
     // ---------------------------------------------------------------------------------------------
     if (!verifyMastersRunning(taskParams, results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // ---------------------------------------------------------------------------------------------
     // Wait for the master leader election if needed.
     // ---------------------------------------------------------------------------------------------
     if (!verifyMasterLeaderExists(taskParams, results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     setImportedState(universe, ImportedState.MASTERS_ADDED);
 
     log.info("Done importing masters " + masterAddresses);
-    results.put("state", State.IMPORTED_MASTERS.toString());
-    results.put("universeName", universeName);
-    results.put("masterAddresses", masterAddresses);
+    results.state = State.IMPORTED_MASTERS;
+    results.universeName = universeName;
+    results.masterAddresses = masterAddresses;
 
-    return YWResults.withRawData(results);
+    return YWResults.withData(results);
   }
 
   private void setImportedState(Universe universe, ImportedState newState) {
@@ -293,12 +302,11 @@ public class ImportController extends AuthenticatedController {
 
   /** Import the various tablet servers from the masters. */
   private Result importUniverseTservers(
-      ImportUniverseFormData importForm, Customer customer, ObjectNode results) {
+      ImportUniverseFormData importForm, Customer customer, ImportUniverseResponseData results) {
     String masterAddresses = importForm.masterAddresses;
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
-      results.put(
-          "error", "Valid universe uuid needs to be set instead of " + importForm.universeUUID);
-      throw new YWServiceException(BAD_REQUEST, results);
+      results.error = "Valid universe uuid needs to be set instead of " + importForm.universeUUID;
+      throw new YWServiceException(BAD_REQUEST, Json.toJson(results));
     }
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
@@ -306,33 +314,31 @@ public class ImportController extends AuthenticatedController {
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.MASTERS_ADDED) {
-      results.put(
-          "error",
+      results.error =
           "Unexpected universe state "
               + curState.name()
               + " expecteed "
-              + ImportedState.MASTERS_ADDED.name());
-      throw new YWServiceException(BAD_REQUEST, results);
+              + ImportedState.MASTERS_ADDED.name();
+      throw new YWServiceException(BAD_REQUEST, Json.toJson(results));
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     // TODO: move this into a common location.
-    results.put("universeUUID", universe.universeUUID.toString());
+    results.universeUUID = universe.universeUUID;
 
     // ---------------------------------------------------------------------------------------------
     // Verify tservers count and list.
     // ---------------------------------------------------------------------------------------------
     Map<String, Integer> tservers_list = getTServers(masterAddresses, results);
     if (tservers_list.isEmpty()) {
-      results.put("error", "No tservers known to the master leader in " + masterAddresses);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+      results.error = "No tservers known to the master leader in " + masterAddresses;
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // Record the count of the tservers.
-    results.put("tservers_count", tservers_list.size());
-    ArrayNode arrayNode = results.putArray("tservers_list");
+    results.tservers_count = tservers_list.size();
     for (String tserver : tservers_list.keySet()) {
-      arrayNode.add(tserver);
+      results.tservers_list.add(tserver);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -345,13 +351,12 @@ public class ImportController extends AuthenticatedController {
       provider = providerList.get(0);
     } else {
       // Understand about this better.
-      results.with("checks").put("is_provider_present", "FAILURE");
-      results.put(
-          "error",
+      results.checks.put("is_provider_present", "FAILURE");
+      results.error =
           String.format(
               "Providers for the customer: %s and type: %s" + " are not present",
-              customer.uuid, importForm.providerType));
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+              customer.uuid, importForm.providerType);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     Region region = Region.getByCode(provider, importForm.regionCode);
@@ -369,7 +374,7 @@ public class ImportController extends AuthenticatedController {
     checkTservers.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(checkTservers, "check_tservers_are_running", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -379,18 +384,18 @@ public class ImportController extends AuthenticatedController {
     waitForTserverHBs.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(waitForTserverHBs, "check_tserver_heartbeats", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     log.info("Verified " + tservers_list.size() + " tservers present and imported them.");
 
     setImportedState(universe, ImportedState.TSERVERS_ADDED);
 
-    results.put("state", State.IMPORTED_TSERVERS.toString());
-    results.put("masterAddresses", masterAddresses);
-    results.put("universeName", importForm.universeName);
+    results.state = State.IMPORTED_TSERVERS;
+    results.masterAddresses = masterAddresses;
+    results.universeName = importForm.universeName;
 
-    return YWResults.withRawData(results);
+    return YWResults.withData(results);
   }
 
   /**
@@ -399,28 +404,27 @@ public class ImportController extends AuthenticatedController {
    * reachable on all the nodes.
    */
   private Result finishUniverseImport(
-      ImportUniverseFormData importForm, Customer customer, ObjectNode results) {
+      ImportUniverseFormData importForm, Customer customer, ImportUniverseResponseData results) {
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
-      results.put("error", "Valid universe uuid needs to be set.");
-      throw new YWServiceException(BAD_REQUEST, results);
+      results.error = "Valid universe uuid needs to be set.";
+      throw new YWServiceException(BAD_REQUEST, results.error);
     }
 
     Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.TSERVERS_ADDED) {
-      results.put(
-          "error",
+      results.error =
           "Unexpected universe state "
               + curState.name()
               + " expecteed "
-              + ImportedState.TSERVERS_ADDED.name());
-      throw new YWServiceException(BAD_REQUEST, results);
+              + ImportedState.TSERVERS_ADDED.name();
+      return ApiResponse.error(BAD_REQUEST, results.error);
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     // TODO: move to common location.
-    results.put("universeUUID", universe.universeUUID.toString());
+    results.universeUUID = universe.universeUUID;
 
     // ---------------------------------------------------------------------------------------------
     // Configure metrics.
@@ -433,7 +437,7 @@ public class ImportController extends AuthenticatedController {
     createPrometheusSwamperConfig.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(createPrometheusSwamperConfig, "create_prometheus_config", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results);
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -456,10 +460,10 @@ public class ImportController extends AuthenticatedController {
         }
       }
     }
-    results.with("checks").put("node_exporter", "OK");
+    results.checks.put("node_exporter", "OK");
     log.info("Errors per node: " + nodeExporterIPsToError.toString());
     if (!nodeExporterIPsToError.isEmpty()) {
-      results.with("checks").put("node_exporter_ip_error_map", nodeExporterIPsToError.toString());
+      results.checks.put("node_exporter_ip_error_map", nodeExporterIPsToError.toString());
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -477,11 +481,11 @@ public class ImportController extends AuthenticatedController {
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
 
-    results.put("state", State.FINISHED.toString());
+    results.state = State.FINISHED;
 
     log.info("Completed " + universe.universeUUID + " import.");
 
-    return YWResults.withRawData(results);
+    return YWResults.withData(results);
   }
 
   /**
@@ -554,7 +558,8 @@ public class ImportController extends AuthenticatedController {
    * to get the number of nodes information also from the end user and check that count matches what
    * master leader provides, to ensure no unreachable/failed tservers.
    */
-  private Map<String, Integer> getTServers(String masterAddresses, ObjectNode results) {
+  private Map<String, Integer> getTServers(
+      String masterAddresses, ImportUniverseResponseData results) {
     Map<String, Integer> tservers_list = new HashMap<>();
     YBClient client = null;
     try {
@@ -567,10 +572,10 @@ public class ImportController extends AuthenticatedController {
       for (ServerInfo tserver : listTServerResp.getTabletServersList()) {
         tservers_list.put(tserver.getHost(), tserver.getPort());
       }
-      results.with("checks").put("find_tservers_list", "OK");
+      results.checks.put("find_tservers_list", "OK");
     } catch (Exception e) {
       log.error("Hit error: ", e);
-      results.with("checks").put("find_tservers_list", "FAILURE");
+      results.checks.put("find_tservers_list", "FAILURE");
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
@@ -584,7 +589,7 @@ public class ImportController extends AuthenticatedController {
    * results object. Upon a failure, it returns false and adds the appropriate error message into
    * the results object.
    */
-  private boolean executeITask(ITask task, String taskName, ObjectNode results) {
+  private boolean executeITask(ITask task, String taskName, ImportUniverseResponseData results) {
     // Initialize the threadpool if needed.
     initializeThreadpool();
     // Submit the task, and get a future object.
@@ -593,11 +598,11 @@ public class ImportController extends AuthenticatedController {
       // Wait for the task to complete.
       future.get();
       // Indicate that this task executed successfully.
-      results.with("checks").put(taskName, "OK");
+      results.checks.put(taskName, "OK");
     } catch (Exception e) {
       // If this task failed, return the failure and the reason.
-      results.with("checks").put(taskName, "FAILURE");
-      results.put("error", e.getMessage());
+      results.checks.put(taskName, "FAILURE");
+      results.error = e.getMessage();
       log.error("Failed to execute " + taskName, e);
       return false;
     }

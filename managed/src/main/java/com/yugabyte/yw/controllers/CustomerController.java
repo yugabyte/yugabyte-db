@@ -24,32 +24,46 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.AlertingFormData;
+import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.*;
-import java.util.stream.Collectors;
-
-@Api
+@Api(value = "Customer", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
@@ -68,13 +82,32 @@ public class CustomerController extends AuthenticatedController {
         && !n.cloudInfo.mount_roots.isEmpty();
   }
 
-  public Result list() {
+  @Deprecated
+  @ApiOperation(
+      value = "UI_ONLY",
+      response = UUID.class,
+      responseContainer = "List",
+      hidden = true,
+      nickname = "ListOfCustomersUUID")
+  public Result listUuids() {
     ArrayNode responseJson = Json.newArray();
     Customer.getAll().forEach(c -> responseJson.add(c.getUuid().toString()));
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "getCustomer", response = Customer.class)
+  @ApiOperation(
+      value = "List customer",
+      response = Customer.class,
+      responseContainer = "List",
+      nickname = "ListOfCustomers")
+  public Result list() {
+    return YWResults.withData(Customer.getAll());
+  }
+
+  @ApiOperation(
+      value = "Get customer by UUID",
+      response = CustomerDetailsData.class,
+      nickname = "CustomerDetail")
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -113,6 +146,18 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
+  @ApiOperation(
+      value = "Update customer by UUID",
+      response = Customer.class,
+      nickname = "UpdateCustomer")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Customer",
+        value = "Customer data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.AlertingFormData",
+        paramType = "body")
+  })
   public Result update(UUID customerUUID) {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -182,7 +227,10 @@ public class CustomerController extends AuthenticatedController {
     return ok(Json.toJson(customer));
   }
 
-  @ApiOperation(value = "deleteCustomer", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Delete customer by UUID",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteCustomer")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -199,6 +247,18 @@ public class CustomerController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
+  @ApiOperation(
+      value = "Upsert features of customer by UUID",
+      responseContainer = "Map",
+      response = Object.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Feature",
+        value = "Feature to be upserted",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.FeatureUpdateFormData",
+        paramType = "body")
+  })
   public Result upsertFeatures(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -217,6 +277,18 @@ public class CustomerController extends AuthenticatedController {
     return ok(customer.getFeatures());
   }
 
+  @ApiOperation(
+      value = "Add metrics of customer by UUID",
+      response = Object.class,
+      responseContainer = "Map")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Metrics",
+        value = "Metrics to be added",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.MetricQueryParams",
+        paramType = "body")
+  })
   public Result metrics(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -332,6 +404,10 @@ public class CustomerController extends AuthenticatedController {
     return String.join("|", namespaces);
   }
 
+  @ApiOperation(
+      value = "Get host info by customer UUID",
+      responseContainer = "Map",
+      response = Object.class)
   public Result getHostInfo(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     ObjectNode hostInfo = Json.newObject();

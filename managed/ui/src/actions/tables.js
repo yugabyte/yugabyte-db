@@ -23,6 +23,9 @@ export const RESTORE_TABLE_BACKUP = 'RESTORE_TABLE_BACKUP';
 export const RESTORE_TABLE_BACKUP_RESPONSE = 'RESTORE_TABLE_BACKUP_RESPONSE';
 export const DELETE_BACKUP = 'DELETE_BACKUP';
 export const DELETE_BACKUP_RESPONSE = 'DELETE_BACKUP_RESPONSE';
+export const STOP_BACKUP = 'STOP_BACKUP';
+export const STOP_BACKUP_RESPONSE = 'STOP_BACKUP_RESPONSE';
+
 
 export function fetchUniverseTables(universeUUID) {
   const customerId = localStorage.getItem('customerId');
@@ -172,6 +175,26 @@ export function deleteBackup(payload) {
 }
 
 export function deleteBackupResponse(response) {
+  return {
+    type: DELETE_BACKUP_RESPONSE,
+    payload: response
+  };
+}
+
+export function stopBackup(backupUUID) {
+  const baseUrl = getCustomerEndpoint();
+  const request = axios.post(
+    `${baseUrl}/backups/${backupUUID}/stop`,
+    {}
+  );
+
+  return {
+    type: STOP_BACKUP,
+    payload: request
+  };
+}
+
+export function stopBackupResponse(response) {
   return {
     type: DELETE_BACKUP_RESPONSE,
     payload: response

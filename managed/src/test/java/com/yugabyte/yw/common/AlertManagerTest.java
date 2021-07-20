@@ -2,31 +2,51 @@
 
 package com.yugabyte.yw.common;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.alerts.*;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertNotificationReport;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.YWNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+import javax.mail.MessagingException;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-
-import javax.mail.MessagingException;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertManagerTest extends FakeDBApplication {
@@ -61,10 +81,11 @@ public class AlertManagerTest extends FakeDBApplication {
 
   private AlertRoute defaultRoute;
 
+  private AlertRouteService alertRouteService;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultRoute = AlertRoute.createDefaultRoute(defaultCustomer.uuid);
     when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
 
     universe = ModelFactory.createUniverse();
@@ -76,8 +97,16 @@ public class AlertManagerTest extends FakeDBApplication {
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    am = new AlertManager(emailHelper, alertService, alertDefinitionGroupService, receiversManager);
+    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    am =
+        new AlertManager(
+            emailHelper,
+            alertService,
+            alertDefinitionGroupService,
+            alertRouteService,
+            receiversManager);
 
+    defaultRoute = alertRouteService.createDefaultRoute(defaultCustomer.uuid);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
   }
@@ -85,7 +114,7 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendEmail() {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    alert.setDefinitionUUID(definition.getUuid());
+    alert.setDefinitionUuid(definition.getUuid());
     alert.save();
 
     am.sendNotification(alert, report);
@@ -204,7 +233,7 @@ public class AlertManagerTest extends FakeDBApplication {
     AlertReceiver receiver1 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 1");
     AlertReceiver receiver2 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 2");
     AlertRoute route =
-        AlertRoute.create(
+        ModelFactory.createAlertRoute(
             defaultCustomer.uuid, ALERT_ROUTE_NAME, ImmutableList.of(receiver1, receiver2));
     group.setRouteUUID(route.getUuid());
     group.save();

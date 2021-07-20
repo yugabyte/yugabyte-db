@@ -34,6 +34,7 @@
 
 #include <curl/curl.h>
 #include <string>
+#include <vector>
 
 #include <boost/optional.hpp>
 
@@ -57,8 +58,13 @@ class EasyCurl {
 
   // Fetch the given URL into the provided buffer.
   // Any existing data in the buffer is replaced.
+  // The optional param 'headers' holds additional headers.
+  // e.g. {"Accept-Encoding: gzip"}
   CHECKED_STATUS FetchURL(
-      const std::string& url, faststring* dst, int64_t timeout_sec = kDefaultTimeoutSec);
+      const std::string& url,
+      faststring* dst,
+      int64_t timeout_sec = kDefaultTimeoutSec,
+      const std::vector<std::string>& headers = {});
 
   // Issue an HTTP POST to the given URL with the given data.
   // Returns results in 'dst' as above.
@@ -79,6 +85,10 @@ class EasyCurl {
 
   static const int64_t kDefaultTimeoutSec = 600;
 
+  void set_return_headers(bool v) {
+    return_headers_ = v;
+  }
+
  private:
   // Do a request. If 'post_data' is non-NULL, does a POST.
   // Otherwise, does a GET.
@@ -87,9 +97,12 @@ class EasyCurl {
       const boost::optional<const std::string>& post_data,
       const boost::optional<const std::string>& content_type,
       int64_t timeout_sec,
-      faststring* dst);
+      faststring* dst,
+      const std::vector<std::string>& headers = {});
 
   CURL* curl_;
+  // Whether to return the HTTP headers with the response.
+  bool return_headers_ = false;
   DISALLOW_COPY_AND_ASSIGN(EasyCurl);
 };
 

@@ -10,60 +10,45 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
-import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
-import com.yugabyte.yw.common.kms.services.AwsEARService;
-import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
-import static com.yugabyte.yw.common.AssertHelper.*;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
-
-import java.util.*;
-
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
-import com.yugabyte.yw.cloud.CloudAPI;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.TaskType;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.junit.runner.RunWith;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import org.mockito.runners.MockitoJUnitRunner;
-import play.Application;
-import play.Configuration;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
-import static play.test.Helpers.*;
-import static org.junit.Assert.assertThrows;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EncryptionAtRestControllerTest extends FakeDBApplication {

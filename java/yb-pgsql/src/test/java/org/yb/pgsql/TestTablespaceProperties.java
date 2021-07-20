@@ -112,12 +112,10 @@ public class TestTablespaceProperties extends BasePgSQLTest {
           "CREATE TABLE " +  customTable + "(a SERIAL) TABLESPACE testTablespace");
 
       setupStatement.execute(
-          "CREATE TABLE " + defaultTable + "(a int)");
+          "CREATE TABLE " + defaultTable + "(a int CONSTRAINT " + customIndex +
+          " UNIQUE USING INDEX TABLESPACE testTablespace)");
 
       // Create indexes in default and custom tablespaces.
-      setupStatement.execute("CREATE INDEX " + customIndex + " on " +
-          defaultTable + "(a) TABLESPACE testTablespace");
-
       setupStatement.execute("CREATE INDEX " + defaultIndexCustomTable + " on " +
           customTable + "(a)");
 
@@ -510,7 +508,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     final YBClient client = miniCluster.getClient();
     List<Master.ListTablesResponsePB.TableInfo> tables =
       client.getTablesList(table).getTableInfoList();
-    assertEquals(1, tables.size());
+    assertEquals("More than one table found with name " + table, 1, tables.size());
     final YBTable ybtable = client.openTableByUUID(
       tables.get(0).getId().toStringUtf8());
     return ybtable.getTabletsLocations(30000);

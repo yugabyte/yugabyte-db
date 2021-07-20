@@ -2,10 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
-import java.util.UUID;
-
 import com.yugabyte.yw.commissioner.Common.CloudType;
-
+import java.util.UUID;
 import play.data.validation.Constraints;
 
 public class ImportUniverseFormData {

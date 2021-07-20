@@ -3,13 +3,19 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.ebean.Finder;
 import io.ebean.Model;
+import java.util.List;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
-
-import javax.persistence.*;
-import java.util.UUID;
 
 @Table(
     uniqueConstraints =
@@ -88,6 +94,16 @@ public class AsyncReplicationRelationship extends Model {
         .eq("target_universe_uuid", targetUniverseUUID)
         .eq("target_table_id", targetTableID)
         .findOne();
+  }
+
+  public static List<AsyncReplicationRelationship> getByTargetUniverseUUID(
+      UUID targetUniverseUUID) {
+    return find.query().where().eq("target_universe_uuid", targetUniverseUUID).findList();
+  }
+
+  public static List<AsyncReplicationRelationship> getBySourceUniverseUUID(
+      UUID sourceUniverseUUID) {
+    return find.query().where().eq("source_universe_uuid", sourceUniverseUUID).findList();
   }
 
   public static boolean delete(UUID asyncReplicationRelationshipUUID) {

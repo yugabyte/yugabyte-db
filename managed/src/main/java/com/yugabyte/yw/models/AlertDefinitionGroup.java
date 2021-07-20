@@ -10,27 +10,32 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.experimental.Accessors;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
 import java.util.Date;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-
-import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
+import play.data.validation.Constraints;
 
 @Entity
 @Data
@@ -42,7 +47,7 @@ public class AlertDefinitionGroup extends Model {
     NAME("name"),
     ACTIVE("active"),
     TARGET_TYPE("targetType"),
-    CREATED_TIME("createdTime"),
+    CREATE_TIME("createTime"),
     ALERT_COUNT("alertCount");
 
     private final String sortField;
@@ -95,7 +100,7 @@ public class AlertDefinitionGroup extends Model {
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  private Date createTime = new Date();
+  private Date createTime = nowWithoutMillis();
 
   @Constraints.Required
   @Enumerated(EnumType.STRING)
@@ -111,6 +116,11 @@ public class AlertDefinitionGroup extends Model {
   @DbJson
   @Column(columnDefinition = "Text", nullable = false)
   private Map<Severity, AlertDefinitionGroupThreshold> thresholds;
+
+  @Constraints.Required
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private Unit thresholdUnit;
 
   @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
@@ -171,6 +181,7 @@ public class AlertDefinitionGroup extends Model {
         && Objects.equals(getTemplate(), other.getTemplate())
         && Objects.equals(getDurationSec(), other.getDurationSec())
         && Objects.equals(getThresholds(), other.getThresholds())
+        && Objects.equals(getThresholdUnit(), other.getThresholdUnit())
         && Objects.equals(isActive(), other.isActive())) {
       return true;
     }
