@@ -90,7 +90,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
             GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
             std::forward<Args>(args)...);
     LOG(INFO) << "Run tool: " << AsString(command);
-    return Subprocess::Call(command, error_msg, /* read_stderr */ true);
+    return Subprocess::Call(command, error_msg, StdFdTypes{StdFdType::kErr});
   }
 
   template <class... Args>
