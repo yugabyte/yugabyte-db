@@ -270,6 +270,12 @@ class Slice {
 
   size_t DynamicMemoryUsage() const { return 0; }
 
+  // Return a Slice representing bytes for any type which is laid out contiguously in memory.
+  template<class T, class = typename std::enable_if<std::is_pod<T>::value, void>::type>
+  static Slice FromPod(const T* data) {
+    return Slice(pointer_cast<const char*>(data), sizeof(*data));
+  }
+
  private:
   friend bool operator==(const Slice& x, const Slice& y);
 

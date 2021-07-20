@@ -802,11 +802,13 @@ class PrepareTransactionWriteBatchHelper {
   PrepareTransactionWriteBatchHelper(HybridTime hybrid_time,
                                      rocksdb::WriteBatch* rocksdb_write_batch,
                                      const TransactionId& transaction_id,
+                                     const SubTransactionId subtransaction_id,
                                      const Slice& replicated_batches_state,
                                      IntraTxnWriteId* intra_txn_write_id)
       : hybrid_time_(hybrid_time),
         rocksdb_write_batch_(rocksdb_write_batch),
         transaction_id_(transaction_id),
+        subtransaction_id_(subtransaction_id),
         replicated_batches_state_(replicated_batches_state),
         intra_txn_write_id_(intra_txn_write_id) {
   }
@@ -831,11 +833,26 @@ class PrepareTransactionWriteBatchHelper {
     const auto write_id_value_type = ValueTypeAsChar::kWriteId;
     const auto row_lock_value_type = ValueTypeAsChar::kRowLock;
     IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(*intra_txn_write_id_);
-    std::array<Slice, 5> value = {{
+
+    const auto subtransaction_value_type = ValueTypeAsChar::kSubTransactionId;
+    SubTransactionId big_endian_subtxn_id;
+    Slice subtransaction_marker;
+    Slice subtransaction_id;
+    if (subtransaction_id_ > kMinSubTransactionId) {
+      subtransaction_marker = Slice(&subtransaction_value_type, 1);
+      big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
+      subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
+    } else {
+      DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
+    }
+
+    std::array<Slice, 7> value = {{
         Slice(&transaction_value_type, 1),
         transaction_id_.AsSlice(),
+        subtransaction_marker,
+        subtransaction_id,
         Slice(&write_id_value_type, 1),
-        Slice(pointer_cast<char*>(&big_endian_write_id), sizeof(big_endian_write_id)),
+        Slice::FromPod(&big_endian_write_id),
         value_slice,
     }};
     // Store a row lock indicator rather than data (in value_slice) for row lock intents.
@@ -915,6 +932,7 @@ class PrepareTransactionWriteBatchHelper {
   HybridTime hybrid_time_;
   rocksdb::WriteBatch* rocksdb_write_batch_;
   const TransactionId& transaction_id_;
+  const SubTransactionId subtransaction_id_;
   Slice replicated_batches_state_;
   IntentTypeSet strong_intent_types_;
   std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
@@ -945,8 +963,13 @@ void PrepareTransactionWriteBatch(
 
   RowMarkType row_mark = GetRowMarkTypeFromPB(put_batch);
 
+  auto subtransaction_id = put_batch.has_subtransaction()
+      ? put_batch.subtransaction().subtransaction_id()
+      : kMinSubTransactionId;
+
   PrepareTransactionWriteBatchHelper helper(
-      hybrid_time, rocksdb_write_batch, transaction_id, replicated_batches_state, write_id);
+      hybrid_time, rocksdb_write_batch, transaction_id, subtransaction_id, replicated_batches_state,
+      write_id);
 
   if (!put_batch.write_pairs().empty()) {
     if (IsValidRowMarkType(row_mark)) {
@@ -997,21 +1020,26 @@ CHECKED_STATUS IntentToWriteRequest(
   auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
 
   if (intent.types.Test(IntentType::kStrongWrite)) {
-    IntraTxnWriteId stored_write_id;
-    Slice intent_value;
-    RETURN_NOT_OK(DecodeIntentValue(
-        intent_iter->value(), transaction_id_slice, &stored_write_id, &intent_value));
+    auto decoded_value = VERIFY_RESULT(
+        DecodeIntentValue(intent_iter->value(), &transaction_id_slice));
 
     // Write id should match to one that were calculated during append of intents.
     // Doing it just for sanity check.
-    DCHECK_GE(stored_write_id, *write_id)
-      << "Value: " << intent_iter->value().ToDebugHexString();
-    *write_id = stored_write_id;
+    RSTATUS_DCHECK_GE(
+        decoded_value.write_id, *write_id,
+        Corruption,
+        Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
+               *write_id,
+               decoded_value.write_id,
+               intent_iter->value().ToDebugHexString()));
+    *write_id = decoded_value.write_id;
 
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
-    if (intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+    if (decoded_value.body.starts_with(ValueTypeAsChar::kRowLock)) {
       return Status::OK();
     }
+
+    // TODO(savepoints) -- if subtransaction_id is aborted, skip applying this intent.
 
     // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
     // Time will be added when writing batch to RocksDB.
@@ -1021,7 +1049,7 @@ CHECKED_STATUS IntentToWriteRequest(
     }};
     std::array<Slice, 2> value_parts = {{
         intent.doc_ht,
-        intent_value,
+        decoded_value.body,
     }};
 
     // Useful when debugging transaction failure.
@@ -1095,6 +1123,7 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* intents_batch) {
+  // TODO(savepoints) -- skip applying intents belonging to aborted subtransactions.
   SCHECK_EQ((regular_batch != nullptr) + (intents_batch != nullptr), 1, InvalidArgument,
             "Exactly one write batch should be non-null, either regular or intents");
 

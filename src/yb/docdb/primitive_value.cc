@@ -24,6 +24,7 @@
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/intent.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -232,6 +233,8 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId:
       return Substitute("TransactionId($0)", uuid_val_.ToString());
+    case ValueType::kSubTransactionId:
+      return Substitute("SubTransactionId($0)", uint32_val_);
     case ValueType::kWriteId:
       return Format("WriteId($0)", int32_val_);
     case ValueType::kIntentTypeSet:
@@ -295,6 +298,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       key_bytes->AppendUInt32(uint32_val_);
       return;
@@ -472,6 +476,7 @@ string PrimitiveValue::ToValue() const {
       return result;
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       AppendBigEndianUInt32(uint32_val_, &result);
@@ -755,6 +760,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       if (slice->size() < sizeof(uint32_t)) {
         return STATUS_SUBSTITUTE(Corruption,
@@ -1067,6 +1073,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending:
       if (slice.size() != sizeof(uint32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -1367,6 +1374,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
 
     case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
@@ -1451,6 +1459,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kUInt32Descending:
       return CompareUsingLessThan(other.uint32_val_, uint32_val_);
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
     case ValueType::kUInt64Descending:

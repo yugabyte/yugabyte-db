@@ -20,6 +20,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 #include "yb/docdb/value_type.h"
+#include "yb/gutil/endian.h"
 
 namespace yb {
 namespace docdb {
@@ -134,27 +135,38 @@ bool HasStrong(IntentTypeSet inp) {
                                    encoded_intent_value.ToDebugHexString(), \
                                    transaction_id_slice.ToDebugHexString()))
 
-CHECKED_STATUS DecodeIntentValue(
-    const Slice& encoded_intent_value, const Slice& transaction_id_slice, IntraTxnWriteId* write_id,
-    Slice* body) {
-  Slice intent_value = encoded_intent_value;
-  RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
-  INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
-      "wrong transaction id");
-  intent_value.remove_prefix(TransactionId::StaticSize());
+Result<DecodedIntentValue> DecodeIntentValue(
+    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice) {
+  DecodedIntentValue decoded_value;
+  auto intent_value = encoded_intent_value;
+  auto transaction_id_slice = Slice();
+
+  if (verify_transaction_id_slice) {
+    transaction_id_slice = *verify_transaction_id_slice;
+    RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kTransactionId));
+    INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
+        "wrong transaction id");
+    intent_value.remove_prefix(TransactionId::StaticSize());
+  } else {
+    decoded_value.transaction_id = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&intent_value));
+    transaction_id_slice = decoded_value.transaction_id.AsSlice();
+  }
+
+  if (intent_value.TryConsumeByte(ValueTypeAsChar::kSubTransactionId)) {
+    decoded_value.subtransaction_id = Load<SubTransactionId, BigEndian>(intent_value.data());
+    intent_value.remove_prefix(sizeof(SubTransactionId));
+  } else {
+    decoded_value.subtransaction_id = kMinSubTransactionId;
+  }
 
   RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
   INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
-  if (write_id) {
-    *write_id = BigEndian::Load32(intent_value.data());
-  }
+  decoded_value.write_id = BigEndian::Load32(intent_value.data());
   intent_value.remove_prefix(sizeof(IntraTxnWriteId));
 
-  if (body) {
-    *body = intent_value;
-  }
+  decoded_value.body = intent_value;
 
-  return Status::OK();
+  return decoded_value;
 }
 
 IntentTypeSet ObsoleteIntentTypeToSet(uint8_t obsolete_intent_type) {
