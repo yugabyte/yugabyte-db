@@ -58,7 +58,7 @@ class TabletSnapshots : public TabletComponent {
   CHECKED_STATUS Restore(SnapshotOperationState* tx_state);
 
   // Delete snapshot for this tablet.
-  CHECKED_STATUS Delete(SnapshotOperationState* tx_state);
+  CHECKED_STATUS Delete(const SnapshotOperationState& tx_state);
 
   // Prepares the operation context for a snapshot operation.
   CHECKED_STATUS Prepare(SnapshotOperation* operation);

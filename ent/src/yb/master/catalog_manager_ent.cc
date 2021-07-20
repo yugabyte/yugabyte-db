@@ -1420,10 +1420,6 @@ void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletI
   WARN_NOT_OK(ScheduleTask(call), "Failed to send delete snapshot request");
 }
 
-Status CatalogManager::CreateSysCatalogSnapshot(const tablet::CreateSnapshotData& data) {
-  return tablet_peer()->tablet()->snapshots().Create(data);
-}
-
 Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;

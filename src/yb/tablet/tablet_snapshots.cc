@@ -323,9 +323,9 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
   return dest_dir;
 }
 
-Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
+Status TabletSnapshots::Delete(const SnapshotOperationState& tx_state) {
   const std::string top_snapshots_dir = metadata().snapshots_dir();
-  const auto& snapshot_id = tx_state->request()->snapshot_id();
+  const auto& snapshot_id = tx_state.request()->snapshot_id();
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
   const std::string snapshot_dir = JoinPathSegments(
       top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
@@ -348,8 +348,8 @@ Status TabletSnapshots::Delete(SnapshotOperationState* tx_state) {
   }
 
   docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(tx_state->op_id());
-  frontier.set_hybrid_time(tx_state->hybrid_time());
+  frontier.set_op_id(tx_state.op_id());
+  frontier.set_hybrid_time(tx_state.hybrid_time());
   // Here we are just recording the fact that we've executed the "delete snapshot" Raft operation
   // so that it won't get replayed if we crash. No need to force the flushed frontier to be the
   // exact value set above.

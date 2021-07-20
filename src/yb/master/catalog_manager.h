@@ -460,6 +460,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
+  // Tablet peer for the sys catalog tablet's peer.
+  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const;
+
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const;
@@ -1405,9 +1408,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Policy for load balancing tablets on tablet servers.
   std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
-
-  // Tablet peer for the sys catalog tablet's peer.
-  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const;
 
   // Use the Raft config that has been bootstrapped to update the in-memory state of master options
   // and also the on-disk state of the consensus meta object.
