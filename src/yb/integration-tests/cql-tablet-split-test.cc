@@ -11,10 +11,21 @@
 // under the License.
 //
 
-#include "yb/consensus/consensus.h"
+#include <atomic>
+#include <thread>
 
+#include <gtest/gtest.h>
+
+#include "yb/consensus/consensus.h"
 #include "yb/integration-tests/cql_test_base.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;  // NOLINT
 
@@ -59,7 +70,7 @@ size_t GetNumActiveTablets(MiniCluster* cluster) {
 
 } // namespace
 
-class CqlTabletSplitTest : public CqlTestBase {
+class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     FLAGS_yb_num_shards_per_tserver = 1;
@@ -343,6 +354,162 @@ TEST_F(CqlTabletSplitTest, SecondaryIndexWithDrop) {
     ASSERT_OK(session_.ExecuteQuery("DROP TABLE t"));
     LOG(INFO) << "Iteration: " << iter << " deleted test table";
   }
+}
+
+class CqlTabletSplitTestBatchTimeseries : public CqlTestBase<ExternalMiniCluster> {
+ protected:
+  void SetUpFlags() override {
+    mini_cluster_opt_.extra_master_flags.push_back(Format("--yb_num_shards_per_tserver=$0", 1));
+    mini_cluster_opt_.extra_master_flags.push_back(Format(
+        "--tablet_split_size_threshold_bytes=$0", 300_KB));
+    mini_cluster_opt_.extra_tserver_flags.push_back(Format("--db_write_buffer_size=$0", 100_KB));
+  }
+};
+
+struct DataSource {
+  std::string metric_id;
+  uint64_t data_emit_start_ts = 1;
+  uint64_t last_emitted_ts = -1;
+};
+
+TEST_F(CqlTabletSplitTestBatchTimeseries, Run) {
+  const auto kWriterThreads = 4;
+  const auto kReaderThreads = 4;
+  const auto kMinMetricsCount = 10000;
+  const auto kMaxMetricsCount = 20000;
+  const auto kReadBatchSize = 100;
+  const auto kWriteBatchSize = 500;
+  const auto kReadBackDeltaTime = 180;
+
+  const auto kMaxWriteErrors = 100;
+  const auto kMaxReadErrors = 100;
+
+  const auto kTableTtlSeconds = MonoDelta(24h).ToSeconds();
+
+  const auto kRunTime = 200s;
+
+  const auto kTableName = "batch_timeseries_test";
+
+  std::atomic_int num_reads(0);
+  std::atomic_int num_writes(0);
+  std::atomic_int num_read_errors(0);
+  std::atomic_int num_write_errors(0);
+
+  Random r(/* seed */ 29383);
+  const auto num_metrics = r.Uniform(kMaxMetricsCount - kMinMetricsCount) + kMinMetricsCount;
+  std::vector<DataSource> data_sources;
+  for (int i = 0; i < num_metrics; ++i) {
+    DataSource source{Format("metric-$0", i)};
+    data_sources.push_back(source);
+  }
+
+  auto session = CHECK_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(
+      session.ExecuteQuery(Format(
+          "CREATE TABLE $0 ("
+            "metric_id varchar, "
+            "ts bigint, "
+            "value varchar, "
+            "primary key (metric_id, ts)) "
+            "WITH default_time_to_live = $1", kTableName, kTableTtlSeconds)));
+
+  auto prepared_write = ASSERT_RESULT(session.Prepare(Format(
+      "INSERT INTO $0 (metric_id, ts, value) VALUES (?, ?, ?)", kTableName)));
+
+  auto prepared_read = ASSERT_RESULT(session.Prepare(Format(
+      "SELECT * from $0 WHERE metric_id = ? AND ts > ? AND ts < ? ORDER BY ts DESC LIMIT ?",
+      kTableName)));
+
+  std::mutex random_mutex;
+  auto get_random_source = [&r, &random_mutex, &data_sources]() {
+    std::lock_guard<decltype(random_mutex)> lock(random_mutex);
+    auto index = r.Uniform(data_sources.size());
+    return data_sources.at(index);
+  };
+
+  auto get_value = [&r, &random_mutex](int ts) {
+    std::lock_guard<decltype(random_mutex)> lock(random_mutex);
+    return Format("0", r.Next32() + ts);
+  };
+
+  TestThreadHolder io_threads;
+  auto reader = [&, &stop = io_threads.stop_flag()]() -> void {
+    while (!stop.load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(1s * kTimeMultiplier);
+      auto source = get_random_source();
+      if (source.data_emit_start_ts > source.last_emitted_ts) {
+        continue;
+      }
+      const int64_t end_ts = source.last_emitted_ts + 1;
+      const int64_t start_ts = end_ts - kReadBackDeltaTime;
+
+      auto stmt = prepared_read.Bind();
+      stmt.Bind(0, source.metric_id);
+      stmt.Bind(1, start_ts);
+      stmt.Bind(2, end_ts);
+      stmt.Bind(3, kReadBatchSize);
+      auto status = session.Execute(stmt);
+      if (!status.ok()) {
+        LOG(INFO) << "Read failed: " << AsString(status);
+        num_read_errors++;
+      } else {
+        num_reads += 1;
+        YB_LOG_EVERY_N_SECS(INFO, 5) << "Completed " << num_reads << " reads.";
+      }
+    }
+  };
+
+  auto writer = [&, &stop = io_threads.stop_flag()]() -> void {
+    while (!stop.load(std::memory_order_acquire)) {
+      auto source = get_random_source();
+
+      if (source.last_emitted_ts == -1) {
+        source.last_emitted_ts = source.data_emit_start_ts;
+      }
+      int64_t ts = source.last_emitted_ts;
+      CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+
+      for (int i = 0; i < kWriteBatchSize; ++i) {
+        auto stmt = prepared_write.Bind();
+        stmt.Bind(0, source.metric_id);
+        stmt.Bind(1, ts);
+        stmt.Bind(2, Format("$0", get_value(ts)));
+        batch.Add(&stmt);
+        ts++;
+      }
+
+      auto status = session.ExecuteBatch(batch);
+      if (!status.ok()) {
+        LOG(INFO) << "Write failed: " << AsString(status);
+        num_write_errors++;
+      } else {
+        num_writes += kWriteBatchSize;
+        YB_LOG_EVERY_N_SECS(INFO, 5) << "Completed " << num_writes << " writes.";
+        source.last_emitted_ts = ts;
+      }
+      std::this_thread::sleep_for(1s * kTimeMultiplier);
+    }
+  };
+
+  for (int i = 0; i < kReaderThreads; ++i) {
+    io_threads.AddThreadFunctor(reader);
+  }
+  for (int i = 0; i < kWriterThreads; ++i) {
+    io_threads.AddThreadFunctor(writer);
+  }
+
+  auto stop_time = CoarseMonoClock::Now() + kRunTime;
+  while (
+      CoarseMonoClock::Now() < stop_time &&
+      num_read_errors < kMaxReadErrors &&
+      num_write_errors < kMaxWriteErrors) {
+    std::this_thread::sleep_for(1s);
+  }
+
+  io_threads.Stop();
+  EXPECT_LE(num_read_errors, kMaxReadErrors);
+  EXPECT_LE(num_write_errors, kMaxWriteErrors);
 }
 
 }  // namespace yb
