@@ -52,6 +52,7 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
+#include "access/ybcam.h"
 
 /*
  * Hack to ensure that the next CommandCounterIncrement() will call
@@ -157,12 +158,15 @@ Datum YBCGetYBTupleIdFromTuple(Relation rel,
 					TupleDescAttr(tupleDesc, attnum - 1)->atttypid : InvalidOid;
 
 			next_attr->type_entity = YBCDataTypeFromOidMod(attnum, type_id);
+			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
 			next_attr->datum = heap_getattr(tuple, attnum, tupleDesc, &next_attr->is_null);
 		} else {
 			next_attr->datum = 0;
 			next_attr->is_null = false;
 			next_attr->type_entity = NULL;
+			next_attr->collation_id = InvalidOid;
 		}
+		YBSetupAttrCollationInfo(next_attr);
 		++next_attr;
 	}
 	bms_free(pkey);
@@ -176,7 +180,7 @@ Datum YBCGetYBTupleIdFromTuple(Relation rel,
  * Bind ybctid to the statement.
  */
 static void YBCBindTupleId(YBCPgStatement pg_stmt, Datum tuple_id) {
-	YBCPgExpr ybc_expr = YBCNewConstant(pg_stmt, BYTEAOID, tuple_id,
+	YBCPgExpr ybc_expr = YBCNewConstant(pg_stmt, BYTEAOID, InvalidOid, tuple_id,
 										false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(pg_stmt, YBTupleIdAttributeNumber, ybc_expr));
 }
@@ -260,6 +264,23 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 		}
 
 		Oid   type_id = GetTypeId(attnum, tupleDesc);
+		/*
+		 * Postgres does not populate the column collation in tupleDesc but
+		 * we must use the column collation in order to correctly compute the
+		 * collation sortkey which later can be stored in DocDB. For example,
+		 *   create table foo(id text collate "en-US-x-icu" primary key);
+		 *   insert into foo values (1024);
+		 *   insert into foo values ('2048' collate "C");
+		 * Postgres will convert the integer 1024 to a text constant '1024'
+		 * with the default collation. The text constant '2048' will retain
+		 * its explicit collate "C". In both cases, in order to correctly
+		 * compute collation sortkey, we must use the column collation
+		 * "en-US-x-icu". When those two text constants are stored in the
+		 * column, they will have the column collation when read out later.
+		 * Postgres could have also converted both collations to the column
+		 * collation but it appears that collation is not part of a type.
+		 */
+		Oid   collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
 		Datum datum   = heap_getattr(tuple, attnum, tupleDesc, &is_null);
 
 		/* Check not-null constraint on primary key early */
@@ -271,7 +292,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 		}
 
 		/* Add the column value to the insert request */
-		YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt, type_id, datum, is_null);
+		YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt, type_id, collation_id, datum, is_null);
 		HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum, ybc_expr));
 	}
 
@@ -299,9 +320,10 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 /*
  * Utility method to bind const to column
  */
-static void BindColumn(YBCPgStatement stmt, int attr_num, Oid type_id, Datum datum, bool is_null)
+static void BindColumn(YBCPgStatement stmt, int attr_num, Oid type_id,
+					   Oid collation_id, Datum datum, bool is_null)
 {
-  YBCPgExpr expr = YBCNewConstant(stmt, type_id, datum, is_null);
+  YBCPgExpr expr = YBCNewConstant(stmt, type_id, collation_id, datum, is_null);
   HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
 }
 
@@ -329,10 +351,11 @@ static void PrepareIndexWriteStmt(YBCPgStatement stmt,
 	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
 	{
 		Oid   type_id = GetTypeId(attnum, tupdesc);
+		Oid   collation_id = ybc_get_attcollation(tupdesc, attnum);
 		Datum value   = values[attnum - 1];
 		bool  is_null = isnull[attnum - 1];
 		has_null_attr = has_null_attr || is_null;
-		BindColumn(stmt, attnum, type_id, value, is_null);
+		BindColumn(stmt, attnum, type_id, collation_id, value, is_null);
 	}
 
 	const bool unique_index = index->rd_index->indisunique;
@@ -346,6 +369,7 @@ static void PrepareIndexWriteStmt(YBCPgStatement stmt,
 		BindColumn(stmt,
 		           YBUniqueIdxKeySuffixAttributeNumber,
 		           BYTEAOID,
+		           InvalidOid,
 		           ybbasectid,
 		           !has_null_attr /* is_null */);
 
@@ -358,6 +382,7 @@ static void PrepareIndexWriteStmt(YBCPgStatement stmt,
 		BindColumn(stmt,
 		           YBIdxBaseTupleIdAttributeNumber,
 		           BYTEAOID,
+		           InvalidOid,
 		           ybbasectid,
 		           false /* is_null */);
 }
@@ -460,9 +485,11 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 	{
 		Oid type_id = GetTypeId(attnum, tupdesc);
 		next_attr->type_entity = YBCDataTypeFromOidMod(attnum, type_id);
+		next_attr->collation_id = ybc_get_attcollation(tupdesc, attnum);
 		next_attr->attr_num = attnum;
 		next_attr->datum = values[attnum - 1];
 		next_attr->is_null = false;
+		YBSetupAttrCollationInfo(next_attr);
 		++next_attr;
 	}
 	YBCFillUniqueIndexNullAttribute(result);
@@ -599,7 +626,7 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 	}
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, ybctid,
+	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid, ybctid,
 										   false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
@@ -696,7 +723,7 @@ bool YBCExecuteUpdate(Relation rel,
 	}
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, ybctid,
+	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid, ybctid,
 										   false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(update_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
@@ -714,6 +741,7 @@ bool YBCExecuteUpdate(Relation rel,
 		AttrNumber attnum = att_desc->attnum;
 		int32_t type_id = att_desc->atttypid;
 		int32_t type_mod = att_desc->atttypmod;
+		int32_t coll_id = att_desc->attcollation;
 
 		/* Skip virtual (system) and dropped columns */
 		if (!IsRealYBColumn(rel, attnum))
@@ -735,7 +763,8 @@ bool YBCExecuteUpdate(Relation rel,
 			                                                   expr,
 			                                                   attnum,
 			                                                   type_id,
-			                                                   type_mod);
+			                                                   type_mod,
+			                                                   coll_id);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 
@@ -745,8 +774,8 @@ bool YBCExecuteUpdate(Relation rel,
 		{
 			bool is_null = false;
 			Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
-			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id,
-												d, is_null);
+			int32_t collation_id = att_desc->attcollation;
+			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 		}
@@ -809,7 +838,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 								  &delete_stmt));
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, tuple->t_ybctid,
+	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid, tuple->t_ybctid,
 										   false /* is_null */);
 
 	/* Delete row from foreign key cache */
@@ -868,8 +897,9 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 
 		bool is_null = false;
 		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
-		YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid,
-											d, is_null);
+		YBCPgExpr ybc_expr = YBCNewConstant(
+			update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid,
+			TupleDescAttr(tupleDesc, idx)->attcollation, d, is_null);
 		HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 	}
 

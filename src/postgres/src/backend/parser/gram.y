@@ -882,6 +882,7 @@ stmtmulti:	stmtmulti ';' stmt
 stmt :
 			/*EMPTY*/
 				{ $$ = NULL; }
+			| AlterCollationStmt
 			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
 			| AlterDefaultPrivilegesStmt
@@ -985,7 +986,6 @@ stmt :
 			| CreateStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
 
 			/* Not supported statements */
-			| AlterCollationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
@@ -6300,7 +6300,8 @@ DefineStmt:
 				}
 			| CREATE COLLATION IF_P NOT EXISTS any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE COLLATION");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "CREATE COLLATION");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_COLLATION;
 					n->args = NIL;
@@ -6311,7 +6312,8 @@ DefineStmt:
 				}
 			| CREATE COLLATION any_name FROM any_name
 				{
-					parser_ybc_not_support(@1, "CREATE COLLATION");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "CREATE COLLATION");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_COLLATION;
 					n->args = NIL;
@@ -6321,7 +6323,8 @@ DefineStmt:
 				}
 			| CREATE COLLATION IF_P NOT EXISTS any_name FROM any_name
 				{
-					parser_ybc_not_support(@1, "CREATE COLLATION");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "CREATE COLLATION");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_COLLATION;
 					n->args = NIL;
@@ -6843,7 +6846,11 @@ drop_type_any_name:
 				{
 					$$ = OBJECT_FOREIGN_TABLE;
 				}
-			| COLLATION	{ parser_ybc_not_support(@1, "DROP COLLATION"); $$ = OBJECT_COLLATION; }
+			| COLLATION	{
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "DROP COLLATION");
+					$$ = OBJECT_COLLATION;
+				}
 			| CONVERSION_P { parser_ybc_not_support(@1, "DROP CONVERSION"); $$ = OBJECT_CONVERSION; }
 			| STATISTICS { parser_ybc_not_support(@1, "DROP STATISTICS"); $$ = OBJECT_STATISTIC_EXT; }
 			| TEXT_P SEARCH PARSER
@@ -8172,7 +8179,8 @@ index_including_params:	index_elem						{ $$ = list_make1($1); }
 		;
 
 opt_collate: COLLATE any_name						{
-					parser_ybc_not_support(@1, "CREATE INDEX COLLATE");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "CREATE INDEX COLLATE");
                                                       $$ = $2; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
@@ -9239,7 +9247,8 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER COLLATION any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER COLLATION");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "ALTER COLLATION");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_COLLATION;
 					n->object = (Node *) $3;
@@ -9870,7 +9879,8 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER COLLATION any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER COLLATION SET SCHEMA");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "ALTER COLLATION SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_COLLATION;
 					n->object = (Node *) $3;
@@ -11181,7 +11191,8 @@ drop_option:
 
 AlterCollationStmt: ALTER COLLATION any_name REFRESH VERSION_P
 				{
-					parser_ybc_not_support(@1, "ALTER COLLATION");
+					if (!YBIsCollationEnabled())
+						parser_ybc_not_support(@1, "ALTER COLLATION");
 					AlterCollationStmt *n = makeNode(AlterCollationStmt);
 					n->collname = $3;
 					$$ = (Node *)n;

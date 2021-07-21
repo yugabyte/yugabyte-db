@@ -39,6 +39,46 @@ using std::make_shared;
 using std::placeholders::_1;
 using std::placeholders::_2;
 
+namespace {
+// Collation flags. kCollationMarker ensures the collation byte is non-zero.
+constexpr uint8_t kDeterministicCollation = 0x01;
+constexpr uint8_t kCollationMarker = 0x80;
+
+string MakeCollationEncodedString(
+  const char* value, int64_t bytes, uint8_t collation_flags, const char* sortkey) {
+
+  // A postgres character value cannot have \0 byte.
+  DCHECK(memchr(value, '\0', bytes) == nullptr);
+
+  // We need to build a collation encoded string to include both the
+  // collation sortkey and the original character value.
+  string collstr;
+  collstr.reserve(2 + strlen(sortkey) + 1 + bytes);
+
+  // We set the first byte to '\0' which indicates that collstr is
+  // collation encoded. We also put the collation flags byte in case
+  // it is of any use in the future.
+  collstr.append(1, '\0');
+  static_assert(sizeof(collation_flags) == 1, "invalid size");
+  collstr.append(1, collation_flags);
+
+  // Add the sort key. This will appends a copy of sortkey. The sortkey itself
+  // was allocated using palloc and therefore will be freed automatically at
+  // the end of each transaction.
+  collstr.append(sortkey);
+
+  // Append a \0 byte which acts as a separator between sort key and the
+  // original value.
+  collstr.append(1, '\0');
+
+  // Add the original value.
+  collstr.append(value, bytes);
+
+  return collstr;
+}
+
+} // namespace
+
 //--------------------------------------------------------------------------------------------------
 // Mapping Postgres operator names to YugaByte opcodes.
 // When constructing expresions, Postgres layer will pass the operator name.
@@ -61,8 +101,12 @@ const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
   { "eval_expr_call", PgExpr::Opcode::PG_EXPR_EVAL_EXPR_CALL }
 };
 
-PgExpr::PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs)
+PgExpr::PgExpr(Opcode opcode,
+               const YBCPgTypeEntity *type_entity,
+               bool collate_is_valid_non_c,
+               const PgTypeAttrs *type_attrs)
     : opcode_(opcode), type_entity_(type_entity),
+      collate_is_valid_non_c_(collate_is_valid_non_c),
       type_attrs_(type_attrs ? *type_attrs : PgTypeAttrs({0})) {
   DCHECK(type_entity_) << "Datatype of result must be specified for expression";
   DCHECK(type_entity_->yb_type != YB_YQL_DATA_TYPE_NOT_SUPPORTED &&
@@ -178,6 +222,46 @@ void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int
     << "Data received from DocDB does not have expected format";
 
   pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
+  yb_cursor->remove_prefix(data_size);
+}
+
+void PgExpr::TranslateCollateText(
+    Slice *yb_cursor, const PgWireDataHeader& header, int index,
+    const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs, PgTuple *pg_tuple) {
+  if (header.is_null()) {
+    return pg_tuple->WriteNull(index, header);
+  }
+
+  // Get data from RPC buffer.
+  int64_t data_size;
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
+  yb_cursor->remove_prefix(read_size);
+
+  // See comments in PgExpr::TranslateText.
+  const char* text = yb_cursor->cdata();
+  int64_t text_len = data_size - 1;
+
+  DCHECK(text_len >= 0 && text[text_len] == '\0')
+    << "Data received from DocDB does not have expected format";
+  int8_t first_byte = text[0];
+  if (first_byte != '\0') {
+    // We may get the original value directly from DocDB. Remove this FATAL
+    // when DocDB can do that.
+    LOG(FATAL) << "String is not collation encoded: " << text;
+    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
+  } else {
+    // This is a collation encoded string, we need to fetch the original value.
+    CHECK_GE(text_len, 3);
+    uint8_t collation_flags = text[1];
+    CHECK_EQ(collation_flags, kCollationMarker | kDeterministicCollation);
+    // Skip the collation and sortkey get the original character value.
+    const char *p = static_cast<const char*>(memchr(text + 2, '\0', text_len - 2));
+    CHECK(p);
+    ++p;
+    const char* end = text + text_len;
+    CHECK_LE(p, end);
+    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(p, end - p, type_attrs));
+  }
   yb_cursor->remove_prefix(data_size);
 }
 
@@ -325,7 +409,11 @@ void PgExpr::InitializeTranslateData() {
       break;
 
     case YB_YQL_DATA_TYPE_STRING:
-      translate_data_ = TranslateText;
+      if (collate_is_valid_non_c_) {
+        translate_data_ = TranslateCollateText;
+      } else {
+        translate_data_ = TranslateText;
+      }
       break;
 
     case YB_YQL_DATA_TYPE_BOOL:
@@ -360,9 +448,14 @@ void PgExpr::InitializeTranslateData() {
 
 //--------------------------------------------------------------------------------------------------
 
-PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
+PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
+                       bool collate_is_valid_non_c,
+                       const char *collation_sortkey,
+                       uint64_t datum,
+                       bool is_null,
                        PgExpr::Opcode opcode)
-    : PgExpr(opcode, type_entity) {
+    : PgExpr(opcode, type_entity, collate_is_valid_non_c),
+      collation_sortkey_(collation_sortkey) {
 
   switch (type_entity_->yb_type) {
     case YB_YQL_DATA_TYPE_INT8:
@@ -424,7 +517,17 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
         char *value;
         int64_t bytes = type_entity_->datum_fixed_size;
         type_entity_->datum_to_yb(datum, &value, &bytes);
-        ql_value_.set_string_value(value, bytes);
+        if (collate_is_valid_non_c_) {
+          CHECK(collation_sortkey_);
+          // Once YSQL supports non-deterministic collations, we need to compute
+          // the deterministic attribute properly.
+          string collstr = MakeCollationEncodedString(value, bytes,
+            kCollationMarker | kDeterministicCollation, collation_sortkey_);
+          ql_value_.set_string_value(std::move(collstr));
+        } else {
+          CHECK(!collation_sortkey_);
+          ql_value_.set_string_value(value, bytes);
+        }
       }
       break;
 
@@ -488,9 +591,10 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
 }
 
 PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
+                       bool collate_is_valid_non_c,
                        PgDatumKind datum_kind,
                        PgExpr::Opcode opcode)
-    : PgExpr(opcode, type_entity) {
+    : PgExpr(opcode, type_entity, collate_is_valid_non_c), collation_sortkey_(nullptr) {
   switch (datum_kind) {
     case PgDatumKind::YB_YQL_DATUM_STANDARD_VALUE:
       // Leave the result as NULL.
@@ -557,6 +661,9 @@ void PgConstant::UpdateConstant(const char *value, bool is_null) {
   if (is_null) {
     ql_value_.Clear();
   } else {
+    // Currently this is only used in C++ test code. In the future if this
+    // is used in production code we need to consider collation encoding.
+    CHECK(!collate_is_valid_non_c_);
     ql_value_.set_string_value(value);
   }
 }
@@ -565,6 +672,9 @@ void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
   if (is_null) {
     ql_value_.Clear();
   } else {
+    // Currently this is only used in C++ test code. In the future if this
+    // is used in production code we need to consider collation encoding.
+    CHECK(!collate_is_valid_non_c_);
     ql_value_.set_binary_value(value, bytes);
   }
 }
@@ -585,8 +695,10 @@ Status PgConstant::Eval(QLValuePB *result) {
 
 PgColumnRef::PgColumnRef(int attr_num,
                          const YBCPgTypeEntity *type_entity,
+                         bool collate_is_valid_non_c,
                          const PgTypeAttrs *type_attrs)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_COLREF, type_entity, type_attrs), attr_num_(attr_num) {
+    : PgExpr(PgExpr::Opcode::PG_EXPR_COLREF, type_entity,
+             collate_is_valid_non_c, type_attrs), attr_num_(attr_num) {
 
   if (attr_num_ < 0) {
     // Setup system columns.
@@ -637,8 +749,11 @@ Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgOperator::PgOperator(const char *opname, const YBCPgTypeEntity *type_entity)
-    : PgExpr(NameToOpcode(opname), type_entity), opname_(opname) {
+PgOperator::PgOperator(const char *opname,
+                       const YBCPgTypeEntity *type_entity,
+                       bool collate_is_valid_non_c)
+    : PgExpr(NameToOpcode(opname), type_entity, collate_is_valid_non_c),
+      opname_(opname) {
   InitializeTranslateData();
 }
 
