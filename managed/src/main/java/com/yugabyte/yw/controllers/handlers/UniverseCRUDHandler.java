@@ -89,6 +89,7 @@ public class UniverseCRUDHandler {
     if (taskParams.clusterOperation == null) {
       throw new YWServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
+
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
     //  uuid.
     Cluster c =

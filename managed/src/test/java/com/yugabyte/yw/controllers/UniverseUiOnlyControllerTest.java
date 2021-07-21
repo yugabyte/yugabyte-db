@@ -13,7 +13,6 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
@@ -49,7 +48,6 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -67,7 +65,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -84,13 +81,44 @@ import play.mvc.Result;
 public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBase {
 
   @Override
-  protected String universeCreateUrl() {
-    return "/api/customers/" + customer.uuid + "/universes";
+  public Result sendCreateRequest(ObjectNode bodyJson) {
+    return doRequestWithAuthTokenAndBody(
+        "POST", "/api/customers/" + customer.uuid + "/universes", authToken, bodyJson);
+  }
+
+  @Override
+  public Result sendPrimaryCreateConfigureRequest(ObjectNode bodyJson) {
+    bodyJson.put("currentClusterType", "PRIMARY");
+    bodyJson.put("clusterOperation", "CREATE");
+    return sendOldApiConfigureRequest(bodyJson);
+  }
+
+  @Override
+  public Result sendPrimaryEditConfigureRequest(ObjectNode bodyJson) {
+    bodyJson.put("currentClusterType", "PRIMARY");
+    bodyJson.put("clusterOperation", "EDIT");
+    return sendOldApiConfigureRequest(bodyJson);
+  }
+
+  public Result sendAsyncCreateConfigureRequest(ObjectNode topJson) {
+    topJson.put("currentClusterType", "ASYNC");
+    topJson.put("clusterOperation", "CREATE");
+    return sendOldApiConfigureRequest(topJson);
+  }
+
+  public Result sendOldApiConfigureRequest(ObjectNode topJson) {
+    return doRequestWithAuthTokenAndBody(
+        "POST", "/api/customers/" + customer.uuid + "/universe_configure", authToken, topJson);
   }
 
   @Override
   protected JsonNode getUniverseJson(Result universeCreateResponse) {
     return Json.parse(contentAsString(universeCreateResponse));
+  }
+
+  @Override
+  protected JsonNode getUniverseDetailsJson(Result universeConfigureResponse) {
+    return Json.parse(contentAsString(universeConfigureResponse));
   }
 
   /** Migrated to {@link UniverseControllerTest#testUniverseFindByName(String, int)} */
@@ -100,7 +128,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     "TestUniverse, 1",
   })
   public void testFind(String name, int expected) {
-    Universe u = createUniverse("TestUniverse", customer.getCustomerId());
+    createUniverse("TestUniverse", customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/find?name=" + name;
     Result result = doRequestWithAuthToken("GET", url, authToken);
 
@@ -111,100 +139,28 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
-  public void testUniverseCreateWithoutAvailabilityZone() {
-    Provider p = ModelFactory.awsProvider(customer);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-
+  public void testConfigureInvalidParams() {
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson =
         Json.newObject()
-            .put("universeName", "SingleUserUniverse")
-            .put("instanceType", "a-instance")
+            .put("universeName", "Foo_Bar")
             .put("replicationFactor", 3)
             .put("numNodes", 3)
-            .put("provider", p.uuid.toString());
-    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+            .put("provider", UUID.randomUUID().toString());
+    ArrayNode regionList = Json.newArray().add(UUID.randomUUID().toString());
     userIntentJson.set("regionList", regionList);
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
-    bodyJson.put("currentClusterType", "PRIMARY");
     bodyJson.put("clusterOperation", "CREATE");
 
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertInternalServerError(result, "No AZ found across regions: [" + r.uuid + "]");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testCustomConfigureCreateWithMultiAZMultiRegion() {
-    Provider p = ModelFactory.awsProvider(customer);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
-    taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
-    taskParams.clusterOperation = CREATE;
-    PlacementInfoUtil.updateUniverseDefinition(
-        taskParams, customer.getCustomerId(), taskParams.getPrimaryCluster().uuid);
-    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
-    // Needed for the universe_resources call.
-    DeviceInfo di = new DeviceInfo();
-    di.volumeSize = 100;
-    di.numVolumes = 2;
-    primaryCluster.userIntent.deviceInfo = di;
-
-    List<PlacementInfo.PlacementAZ> azList =
-        primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
-    assertEquals(azList.size(), 3);
-
-    PlacementInfo.PlacementAZ paz = azList.get(0);
-    paz.numNodesInAZ += 2;
-    primaryCluster.userIntent.numNodes += 2;
-    final String url = "/api/customers/" + customer.uuid + "/universe_configure";
-
-    ObjectNode noCurClusterTypeJson = (ObjectNode) Json.toJson(taskParams);
-    noCurClusterTypeJson.put("clusterOperation", "CREATE");
-    noCurClusterTypeJson.put("currentClusterType", "");
-
-    Result result =
-        assertYWSE(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterTypeJson));
+    Result result = assertYWSE(() -> sendOldApiConfigureRequest(bodyJson));
     assertBadRequest(result, "currentClusterType");
 
-    ObjectNode noCurClusterOp = (ObjectNode) Json.toJson(taskParams);
-    noCurClusterOp.remove("clusterOperation");
-
-    result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, noCurClusterOp));
+    bodyJson.remove("clusterOperation");
+    bodyJson.put("currentClusterType", "PRIMARY");
+    result = assertYWSE(() -> sendOldApiConfigureRequest(bodyJson));
     assertBadRequest(result, "clusterOperation");
-
-    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    topJson.put("currentClusterType", "PRIMARY");
-    topJson.put("clusterOperation", "CREATE");
-
-    result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
-
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.get("nodeDetailsSet").isArray());
-    ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
-    assertEquals(7, nodeDetailJson.size());
-    // Now test the resource endpoint also works.
-    // TODO: put this in its own test once we refactor the provider+region+az creation and payload
-    // generation...
-    result =
-        doRequestWithAuthTokenAndBody(
-            "POST", "/api/customers/" + customer.uuid + "/universe_resources", authToken, topJson);
-    assertOk(result);
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -276,10 +232,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
       }
     }
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    topJson.put("currentClusterType", "ASYNC");
-    topJson.put("clusterOperation", "CREATE");
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
+    Result result = sendAsyncCreateConfigureRequest(topJson);
 
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -291,163 +244,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
-  public void testCustomConfigureEditWithPureExpand() {
-    Provider p = ModelFactory.awsProvider(customer);
-    Universe u = createUniverse(customer.getCustomerId());
-
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
-    utd.universeUUID = u.universeUUID;
-    UniverseDefinitionTaskParams.UserIntent ui = getTestUserIntent(r, p, i, 5);
-    ui.universeName = u.name;
-    ui.ybSoftwareVersion = "1.0";
-    ui.preferredRegion = ui.regionList.get(0);
-    utd.upsertPrimaryCluster(ui, null);
-    PlacementInfoUtil.updateUniverseDefinition(
-        utd,
-        customer.getCustomerId(),
-        utd.getPrimaryCluster().uuid,
-        UniverseConfigureTaskParams.ClusterOperationType.CREATE);
-    Universe.UniverseUpdater updater = universe -> universe.setUniverseDetails(utd);
-    Universe.saveDetails(u.universeUUID, updater);
-    u = Universe.getOrBadRequest(u.universeUUID);
-    int totalNumNodesAfterExpand = 0;
-    Map<UUID, Integer> azUuidToNumNodes =
-        getAzUuidToNumNodes(u.getUniverseDetails().nodeDetailsSet);
-    for (Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
-      totalNumNodesAfterExpand += entry.getValue() + 1;
-      azUuidToNumNodes.put(entry.getKey(), entry.getValue() + 1);
-    }
-    UniverseDefinitionTaskParams editTestUTD = u.getUniverseDetails();
-    UniverseDefinitionTaskParams.Cluster primaryCluster = editTestUTD.getPrimaryCluster();
-    primaryCluster.userIntent.numNodes = totalNumNodesAfterExpand;
-    primaryCluster.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
-
-    ObjectNode editJson = (ObjectNode) Json.toJson(editTestUTD);
-    editJson.put("currentClusterType", "PRIMARY");
-    editJson.put("clusterOperation", "EDIT");
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, editJson);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.get("nodeDetailsSet").isArray());
-    ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
-    assertEquals(nodeDetailJson.size(), totalNumNodesAfterExpand);
-    assertTrue(areConfigObjectsEqual(nodeDetailJson, azUuidToNumNodes));
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testOnPremConfigureCreateWithValidAZInstanceTypeComboNotEnoughNodes() {
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    taskParams.upsertPrimaryCluster(userIntent, null);
-
-    taskParams.nodeDetailsSet = new HashSet<>();
-
-    for (int k = 0; k < 4; ++k) {
-      NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
-      details.ip = "10.255.67." + i;
-      details.region = r.code;
-      details.zone = az1.code;
-      details.instanceType = "test_instance_type";
-      details.nodeName = "test_name";
-      NodeInstance.create(az1.uuid, details);
-    }
-
-    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    topJson.put("currentClusterType", "PRIMARY");
-    topJson.put("clusterOperation", "CREATE");
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson));
-
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testOnPremConfigureCreateInvalidAZNodeComboNonEmptyNodeDetailsSet() {
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    List<AvailabilityZone> azList = new ArrayList<>();
-    azList.add(az1);
-    azList.add(az2);
-
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
-
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
-    taskParams.upsertPrimaryCluster(userIntent, null);
-    taskParams.nodeDetailsSet = new HashSet<>();
-    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
-
-    updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid, CREATE);
-
-    // Set placement info with number of nodes valid but
-    for (int k = 0; k < 5; k++) {
-      NodeDetails nd = new NodeDetails();
-      nd.state = NodeDetails.NodeState.ToBeAdded;
-      nd.azUuid = az1.uuid;
-      nd.placementUuid = primaryCluster.uuid;
-      taskParams.nodeDetailsSet.add(nd);
-    }
-
-    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    topJson.put("currentClusterType", "PRIMARY");
-    topJson.put("clusterOperation", "CREATE");
-
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson));
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testOnPremConfigureValidAZNodeComboNonEmptyNodeDetailsSet() {
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-
-    List<AvailabilityZone> azList = new ArrayList<>();
-    azList.add(az1);
-
-    UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
-
-    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
-
-    updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid, CREATE);
-
-    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    topJson.put("clusterOperation", "CREATE");
-    topJson.put("currentClusterType", "PRIMARY");
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
-    assertOk(result);
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testConfigureEditOnPremInvalidNodeAZCombo() {
+  public void testConfigureEditOnPremInvalidNodeAZCombo_fail() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
@@ -495,14 +292,81 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
       nd.placementUuid = primaryCluster.uuid;
       taskParams.nodeDetailsSet.add(nd);
     }
+    // HERE
+    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
+    Result result = assertYWSE(() -> sendPrimaryEditConfigureRequest(topJson));
+    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomConfigureEditWithPureExpand() {
+    Provider p = ModelFactory.awsProvider(customer);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
+    utd.universeUUID = u.universeUUID;
+    UniverseDefinitionTaskParams.UserIntent ui = getTestUserIntent(r, p, i, 5);
+    ui.universeName = u.name;
+    ui.ybSoftwareVersion = "1.0";
+    ui.preferredRegion = ui.regionList.get(0);
+    utd.upsertPrimaryCluster(ui, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        utd,
+        customer.getCustomerId(),
+        utd.getPrimaryCluster().uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.CREATE);
+    Universe.UniverseUpdater updater = universe -> universe.setUniverseDetails(utd);
+    Universe.saveDetails(u.universeUUID, updater);
+    u = Universe.getOrBadRequest(u.universeUUID);
+    int totalNumNodesAfterExpand = 0;
+    Map<UUID, Integer> azUuidToNumNodes =
+        getAzUuidToNumNodes(u.getUniverseDetails().nodeDetailsSet);
+    for (Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
+      totalNumNodesAfterExpand += entry.getValue() + 1;
+      azUuidToNumNodes.put(entry.getKey(), entry.getValue() + 1);
+    }
+    UniverseDefinitionTaskParams editTestUTD = u.getUniverseDetails();
+    UniverseDefinitionTaskParams.Cluster primaryCluster = editTestUTD.getPrimaryCluster();
+    primaryCluster.userIntent.numNodes = totalNumNodesAfterExpand;
+    primaryCluster.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
+
+    ObjectNode editJson = (ObjectNode) Json.toJson(editTestUTD);
+    Result result = sendPrimaryEditConfigureRequest(editJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.get("nodeDetailsSet").isArray());
+    ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
+    assertEquals(nodeDetailJson.size(), totalNumNodesAfterExpand);
+    assertTrue(areConfigObjectsEqual(nodeDetailJson, azUuidToNumNodes));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testOnPremConfigureValidAZNodeComboNonEmptyNodeDetailsSet() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+
+    List<AvailabilityZone> azList = new ArrayList<>();
+    azList.add(az1);
+
+    UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
+
+    updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid, CREATE);
 
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    topJson.put("clusterOperation", "EDIT");
-    topJson.put("currentClusterType", "PRIMARY");
-    String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, topJson));
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    Result result = sendPrimaryCreateConfigureRequest(topJson);
+    assertOk(result);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -1460,50 +1324,5 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         };
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, updater);
-  }
-
-  private UniverseDefinitionTaskParams setupOnPremTestData(
-      int numNodesToBeConfigured, Provider p, Region r, List<AvailabilityZone> azList) {
-    int numAZsToBeConfigured = azList.size();
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
-
-    for (int k = 0; k < numNodesToBeConfigured; ++k) {
-      NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
-      details.ip = "10.255.67." + k;
-      details.region = r.code;
-
-      if (numAZsToBeConfigured == 2) {
-        if (k % 2 == 0) {
-          details.zone = azList.get(0).code;
-        } else {
-          details.zone = azList.get(1).code;
-        }
-      } else {
-        details.zone = azList.get(0).code;
-      }
-      details.instanceType = "type.small";
-      details.nodeName = "test_name" + k;
-
-      if (numAZsToBeConfigured == 2) {
-        if (k % 2 == 0) {
-          NodeInstance.create(azList.get(0).uuid, details);
-        } else {
-          NodeInstance.create(azList.get(0).uuid, details);
-        }
-      } else {
-        NodeInstance.create(azList.get(0).uuid, details);
-      }
-    }
-
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 3);
-    userIntent.providerType = Common.CloudType.onprem;
-    userIntent.instanceType = "type.small";
-    taskParams.nodeDetailsSet = new HashSet<>();
-
-    taskParams.upsertPrimaryCluster(userIntent, null);
-
-    return taskParams;
   }
 }
