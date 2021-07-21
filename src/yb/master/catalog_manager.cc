@@ -428,6 +428,12 @@ DEFINE_bool(enable_tablet_split_of_pitr_tables, false,
             "Point In Time Restore schedules.");
 TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
 
+DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
+            "When set, it enables automatic tablet splitting for tables that are part of an "
+            "xCluster replication setup");
+TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
+TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
+
 namespace yb {
 namespace master {
 
@@ -2134,9 +2140,10 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
+  const TableInfo& table = *tablet_info.table().get();
   // Check if this tablet is covered by an PITR schedule.
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
-      VERIFY_RESULT(IsTablePartOfSomeSnapshotSchedule(*tablet_info.table().get()))) {
+      VERIFY_RESULT(IsTablePartOfSomeSnapshotSchedule(table))) {
     VLOG(1) << Substitute("Tablet splitting is not supported for tables that are a part of"
                           " some active PITR schedule, tablet_id: $0",
                           tablet_info.tablet_id());
@@ -2144,6 +2151,18 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
         " some active PITR schedule, tablet_id: $0",
+        tablet_info.tablet_id());
+  }
+  // Check if this tablet is part of a cdc stream.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
+      IsCdcEnabled(table)) {
+    VLOG(1) << Substitute("Tablet splitting is not supported for tables that are a part of"
+                          " a CDC stream, tablet_id: $0",
+                          tablet_info.tablet_id());
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDC stream, tablet_id: $0",
         tablet_info.tablet_id());
   }
   if (tablet_info.table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {

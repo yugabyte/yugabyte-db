@@ -41,6 +41,7 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
 
+#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/test_workload.h"
@@ -113,6 +114,7 @@ DECLARE_bool(TEST_disable_cleanup_split_tablet);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_bool(TEST_select_all_tablets_for_split);
+DECLARE_uint64(cdc_state_table_num_tablets);
 
 namespace yb {
 
@@ -1494,13 +1496,75 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
   ASSERT_EQ(rows_count, kNumRows);
 }
 
-TEST_F(TabletSplitITest, SplittingWithPitr) {
-  FLAGS_TEST_validate_all_tablet_candidates = false;
-  constexpr auto kNumRows = 500;
+class NotSupportedTabletSplitITest : public TabletSplitITest {
+ public:
+  void SetUp() override {
+    FLAGS_cdc_state_table_num_tablets = 1;
+    TabletSplitITest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
 
-  CreateSingleTablet();
-  LOG(INFO) << "Created a single tablet";
+    CreateSingleTablet();
+  }
 
+ protected:
+  Result<docdb::DocKeyHash> SplitTabletAndCheckForNotSupported(bool restart_server) {
+    auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+    auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
+    EXPECT_NOT_OK(s);
+    EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
+
+    if (restart_server) {
+      // Now try to restart the cluster and check that tablet splitting still fails.
+      RETURN_NOT_OK(cluster_->RestartSync());
+
+      s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
+      EXPECT_NOT_OK(s);
+      EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
+    }
+
+    return split_hash_code;
+  }
+
+  Status WaitForCdcStateTableToBeReady() {
+    return WaitFor([&]() -> Result<bool> {
+      master::IsCreateTableDoneRequestPB is_create_req;
+      master::IsCreateTableDoneResponsePB is_create_resp;
+
+      is_create_req.mutable_table()->set_table_name(master::kCdcStateTableName);
+      is_create_req.mutable_table()->mutable_namespace_()->set_name(master::kSystemNamespaceName);
+      auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+          &client_->proxy_cache(),
+          VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
+      rpc::RpcController rpc;
+      rpc.set_timeout(MonoDelta::FromSeconds(30));
+
+      auto s = master_proxy->IsCreateTableDone(is_create_req, &is_create_resp, &rpc);
+      return s.ok() && !is_create_resp.has_error() && is_create_resp.done();
+    }, MonoDelta::FromSeconds(30), "Wait for cdc_state table creation to finish");
+  }
+
+  Result<std::unique_ptr<MiniCluster>> CreateNewUniverseAndTable(
+      const string& cluster_id, client::TableHandle* table) {
+    // First create the new cluster.
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 3;
+    opts.cluster_id = cluster_id;
+    std::unique_ptr<MiniCluster> cluster = std::make_unique<MiniCluster>(opts);
+    RETURN_NOT_OK(cluster->Start());
+    RETURN_NOT_OK(cluster->WaitForTabletServerCount(3));
+    auto cluster_client = VERIFY_RESULT(cluster->CreateClient());
+
+    // Create an identical table on the new cluster.
+    client::kv_table_test::CreateTable(
+        client::Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL),
+        1,  // num_tablets
+        cluster_client.get(),
+        table);
+    return cluster;
+  }
+};
+
+TEST_F(NotSupportedTabletSplitITest, SplittingWithPitr) {
   // Schedule snapshots on this namespace.
   auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
 
@@ -1509,12 +1573,77 @@ TEST_F(TabletSplitITest, SplittingWithPitr) {
             << id;
 
   // Try splitting this tablet.
-  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
-  LOG(INFO) << "Wrote 500 rows to table "
-            << table_.name().table_name();
-  const auto s = SplitTabletAndValidate(split_hash_code, kNumRows);
-  ASSERT_NOK(s);
-  EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
+  ASSERT_RESULT(SplitTabletAndCheckForNotSupported(false /* restart_server */));
+}
+
+TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
+  // Create a cdc stream for this tablet.
+  auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
+      HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
+  CDCStreamId stream_id;
+  cdc::CreateCDCStream(cdc_proxy, table_->id(), &stream_id);
+  // Ensure that the cdc_state table is ready before inserting rows and splitting.
+  ASSERT_OK(WaitForCdcStateTableToBeReady());
+
+  LOG(INFO) << "Created a CDC stream for table " << table_.name().table_name()
+            << " with stream id " << stream_id;
+
+  // Try splitting this tablet.
+  ASSERT_RESULT(SplitTabletAndCheckForNotSupported(false /* restart_server */));
+}
+
+TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
+  // Default cluster_ will be our producer.
+  // Create a consumer universe and table, then setup universe replication.
+  client::TableHandle consumer_cluster_table;
+  auto consumer_cluster =
+      ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_cluster_table));
+
+  ASSERT_OK(RunAdminToolCommand(consumer_cluster->GetMasterAddresses(),
+                                "setup_universe_replication",
+                                "",  // Producer cluster id (default is set to "").
+                                cluster_->GetMasterAddresses(),
+                                table_->id()));
+
+  // Try splitting this tablet, and restart the server to ensure split still fails after a restart.
+  const auto split_hash_code =
+      ASSERT_RESULT(SplitTabletAndCheckForNotSupported(true /* restart_server */));
+
+  // Now delete replication and verify that the tablet can now be split.
+  ASSERT_OK(RunAdminToolCommand(
+      consumer_cluster->GetMasterAddresses(), "delete_universe_replication", ""));
+  // Deleting cdc streams is async so wait for that to complete.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return SplitTabletAndValidate(split_hash_code, kDefaultNumRows).ok();
+  }, 20s * kTimeMultiplier, "Split tablet after deleting xCluster replication"));
+
+  consumer_cluster->Shutdown();
+}
+
+TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
+  // Default cluster_ will be our consumer.
+  // Create a producer universe and table, then setup universe replication.
+  const string kProducerClusterId = "producer";
+  client::TableHandle producer_cluster_table;
+  auto producer_cluster =
+      ASSERT_RESULT(CreateNewUniverseAndTable(kProducerClusterId, &producer_cluster_table));
+
+  ASSERT_OK(RunAdminToolCommand(cluster_->GetMasterAddresses(),
+                                "setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster->GetMasterAddresses(),
+                                producer_cluster_table->id()));
+
+  // Try splitting this tablet, and restart the server to ensure split still fails after a restart.
+  const auto split_hash_code =
+      ASSERT_RESULT(SplitTabletAndCheckForNotSupported(true /* restart_server */));
+
+  // Now delete replication and verify that the tablet can now be split.
+  ASSERT_OK(RunAdminToolCommand(
+      cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
+  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
+
+  producer_cluster->Shutdown();
 }
 
 class TabletSplitYedisTableTest : public integration_tests::RedisTableTestBase {
