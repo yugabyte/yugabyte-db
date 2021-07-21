@@ -22,6 +22,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -165,6 +166,9 @@ public class Scheduler {
           if (taskType == TaskType.MultiTableBackup) {
             this.runMultiTableBackupsTask(schedule);
           }
+          if (taskType == TaskType.ExternalScript) {
+            this.runExternalScriptTask(schedule);
+          }
         }
       }
       Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
@@ -283,5 +287,34 @@ public class Scheduler {
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Delete,
         "Backup");
+  }
+
+  private void runExternalScriptTask(Schedule schedule) {
+    JsonNode params = schedule.getTaskParams();
+    RunExternalScript.Params taskParams = Json.fromJson(params, RunExternalScript.Params.class);
+    Customer customer = Customer.getOrBadRequest(taskParams.customerUUID);
+    Universe universe;
+    try {
+      universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    } catch (Exception e) {
+      schedule.stopSchedule();
+      LOG.info(
+          "External script scheduler is stopped for the universe {} as universe was deleted.",
+          taskParams.universeUUID);
+      return;
+    }
+    UUID taskUUID = commissioner.submit(TaskType.ExternalScript, taskParams);
+    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ExternalScript,
+        universe.name);
+    LOG.info(
+        "Submitted external script task with task uuid = {} for universe {}.",
+        taskUUID,
+        universe.universeUUID);
   }
 }

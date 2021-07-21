@@ -2,12 +2,14 @@
 
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import io.ebean.*;
 import io.ebean.annotation.*;
-import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
 
 import org.slf4j.Logger;
@@ -104,6 +106,12 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
   }
 
+  public void setCronExperssionandTaskParams(String cronExpression, ITaskParams params) {
+    this.cronExpression = cronExpression;
+    this.taskParams = Json.toJson(params);
+    save();
+  }
+
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
   public static Schedule create(
@@ -132,6 +140,14 @@ public class Schedule extends Model {
 
   public static Schedule get(UUID scheduleUUID) {
     return find.query().where().idEq(scheduleUUID).findOne();
+  }
+
+  public static Schedule getOrBadRequest(UUID scheduleUUID) {
+    Schedule schedule = get(scheduleUUID);
+    if (schedule == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
+    }
+    return schedule;
   }
 
   public static List<Schedule> getAll() {

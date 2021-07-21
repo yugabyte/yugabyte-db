@@ -66,6 +66,7 @@ public class ShellProcessHandler {
     File tempOutputFile = null;
     File tempErrorFile = null;
     long startMs = 0;
+    Process process = null;
     try {
       tempOutputFile = File.createTempFile("shell_process_out", "tmp");
       tempErrorFile = File.createTempFile("shell_process_err", "tmp");
@@ -83,7 +84,8 @@ public class ShellProcessHandler {
           tempOutputFile.getAbsolutePath(),
           tempErrorFile.getAbsolutePath());
 
-      Process process = pb.start();
+      process = pb.start();
+
       waitForProcessExit(process, tempOutputFile, tempErrorFile);
       try (FileInputStream outputInputStream = new FileInputStream(tempOutputFile);
           InputStreamReader outputReader = new InputStreamReader(outputInputStream);
@@ -104,6 +106,10 @@ public class ShellProcessHandler {
       response.code = -1;
       LOG.error("Exception running command", e);
       response.message = e.getMessage();
+      // Send a kill signal to ensure process is cleaned up in case of any failure.
+      if (process != null && process.isAlive()) {
+        process.destroyForcibly();
+      }
     } finally {
       if (startMs > 0) {
         response.durationMs = System.currentTimeMillis() - startMs;

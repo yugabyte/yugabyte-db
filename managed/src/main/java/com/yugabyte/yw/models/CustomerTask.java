@@ -123,7 +123,10 @@ public class CustomerTask extends Model {
     StartMaster,
 
     @EnumValue("CreateAlertDefinitions")
-    CreateAlertDefinitions;
+    CreateAlertDefinitions,
+
+    @EnumValue("ExternalScript")
+    ExternalScript;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -165,6 +168,8 @@ public class CustomerTask extends Model {
           return completed ? "Started Master process on " : "Starting Master process on ";
         case CreateAlertDefinitions:
           return completed ? "Created alert definitions " : "Creating alert definitions ";
+        case ExternalScript:
+          return completed ? "Script execution completed " : "Script execution is running";
         default:
           return null;
       }

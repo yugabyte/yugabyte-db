@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -378,5 +379,36 @@ public class Util {
     }
 
     throw new RuntimeException("Unable to parse YB version strings");
+  }
+
+  // This will help us in insertion of set of keys in locked synchronized way as no
+  // extraction/deletion action should be performed on RunTimeConfig object during the process.
+  public static synchronized void setLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
+    configKeysMap.forEach(
+        (key, value) -> {
+          config.setValue(key, value);
+        });
+  }
+
+  // This will help us in extraction of set of keys in locked synchronized way as no
+  // insertion/deletion action should be performed on RunTimeConfig object during the process.
+  public static synchronized Map<String, String> getLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, List<String> configKeys) {
+    Map<String, String> configKeysMap = new HashMap<>();
+    configKeys.forEach((key) -> configKeysMap.put(key, config.getString(key)));
+    return configKeysMap;
+  }
+
+  // This will help us in deletion of set of keys in locked synchronized way as no
+  // insertion/extraction action should be performed on RunTimeConfig object during the process.
+  public static synchronized void deleteLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, List<String> configKeys) {
+    configKeys.forEach(
+        (key) -> {
+          if (config.hasPath(key)) {
+            config.deleteEntry(key);
+          }
+        });
   }
 }
