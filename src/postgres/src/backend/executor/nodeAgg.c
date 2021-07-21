@@ -1609,6 +1609,22 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			aggref->aggtranstype == NUMERICOID)
 			return;
 
+		/*
+		 * The builtin functions max and min imply comparison. Character type
+		 * comparison requires postgres collation info which is not accessible
+		 * by DocDB. Because DocDB only does byte-wise comparison, it will not
+		 * be correct for any non-C collations. In order to allow min/max
+		 * pushdown for a non-C collation, we need to ensure that the argument
+		 * is a key-column with a deterministic non-C collation. In such a
+		 * case we store a collation-encoded string by concatenating the
+		 * collation sort key with the original text value so that the byte-wise
+		 * comparison result is correct.
+		 */
+		if ((strcmp(func_name, "min") == 0 || strcmp(func_name, "max") == 0) &&
+			(YBIsCollationValidNonC(aggref->aggcollid) ||
+			 YBIsCollationValidNonC(aggref->inputcollid)))
+			return;
+
 		foreach(lc_arg, aggref->args)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);

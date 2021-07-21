@@ -442,6 +442,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--with-icu',
                 '--with-ldap',
                 '--with-openssl',
                 # Options are ossp (original/old implementation), bsd (BSD) and e2fs
@@ -454,8 +455,6 @@ class PostgresBuilder(YbBuildToolBase):
                 '--enable-debug']
         if not get_bool_env_var('YB_NO_PG_CONFIG_CACHE'):
             configure_cmd_line.append('--config-cache')
-        if get_bool_env_var('YB_POSTGRES_WITH_ICU'):
-            configure_cmd_line.append('--with-icu')
 
         # We get readline-related errors in ASAN/TSAN, so let's disable readline there.
         if self.build_type in ['asan', 'tsan']:
