@@ -141,10 +141,6 @@ race:yb::redisserver::RedisInboundCall::Serialize
 race:yb::redisserver::RedisInboundCall::DynamicMemoryUsage
 race:yb::redisserver::(anonymous namespace)::BatchContext::LookupDone
 
-# It is OK to write concurrently into this buffer, since we use it for skipping data in case of
-# hitting memory limits and never read from it.
-race:yb::rpc::GetGlobalSkipBuffer()::global_skip_buffer
-
 # Usages of URCU
 race:yb::internal::ConcurrentValue
 

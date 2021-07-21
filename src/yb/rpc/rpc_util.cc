@@ -19,7 +19,17 @@ namespace yb {
 namespace rpc {
 
 Slice GetGlobalSkipBuffer() {
+#if (!defined(THREAD_SANITIZER))
+  // It is OK to write concurrently into this buffer, since we use it for skipping data in case of
+  // hitting memory limits and never read from it.
   static uint8_t global_skip_buffer[1_MB];
+#else
+  // But for TSAN we use thread_local variant to avoid false positives. We don't use TSAN
+  // suppression here because of significant slowdown due to detecting race, preparing report and
+  // then suppressing it.
+  static thread_local uint8_t global_skip_buffer[1_MB];
+#endif // (!defined(THREAD_SANITIZER))
+
   return Slice(global_skip_buffer, sizeof(global_skip_buffer));
 }
 
