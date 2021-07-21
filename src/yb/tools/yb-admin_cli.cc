@@ -529,7 +529,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "flush_sys_catalog", 
       "[timeout_in_seconds] (default 20)",
-      // " <table> [timeout_in_seconds] (default 20)"
       [client](const CLIArguments& args) -> Status {
         int timeout_secs = 20;
         // We use the FlushSysCatalog RPC to trigger compaction.
