@@ -172,6 +172,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Delete specified CDC streams.
   CHECKED_STATUS CleanUpDeletedCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
+  bool IsCdcEnabled(const TableInfo& table_info) const override;
+
   tablet::SnapshotCoordinator& snapshot_coordinator() {
     return snapshot_coordinator_;
   }
@@ -364,6 +366,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe,
                                      const Status& failure_status);
 
+  // Checks if table has at least one cdc stream (includes producers for xCluster replication).
+  bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+
+  // Checks if the table is a consumer in an xCluster replication universe.
+  bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+
   CHECKED_STATUS CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);
 
@@ -392,6 +400,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // CDC Stream map: CDCStreamId -> CDCStreamInfo.
   typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_;
+
+  // Map of tables -> number of cdc streams they are producers for.
+  std::unordered_map<TableId, int> cdc_stream_tables_count_map_ GUARDED_BY(mutex_);
+
+  // Set of all consumer tables that are part of xcluster replication.
+  std::unordered_set<TableId> xcluster_consumer_tables_set_ GUARDED_BY(mutex_);
 
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;

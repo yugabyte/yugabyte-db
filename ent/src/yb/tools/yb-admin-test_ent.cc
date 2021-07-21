@@ -67,21 +67,8 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   }
 
   template <class... Args>
-  Result<std::string> RunAdminToolCommandWithMasterAddresses(const string& masterAddresses,
-                                                             Args&&... args) {
-    auto command = ToStringVector(
-            GetToolPath("yb-admin"), "-master_addresses", masterAddresses,
-            std::forward<Args>(args)...);
-    std::string result;
-    LOG(INFO) << "Run tool: " << AsString(command);
-    RETURN_NOT_OK(Subprocess::Call(command, &result));
-    return result;
-  }
-
-  template <class... Args>
   Result<std::string> RunAdminToolCommand(Args&&... args) {
-    return RunAdminToolCommandWithMasterAddresses(cluster_->GetMasterAddresses(),
-                                                  std::forward<Args>(args)...);
+    return yb::RunAdminToolCommand(cluster_->GetMasterAddresses(), std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -641,7 +628,7 @@ TEST_F(AdminCliTest, TestSetupUniverseReplication) {
                                 producer_cluster_table->id()));
 
   // Check that the stream was properly created for this table.
-  string output = ASSERT_RESULT(RunAdminToolCommandWithMasterAddresses(
+  string output = ASSERT_RESULT(yb::RunAdminToolCommand(
       producer_cluster.GetMasterAddresses(), "list_cdc_streams"));
 
   // Ensure that the stream for the table exists.
