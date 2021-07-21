@@ -262,8 +262,8 @@ class CatalogManager :
                                      IsTruncateTableDoneResponsePB* resp);
 
   // Flush the system catalog
-  CHECKED_STATUS FlushSysCatalog(const FlushSysCatalogRequestPB* req, 
-                                 FlushSysCatalogResponsePB* resp, 
+  CHECKED_STATUS FlushSysCatalog(const FlushSysCatalogRequestPB* req,
+                                 FlushSysCatalogResponsePB* resp,
                                  rpc::RpcContext* rpx);
 
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
