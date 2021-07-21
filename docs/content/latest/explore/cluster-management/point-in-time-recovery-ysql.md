@@ -5,8 +5,8 @@ linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
 beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
-- /latest/explore/backup-restore/point-in-time-restore-ysql
-- /latest/explore/backup-restore/point-in-time-restore
+- /latest/explore/backup-restore/point-in-time-recovery-ysql
+- /latest/explore/backup-restore/point-in-time-recovery
 menu:
   latest:
     identifier: cluster-management-point-in-time-recovery-ysql
@@ -18,13 +18,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/backup-restore/point-in-time-recovery-ysql" class="nav-link active">
+    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/backup-restore/point-in-time-recovery-ycql" class="nav-link">
+    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
