@@ -296,7 +296,9 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, HeapTuple tup)
 			break;
 		}
 		next_attr->type_entity = YBCDataTypeFromOidMod(fk_attnum, type_id);
+		next_attr->collation_id = TupleDescAttr(fk_tupdesc, fk_attnum - 1)->attcollation;
 		next_attr->datum = heap_getattr(tup, fk_attnum, fk_tupdesc, &next_attr->is_null);
+		YBSetupAttrCollationInfo(next_attr);
 	}
 	RelationClose(fk_rel);
 	RelationClose(source_rel);

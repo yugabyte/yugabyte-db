@@ -106,6 +106,8 @@ namespace docdb {
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kExternalIntents, 'Z')) /* ASCII code 90 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
+    ((kCollString, '\\'))  /* ASCII code 92 */ \
+    ((kCollStringDescending, ']'))  /* ASCII code 93 */ \
     \
     /* We allow putting a 32-bit hash in front of the document key. This hash is computed based */ \
     /* on the "hashed" components of the document key that precede "range" components. */ \

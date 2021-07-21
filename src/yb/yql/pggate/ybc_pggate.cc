@@ -79,7 +79,7 @@ YBCStatus ProcessYbctid(
 Slice YbctidAsSlice(uint64_t ybctid) {
   char* value = NULL;
   int64_t bytes = 0;
-  pgapi->FindTypeEntity(kPgByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
+  pgapi->FindTypeEntity(kByteArrayOid)->datum_to_yb(ybctid, &value, &bytes);
   return Slice(value, bytes);
 }
 
@@ -618,7 +618,7 @@ YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_coun
 
 YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *ybctid) {
   return ProcessYbctid(*source, [ybctid](const auto&, const auto& yid) {
-    const auto* type_entity = pgapi->FindTypeEntity(kPgByteArrayOid);
+    const auto* type_entity = pgapi->FindTypeEntity(kByteArrayOid);
     *ybctid = type_entity->yb_to_datum(yid.cdata(), yid.size(), nullptr /* type_attrs */);
     return Status::OK();
   });
@@ -749,24 +749,34 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 // Expression Operations
 //--------------------------------------------------------------------------------------------------
 
-YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
-                            const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewColumnRef(stmt, attr_num, type_entity, type_attrs, expr_handle));
+YBCStatus YBCPgNewColumnRef(
+    YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewColumnRef(
+      stmt, attr_num, type_entity, collate_is_valid_non_c, type_attrs, expr_handle));
 }
 
-YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstant(stmt, type_entity, datum, is_null, expr_handle));
+YBCStatus YBCPgNewConstant(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstant(
+      stmt, type_entity, collate_is_valid_non_c, collation_sortkey, datum, is_null, expr_handle));
 }
 
-YBCStatus YBCPgNewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                  YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstantVirtual(stmt, type_entity, datum_kind, expr_handle));
+YBCStatus YBCPgNewConstantVirtual(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
+  return ToYBCStatus(pgapi->NewConstantVirtual(
+      stmt, type_entity, collate_is_valid_non_c, datum_kind, expr_handle));
 }
 
-YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
-  return ToYBCStatus(pgapi->NewConstantOp(stmt, type_entity, datum, is_null, expr_handle, is_gt));
+YBCStatus YBCPgNewConstantOp(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+    bool is_gt) {
+  return ToYBCStatus(pgapi->NewConstantOp(
+      stmt, type_entity, collate_is_valid_non_c, collation_sortkey, datum, is_null, expr_handle,
+      is_gt));
 }
 
 // Overwriting the expression's result with any desired values.
@@ -798,10 +808,11 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
 
-YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
-                           const YBCPgTypeEntity *type_entity,
-                           YBCPgExpr *op_handle) {
-  return ToYBCStatus(pgapi->NewOperator(stmt, opname, type_entity, op_handle));
+YBCStatus YBCPgNewOperator(
+    YBCPgStatement stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, YBCPgExpr *op_handle) {
+  return ToYBCStatus(pgapi->NewOperator(
+      stmt, opname, type_entity, collate_is_valid_non_c, op_handle));
 }
 
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {

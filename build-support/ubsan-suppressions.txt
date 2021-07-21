@@ -101,3 +101,7 @@ vptr:libcassandra.so
 # are such castings with overflow in a few tests. (For example: QLTestSelectedExpr.TestCastDecimal)
 # (See https://github.com/YugaByte/yugabyte-db/issues/1241 for details.)
 float-cast-overflow:yb::bfql::SetNumericResult
+
+# UBSAN issues in ICU 67.
+nonnull-attribute:libicuuc.so
+function:libicuuc.so

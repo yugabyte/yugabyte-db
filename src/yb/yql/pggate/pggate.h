@@ -459,16 +459,21 @@ class PgApiImpl {
   // Expressions.
   //------------------------------------------------------------------------------------------------
   // Column reference.
-  CHECKED_STATUS NewColumnRef(PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
-                              const PgTypeAttrs *type_attrs, PgExpr **expr_handle);
+  CHECKED_STATUS NewColumnRef(
+      PgStatement *handle, int attr_num, const PgTypeEntity *type_entity,
+      bool collate_is_valid_non_c, const PgTypeAttrs *type_attrs, PgExpr **expr_handle);
 
   // Constant expressions.
-  CHECKED_STATUS NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
-  CHECKED_STATUS NewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
-  CHECKED_STATUS NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
+  CHECKED_STATUS NewConstant(
+      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+  CHECKED_STATUS NewConstantVirtual(
+      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
+  CHECKED_STATUS NewConstantOp(
+      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+      bool is_gt);
 
   // TODO(neil) UpdateConstant should be merged into one.
   // Update constant.
@@ -485,9 +490,9 @@ class PgApiImpl {
   CHECKED_STATUS UpdateConstant(PgExpr *expr, const void *value, int64_t bytes, bool is_null);
 
   // Operators.
-  CHECKED_STATUS NewOperator(PgStatement *stmt, const char *opname,
-                             const YBCPgTypeEntity *type_entity,
-                             PgExpr **op_handle);
+  CHECKED_STATUS NewOperator(
+      PgStatement *stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+      bool collate_is_valid_non_c, PgExpr **op_handle);
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
 
   // Foreign key reference caching.

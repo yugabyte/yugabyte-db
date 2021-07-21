@@ -329,6 +329,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 
 			/* For regular (non-system) attribute check if they were deleted */
 			Oid   attr_typid  = InvalidOid;
+			Oid   attr_collation = InvalidOid;
 			int32 attr_typmod = 0;
 			if (target->resno > 0)
 			{
@@ -341,12 +342,14 @@ ybcSetupScanTargets(ForeignScanState *node)
 				}
 				attr_typid  = attr->atttypid;
 				attr_typmod = attr->atttypmod;
+				attr_collation = attr->attcollation;
 			}
 
 			YBCPgTypeAttrs type_attrs = {attr_typmod};
 			YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
 														target->resno,
 														attr_typid,
+														attr_collation,
 														&type_attrs);
 			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
 			has_targets = true;
@@ -371,6 +374,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 				YBCPgExpr      expr       = YBCNewColumnRef(ybc_state->handle,
 															i + 1,
 															TupleDescAttr(tupdesc, i)->atttypid,
+															TupleDescAttr(tupdesc, i)->attcollation,
 															&type_attrs);
 				HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, expr));
 				break;
@@ -392,7 +396,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
 
 			/* Create operator. */
-			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, &op_handle));
+			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, aggref->aggcollid, &op_handle));
 
 			/* Handle arguments. */
 			if (aggref->aggstar) {
@@ -404,6 +408,8 @@ ybcSetupScanTargets(ForeignScanState *node)
 				YBCPgExpr const_handle;
 				YBCPgNewConstant(ybc_state->handle,
 								 type_entity,
+								 false /* collate_is_valid_non_c */,
+								 NULL /* collation_sortkey */,
 								 0 /* datum */,
 								 false /* is_null */,
 								 &const_handle);
@@ -422,6 +428,8 @@ ybcSetupScanTargets(ForeignScanState *node)
 						YBCPgExpr const_handle;
 						YBCPgNewConstant(ybc_state->handle,
 										 type_entity,
+										 false /* collate_is_valid_non_c */,
+										 NULL /* collation_sortkey */,
 										 const_node->constvalue,
 										 const_node->constisnull,
 										 &const_handle);
@@ -440,6 +448,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 						YBCPgExpr arg = YBCNewColumnRef(ybc_state->handle,
 														attno,
 														attr->atttypid,
+														attr->attcollation,
 														&type_attrs);
 						HandleYBStatus(YBCPgOperatorAppendArg(op_handle, arg));
 					}

@@ -128,6 +128,11 @@ class PgExpr {
                             const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
                             PgTuple *pg_tuple);
 
+  // Translates DocDB collated char-based datatypes.
+  static void TranslateCollateText(Slice *yb_cursor, const PgWireDataHeader& header,
+                                   int index, const YBCPgTypeEntity *type_entity,
+                                   const PgTypeAttrs *type_attrs, PgTuple *pg_tuple);
+
   // Translates DocDB-binary-based datatypes.
   static void TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
@@ -191,7 +196,8 @@ class PgExpr {
 
  protected:
   PgExpr(
-      Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs = nullptr);
+      Opcode opcode, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      const PgTypeAttrs *type_attrs = nullptr);
   virtual ~PgExpr() = default;
 
   void InitializeTranslateData();
@@ -199,6 +205,7 @@ class PgExpr {
   // Data members.
   Opcode opcode_;
   const PgTypeEntity *type_entity_;
+  bool collate_is_valid_non_c_;
   const PgTypeAttrs type_attrs_;
   std::function<void(Slice *, const PgWireDataHeader&, int, const YBCPgTypeEntity *,
                      const PgTypeAttrs *, PgTuple *)> translate_data_;
@@ -213,10 +220,16 @@ class PgConstant : public PgExpr {
   typedef std::unique_ptr<PgConstant> UniPtr;
   typedef std::unique_ptr<const PgConstant> UniPtrConst;
 
-  PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
-      PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
-  PgConstant(const YBCPgTypeEntity *type_entity, PgDatumKind datum_kind,
-      PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
+  PgConstant(const YBCPgTypeEntity *type_entity,
+             bool collate_is_valid_non_c,
+             const char* collation_sortkey,
+             uint64_t datum,
+             bool is_null,
+             PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
+  PgConstant(const YBCPgTypeEntity *type_entity,
+             bool collate_is_valid_non_c,
+             PgDatumKind datum_kind,
+             PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
 
   // Update numeric.
   void UpdateConstant(int8_t value, bool is_null);
@@ -241,6 +254,7 @@ class PgConstant : public PgExpr {
 
  private:
   QLValuePB ql_value_;
+  const char *collation_sortkey_;
 };
 
 class PgColumnRef : public PgExpr {
@@ -254,6 +268,7 @@ class PgColumnRef : public PgExpr {
 
   PgColumnRef(int attr_num,
               const PgTypeEntity *type_entity,
+              bool collate_is_valid_non_c,
               const PgTypeAttrs *type_attrs);
   // Setup ColumnRef expression when constructing statement.
   CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
@@ -277,7 +292,9 @@ class PgOperator : public PgExpr {
   typedef std::unique_ptr<PgOperator> UniPtr;
   typedef std::unique_ptr<const PgOperator> UniPtrConst;
 
-  PgOperator(const char *name, const YBCPgTypeEntity *type_entity);
+  PgOperator(const char *name,
+             const YBCPgTypeEntity *type_entity,
+             bool collate_is_valid_non_c);
 
   // Append arguments.
   void AppendArg(PgExpr *arg);

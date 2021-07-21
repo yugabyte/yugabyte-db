@@ -106,4 +106,12 @@ extern const char *YBGetCurrentZone();
  */
 extern bool YBIsCollationEnabled();
 
+/**
+ * Test only constant. When set to true initdb imports default collation
+ * from the OS environment. As a result the default collation will be
+ * en_US.UTF-8. All the initial databases will have en_US.UTF-8 collation.
+ * The text columns of all system tables will have en_US.UTF-8 collation.
+ */
+extern const bool kTestOnlyUseOSDefaultCollation;
+
 #endif /* PG_YB_COMMON_H */

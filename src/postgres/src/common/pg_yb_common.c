@@ -35,6 +35,8 @@
 
 #include "utils/elog.h"
 
+const bool kTestOnlyUseOSDefaultCollation = false;
+
 bool
 YBCIsEnvVarTrue(const char* env_var_name)
 {
@@ -153,7 +155,16 @@ bool
 YBIsCollationEnabled()
 {
 #ifdef USE_ICU
-	return true;
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		/*
+		 * The default value must be in sync with that of FLAGS_TEST_pg_collation_enabled.
+		 */
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_TEST_pg_collation_enabled",
+												  false /* default_value */);
+	}
+	return cached_value;
 #else
 	return false;
 #endif

@@ -71,7 +71,7 @@ class PrimitiveValue {
   explicit PrimitiveValue(ValueType value_type);
 
   PrimitiveValue(const PrimitiveValue& other) {
-    if (other.type_ == ValueType::kString || other.type_ == ValueType::kStringDescending) {
+    if (other.IsString()) {
       type_ = other.type_;
       new(&str_val_) std::string(other.str_val_);
     } else if (other.type_ == ValueType::kJsonb) {
@@ -116,29 +116,35 @@ class PrimitiveValue {
     return *this;
   }
 
-  explicit PrimitiveValue(const Slice& s, SortOrder sort_order = SortOrder::kAscending) {
+  explicit PrimitiveValue(const Slice& s,
+                          SortOrder sort_order = SortOrder::kAscending,
+                          bool is_collate = false) {
     if (sort_order == SortOrder::kDescending) {
-      type_ = ValueType::kStringDescending;
+      type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
     } else {
-      type_ = ValueType::kString;
+      type_ = is_collate ? ValueType::kCollString : ValueType::kString;
     }
     new(&str_val_) std::string(s.cdata(), s.cend());
   }
 
-  explicit PrimitiveValue(const std::string& s, SortOrder sort_order = SortOrder::kAscending) {
+  explicit PrimitiveValue(const std::string& s,
+                          SortOrder sort_order = SortOrder::kAscending,
+                          bool is_collate = false) {
     if (sort_order == SortOrder::kDescending) {
-      type_ = ValueType::kStringDescending;
+      type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
     } else {
-      type_ = ValueType::kString;
+      type_ = is_collate ? ValueType::kCollString : ValueType::kString;
     }
     new(&str_val_) std::string(s);
   }
 
-  explicit PrimitiveValue(const char* s, SortOrder sort_order = SortOrder::kAscending) {
+  explicit PrimitiveValue(const char* s,
+                          SortOrder sort_order = SortOrder::kAscending,
+                          bool is_collate = false) {
     if (sort_order == SortOrder::kDescending) {
-      type_ = ValueType::kStringDescending;
+      type_ = is_collate ? ValueType::kCollStringDescending : ValueType::kStringDescending;
     } else {
-      type_ = ValueType::kString;
+      type_ = is_collate ? ValueType::kCollString : ValueType::kString;
     }
     new(&str_val_) std::string(s);
   }
@@ -224,7 +230,7 @@ class PrimitiveValue {
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
 
   ~PrimitiveValue() {
-    if (type_ == ValueType::kString || type_ == ValueType::kStringDescending) {
+    if (IsString()) {
       str_val_.~basic_string();
     } else if (type_ == ValueType::kJsonb) {
       json_val_.~basic_string();
@@ -295,7 +301,7 @@ class PrimitiveValue {
   // This returns a YB slice, not a RocksDB slice, based on what was needed when this function was
   // implemented. This distinction should go away if we merge RocksDB and YB Slice classes.
   Slice GetStringAsSlice() const {
-    DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
+    DCHECK(IsString());
     return Slice(str_val_);
   }
 
@@ -304,7 +310,8 @@ class PrimitiveValue {
   }
 
   bool IsString() const {
-    return ValueType::kString == type_ || ValueType::kStringDescending == type_;
+    return ValueType::kString == type_ || ValueType::kStringDescending == type_ ||
+           ValueType::kCollString == type_ || ValueType::kCollStringDescending == type_;
   }
 
   bool IsDouble() const {
@@ -490,7 +497,7 @@ class PrimitiveValue {
 
     ttl_seconds_ = other->ttl_seconds_;
     write_time_ = other->write_time_;
-    if (other->type_ == ValueType::kString || other->type_ == ValueType::kStringDescending) {
+    if (other->IsString()) {
       type_ = other->type_;
       new(&str_val_) std::string(std::move(other->str_val_));
       // The moved-from object should now be in a "valid but unspecified" state as per the standard.

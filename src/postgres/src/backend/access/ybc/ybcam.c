@@ -163,8 +163,9 @@ static Oid ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum, Datum value, bool is_null)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
+	Oid	attcollation = ybc_get_attcollation(bind_desc, attnum);
 
-	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, is_null);
+	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, attcollation, value, is_null);
 
 	HandleYBStatus(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr));
 }
@@ -173,14 +174,17 @@ static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, Att
                                      bool start_valid, Datum value, bool end_valid, Datum value_end)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
+	Oid	attcollation = ybc_get_attcollation(bind_desc, attnum);
 
 	YBCPgExpr ybc_expr = start_valid ? YBCNewConstant(ybScan->handle,
 													  atttypid,
+													  attcollation,
 													  value,
 													  false /* isnull */)
 									 : NULL;
 	YBCPgExpr ybc_expr_end = end_valid ? YBCNewConstant(ybScan->handle,
 														atttypid,
+														attcollation,
 														value_end,
 														false /* isnull */)
 									   : NULL;
@@ -195,6 +199,7 @@ static void ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumb
                                 int nvalues, Datum *values)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
+	Oid	attcollation = ybc_get_attcollation(bind_desc, attnum);
 
 	YBCPgExpr ybc_exprs[nvalues]; /* VLA - scratch space */
 	for (int i = 0; i < nvalues; i++) {
@@ -203,7 +208,8 @@ static void ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumb
 		 * getting here (relying on btree/lsm operators being strict).
 		 * So we can safely set is_null to false for all options left here.
 		 */
-		ybc_exprs[i] = YBCNewConstant(ybScan->handle, atttypid, values[i], false /* is_null */);
+		ybc_exprs[i] = YBCNewConstant(ybScan->handle, atttypid, attcollation,
+									  values[i], false /* is_null */);
 	}
 
 	HandleYBStatus(YBCPgDmlBindColumnCondIn(ybScan->handle, attnum, nvalues, ybc_exprs));
@@ -216,6 +222,7 @@ static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
 {
 	/* Regular (non-system) attribute. */
 	Oid atttypid = InvalidOid;
+	Oid attcollation = InvalidOid;
 	int32 atttypmod = 0;
 	if (attnum > 0)
 	{
@@ -225,10 +232,11 @@ static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
 			return;
 		atttypid = attr->atttypid;
 		atttypmod = attr->atttypmod;
+		attcollation = attr->attcollation;
 	}
 
 	YBCPgTypeAttrs type_attrs = { atttypmod };
-	YBCPgExpr expr = YBCNewColumnRef(ybScan->handle, attnum, atttypid, &type_attrs);
+	YBCPgExpr expr = YBCNewColumnRef(ybScan->handle, attnum, atttypid, attcollation, &type_attrs);
 	HandleYBStatus(YBCPgDmlAppendTarget(ybScan->handle, expr));
 }
 
@@ -1512,6 +1520,11 @@ static double ybcIndexEvalClauseSelectivity(Bitmapset *qual_cols,
 	return YBC_HASH_SCAN_SELECTIVITY;
 }
 
+Oid ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
+{
+	return attnum > 0 ? TupleDescAttr(desc, attnum - 1)->attcollation : InvalidOid;
+}
+
 void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 						  Cost *startup_cost, Cost *total_cost)
 {
@@ -1639,6 +1652,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
 										   BYTEAOID,
+										   InvalidOid,
 										   ybctid,
 										   false);
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber, ybctid_expr));
@@ -1649,20 +1663,21 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	if (RelationGetForm(relation)->relhasoids)
 	{
 		YBCPgTypeAttrs type_attrs = { 0 };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, ObjectIdAttributeNumber, InvalidOid,
-										   &type_attrs);
+		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, ObjectIdAttributeNumber,
+										   InvalidOid, InvalidOid, &type_attrs);
 		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid, &type_attrs);
+		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
+										   att->attcollation, &type_attrs);
 		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
 	YBCPgTypeAttrs type_attrs = { 0 };
-	YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, YBTupleIdAttributeNumber, InvalidOid,
-									   &type_attrs);
+	YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, YBTupleIdAttributeNumber,
+									   InvalidOid, InvalidOid, &type_attrs);
 	HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 
 	/*
@@ -1737,6 +1752,7 @@ ybBeginSample(Relation rel, int targrows)
 		YBCPgExpr	expr = YBCNewColumnRef(ybSample->handle,
 										   ObjectIdAttributeNumber,
 										   InvalidOid,
+										   InvalidOid,
 										   &type_attrs);
 		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
 	}
@@ -1747,6 +1763,7 @@ ybBeginSample(Relation rel, int targrows)
 		YBCPgExpr   expr = YBCNewColumnRef(ybSample->handle,
 										   attnum,
 										   att->atttypid,
+										   att->attcollation,
 										   &type_attrs);
 		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
 	}
