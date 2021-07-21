@@ -182,6 +182,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 
     // Add the CDC stream to the CDC stream map.
     catalog_manager_->cdc_stream_map_[stream->id()] = stream;
+    catalog_manager_->cdc_stream_tables_count_map_[metadata.table_id()]++;
 
     l.Commit();
 
@@ -206,7 +207,8 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
   explicit UniverseReplicationLoader(CatalogManager* catalog_manager)
       : catalog_manager_(catalog_manager) {}
 
-  Status Visit(const std::string& producer_id, const SysUniverseReplicationEntryPB& metadata) {
+  Status Visit(const std::string& producer_id, const SysUniverseReplicationEntryPB& metadata)
+      REQUIRES(catalog_manager_->mutex_) {
     DCHECK(!ContainsKey(catalog_manager_->universe_replication_map_, producer_id))
         << "Producer universe already exists: " << producer_id;
 
@@ -225,7 +227,13 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
 
       // Add universe replication info to the universe replication map.
       catalog_manager_->universe_replication_map_[ri->id()] = ri;
+
       l.Commit();
+    }
+
+    // Also keep track of consumer tables.
+    for (const auto& table : metadata.validated_tables()) {
+      catalog_manager_->xcluster_consumer_tables_set_.insert(table.second);
     }
 
     LOG(INFO) << "Loaded metadata for universe replication " << ri->ToString();
@@ -266,9 +274,11 @@ Status CatalogManager::RunLoaders(int64_t term) {
 
   // Clear CDC stream map.
   cdc_stream_map_.clear();
+  cdc_stream_tables_count_map_.clear();
 
   // Clear universe replication map.
   universe_replication_map_.clear();
+  xcluster_consumer_tables_set_.clear();
 
   LOG_WITH_FUNC(INFO) << "Loading snapshots into memory.";
   unique_ptr<SnapshotLoader> snapshot_loader(new SnapshotLoader(this));
@@ -2209,6 +2219,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
 
     // Add the stream to the in-memory map.
     cdc_stream_map_[stream->id()] = stream;
+    cdc_stream_tables_count_map_[table->id()]++;
     resp->set_stream_id(stream->id());
   }
   TRACE("Inserted new CDC stream into CatalogManager maps");
@@ -2409,6 +2420,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
       if (cdc_stream_map_.erase(stream->id()) < 1) {
         return STATUS(IllegalState, "Could not remove CDC stream from map", stream->id());
       }
+      cdc_stream_tables_count_map_[stream->table_id()]--;
     }
   }
   LOG(INFO) << "Successfully deleted streams " << JoinStreamsCSVLine(streams_to_delete)
@@ -2785,6 +2797,12 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
     return CheckStatus(status, "updating universe replication info in sys-catalog");
   }
   l.Commit();
+
+  {
+    LockGuard lock(mutex_);
+    // Also update the set of consumer tables.
+    xcluster_consumer_tables_set_.insert(consumer_table);
+  }
 
   // Create CDC stream for each validated table, after persisting the replication state change.
   if (!validated_tables.empty()) {
@@ -3272,6 +3290,13 @@ void CatalogManager::DeleteUniverseReplicationUnlocked(
     LOG(ERROR) << "An error occurred while removing replication info from map: " << s
                << ": universe_id: " << universe->id();
   }
+  // Also delete all consumer tables from the set.
+  for (const auto& table : universe->metadata().state().pb.validated_tables()) {
+    if (xcluster_consumer_tables_set_.erase(table.second) < 1) {
+      LOG(ERROR) << "An error occured while trying to remove consumer table from set. "
+                 << "table_id: " << table.second << ": universe_id: " << universe->id();
+    }
+  }
 }
 
 Status CatalogManager::SetUniverseReplicationEnabled(
@@ -3668,6 +3693,24 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
   // Not done yet.
   resp->set_done(false);
   return Status::OK();
+}
+
+bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
+  auto it = cdc_stream_tables_count_map_.find(table_info.id());
+  if (it == cdc_stream_tables_count_map_.end()) {
+    return false;
+  }
+  return it->second > 0;
+}
+
+bool CatalogManager::IsTableCdcConsumer(const TableInfo& table_info) const {
+  return xcluster_consumer_tables_set_.count(table_info.id()) == 1;
+}
+
+bool CatalogManager::IsCdcEnabled(
+    const TableInfo& table_info) const {
+  SharedLock lock(mutex_);
+  return IsTableCdcProducer(table_info) || IsTableCdcConsumer(table_info);
 }
 
 void CatalogManager::Started() {

@@ -1288,6 +1288,10 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsCdcEnabled(const TableInfo& table_info) const {
+    return false;
+  }
+
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type) {
     return SnapshotSchedulesToObjectIdsMap();
