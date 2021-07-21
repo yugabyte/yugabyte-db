@@ -142,6 +142,8 @@ YbScanDesc ybcBeginScan(Relation relation,
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 
+Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
+
 /* Number of rows assumed for a YB table if no size estimates exist */
 #define YBC_DEFAULT_NUM_ROWS  1000
 

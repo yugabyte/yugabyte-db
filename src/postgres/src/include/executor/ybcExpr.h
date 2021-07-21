@@ -39,24 +39,29 @@ typedef struct YBExprParamDesc {
 	int32_t attno;
 	int32_t typid;
 	int32_t typmod;
+	int32_t collid;
 } YBExprParamDesc;
 
 // Construct column reference expression.
-extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int attr_typid,
-																 const YBCPgTypeAttrs *type_attrs);
+extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
+								 int attr_typid, int attr_collation,
+								 const YBCPgTypeAttrs *type_attrs);
 
 // Construct constant expression using the given datatype "type_id" and value "datum".
-extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null);
+extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id,
+								Oid collation_id, Datum datum, bool is_null);
 
 // Construct virtual constant expression using the given datatype "type_id" and virtual "datum".
-extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatumKind kind);
+extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id,
+									   Oid collation_id, YBCPgDatumKind kind);
 
 // Construct a generic eval_expr call for given a PG Expr and its expected type and attno.
 extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt, 
                                                Expr *expr, 
                                                int32_t attno, 
                                                int32_t type_id, 
-                                               int32_t type_mod);
+                                               int32_t type_mod,
+                                               int32_t collation_id);
 
 YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
                              Expr *pg_expr,

@@ -323,8 +323,8 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 				{
 					/* Given value is not null. Convert it to YugaByte format. */
 					Const *value = castNode(Const, datums[idx]->value);
-					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constvalue,
-												false /* is_null */);
+					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constcollid,
+												value->constvalue, false /* is_null */);
 					break;
 				}
 
@@ -333,7 +333,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 					/* Create MINVALUE in YugaByte format */
 					Form_pg_attribute attr = attrs[idx];
 					exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
-													   YB_YQL_DATUM_LIMIT_MAX);
+													   attr->attcollation, YB_YQL_DATUM_LIMIT_MAX);
 					break;
 				}
 
@@ -342,7 +342,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 					/* Create MINVALUE in YugaByte format */
 					Form_pg_attribute attr = attrs[idx];
 					exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
-													   YB_YQL_DATUM_LIMIT_MIN);
+													   attr->attcollation, YB_YQL_DATUM_LIMIT_MIN);
 					break;
 				}
 			}
@@ -351,7 +351,8 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 		/* Defaulted to MINVALUE for the rest of the columns that are not assigned a value */
 		for (; idx < attr_count; idx++) {
 			Form_pg_attribute attr = attrs[idx];
-			exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid, YB_YQL_DATUM_LIMIT_MIN);
+			exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
+											   attr->attcollation, YB_YQL_DATUM_LIMIT_MIN);
 		}
 
 		/* Add the split boundary to CREATE statement */

@@ -7760,7 +7760,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 				elog(ERROR, "cache lookup failed for type %u", attr_form->atttypid);
 			Form_pg_type attr_type_form = (Form_pg_type) GETSTRUCT(tuple);
 
-			if (attr_form->attcollation != attr_type_form->typcollation)
+			if (!YBIsCollationEnabled() &&
+				attr_form->attcollation != attr_type_form->typcollation)
 				elog(ERROR, "adding primary key to a table with collated columns "
 				            "is not yet implemented");
 

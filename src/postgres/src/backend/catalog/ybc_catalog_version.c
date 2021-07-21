@@ -93,7 +93,7 @@ bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	                                  RelationGetDescr(rel));
 
 	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, ybctid,
+	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid, ybctid,
 										   false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(update_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
@@ -128,7 +128,8 @@ bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	                                                   (Expr *) expr,
 	                                                   attnum,
 	                                                   INT8OID,
-	                                                   0);
+	                                                   0,
+	                                                   InvalidOid);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 
@@ -139,10 +140,12 @@ bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 		params[0].attno = attnum + 1;
 		params[0].typid = INT8OID;
 		params[0].typmod = 0;
+		params[0].collid = InvalidOid;
 
 		params[1].attno = attnum;
 		params[1].typid = INT8OID;
 		params[1].typmod = 0;
+		params[1].collid = InvalidOid;
 
 		YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr, params, 2);
 		HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum + 1, ybc_expr));
@@ -258,6 +261,7 @@ void YBCGetMasterCatalogVersionFromTable(uint64_t *version) {
 	Datum oid_datum = Int32GetDatum(TemplateDbOid);
 	YBCPgExpr pkey_expr = YBCNewConstant(ybc_stmt,
 	                                     oid_attrdesc->atttypid,
+	                                     oid_attrdesc->attcollation,
 	                                     oid_datum,
 	                                     false /* is_null */);
 
@@ -268,7 +272,8 @@ void YBCGetMasterCatalogVersionFromTable(uint64_t *version) {
 	{
 		Form_pg_attribute att = &Desc_pg_yb_catalog_version[attnum - 1];
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid, &type_attrs);
+		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
+										   att->attcollation, &type_attrs);
 		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
 
