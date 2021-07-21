@@ -33,8 +33,11 @@ import play.libs.Json;
 @Slf4j
 public abstract class AbstractTaskBase implements ITask {
 
-  // Number of concurrent tasks to execute at a time.
-  private static final int TASK_THREADS = 10;
+  // Number of threads to keep in the pool, even if they are idle
+  private static final int CORE_POOL_SIZE = 2;
+
+  // Maximum number of threads to allow in the pool at a time.
+  private static final int MAX_POOL_SIZE = 10;
 
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).
@@ -112,8 +115,8 @@ public abstract class AbstractTaskBase implements ITask {
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
     executor =
         new ThreadPoolExecutor(
-            TASK_THREADS,
-            TASK_THREADS,
+            CORE_POOL_SIZE,
+            MAX_POOL_SIZE,
             THREAD_ALIVE_TIME,
             TimeUnit.SECONDS,
             new LinkedBlockingQueue<Runnable>(),

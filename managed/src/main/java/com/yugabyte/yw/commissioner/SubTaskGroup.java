@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -12,6 +13,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -178,6 +181,15 @@ public class SubTaskGroup implements Runnable {
       // Wait for each future to finish.
       String errorString = null;
       try {
+        if (taskInfo.getTaskType() == TaskType.RunExternalScript) {
+          try {
+            JsonNode jsonNode = (JsonNode) taskInfo.getTaskDetails();
+            long timeLimitMins = Long.parseLong(jsonNode.get("timeLimitMins").asText());
+            future.get(timeLimitMins, TimeUnit.MINUTES);
+          } catch (TimeoutException e) {
+            throw new Exception("External Script execution failed as it exceeds timeLimit");
+          }
+        }
         if (future.get() == null) {
           // Task succeeded.
           numTasksCompleted.incrementAndGet();

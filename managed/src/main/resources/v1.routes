@@ -333,3 +333,7 @@ PUT    /settings/ha/internal/config/demote/:timestamp                          c
 PUT    /settings/ha/internal/config/sync/:timestamp                            com.yugabyte.yw.controllers.InternalHAController.syncInstances(timestamp: Long)
 POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups()
 
+# Schedule External Script API
+POST   /customers/:cUUID/universes/:uniUUID/scheduleScript                     com.yugabyte.yw.controllers.ScheduleScriptController.externalScriptSchedule(cUUID: java.util.UUID, uniUUID : java.util.UUID)
+PUT    /customers/:cUUID/universes/:uniUUID/stopScheduledScript                com.yugabyte.yw.controllers.ScheduleScriptController.stopScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
+PUT    /customers/:cUUID/universes/:uniUUID/updateScheduledScript              com.yugabyte.yw.controllers.ScheduleScriptController.updateScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)

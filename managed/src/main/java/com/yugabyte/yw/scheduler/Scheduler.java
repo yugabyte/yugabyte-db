@@ -25,6 +25,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -171,6 +172,9 @@ public class Scheduler {
           if (taskType == TaskType.MultiTableBackup) {
             this.runMultiTableBackupsTask(schedule);
           }
+          if (taskType == TaskType.ExternalScript) {
+            this.runExternalScriptTask(schedule);
+          }
         }
       }
       Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
@@ -288,5 +292,25 @@ public class Scheduler {
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Delete,
         "Backup");
+  }
+
+  private void runExternalScriptTask(Schedule schedule) {
+    JsonNode params = schedule.getTaskParams();
+    RunExternalScript.Params taskParams = Json.fromJson(params, RunExternalScript.Params.class);
+    UUID taskUUID = commissioner.submit(TaskType.ExternalScript, taskParams);
+    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    Customer customer = Customer.getOrBadRequest(taskParams.customerUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    CustomerTask.create(
+        customer,
+        universe.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ExternalScript,
+        universe.name);
+    LOG.info(
+        "Submitted external script task with task uuid = {} for universe {}.",
+        taskUUID,
+        universe.universeUUID);
   }
 }

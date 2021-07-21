@@ -122,6 +122,12 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
   }
 
+  public void setCronExperssionandTaskParams(String cronExpression, ITaskParams params) {
+    this.cronExpression = cronExpression;
+    this.taskParams = Json.toJson(params);
+    save();
+  }
+
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
   public static Schedule create(

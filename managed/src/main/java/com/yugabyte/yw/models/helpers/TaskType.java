@@ -41,6 +41,8 @@ public enum TaskType {
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
 
+  ExternalScript("ExternalScript"),
+
   @Deprecated
   KubernetesProvision("KubernetesProvision"),
 
@@ -182,6 +184,8 @@ public enum TaskType {
   InstanceActions("subtasks.InstanceActions"),
 
   WaitForServerReady("subtasks.WaitForServerReady"),
+
+  RunExternalScript("subtasks.RunExternalScript"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
