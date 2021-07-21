@@ -14,6 +14,8 @@ package org.yb.pgsql;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import org.junit.Before;
@@ -472,6 +474,39 @@ public class TestYbBackup extends BasePgSQLTest {
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testRestoreWithRestoreTime() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
+
+      for (int i = 1; i <= 2000; ++i) {
+        stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES" +
+            " (" + String.valueOf(i) +                     // h
+            ", " + String.valueOf(100 + i) +               // a
+            ", " + String.valueOf(2.14 + (float)i) + ")"); // b
+      }
+
+      // Get the current timestamp in microseconds.
+      String ts = Long.toString(ChronoUnit.MICROS.between(Instant.EPOCH, Instant.now()));
+
+      // Insert additional values into the table before taking the backup.
+      stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (9999, 789, 8.9)");
+
+      YBBackupUtil.runYbBackupCreate("--keyspace", "ysql.yugabyte");
+
+      // Backup using --restore_time.
+      YBBackupUtil.runYbBackupRestore("--keyspace", "ysql.yb2", "--restore_time", ts);
+    }
+
+    // Verify we only restore the original rows.
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+        Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=1", new Row(1, 101, 3.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=2000", new Row(2000, 2100, 2002.14));
+      assertQuery(stmt, "SELECT * FROM test_tbl WHERE h=9999");  // Should not exist.
     }
   }
 }

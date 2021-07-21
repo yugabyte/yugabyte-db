@@ -763,6 +763,9 @@ class YBBackup:
         )
         parser.add_argument(
             '--nfs_storage_path', required=False, help="NFS storage mount path")
+        parser.add_argument(
+            '--restore_time', required=False,
+            help='The Unix microsecond timestamp to which to restore the snapshot.')
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -2173,6 +2176,10 @@ class YBBackup:
         elif self.args.table:
             raise BackupException('Need to specify --keyspace')
 
+        # TODO (jhe): Perform verification for restore_time. Need to check for:
+        #  - Verify that the timestamp given fits in the history retention window for the snapshot
+        #  - Verify that we are restoring a keyspace/namespace (no individual tables for pitr)
+
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
         (metadata_file_path, dump_file_path) = self.download_metadata_file()
@@ -2227,9 +2234,15 @@ class YBBackup:
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
-
         self.timer.log_new_phase("Restore the snapshot")
-        output = self.run_yb_admin(['restore_snapshot', snapshot_id])
+
+        restore_snapshot_args = ['restore_snapshot', snapshot_id]
+        # Pass in the timestamp if provided.
+        if self.args.restore_time:
+            restore_snapshot_args.append(self.args.restore_time)
+
+        output = self.run_yb_admin(restore_snapshot_args)
+
         # Transaction-aware snapshots use special restaration id with final state RESTORED,
         # while previous implementation uses snapshot id and it's state COMPLETE.
         restoration_id = snapshot_id
