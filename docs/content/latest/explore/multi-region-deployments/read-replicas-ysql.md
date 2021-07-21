@@ -31,7 +31,7 @@ showAsideToc: true
 
 </ul>
 
-Read replicas support in YSQL is currently in Beta. 
+YSQL read replicas support is currently in Beta. 
 
-The documentation is coming soon.
+No documentation is available at this time.
 
