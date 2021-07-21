@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include "yb/rocksdb/util/logging.h"
+#include "yb/util/std_util.h"
 
 namespace rocksdb {
 namespace port {
@@ -179,7 +180,7 @@ int GetMaxOpenFiles() {
     return -1;
   }
   // protect against overflow
-  if (no_files_limit.rlim_cur >= static_cast<size_t>(std::numeric_limits<int>::max())) {
+  if (yb::std_util::cmp_greater_equal(no_files_limit.rlim_cur, std::numeric_limits<int>::max())) {
     return std::numeric_limits<int>::max();
   }
   return static_cast<int>(no_files_limit.rlim_cur);

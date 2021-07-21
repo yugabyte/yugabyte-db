@@ -40,6 +40,7 @@
 #include "yb/util/encrypted_file.h"
 #include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
 
 using yb::Format;
@@ -311,7 +312,7 @@ Result<ChecksumData> ComputeChecksum(
           .actual = crc32c::Value(src_data.data(), src_data.size())
       };
     case kxxHash:
-      if (src_data.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+      if (yb::std_util::cmp_greater(src_data.size(), std::numeric_limits<int>::max())) {
         return STATUS_FORMAT(
             Corruption, "Block too large for xxHash ($0 bytes, but must be $1 or smaller)",
             src_data.size(), std::numeric_limits<int>::max());
