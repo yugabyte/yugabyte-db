@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.common;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -24,6 +27,7 @@ import com.yugabyte.yw.common.alerts.AlertReceiverManager;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.alerts.YWNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -33,13 +37,13 @@ import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.AlertRoute;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
 import javax.mail.MessagingException;
 import org.junit.Before;
 import org.junit.Test;
@@ -63,6 +67,8 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Mock private EmailHelper emailHelper;
 
+  private MetricService metricService;
+
   private AlertService alertService;
 
   private AlertDefinitionService alertDefinitionService;
@@ -80,6 +86,7 @@ public class AlertManagerTest extends FakeDBApplication {
   private AlertNotificationReport report = new AlertNotificationReport();
 
   private AlertRoute defaultRoute;
+  private AlertReceiver defaultReceiver;
 
   private AlertRouteService alertRouteService;
 
@@ -92,6 +99,7 @@ public class AlertManagerTest extends FakeDBApplication {
     group = ModelFactory.createAlertDefinitionGroup(defaultCustomer, universe);
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, group);
 
+    metricService = new MetricService();
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
     alertDefinitionGroupService =
@@ -101,12 +109,13 @@ public class AlertManagerTest extends FakeDBApplication {
     am =
         new AlertManager(
             emailHelper,
-            alertService,
             alertDefinitionGroupService,
             alertRouteService,
-            receiversManager);
+            receiversManager,
+            metricService);
 
     defaultRoute = alertRouteService.createDefaultRoute(defaultCustomer.uuid);
+    defaultReceiver = defaultRoute.getReceiversList().get(0);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
   }
@@ -124,11 +133,28 @@ public class AlertManagerTest extends FakeDBApplication {
     } catch (YWNotificationException e) {
       fail("Unexpected exception caught.");
     }
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
+            .targetUuid(defaultCustomer.getUuid())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS.getMetricName())
+            .targetUuid(defaultReceiver.getUuid())
+            .build(),
+        1.0);
   }
 
   @Test
   public void testResolveAlerts() {
-    Alert alert = ModelFactory.createAlert(defaultCustomer);
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
     assertEquals(Alert.State.CREATED, alert.getState());
     assertEquals(Alert.State.ACTIVE, alert.getTargetState());
@@ -143,7 +169,7 @@ public class AlertManagerTest extends FakeDBApplication {
     AlertFilter alertFilter =
         AlertFilter.builder()
             .customerUuid(defaultCustomer.getUuid())
-            .errorCode(KnownAlertCodes.CUSTOMER_ALERT)
+            .definitionUuid(alert.getDefinitionUuid())
             .build();
     alertService.markResolved(alertFilter);
 
@@ -161,53 +187,60 @@ public class AlertManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSendEmail_OwnAlertsReseted() {
-    UUID defaultReceiverUUID = defaultRoute.getReceivers().get(0);
-    Alert amAlert =
-        ModelFactory.createAlert(
-            defaultCustomer, null, null, KnownAlertCodes.ALERT_MANAGER_FAILURE);
-    amAlert.setLabel(KnownAlertLabels.TARGET_UUID, defaultReceiverUUID.toString());
-    amAlert.setSendEmail(false);
-    alertService.save(amAlert);
+  public void testSendEmail_MetricsSetOk() {
+    metricService.setStatusMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer),
+        "Some error");
+    am.setReceiverStatusMetric(
+        PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS, defaultReceiver, "Some receiver error");
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
-
-    AlertFilter alertFilter =
-        AlertFilter.builder()
-            .customerUuid(defaultCustomer.getUuid())
-            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-            .build();
-    List<Alert> alerts = alertService.list(alertFilter);
-    assertEquals(1, alerts.size());
-    assertEquals(Alert.State.ACTIVE, alerts.get(0).getTargetState());
 
     am.sendNotification(alert, report);
 
-    alerts = alertService.list(alertFilter);
-    assertEquals(1, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).getTargetState());
+    Metric amStatus =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
+                .targetUuid(defaultCustomer.getUuid())
+                .build(),
+            1.0);
+    assertThat(amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
+    Metric receiverStatus =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS.getMetricName())
+                .targetUuid(defaultReceiver.getUuid())
+                .build(),
+            1.0);
+    assertThat(receiverStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
   }
 
   @Test
-  public void testSendEmail_OwnAlertGenerated() throws YWNotificationException {
+  public void testSendEmail_FailureMetric() throws YWNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
-
-    AlertFilter alertFilter =
-        AlertFilter.builder()
-            .customerUuid(defaultCustomer.getUuid())
-            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-            .build();
-    List<Alert> alerts = alertService.list(alertFilter);
-    assertEquals(0, alerts.size());
 
     doThrow(new YWNotificationException("test"))
         .when(emailReceiver)
         .sendNotification(eq(defaultCustomer), eq(alert), any());
     am.sendNotification(alert, report);
 
-    alerts = alertService.list(alertFilter);
-    assertEquals(1, alerts.size());
-    assertEquals(Alert.State.ACTIVE, alerts.get(0).getTargetState());
+    Metric receiverStatus =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS.getMetricName())
+                .targetUuid(defaultReceiver.getUuid())
+                .build(),
+            0.0);
+    assertThat(
+        receiverStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
+        equalTo("Error sending notification: test"));
   }
 
   @Test
@@ -264,22 +297,23 @@ public class AlertManagerTest extends FakeDBApplication {
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.emptyList());
 
-    AlertFilter alertFilter =
-        AlertFilter.builder()
-            .customerUuid(defaultCustomer.getUuid())
-            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-            .targetState(Alert.State.CREATED, Alert.State.ACTIVE)
-            .build();
-    List<Alert> alerts = alertService.list(alertFilter);
-    assertEquals(0, alerts.size());
-
     am.sendNotification(alert, report);
     verify(emailReceiver, never()).sendNotification(any(), any(), any());
 
-    alerts = alertService.list(alertFilter);
-    assertEquals(1, alerts.size());
-    assertEquals(Alert.State.ACTIVE, alerts.get(0).getTargetState());
-    assertEquals(KnownAlertCodes.ALERT_MANAGER_FAILURE.name(), alerts.get(0).getErrCode());
+    Metric amStatus =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
+                .targetUuid(defaultCustomer.getUuid())
+                .build(),
+            0.0);
+    assertThat(
+        amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
+        equalTo(
+            "Unable to notify about alert(s) using default route, "
+                + "there are no recipients configured in the customer's profile."));
 
     // Restoring recipients.
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
@@ -287,7 +321,16 @@ public class AlertManagerTest extends FakeDBApplication {
 
     am.sendNotification(alert, report);
     verify(emailReceiver, times(1)).sendNotification(any(), any(), any());
-    alerts = alertService.list(alertFilter);
-    assertEquals(0, alerts.size());
+
+    amStatus =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
+                .targetUuid(defaultCustomer.getUuid())
+                .build(),
+            1.0);
+    assertThat(amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
   }
 }

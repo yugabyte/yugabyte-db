@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
@@ -33,7 +33,6 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.Unit;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
@@ -311,33 +310,31 @@ public class ModelFactory {
             .setGroupUUID(group.getUuid())
             .setCustomerUUID(customer.getUuid())
             .setQuery("query {{ query_condition }} {{ query_threshold }}")
-            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get())
+            .setLabels(AlertLabelsBuilder.create().appendTarget(universe).get())
             .generateUUID();
     alertDefinition.save();
     return alertDefinition;
   }
 
   public static Alert createAlert(Customer customer) {
-    return createAlert(customer, null, null, KnownAlertCodes.CUSTOMER_ALERT);
+    return createAlert(customer, null, null);
   }
 
   public static Alert createAlert(Customer customer, Universe universe) {
-    return createAlert(customer, universe, null, KnownAlertCodes.CUSTOMER_ALERT);
+    return createAlert(customer, universe, null);
   }
 
   public static Alert createAlert(Customer customer, AlertDefinition definition) {
-    return createAlert(customer, null, definition, KnownAlertCodes.CUSTOMER_ALERT);
+    return createAlert(customer, null, definition);
   }
 
   public static Alert createAlert(
-      Customer customer, Universe universe, AlertDefinition definition, KnownAlertCodes code) {
+      Customer customer, Universe universe, AlertDefinition definition) {
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
-            .setErrCode(code)
             .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Universe on fire!")
-            .setSendEmail(true)
             .generateUUID();
     if (definition != null) {
       AlertDefinitionGroup group =
@@ -353,7 +350,7 @@ public class ModelFactory {
               .collect(Collectors.toList());
       alert.setLabels(labels);
     } else {
-      AlertDefinitionLabelsBuilder labelsBuilder = AlertDefinitionLabelsBuilder.create();
+      AlertLabelsBuilder labelsBuilder = AlertLabelsBuilder.create();
       if (universe != null) {
         labelsBuilder.appendTarget(universe);
       } else {

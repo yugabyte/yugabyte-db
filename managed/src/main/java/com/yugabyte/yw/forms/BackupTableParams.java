@@ -3,7 +3,6 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.models.Backup;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
@@ -81,7 +80,14 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Schedule UUID")
   public UUID scheduleUUID = null;
 
-  @JsonIgnore public Backup backup = null;
+  @ApiModelProperty(value = "Customer UUID")
+  public UUID customerUuid = null;
+
+  @ApiModelProperty(value = "Backup UUID")
+  public UUID backupUuid = null;
+
+  @ApiModelProperty(value = "Is table backup errors ignored")
+  public Boolean ignoreErrors = false;
 
   @JsonIgnore
   public Set<String> getTableNames() {

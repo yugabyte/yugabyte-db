@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.forms.AlertReceiverFormData;
 import com.yugabyte.yw.forms.AlertRouteFormData;
@@ -61,6 +62,8 @@ import play.mvc.Result;
 @Slf4j
 @Api(value = "Alert", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AlertController extends AuthenticatedController {
+
+  @Inject private MetricService metricService;
 
   @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
@@ -381,6 +384,8 @@ public class AlertController extends AuthenticatedController {
           INTERNAL_SERVER_ERROR, "Unable to delete alert receiver: " + alertReceiverUUID);
     }
 
+    metricService.handleTargetRemoval(receiver.getCustomerUUID(), receiver.getUuid());
+
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
   }
@@ -463,5 +468,10 @@ public class AlertController extends AuthenticatedController {
   @VisibleForTesting
   void setAlertService(AlertService alertService) {
     this.alertService = alertService;
+  }
+
+  @VisibleForTesting
+  void setMetricService(MetricService metricService) {
+    this.metricService = metricService;
   }
 }
