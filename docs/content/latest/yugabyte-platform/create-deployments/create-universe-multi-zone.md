@@ -12,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-  <ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-<li>
+  <li>
     <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
       <i class="fas fa-building" aria-hidden="true"></i>
 Generic</a>
@@ -55,7 +55,7 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 ![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
 
-The following illustration shows a newly-created niverse in Pending state:
+The following illustration shows a newly-created universe in Pending state:
 
 ![Dashboard with Pending Universe](/images/ee/pending-univ-dashboard.png)
 
@@ -107,7 +107,7 @@ You connect to a database node as follows:
 
 For example, to connect to the first node called **yb-dev-helloworld1-n1**, copy the first command displayed in the **Access Your Cluster** dialog, and then run it from the Yugabyte Platform server, as follows:
 
-```
+```sh
 centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4
 
 Are you sure you want to continue connecting (yes/no)? yes
@@ -167,7 +167,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
 
 The sample application produces output similar to the following and reports some statistics in the steady state:
 
-```
+```output
 Created table: [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
 ...
 Read: 47388.10 ops/sec (0.67 ms/op), 816030 total ops  | Write: 1307.80 ops/sec (1.53 ms/op), 22900 total ops
@@ -204,7 +204,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
 
 The sample application produces output similar to the following and reports some statistics in the steady state:
 
-```
+```output
 Read: 50069.15 ops/sec (0.64 ms/op), 657550 total ops  | Write: 1470.87 ops/sec (1.36 ms/op), 18849 total ops
 Read: 50209.09 ops/sec (0.64 ms/op), 908653 total ops  | Write: 1454.87 ops/sec (1.37 ms/op), 26125 total ops
 Read: 50016.18 ops/sec (0.64 ms/op), 1158794 total ops | Write: 1463.26 ops/sec (1.37 ms/op), 33443 total ops
@@ -216,13 +216,13 @@ If you open the **Metrics** tab of the universe, you should see the metrics grap
 
 Note that these server-side metrics tally with the client-side metrics reported by the load tester.
 
-You shoudl stop the sample application.
+You should stop the sample application.
 
 ## Examine data
 
 You can connect to the YCQL service by executing the following command:
 
-```
+```sh
 /home/yugabyte/tserver/bin/ycqlsh <ip_address_of_the_node>
 ```
 
@@ -241,7 +241,7 @@ CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
 ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 ```
 
-```
+```output
  k          | v
 ------------+-----------------------------------------
  key:101323 | 0x4276616c3a3130313332336be1dd6597e2...
@@ -255,13 +255,13 @@ ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 
 You can connect to the YEDIS service by executing the following command:
 
-```
+```sh
 /home/yugabyte/tserver/bin/redis-cli -h <ip_address_of_the_node>
 ```
 
 You can view the data by running the following commands:
 
-```
+```sh
 10.138.0.4:6379> GET key:0
 "Bval:0\x1b\x942\xea\xf0Q\xd1O\xdb\xf8...=V"
 10.138.0.4:6379> GET key:1
