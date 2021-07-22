@@ -3,12 +3,12 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -31,11 +31,19 @@ import play.mvc.Http.Status;
 @Slf4j
 public class UpgradeUniverseHandler {
 
-  @Inject Commissioner commissioner;
+  private final Commissioner commissioner;
+  private final KubernetesManager kubernetesManager;
+  private final RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject KubernetesManager kubernetesManager;
-
-  @Inject Config appConfig;
+  @Inject
+  public UpgradeUniverseHandler(
+      Commissioner commissioner,
+      KubernetesManager kubernetesManager,
+      RuntimeConfigFactory runtimeConfigFactory) {
+    this.commissioner = commissioner;
+    this.kubernetesManager = kubernetesManager;
+    this.runtimeConfigFactory = runtimeConfigFactory;
+  }
 
   public UUID restartUniverse(
       UpgradeTaskParams requestParams, Customer customer, Universe universe) {
@@ -137,34 +145,77 @@ public class UpgradeUniverseHandler {
     // Update request params with additional metadata for upgrade task
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
+    if (requestParams.rootAndClientRootCASame == null) {
+      requestParams.rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
+    }
     requestParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
-    if (universeDetails.rootCA == null) {
-      if (requestParams.rootCA == null) {
-        // If certificate is not present and user has not provided any then create new root cert
-        requestParams.rootCA =
-            CertificateHelper.createRootCA(
-                universeDetails.nodePrefix, customer.uuid, appConfig.getString("yb.storage.path"));
+
+    if (requestParams.enableNodeToNodeEncrypt) {
+      // Setting the rootCA to the already existing rootCA as we do not
+      // support root certificate rotation through TLS upgrade.
+      // There is a check for different new and existing root cert already.
+      if (universeDetails.rootCA == null) {
+        // Create self-signed rootCA in case it is not provided by the user
+        if (requestParams.rootCA == null) {
+          requestParams.rootCA =
+              CertificateHelper.createRootCA(
+                  universeDetails.nodePrefix,
+                  customer.uuid,
+                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+        }
+      } else {
+        // If certificate already present then use the same as upgrade cannot rotate certs
+        requestParams.rootCA = universeDetails.rootCA;
       }
-    } else {
-      // If certificate already present then use the same as upgrade cannot rotate certs
-      requestParams.rootCA = universeDetails.rootCA;
     }
 
-    // Create client certificate if not exists
-    if (!userIntent.enableClientToNodeEncrypt && requestParams.enableClientToNodeEncrypt) {
-      CertificateInfo cert = CertificateInfo.get(requestParams.rootCA);
-      if (cert.certType == CertificateInfo.Type.SelfSigned) {
-        CertificateHelper.createClientCertificate(
-            requestParams.rootCA,
-            String.format(
-                CertificateHelper.CERT_PATH,
-                appConfig.getString("yb.storage.path"),
-                customer.uuid.toString(),
-                requestParams.rootCA.toString()),
-            CertificateHelper.DEFAULT_CLIENT,
-            null,
-            null);
+    if (requestParams.enableClientToNodeEncrypt) {
+      // Setting the ClientRootCA to the already existing clientRootCA as we do not
+      // support root certificate rotation through TLS upgrade.
+      // There is a check for different new and existing root cert already.
+      if (universeDetails.clientRootCA == null) {
+        if (requestParams.clientRootCA == null) {
+          if (requestParams.rootCA != null && requestParams.rootAndClientRootCASame) {
+            // Setting ClientRootCA to RootCA in case rootAndClientRootCA is true
+            requestParams.clientRootCA = requestParams.rootCA;
+          } else {
+            // Create self-signed clientRootCA in case it is not provided by the user
+            // and rootCA and clientRootCA needs to be different
+            requestParams.clientRootCA =
+                CertificateHelper.createClientRootCA(
+                    universeDetails.nodePrefix,
+                    customer.uuid,
+                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+          }
+        }
+      } else {
+        requestParams.clientRootCA = universeDetails.clientRootCA;
+      }
+
+      // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
+      // This is necessary to set to ensure backward compatibility as existing parts of
+      // codebase uses rootCA for Client to Node Encryption
+      if (requestParams.rootCA == null && requestParams.rootAndClientRootCASame) {
+        requestParams.rootCA = requestParams.clientRootCA;
+      }
+
+      // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
+      // This is there only for legacy support, no need if rootCA and clientRootCA are different.
+      if (requestParams.rootAndClientRootCASame) {
+        CertificateInfo cert = CertificateInfo.get(requestParams.rootCA);
+        if (cert.certType == CertificateInfo.Type.SelfSigned) {
+          CertificateHelper.createClientCertificate(
+              requestParams.rootCA,
+              String.format(
+                  CertificateHelper.CERT_PATH,
+                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+                  customer.uuid.toString(),
+                  requestParams.rootCA.toString()),
+              CertificateHelper.DEFAULT_CLIENT,
+              null,
+              null);
+        }
       }
     }
 

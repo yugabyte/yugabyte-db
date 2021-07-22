@@ -764,7 +764,7 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, false, UUID.randomUUID());
     Result result =
         assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "No valid rootCA");
+    assertBadRequest(result, "No valid root certificate");
 
     ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
     verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());

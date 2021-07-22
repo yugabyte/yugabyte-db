@@ -65,7 +65,7 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
             if (CertificateHelper.isRootCARequired(taskParams())) {
               universeDetails.rootCA = taskParams().rootCA;
             }
-            if (taskParams().enableClientToNodeEncrypt) {
+            if (CertificateHelper.isClientRootCARequired(taskParams())) {
               universeDetails.clientRootCA = taskParams().clientRootCA;
             }
             universe.setUniverseDetails(universeDetails);

@@ -388,7 +388,8 @@ public class CertificateHelperTest extends FakeDBApplication {
           null,
           customServerCertData);
     } catch (Exception e) {
-      assertEquals("Certificate with CN = 127.0.0.1 has invalid start/end dates.", e.getMessage());
+      assertEquals(
+          "Certificate with CN = CA for YugabyteDB has invalid start/end dates.", e.getMessage());
     }
   }
 
