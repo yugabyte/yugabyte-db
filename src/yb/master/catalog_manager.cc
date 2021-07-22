@@ -366,16 +366,6 @@ DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "from pg catalog tables. A value of -1 disables the refresh task.");
 TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
 
-DEFINE_int32(ysql_default_analyze_num_rows, 1000,
-             "The default number of rows in a table to provide when responding to an ANALYZE "
-             "request");
-TAG_FLAG(ysql_default_analyze_num_rows, hidden);
-
-DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
-                 "When set, placement of the tablets of a newly created table will not honor "
-                 "its tablespace placement policy until the loadbalancer runs.");
-TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
-
 DEFINE_int64(tablet_split_size_threshold_bytes, 0,
              "DEPRECATED -- Threshold on tablet size after which tablet should be split. Automated "
              "splitting is disabled if this value is set to 0.");
@@ -3185,15 +3175,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
-  return Status::OK();
-}
-
-Status CatalogManager::AnalyzeTable(
-    const AnalyzeTableRequestPB* req,
-    AnalyzeTableResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  // TODO -- implement this with some estimate other than flag-determined default.
-  resp->set_rows(FLAGS_ysql_default_analyze_num_rows);
   return Status::OK();
 }
 
