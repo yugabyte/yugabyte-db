@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -63,9 +64,13 @@ public class TlsToggle extends UpgradeTaskBase {
   private void verifyParams() {
     taskParams().verifyParams(getUniverse());
 
-    if ((taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt)
-        && taskParams().rootCA == null) {
-      throw new IllegalArgumentException("Root certificate cannot be null when enabling TLS");
+    if (CertificateHelper.isRootCARequired(taskParams()) && taskParams().rootCA == null) {
+      throw new IllegalArgumentException("Root certificate is null");
+    }
+
+    if (CertificateHelper.isClientRootCARequired(taskParams())
+        && taskParams().clientRootCA == null) {
+      throw new IllegalArgumentException("Client root certificate is null");
     }
   }
 
@@ -178,6 +183,8 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
@@ -195,6 +202,8 @@ public class TlsToggle extends UpgradeTaskBase {
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
