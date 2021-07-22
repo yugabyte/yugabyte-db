@@ -45,7 +45,7 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Table Partitions](partitions)</span> | List, range, and hash partitioning of tables |
 | <span style="font-size:16px">[Tablespaces](tablespaces)</span> | Definition of tablespaces in YSQL |
 | <span style="font-size:16px">[Views](views/)</span> | Views and updatable views |
-| <span style="font-size:16px">[Extensions](../extensions/)</span> | Pre-bundled extensions for YugabyteDB |
+| <span style="font-size:16px">[Extensions](extensions/)</span> | Pre-bundled extensions for YugabyteDB |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
