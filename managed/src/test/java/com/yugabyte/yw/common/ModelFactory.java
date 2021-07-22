@@ -333,6 +333,8 @@ public class ModelFactory {
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
+            .setName("Alert 1")
+            .setTargetName("Target 1")
             .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .generateUUID();

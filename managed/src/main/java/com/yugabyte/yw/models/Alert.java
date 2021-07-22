@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.paging.PagedQuery;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.Formula;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Comparator;
@@ -33,6 +34,7 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
+import javax.persistence.Transient;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -62,8 +64,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public enum SortBy implements PagedQuery.SortByIF {
-    CREATE_TIME("createTime"),
-    SEVERITY("severity");
+    createTime("createTime"),
+    severity("severityIndex"),
+    name("name"),
+    targetName("targetName"),
+    state("targetStateIndex");
 
     private final String sortField;
 
@@ -102,9 +107,24 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Alert definition group serverity.", accessMode = READ_ONLY)
   private AlertDefinitionGroup.Severity severity;
 
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when severity = 'WARNING' then 1"
+              + " when severity = 'SEVERE' then 2"
+              + " else 0 end)")
+  private Integer severityIndex;
+
+  @ApiModelProperty(value = "Alert name.", accessMode = READ_ONLY)
+  private String name;
+
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Alert Message.", accessMode = READ_ONLY)
   private String message;
+
+  @ApiModelProperty(value = "Alert target name.", accessMode = READ_ONLY)
+  private String targetName;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert State.", accessMode = READ_ONLY)
@@ -113,6 +133,16 @@ public class Alert extends Model implements AlertLabelsProvider {
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Target State.", accessMode = READ_ONLY)
   private State targetState = State.ACTIVE;
+
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when target_state = 'ACTIVE' then 1"
+              + " when target_state = 'ACKNOWLEDGED' then 2"
+              + " when target_state = 'RESOLVED' then 3"
+              + " else 0 end)")
+  private Integer targetStateIndex;
 
   @ApiModelProperty(value = "Alert Definition Uuid", accessMode = READ_ONLY)
   private UUID definitionUuid;
@@ -202,12 +232,8 @@ public class Alert extends Model implements AlertLabelsProvider {
     if (filter.getGroupUuid() != null) {
       query.eq("groupUuid", filter.getGroupUuid());
     }
-    if (filter.getSeverity() != null) {
-      query.eq("severity", filter.getSeverity());
-    }
-    if (filter.getGroupType() != null) {
-      query.eq("groupType", filter.getGroupType());
-    }
+    appendInClause(query, "severity", filter.getSeverities());
+    appendInClause(query, "groupType", filter.getGroupTypes());
     return query;
   }
 }
