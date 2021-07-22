@@ -112,7 +112,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
         && enableClientToNodeEncrypt
         && rootCA != null
         && clientRootCA != null
-        && rootCA != clientRootCA) {
+        && !rootCA.equals(clientRootCA)) {
       throw new YWServiceException(
           Http.Status.BAD_REQUEST,
           "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");

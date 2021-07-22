@@ -219,6 +219,8 @@ public enum TaskType {
 
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
+
   AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
 
   ResetUniverseVersion("subtasks.ResetUniverseVersion");

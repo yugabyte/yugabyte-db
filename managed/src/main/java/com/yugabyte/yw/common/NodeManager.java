@@ -30,11 +30,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -88,6 +90,12 @@ public class NodeManager extends DevopsBase {
     Resume,
     Create_Root_Volumes,
     Replace_Root_Volume
+  }
+
+  public enum CertRotateAction {
+    APPEND_NEW_ROOT_CERT,
+    REMOVE_OLD_ROOT_CERT,
+    ROTATE_CERTS,
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
@@ -257,15 +265,29 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
-  // Return the List of Strings which gives the certificate paths for the specific taskParams
   private List<String> getCertificatePaths(
       AnsibleConfigureServers.Params taskParam, String nodeIP, String yb_home_dir) {
-    ArrayList<String> subcommandStrings = new ArrayList<String>();
+    return getCertificatePaths(
+        taskParam,
+        CertificateHelper.isRootCARequired(taskParam),
+        CertificateHelper.isClientRootCARequired(taskParam),
+        nodeIP,
+        yb_home_dir);
+  }
+
+  // Return the List of Strings which gives the certificate paths for the specific taskParams
+  private List<String> getCertificatePaths(
+      AnsibleConfigureServers.Params taskParam,
+      boolean isRootCARequired,
+      boolean isClientRootCARequired,
+      String nodeIP,
+      String yb_home_dir) {
+    ArrayList<String> subcommandStrings = new ArrayList<>();
 
     String serverCertFile = String.format("node.%s.crt", nodeIP);
     String serverKeyFile = String.format("node.%s.key", nodeIP);
 
-    if (CertificateHelper.isRootCARequired(taskParam)) {
+    if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
       subcommandStrings.add(yb_home_dir + "/yugabyte-tls-config");
 
@@ -293,18 +315,15 @@ public class NodeManager extends DevopsBase {
                   serverCertFile,
                   serverKeyFile);
               rootCertPath = rootCert.certificate;
-              serverCertPath =
-                  String.format("%s/%s", tempStorageDirectory.toString(), serverCertFile);
-              serverKeyPath =
-                  String.format("%s/%s", tempStorageDirectory.toString(), serverKeyFile);
+              serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
+              serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
               if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
                 // These client certs are used for node to postgres communication
-                // These are seprate from clientRoot certs which are used for server to client
+                // These are separate from clientRoot certs which are used for server to client
                 // communication These are not required anymore as this is not mandatory now and
-                // can be removed
-                // The code is still here to mantain backward compatibility
+                // can be removed. The code is still here to maintain backward compatibility
                 subcommandStrings.add("--client_cert_path");
                 subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
@@ -362,7 +381,7 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add("--certs_location");
       subcommandStrings.add(certsLocation);
     }
-    if (CertificateHelper.isClientRootCARequired(taskParam)) {
+    if (isClientRootCARequired) {
       subcommandStrings.add("--certs_client_dir");
       subcommandStrings.add(yb_home_dir + "/yugabyte-client-tls-config");
 
@@ -379,7 +398,8 @@ public class NodeManager extends DevopsBase {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
               Path tempStorageDirectory =
-                  Files.createTempDirectory(String.format("SelfSignedClient%s", taskParam.rootCA))
+                  Files.createTempDirectory(
+                          String.format("SelfSignedClient%s", taskParam.clientRootCA))
                       .toAbsolutePath();
               CertificateHelper.createServerCertificate(
                   taskParam.clientRootCA,
@@ -647,13 +667,10 @@ public class NodeManager extends DevopsBase {
         break;
       case Certs:
         {
-          CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
-          if (cert == null) {
-            throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
+          if (taskParam.certRotateAction == null) {
+            throw new RuntimeException("Cert Rotation Action is null.");
           }
-          if (cert.certType == CertificateInfo.Type.SelfSigned) {
-            throw new RuntimeException("Self signed certs cannot be rotated.");
-          }
+
           String processType = taskParam.getProperty("processType");
           if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
@@ -661,103 +678,155 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--yb_process_type");
             subcommand.add(processType.toLowerCase());
           }
-          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-          subcommand.add("--rotating_certs");
-          subcommand.add("--root_cert_path");
-          subcommand.add(customCertInfo.rootCertPath);
-          subcommand.add("--node_cert_path");
-          subcommand.add(customCertInfo.nodeCertPath);
-          subcommand.add("--node_key_path");
-          subcommand.add(customCertInfo.nodeKeyPath);
-          subcommand.add("--certs_location");
-          subcommand.add(CERT_LOCATION_NODE);
-          if (taskParam.rootAndClientRootCASame
-              && taskParam.enableClientToNodeEncrypt
-              && customCertInfo.clientCertPath != null
-              && !customCertInfo.clientCertPath.isEmpty()
-              && customCertInfo.clientKeyPath != null
-              && !customCertInfo.clientKeyPath.isEmpty()) {
-            subcommand.add("--client_cert_path");
-            subcommand.add(customCertInfo.clientCertPath);
-            subcommand.add("--client_key_path");
-            subcommand.add(customCertInfo.clientKeyPath);
+
+          String yb_home_dir =
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+
+          subcommand.add("--cert_rotate_action");
+          subcommand.add(taskParam.certRotateAction.toString());
+
+          CertificateInfo rootCert = null;
+          if (taskParam.rootCA != null) {
+            rootCert = CertificateInfo.get(taskParam.rootCA);
+          }
+
+          switch (taskParam.certRotateAction) {
+            case APPEND_NEW_ROOT_CERT:
+            case REMOVE_OLD_ROOT_CERT:
+              {
+                if (taskParam.rootCARotationType != CertRotationType.RootCert) {
+                  throw new RuntimeException(
+                      taskParam.certRotateAction
+                          + " is needed only when there is rootCA rotation.");
+                }
+                if (rootCert == null) {
+                  throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
+                }
+                if (rootCert.certType == Type.CustomServerCert) {
+                  throw new RuntimeException(
+                      "Root certificate cannot be of type CustomServerCert.");
+                }
+
+                String rootCertPath = "";
+                String certsLocation = "";
+                if (rootCert.certType == Type.SelfSigned) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = CERT_LOCATION_PLATFORM;
+                } else if (rootCert.certType == Type.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                  certsLocation = CERT_LOCATION_NODE;
+                }
+
+                subcommand.add("--root_cert_path");
+                subcommand.add(rootCertPath);
+                subcommand.add("--certs_location");
+                subcommand.add(certsLocation);
+                subcommand.add("--certs_node_dir");
+                subcommand.add(certsNodeDir);
+              }
+              break;
+            case ROTATE_CERTS:
+              {
+                if (taskParam.rootCARotationType == CertRotationType.None
+                    && taskParam.clientRootCARotationType == CertRotationType.None) {
+                  throw new RuntimeException("No cert rotation can be done with the given params.");
+                }
+                subcommand.addAll(
+                    getCertificatePaths(
+                        taskParam,
+                        taskParam.rootCARotationType != CertRotationType.None,
+                        taskParam.clientRootCARotationType != CertRotationType.None,
+                        node.cloudInfo.private_ip,
+                        yb_home_dir));
+              }
+              break;
           }
         }
         break;
       case ToggleTls:
-        String processType = taskParam.getProperty("processType");
-        String subType = taskParam.getProperty("taskSubType");
+        {
+          String processType = taskParam.getProperty("processType");
+          String subType = taskParam.getProperty("taskSubType");
 
-        if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
-          throw new RuntimeException("Invalid processType: " + processType);
-        } else {
-          subcommand.add("--yb_process_type");
-          subcommand.add(processType.toLowerCase());
-        }
-
-        String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
-        String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
-        String allowInsecureString = String.valueOf(taskParam.allowInsecure);
-
-        String yb_home_dir =
-            Provider.getOrBadRequest(
-                    UUID.fromString(
-                        universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
-                .getYbHome();
-        String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
-
-        if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
-          if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
-            subcommand.add("--adding_certs");
-          }
-          subcommand.addAll(getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
-        } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
-          Map<String, String> gflags = new HashMap<>();
-          if (taskParam.nodeToNodeChange > 0) {
-            gflags.put("use_node_to_node_encryption", nodeToNodeString);
-            gflags.put("use_client_to_server_encryption", clientToNodeString);
-            gflags.put("allow_insecure_connections", "true");
-            if (CertificateHelper.isRootCARequired(taskParam)) {
-              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-            }
-            if (CertificateHelper.isClientRootCARequired(taskParam)) {
-              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
-            }
-          } else if (taskParam.nodeToNodeChange < 0) {
-            gflags.put("allow_insecure_connections", "true");
+          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+            throw new RuntimeException("Invalid processType: " + processType);
           } else {
-            gflags.put("use_node_to_node_encryption", nodeToNodeString);
-            gflags.put("use_client_to_server_encryption", clientToNodeString);
-            gflags.put("allow_insecure_connections", allowInsecureString);
-            if (CertificateHelper.isRootCARequired(taskParam)) {
-              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-            }
-            if (CertificateHelper.isClientRootCARequired(taskParam)) {
-              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
-            }
+            subcommand.add("--yb_process_type");
+            subcommand.add(processType.toLowerCase());
           }
 
-          subcommand.add("--replace_gflags");
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-        } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
-          Map<String, String> gflags = new HashMap<>();
-          if (taskParam.nodeToNodeChange > 0) {
-            gflags.put("allow_insecure_connections", allowInsecureString);
-          } else if (taskParam.nodeToNodeChange < 0) {
-            gflags.put("use_node_to_node_encryption", nodeToNodeString);
-            gflags.put("use_client_to_server_encryption", clientToNodeString);
-            gflags.put("allow_insecure_connections", allowInsecureString);
-            gflags.put("certs_dir", certsNodeDir);
+          String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
+          String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
+          String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+
+          String yb_home_dir =
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+
+          if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+            if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+              subcommand.add("--cert_rotate_action");
+              subcommand.add(CertRotateAction.ROTATE_CERTS.toString());
+            }
+            subcommand.addAll(
+                getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
+              .equals(subType)) {
+            Map<String, String> gflags = new HashMap<>();
+            if (taskParam.nodeToNodeChange > 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", "true");
+              if (CertificateHelper.isRootCARequired(taskParam)) {
+                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              }
+              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              }
+            } else if (taskParam.nodeToNodeChange < 0) {
+              gflags.put("allow_insecure_connections", "true");
+            } else {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              if (CertificateHelper.isRootCARequired(taskParam)) {
+                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              }
+              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              }
+            }
+
+            subcommand.add("--replace_gflags");
+            subcommand.add("--gflags");
+            subcommand.add(Json.stringify(Json.toJson(gflags)));
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name()
+              .equals(subType)) {
+            Map<String, String> gflags = new HashMap<>();
+            if (taskParam.nodeToNodeChange > 0) {
+              gflags.put("allow_insecure_connections", allowInsecureString);
+            } else if (taskParam.nodeToNodeChange < 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              gflags.put("certs_dir", certsNodeDir);
+            } else {
+              LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+            }
+
+            subcommand.add("--replace_gflags");
+            subcommand.add("--gflags");
+            subcommand.add(Json.stringify(Json.toJson(gflags)));
           } else {
-            LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+            throw new RuntimeException("Invalid taskSubType property: " + subType);
           }
-
-          subcommand.add("--replace_gflags");
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-        } else {
-          throw new RuntimeException("Invalid taskSubType property: " + subType);
         }
         break;
     }
