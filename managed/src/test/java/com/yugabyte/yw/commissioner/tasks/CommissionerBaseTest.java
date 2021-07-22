@@ -10,6 +10,7 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.AccessManager;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -69,7 +71,9 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
   protected QueryAlerts mockQueryAlerts;
+  protected CleanExpiredMetrics mockCleanExpiredMetrics;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
+  protected MetricService metricService;
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
   protected AlertDefinitionGroupService alertDefinitionGroupService;
@@ -85,6 +89,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    metricService = new MetricService();
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
     SettableRuntimeConfigFactory configFactory = new SettableRuntimeConfigFactory(app.config());
@@ -98,8 +103,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .thenReturn(app.injector().instanceOf(Environment.class));
     when(mockBaseTaskDependencies.getYbService()).thenReturn(mockYBClient);
     when(mockBaseTaskDependencies.getTableManager()).thenReturn(mockTableManager);
-    when(mockBaseTaskDependencies.getAlertService()).thenReturn(alertService);
-    when(mockBaseTaskDependencies.getAlertDefinitionService()).thenReturn(alertDefinitionService);
+    when(mockBaseTaskDependencies.getMetricService()).thenReturn(metricService);
     when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(configFactory);
     when(mockBaseTaskDependencies.getAlertDefinitionGroupService())
         .thenReturn(alertDefinitionGroupService);
@@ -125,6 +129,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
     mockQueryAlerts = mock(QueryAlerts.class);
+    mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
@@ -147,6 +152,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+        .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))
         .build();

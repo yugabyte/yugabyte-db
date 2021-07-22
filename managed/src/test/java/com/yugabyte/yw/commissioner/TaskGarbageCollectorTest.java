@@ -43,18 +43,20 @@ public class TaskGarbageCollectorTest extends TestCase {
       Double expectedErrors,
       Double expectedCustomerTaskGC,
       Double expectedTaskInfoGC) {
-    assertEquals(expectedNumRuns, testRegistry.getSampleValue(NUM_TASK_GC_RUNS));
-    assertEquals(expectedErrors, testRegistry.getSampleValue(NUM_TASK_GC_ERRORS));
+    assertEquals(
+        expectedNumRuns, testRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_RUNS)));
+    assertEquals(
+        expectedErrors, testRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_ERRORS)));
     assertEquals(
         expectedCustomerTaskGC,
         testRegistry.getSampleValue(
-            CUSTOMER_TASK_METRIC_NAME,
+            getTotalCounterName(CUSTOMER_TASK_METRIC_NAME),
             new String[] {CUSTOMER_UUID_LABEL},
             new String[] {customerUuid.toString()}));
     assertEquals(
         expectedTaskInfoGC,
         testRegistry.getSampleValue(
-            TASK_INFO_METRIC_NAME,
+            getTotalCounterName(TASK_INFO_METRIC_NAME),
             new String[] {CUSTOMER_UUID_LABEL},
             new String[] {customerUuid.toString()}));
   }
@@ -158,5 +160,9 @@ public class TaskGarbageCollectorTest extends TestCase {
     gc.purgeStaleTasks(mockCustomer, Collections.singletonList(mockCustomerTask));
 
     checkCounters(customerUuid, 1.0, 1.0, null, null);
+  }
+
+  private String getTotalCounterName(String name) {
+    return name + "_total";
   }
 }
