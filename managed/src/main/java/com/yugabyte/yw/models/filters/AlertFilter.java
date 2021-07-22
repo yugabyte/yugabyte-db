@@ -11,6 +11,7 @@ package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroup.Severity;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.Arrays;
@@ -33,8 +34,8 @@ public class AlertFilter {
   Set<Alert.State> targetStates;
   Set<UUID> definitionUuids;
   UUID groupUuid;
-  AlertDefinitionGroup.Severity severity;
-  AlertDefinitionGroup.TargetType groupType;
+  Set<AlertDefinitionGroup.Severity> severities;
+  Set<AlertDefinitionGroup.TargetType> groupTypes;
   AlertLabel label;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
@@ -65,11 +66,11 @@ public class AlertFilter {
     if (groupUuid != null) {
       result.groupUuid(groupUuid);
     }
-    if (severity != null) {
-      result.severity(severity);
+    if (severities != null) {
+      result.severities(severities);
     }
-    if (groupType != null) {
-      result.groupType(groupType);
+    if (groupTypes != null) {
+      result.groupTypes(groupTypes);
     }
     return result;
   }
@@ -80,6 +81,8 @@ public class AlertFilter {
     Set<Alert.State> states = EnumSet.noneOf(Alert.State.class);
     Set<Alert.State> targetStates = EnumSet.noneOf(Alert.State.class);
     Set<UUID> definitionUuids = new HashSet<>();
+    Set<AlertDefinitionGroup.Severity> severities = new HashSet<>();
+    Set<AlertDefinitionGroup.TargetType> groupTypes = new HashSet<>();
 
     public AlertFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
@@ -151,13 +154,23 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder severity(@NonNull AlertDefinitionGroup.Severity severity) {
-      this.severity = severity;
+    public AlertFilterBuilder severity(@NonNull Severity... severities) {
+      this.severities.addAll(Arrays.asList(severities));
       return this;
     }
 
-    public AlertFilterBuilder groupType(@NonNull AlertDefinitionGroup.TargetType groupType) {
-      this.groupType = groupType;
+    public AlertFilterBuilder severities(@NonNull Set<Severity> severities) {
+      this.severities.addAll(severities);
+      return this;
+    }
+
+    public AlertFilterBuilder groupType(@NonNull AlertDefinitionGroup.TargetType... groupTypes) {
+      this.groupTypes.addAll(Arrays.asList(groupTypes));
+      return this;
+    }
+
+    public AlertFilterBuilder groupTypes(@NonNull Set<AlertDefinitionGroup.TargetType> groupTypes) {
+      this.groupTypes.addAll(groupTypes);
       return this;
     }
   }
