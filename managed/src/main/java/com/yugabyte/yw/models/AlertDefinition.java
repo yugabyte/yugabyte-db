@@ -16,11 +16,11 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -117,14 +117,15 @@ public class AlertDefinition extends Model {
     effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, group.getName()));
     effectiveLabels.add(
-        new AlertDefinitionLabel(
-            this, KnownAlertLabels.DEFINITION_ACTIVE, String.valueOf(group.isActive())));
-    effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
+    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
     effectiveLabels.add(
         new AlertDefinitionLabel(
-            this, KnownAlertLabels.ERROR_CODE, KnownAlertCodes.CUSTOMER_ALERT.name()));
-    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
+            this,
+            KnownAlertLabels.THRESHOLD,
+            BigDecimal.valueOf(group.getThresholds().get(severity).getThreshold())
+                .stripTrailingZeros()
+                .toPlainString()));
     effectiveLabels.addAll(labels);
     return effectiveLabels;
   }

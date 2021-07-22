@@ -28,8 +28,10 @@ import io.ebean.annotation.Transactional;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -46,11 +48,25 @@ public class AlertService {
       return alerts;
     }
 
+    List<Alert> beforeAlerts = Collections.emptyList();
+    Set<UUID> alertUuids =
+        alerts
+            .stream()
+            .filter(alert -> !alert.isNew())
+            .map(Alert::getUuid)
+            .collect(Collectors.toSet());
+    if (!alertUuids.isEmpty()) {
+      AlertFilter filter = AlertFilter.builder().uuids(alertUuids).build();
+      beforeAlerts = list(filter);
+    }
+    Map<UUID, Alert> beforeAlertMap =
+        beforeAlerts.stream().collect(Collectors.toMap(Alert::getUuid, Function.identity()));
+
     Map<EntityOperation, List<Alert>> toCreateAndUpdate =
         alerts
             .stream()
+            .peek(alert -> validate(alert, beforeAlertMap.get(alert.getUuid())))
             .map(this::prepareForSave)
-            .peek(this::validate)
             .collect(Collectors.groupingBy(alert -> alert.isNew() ? CREATE : UPDATE));
 
     if (toCreateAndUpdate.containsKey(CREATE)) {
@@ -178,22 +194,39 @@ public class AlertService {
   private Alert prepareForSave(Alert alert) {
     return alert
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, alert.getCustomerUUID().toString())
-        .setLabel(KnownAlertLabels.ERROR_CODE, alert.getErrCode())
         .setLabel(KnownAlertLabels.SEVERITY, alert.getSeverity().name());
   }
 
-  private void validate(Alert alert) {
+  private void validate(Alert alert, Alert before) {
     if (alert.getCustomerUUID() == null) {
       throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (alert.getSeverity() == null) {
       throw new YWServiceException(BAD_REQUEST, "Alert severity field is mandatory");
     }
-    if (StringUtils.isEmpty(alert.getErrCode())) {
-      throw new YWServiceException(BAD_REQUEST, "Error code field is mandatory");
-    }
     if (StringUtils.isEmpty(alert.getMessage())) {
       throw new YWServiceException(BAD_REQUEST, "Message field is mandatory");
+    }
+    if (before != null) {
+      if (!alert.getCustomerUUID().equals(before.getCustomerUUID())) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change customer UUID for alert " + alert.getUuid());
+      }
+      if (before.getDefinitionUuid() != null
+          && !alert.getDefinitionUuid().equals(before.getDefinitionUuid())) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change definition for alert " + alert.getUuid());
+      }
+      if (before.getGroupUuid() != null && !alert.getGroupUuid().equals(before.getGroupUuid())) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change group for alert " + alert.getUuid());
+      }
+      if (!alert.getCreateTime().equals(before.getCreateTime())) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change create time for alert " + alert.getUuid());
+      }
+    } else if (!alert.isNew()) {
+      throw new YWServiceException(BAD_REQUEST, "Can't update missing alert " + alert.getUuid());
     }
   }
 }

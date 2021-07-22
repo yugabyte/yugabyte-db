@@ -10,25 +10,28 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
+
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverInterface;
 import com.yugabyte.yw.common.alerts.AlertReceiverManager;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.AlertRoute;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
+import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -38,29 +41,30 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
 public class AlertManager {
 
   private final EmailHelper emailHelper;
-  private final AlertService alertService;
   private final AlertDefinitionGroupService alertDefinitionGroupService;
   private final AlertRouteService alertRouteService;
   private final AlertReceiverManager receiversManager;
+  private final MetricService metricService;
 
   @Inject
   public AlertManager(
       EmailHelper emailHelper,
-      AlertService alertService,
       AlertDefinitionGroupService alertDefinitionGroupService,
       AlertRouteService alertRouteService,
-      AlertReceiverManager receiversManager) {
+      AlertReceiverManager receiversManager,
+      MetricService metricService) {
     this.emailHelper = emailHelper;
-    this.alertService = alertService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
     this.alertRouteService = alertRouteService;
     this.receiversManager = receiversManager;
+    this.metricService = metricService;
   }
 
   /**
@@ -130,39 +134,36 @@ public class AlertManager {
         new ArrayList<>(route.map(AlertRoute::getReceiversList).orElse(Collections.emptyList()));
 
     if (receivers.isEmpty()) {
-      if (!alert.isSendEmail()) {
-        return;
-      }
-
       // Getting receivers from the default route.
       AlertRoute defaultRoute = alertRouteService.getDefaultRoute(alert.getCustomerUUID());
       if (defaultRoute == null) {
         log.warn(
             "Unable to notify about alert {}, there is no default route specified.",
             alert.getUuid());
-        createOrUpdateAlertForCustomer(
-            customer,
-            "Unable to notify about alert(s), there is no default route specified.",
-            AlertDefinitionGroup.Severity.SEVERE);
+        metricService.setStatusMetric(
+            metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
+            "Unable to notify about alert(s), there is no default route specified.");
         return;
       }
-      resolveAlert(customer, customer.getUuid());
 
       List<AlertReceiver> defaultReceivers = defaultRoute.getReceiversList();
       if ((defaultReceivers.size() == 1)
           && ("Email".equals(AlertUtils.getJsonTypeName(defaultReceivers.get(0).getParams())))
           && ((AlertReceiverEmailParams) defaultReceivers.get(0).getParams()).defaultRecipients
           && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
-        createOrUpdateAlertForCustomer(
-            customer,
+
+        metricService.setStatusMetric(
+            metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s) using default route, "
-                + "there are no recipients configured in the customer's profile.",
-            AlertDefinitionGroup.Severity.WARNING);
+                + "there are no recipients configured in the customer's profile.");
         return;
       }
 
       log.debug("For alert {} no routes/receivers found, using default route.", alert.getUuid());
       receivers.addAll(defaultReceivers);
+
+      metricService.setOkStatusMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
     }
 
     for (AlertReceiver receiver : receivers) {
@@ -173,11 +174,10 @@ public class AlertManager {
           log.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);
         }
         report.failReceiver(receiver.getUuid());
-        createOrUpdateAlertForReceiver(
-            customer,
+        setReceiverStatusMetric(
+            PlatformMetrics.ALERT_MANAGER_STATUS,
             receiver,
-            "Misconfigured alert receiver: " + e,
-            AlertDefinitionGroup.Severity.SEVERE);
+            "Misconfigured alert receiver: " + e.getMessage());
         continue;
       }
 
@@ -186,17 +186,16 @@ public class AlertManager {
             receiversManager.get(AlertUtils.getJsonTypeName(receiver.getParams()));
         handler.sendNotification(customer, alert, receiver);
         atLeastOneSucceeded = true;
-        resolveAlert(customer, receiver.getUuid());
+        setOkReceiverStatusMetric(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS, receiver);
       } catch (Exception e) {
         if (report.failuresByReceiver(receiver.getUuid()) == 0) {
           log.error(e.getMessage());
         }
         report.failReceiver(receiver.getUuid());
-        createOrUpdateAlertForReceiver(
-            customer,
+        setReceiverStatusMetric(
+            PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS,
             receiver,
-            "Error sending notification: " + e,
-            AlertDefinitionGroup.Severity.SEVERE);
+            "Error sending notification: " + e.getMessage());
       }
     }
     if (!atLeastOneSucceeded) {
@@ -204,59 +203,29 @@ public class AlertManager {
     }
   }
 
-  private void createOrUpdateAlertForReceiver(
-      Customer c, AlertReceiver receiver, String details, AlertDefinitionGroup.Severity severity) {
-    createOrUpdateAlert(
-        c,
-        receiver.getUuid(),
-        details,
-        AlertDefinitionLabelsBuilder.create().appendTarget(receiver).getAlertLabels(),
-        severity);
+  @VisibleForTesting
+  void setOkReceiverStatusMetric(PlatformMetrics metric, AlertReceiver receiver) {
+    setReceiverStatusMetric(metric, receiver, StringUtils.EMPTY);
   }
 
-  private void createOrUpdateAlertForCustomer(
-      Customer c, String details, AlertDefinitionGroup.Severity severity) {
-    createOrUpdateAlert(
-        c,
-        c.getUuid(),
-        details,
-        AlertDefinitionLabelsBuilder.create().appendTarget(c).getAlertLabels(),
-        severity);
+  @VisibleForTesting
+  void setReceiverStatusMetric(PlatformMetrics metric, AlertReceiver receiver, String message) {
+    boolean isSuccess = StringUtils.isEmpty(message);
+    Metric statusMetric = buildMetricTemplate(metric, receiver).setValue(isSuccess ? 1.0 : 0.0);
+    if (!isSuccess) {
+      statusMetric.setLabel(KnownAlertLabels.ERROR_MESSAGE, message);
+    }
+    metricService.cleanAndSave(Collections.singletonList(statusMetric));
   }
 
-  private void createOrUpdateAlert(
-      Customer c,
-      UUID targetUUID,
-      String details,
-      List<AlertLabel> labels,
-      AlertDefinitionGroup.Severity severity) {
-    AlertFilter filter =
-        AlertFilter.builder()
-            .customerUuid(c.getUuid())
-            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-            .label(KnownAlertLabels.TARGET_UUID, targetUUID.toString())
-            .build();
-    Alert alert =
-        alertService
-            .listNotResolved(filter)
-            .stream()
-            .findFirst()
-            .orElse(
-                new Alert()
-                    .setCustomerUUID(c.getUuid())
-                    .setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-                    .setSeverity(severity));
-    alert.setMessage(details).setLabels(labels);
-    alertService.save(alert);
-  }
-
-  private void resolveAlert(Customer c, UUID targetUUID) {
-    AlertFilter filter =
-        AlertFilter.builder()
-            .customerUuid(c.getUuid())
-            .errorCode(KnownAlertCodes.ALERT_MANAGER_FAILURE)
-            .label(KnownAlertLabels.TARGET_UUID, targetUUID.toString())
-            .build();
-    alertService.markResolved(filter);
+  private Metric buildMetricTemplate(PlatformMetrics metric, AlertReceiver receiver) {
+    return new Metric()
+        .setExpireTime(
+            nowPlusWithoutMillis(MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
+        .setCustomerUUID(receiver.getCustomerUUID())
+        .setType(Metric.Type.GAUGE)
+        .setName(metric.getMetricName())
+        .setTargetUuid(receiver.getUuid())
+        .setLabels(AlertLabelsBuilder.create().appendTarget(receiver).getMetricLabels());
   }
 }

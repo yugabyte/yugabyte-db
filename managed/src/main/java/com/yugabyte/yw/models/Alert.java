@@ -14,7 +14,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import io.ebean.ExpressionList;
@@ -99,10 +98,6 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Resolved Date time info.", accessMode = READ_ONLY)
   private Date resolvedTime;
 
-  @Column(columnDefinition = "Text", nullable = false)
-  @ApiModelProperty(value = "Error Code.", accessMode = READ_ONLY)
-  private String errCode;
-
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert definition group serverity.", accessMode = READ_ONLY)
   private AlertDefinitionGroup.Severity severity;
@@ -118,9 +113,6 @@ public class Alert extends Model implements AlertLabelsProvider {
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Target State.", accessMode = READ_ONLY)
   private State targetState = State.ACTIVE;
-
-  @ApiModelProperty(value = "Whether to send an Email or not.", accessMode = READ_ONLY)
-  private boolean sendEmail;
 
   @ApiModelProperty(value = "Alert Definition Uuid", accessMode = READ_ONLY)
   private UUID definitionUuid;
@@ -169,16 +161,6 @@ public class Alert extends Model implements AlertLabelsProvider {
         .orElse(null);
   }
 
-  public Alert setErrCode(String errCode) {
-    this.errCode = errCode;
-    return this;
-  }
-
-  public Alert setErrCode(KnownAlertCodes errCode) {
-    this.errCode = errCode.name();
-    return this;
-  }
-
   public Alert setLabel(KnownAlertLabels label, String value) {
     return setLabel(label.labelName(), value);
   }
@@ -211,9 +193,6 @@ public class Alert extends Model implements AlertLabelsProvider {
     }
     appendInClause(query, "state", filter.getStates());
     appendInClause(query, "targetState", filter.getTargetStates());
-    if (filter.getErrorCode() != null) {
-      query.eq("errCode", filter.getErrorCode());
-    }
     appendInClause(query, "definitionUuid", filter.getDefinitionUuids());
     if (filter.getLabel() != null) {
       query

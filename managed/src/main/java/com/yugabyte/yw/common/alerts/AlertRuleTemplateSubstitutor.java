@@ -56,8 +56,7 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
                   new AlertDefinitionGroupLabelProvider(group, definition, severity);
               AlertTemplateSubstitutor<AlertDefinitionGroupLabelProvider> substitutor =
                   new AlertTemplateSubstitutor<>(labelProvider);
-              return substitutor.replace(
-                  "{{ $labels.definition_name }} Alert for {{ $labels.target_name }} is firing");
+              return substitutor.replace(group.getTemplate().getSummaryTemplate());
             default:
               throw new IllegalArgumentException(
                   "Unexpected placeholder " + key + " in rule template file");

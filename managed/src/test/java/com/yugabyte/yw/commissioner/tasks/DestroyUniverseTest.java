@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -16,18 +18,17 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -42,7 +43,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   @InjectMocks private Commissioner commissioner;
 
-  @InjectMocks private AlertService alertService;
+  @InjectMocks private MetricService metricService;
 
   private Universe defaultUniverse;
   private ShellResponse dummyShellResponse;
@@ -71,24 +72,26 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testReleaseUniverseAndResolveAlerts() {
+  public void testReleaseUniverseAndRemoveMetrics() {
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
 
-    Alert alert = ModelFactory.createAlert(defaultCustomer, defaultUniverse);
-    Alert alert2 = ModelFactory.createAlert(defaultCustomer, defaultUniverse);
+    metricService.setOkStatusMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, defaultUniverse));
 
     submitTask(taskParams, 4);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
 
-    AlertFilter filter = AlertFilter.builder().customerUuid(defaultCustomer.getUuid()).build();
-    List<Alert> alerts = alertService.list(filter);
-    assertEquals(2, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).getTargetState());
-    assertEquals(Alert.State.RESOLVED, alerts.get(1).getTargetState());
+    MetricKey metricKey =
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
+            .targetUuid(defaultUniverse.getUniverseUUID())
+            .build();
+    assertThat(metricService.get(metricKey), nullValue());
   }
 
   @Test

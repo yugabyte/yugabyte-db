@@ -12,7 +12,6 @@ package com.yugabyte.yw.models.filters;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.Arrays;
 import java.util.Collection;
@@ -30,7 +29,6 @@ public class AlertFilter {
   Set<UUID> uuids;
   Set<UUID> excludeUuids;
   UUID customerUuid;
-  String errorCode;
   Set<Alert.State> states;
   Set<Alert.State> targetStates;
   Set<UUID> definitionUuids;
@@ -51,9 +49,6 @@ public class AlertFilter {
     }
     if (customerUuid != null) {
       result.customerUuid(customerUuid);
-    }
-    if (errorCode != null) {
-      result.errorCode(errorCode);
     }
     if (label != null) {
       result.label(label);
@@ -143,16 +138,6 @@ public class AlertFilter {
 
     public AlertFilterBuilder label(@NonNull AlertLabel label) {
       this.label = label;
-      return this;
-    }
-
-    public AlertFilterBuilder errorCode(@NonNull String errorCode) {
-      this.errorCode = errorCode;
-      return this;
-    }
-
-    public AlertFilterBuilder errorCode(@NonNull KnownAlertCodes errorCode) {
-      this.errorCode = errorCode.name();
       return this;
     }
 

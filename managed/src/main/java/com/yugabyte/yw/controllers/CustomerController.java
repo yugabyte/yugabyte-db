@@ -28,7 +28,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
@@ -68,11 +68,11 @@ public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
 
+  @Inject private MetricService metricService;
+
   @Inject private MetricQueryHelper metricQueryHelper;
 
   @Inject private CloudQueryHelper cloudQueryHelper;
-
-  @Inject private AlertService alertService;
 
   @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
@@ -200,6 +200,24 @@ public class CustomerController extends AuthenticatedController {
             "Updated {} Clock Skew Alert definition groups, new state {}",
             groups.size(),
             alertingFormData.alertingData.enableClockSkew);
+
+        // Update Backup alert definitions
+        // TODO: Remove after implementation of a separate window for
+        // all definition groups configuration.
+        groups =
+            alertDefinitionGroupService.list(
+                AlertDefinitionGroupFilter.builder()
+                    .customerUuid(customerUUID)
+                    .name(AlertDefinitionTemplate.BACKUP_FAILURE.getName())
+                    .build());
+        for (AlertDefinitionGroup group : groups) {
+          group.setActive(alertingFormData.alertingData.reportBackupFailures);
+        }
+        alertDefinitionGroupService.save(groups);
+        LOG.info(
+            "Updated {} Backup Failure definition groups, new state {}",
+            groups.size(),
+            alertingFormData.alertingData.reportBackupFailures);
       }
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
@@ -243,6 +261,9 @@ public class CustomerController extends AuthenticatedController {
       throw new YWServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
+
+    metricService.handleTargetRemoval(customerUUID, null);
+
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
   }

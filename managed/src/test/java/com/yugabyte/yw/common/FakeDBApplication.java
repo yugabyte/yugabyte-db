@@ -8,6 +8,7 @@ import static play.inject.Bindings.bind;
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
@@ -54,6 +55,7 @@ public class FakeDBApplication extends WithApplication {
   public NetworkManager mockNetworkManager = mock(NetworkManager.class);
   public YamlWrapper mockYamlWrapper = mock(YamlWrapper.class);
   public QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
+  public CleanExpiredMetrics mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
   public AlertConfigurationWriter mockAlertConfigurationWriter =
       mock(AlertConfigurationWriter.class);
   public Executors mockExecutors = mock(Executors.class);
@@ -95,6 +97,7 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
         .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+        .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))

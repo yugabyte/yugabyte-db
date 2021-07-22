@@ -5,6 +5,7 @@ import com.google.inject.Provides;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.aws.AWSCloudModule;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
@@ -106,6 +107,7 @@ public class Module extends AbstractModule {
       bind(YamlWrapper.class).asEagerSingleton();
       bind(AlertManager.class).asEagerSingleton();
       bind(QueryAlerts.class).asEagerSingleton();
+      bind(CleanExpiredMetrics.class).asEagerSingleton();
       bind(AlertConfigurationWriter.class).asEagerSingleton();
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformInstanceClientFactory.class).asEagerSingleton();

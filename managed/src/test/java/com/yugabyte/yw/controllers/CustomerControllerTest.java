@@ -39,7 +39,6 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -56,7 +55,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Http;
@@ -66,8 +64,6 @@ import play.mvc.Result;
 public class CustomerControllerTest extends FakeDBApplication {
   String rootRoute = "/api/customers";
   String baseRoute = rootRoute + "/";
-
-  @InjectMocks private AlertService alertService;
 
   private Customer customer;
   private Users user;

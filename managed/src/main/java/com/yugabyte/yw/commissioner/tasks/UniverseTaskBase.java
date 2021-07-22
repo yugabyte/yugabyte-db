@@ -1038,12 +1038,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createTableBackupTask(BackupTableParams taskParams) {
-    SubTaskGroup subTaskGroup;
-    if (taskParams.backup == null) {
-      subTaskGroup = new SubTaskGroup("BackupTable", executor);
-    } else {
-      subTaskGroup = new SubTaskGroup("BackupTable", executor, true);
-    }
+    SubTaskGroup subTaskGroup = new SubTaskGroup("BackupTable", executor, taskParams.ignoreErrors);
 
     BackupTable task = createTask(BackupTable.class);
     task.initialize(taskParams);

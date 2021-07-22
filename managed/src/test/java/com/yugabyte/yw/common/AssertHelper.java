@@ -23,8 +23,11 @@ import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
 import java.util.List;
 import java.util.UUID;
 import org.junit.function.ThrowingRunnable;
@@ -144,5 +147,17 @@ public class AssertHelper {
 
   public static Result assertYWSE(ThrowingRunnable runnable) {
     return assertThrows(YWServiceException.class, runnable).getResult();
+  }
+
+  public static Metric assertMetricValue(
+      MetricService metricService, MetricKey metricKey, Double value) {
+    Metric metric = metricService.get(metricKey);
+    if (value != null) {
+      assertNotNull(metric);
+      assertEquals(value, metric.getValue());
+    } else {
+      assertNull(metric);
+    }
+    return metric;
   }
 }

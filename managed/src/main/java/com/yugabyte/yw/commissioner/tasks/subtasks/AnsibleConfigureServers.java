@@ -16,23 +16,15 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -88,20 +80,15 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
 
       // Create an alert if the cronjobs failed to be created on this node.
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       if (response.code != 0) {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-        Customer cust = Customer.get(universe.customerId);
         String nodeName = taskParams().nodeName;
-        String alertMsg =
-            "Universe %s was successfully created but failed to "
-                + "create cronjobs on some nodes (%s)";
 
         // Persist node cronjob status into the DB.
         UniverseUpdater updater =
             new UniverseUpdater() {
               @Override
               public void run(Universe universe) {
-                UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
                 NodeDetails node = universe.getNode(nodeName);
                 node.cronsActive = false;
                 log.info(
@@ -112,41 +99,13 @@ public class AnsibleConfigureServers extends NodeTaskBase {
               }
             };
         saveUniverseDetails(updater);
-
-        AlertFilter filter =
-            AlertFilter.builder()
-                .customerUuid(cust.uuid)
-                .errorCode(KnownAlertCodes.CRON_CREATION_FAILURE)
-                .label(KnownAlertLabels.TARGET_UUID, universe.universeUUID.toString())
-                .build();
-        Alert alert =
-            alertService
-                .listNotResolved(filter)
-                .stream()
-                .findFirst()
-                .orElse(
-                    new Alert()
-                        .setCustomerUUID(cust.uuid)
-                        .setErrCode(KnownAlertCodes.CRON_CREATION_FAILURE)
-                        .setSeverity(AlertDefinitionGroup.Severity.WARNING)
-                        .setLabels(
-                            AlertDefinitionLabelsBuilder.create()
-                                .appendTarget(universe)
-                                .getAlertLabels()));
-        if (alert.isNew()) {
-          alert.setMessage(String.format(alertMsg, universe.name, nodeName));
-        } else {
-          List<String> failedNodesList =
-              universe
-                  .getNodes()
-                  .stream()
-                  .map(nodeDetail -> nodeDetail.nodeName)
-                  .collect(Collectors.toList());
-          String failedNodesString = String.join(", ", failedNodesList);
-          alert.setMessage(String.format(alertMsg, universe.name, failedNodesString));
-        }
-        alertService.save(alert);
       }
+
+      long inactiveCronNodes =
+          universe.getNodes().stream().filter(node -> !node.cronsActive).count();
+      metricService.setMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+          inactiveCronNodes);
 
       // We set the node state to SoftwareInstalled when configuration type is Everything.
       // TODO: Why is upgrade task type used to map to node state update?

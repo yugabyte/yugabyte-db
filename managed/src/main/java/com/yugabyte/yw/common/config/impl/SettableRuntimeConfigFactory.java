@@ -44,7 +44,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   @Override
   public RuntimeConfig<Customer> forCustomer(Customer customer) {
     Config config =
-        getConfigForScope(customer.uuid, "Scoped Config (" + customer.toString() + ")")
+        getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")")
             .withFallback(globalConfig());
     LOG.trace("forCustomer {}: {}", customer.uuid, config);
     return new RuntimeConfig<>(customer, config);
@@ -55,9 +55,8 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   public RuntimeConfig<Universe> forUniverse(Universe universe) {
     Customer customer = Customer.get(universe.customerId);
     Config config =
-        getConfigForScope(universe.universeUUID, "Scoped Config (" + universe.toString() + ")")
-            .withFallback(
-                getConfigForScope(customer.uuid, "Scoped Config (" + customer.toString() + ")"))
+        getConfigForScope(universe.universeUUID, "Scoped Config (" + universe + ")")
+            .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
             .withFallback(globalConfig());
     LOG.trace("forUniverse {}: {}", universe.universeUUID, config);
     return new RuntimeConfig<>(universe, config);
@@ -68,9 +67,8 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   public RuntimeConfig<Provider> forProvider(Provider provider) {
     Customer customer = Customer.get(provider.customerUUID);
     Config config =
-        getConfigForScope(provider.uuid, "Scoped Config (" + provider.toString() + ")")
-            .withFallback(
-                getConfigForScope(customer.uuid, "Scoped Config (" + customer.toString() + ")"))
+        getConfigForScope(provider.uuid, "Scoped Config (" + provider + ")")
+            .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
             .withFallback(globalConfig());
     LOG.trace("forProvider {}: {}", provider.uuid, config);
     return new RuntimeConfig<>(provider, config);
@@ -89,8 +87,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
 
   private Config globalConfig() {
     Config config =
-        getConfigForScope(
-                GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID.toString() + ")")
+        getConfigForScope(GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID + ")")
             .withFallback(appConfig);
     LOG.trace("globalConfig : {}", config);
     return config;

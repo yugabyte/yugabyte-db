@@ -38,8 +38,10 @@ public class BackupTable extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Backup backup = taskParams().backup;
-    if (backup == null) {
+    Backup backup;
+    if (taskParams().backupUuid != null) {
+      backup = Backup.get(taskParams().customerUuid, taskParams().backupUuid);
+    } else {
       List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
       if (backups.size() == 1) {
         backup = backups.get(0);

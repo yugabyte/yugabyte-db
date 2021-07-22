@@ -18,57 +18,56 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
-import javax.persistence.MapsId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
-@Entity
 @Data
+@Entity
 @EqualsAndHashCode(callSuper = false)
 @ToString
-public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> {
+public class MetricLabel extends Model implements UniqueKeyListValue<MetricLabel> {
 
-  @EmbeddedId private AlertLabelKey key;
+  @EmbeddedId private MetricLabelKey key;
 
   @Column(nullable = false)
   private String value;
 
-  @ManyToOne @JsonIgnore @EqualsAndHashCode.Exclude @ToString.Exclude private Alert alert;
+  @ManyToOne @JsonIgnore @EqualsAndHashCode.Exclude @ToString.Exclude private Metric metric;
 
-  public AlertLabel() {
-    this.key = new AlertLabelKey();
+  public MetricLabel() {
+    this.key = new MetricLabelKey();
   }
 
-  public AlertLabel(String name, String value) {
+  public MetricLabel(String name, String value) {
     this();
     key.setName(name);
     this.value = value;
   }
 
-  public AlertLabel(Alert definition, String name, String value) {
+  public MetricLabel(Metric metric, String name, String value) {
     this(name, value);
-    setAlert(definition);
+    setMetric(metric);
   }
 
   public String getName() {
     return key.getName();
   }
 
-  public void setAlert(Alert alert) {
-    this.alert = alert;
-    key.setAlertUUID(alert.getUuid());
+  public void setMetric(Metric metric) {
+    this.metric = metric;
+    key.setMetricUuid(metric.getUuid());
   }
 
   @Override
   @JsonIgnore
-  public boolean keyEquals(AlertLabel other) {
+  public boolean keyEquals(MetricLabel other) {
     return Objects.equals(getName(), other.getName());
   }
 
   @Override
   @JsonIgnore
-  public boolean valueEquals(AlertLabel other) {
+  public boolean valueEquals(MetricLabel other) {
     return keyEquals(other) && Objects.equals(getValue(), other.getValue());
   }
 }

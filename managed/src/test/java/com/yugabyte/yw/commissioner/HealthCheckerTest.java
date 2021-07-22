@@ -3,10 +3,9 @@
 package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
@@ -19,6 +18,7 @@ import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -27,29 +27,26 @@ import com.yugabyte.yw.common.HealthManager.ClusterInfo;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.ebean.Model;
 import io.prometheus.client.CollectorRegistry;
 import java.util.HashMap;
@@ -64,14 +61,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.class)
 public class HealthCheckerTest extends FakeDBApplication {
-  public static final Logger LOG = LoggerFactory.getLogger(HealthCheckerTest.class);
 
   private static final String YB_ALERT_TEST_EMAIL = "test@yugabyte.com";
   private static final String dummyNode = "n";
@@ -98,7 +92,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Mock private EmailHelper mockEmailHelper;
 
-  @InjectMocks private AlertService alertService;
+  @InjectMocks private MetricService metricService;
 
   @Mock Config mockRuntimeConfig;
 
@@ -137,7 +131,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             testRegistry,
             report,
             mockEmailHelper,
-            alertService,
+            metricService,
             null,
             null) {
           @Override
@@ -548,7 +542,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testInvalidUniverseBadProviderAlertSent() throws MessagingException {
+  public void testInvalidUniverseFailureMetric() throws MessagingException {
     Universe u = setupUniverse("test");
     // Update the universe with null details.
     Universe.saveDetails(
@@ -567,17 +561,24 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
         .thenReturn(EmailFixtures.createSmtpData());
 
-    AlertFilter filter = AlertFilter.builder().customerUuid(defaultCustomer.getUuid()).build();
-    assertEquals(0, alertService.list(filter).size());
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
-    // To check that alert is created.
-    List<Alert> alerts = alertService.list(filter);
-    assertNotEquals(0, alerts.size());
-    assertEquals("Error sending Health check email: TestException", alerts.get(0).getMessage());
+    // To check that metric is created.
+    Metric hcNotificationMetric =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS.getMetricName())
+                .targetUuid(u.getUniverseUUID())
+                .build(),
+            0.0);
+    assertEquals(
+        "Error sending Health check email: TestException",
+        hcNotificationMetric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE));
   }
 
   @Test
@@ -615,43 +616,44 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
     mockGoodHealthResponse();
 
-    // alert1 is in state ACTIVE.
-    Alert alert1 =
-        new Alert()
-            .setCustomerUUID(defaultCustomer.uuid)
-            .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
-            .setMessage("Test 1")
-            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels())
-            .setState(State.ACTIVE);
-    alert1 = alertService.save(alert1);
-    // alert2 is in state CREATED.
-    Alert alert2 =
-        new Alert()
-            .setCustomerUUID(defaultCustomer.uuid)
-            .setErrCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
-            .setMessage("Test 2")
-            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alert2 = alertService.save(alert2);
-    // alert3 should not be updated as it has another errCode.
-    Alert alert3 =
-        new Alert()
-            .setCustomerUUID(defaultCustomer.uuid)
-            .setErrCode(KnownAlertCodes.TASK_FAILURE)
-            .setSeverity(AlertDefinitionGroup.Severity.WARNING)
-            .setMessage("Test 3")
-            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(u).getAlertLabels());
-    alert3 = alertService.save(alert3);
+    metricService.setStatusMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, u), "Some error");
+    metricService.setStatusMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u),
+        "Some error");
+    metricService.setStatusMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, u), "Some error");
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
             u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
 
-    assertEquals(State.RESOLVED, alertService.get(alert1.getUuid()).getTargetState());
-    assertEquals(State.RESOLVED, alertService.get(alert2.getUuid()).getTargetState());
-    // Alert3 is not related to health-check, so it should not be updated.
-    assertNotEquals(State.RESOLVED, alertService.get(alert3.getUuid()).getTargetState());
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
+            .targetUuid(u.getUniverseUUID())
+            .build(),
+        1.0);
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS.getMetricName())
+            .targetUuid(u.getUniverseUUID())
+            .build(),
+        1.0);
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
+            .targetUuid(u.getUniverseUUID())
+            .build(),
+        0.0);
   }
 
   @Test
@@ -672,16 +674,18 @@ public class HealthCheckerTest extends FakeDBApplication {
         new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
     verify(mockHealthManager, never()).runCommand(any(), any(), any());
 
-    AlertFilter filter =
-        AlertFilter.builder()
-            .customerUuid(defaultCustomer.getUuid())
-            .label(KnownAlertLabels.TARGET_UUID, u.universeUUID.toString())
-            .errorCode(KnownAlertCodes.HEALTH_CHECKER_FAILURE)
-            .build();
-    List<Alert> alerts = alertService.list(filter);
-    assertEquals(1, alerts.size());
+    Metric metric =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
+                .targetUuid(u.getUniverseUUID())
+                .build(),
+            0.0);
+
     assertEquals(
-        alerts.get(0).getMessage(),
+        metric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
         String.format(
             "Can't run health check for the universe due to missing IP address for node %s.",
             nd.nodeName));

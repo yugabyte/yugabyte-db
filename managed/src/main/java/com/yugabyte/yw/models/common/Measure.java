@@ -10,6 +10,8 @@
 package com.yugabyte.yw.models.common;
 
 public enum Measure {
+  STATUS,
+  COUNT,
   PERCENTAGE,
   TIME
 }

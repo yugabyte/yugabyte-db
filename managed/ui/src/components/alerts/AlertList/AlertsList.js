@@ -18,6 +18,13 @@ export default class AlertsList extends Component {
     showOrRedirect(currentCustomer.data.features, 'menu.alerts');
 
     const tableBodyContainer = { marginBottom: '1%', paddingBottom: '1%' };
+
+    const getAlertName = function (cell, row) {
+      return row.labels.filter(label => label.name === 'definition_name')
+        .map(label => label.value)
+        .shift();
+    };
+
     return (
       <div>
         <h2 className="content-title">Alerts</h2>
@@ -48,12 +55,13 @@ export default class AlertsList extends Component {
                 Type
               </TableHeaderColumn>
               <TableHeaderColumn
-                dataField="errCode"
+                dataField=""
+                dataFormat={getAlertName}
                 columnClassName="no-border name-column"
                 className="no-border"
                 width={'20%'}
               >
-                Error Code
+                Alert Name
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="message"
