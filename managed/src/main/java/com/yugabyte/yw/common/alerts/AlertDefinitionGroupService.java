@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroup.SortBy;
 import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
 import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
 import com.yugabyte.yw.models.AlertRoute;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedQuery;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.ArrayList;
@@ -144,6 +146,10 @@ public class AlertDefinitionGroupService {
   }
 
   public AlertDefinitionGroupPagedResponse pagedList(AlertDefinitionGroupPagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.createTime);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
     Query<AlertDefinitionGroup> query = createQueryByFilter(pagedQuery.getFilter()).query();
     return performPagedQuery(query, pagedQuery, AlertDefinitionGroupPagedResponse.class);
   }
