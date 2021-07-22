@@ -5,12 +5,15 @@ linkTitle: Extensions
 description: Pre-bundled extensions for YugabyteDB
 headcontent: Pre-bundled extensions for YugabyteDB
 aliases:
+  - /latest/explore/extensions
 image: /images/section_icons/explore/monitoring.png
 menu:
   latest:
-    identifier: explore-extensions
-    parent: explore
+    identifier: explore-ysql-language-features-extensions
+    parent: explore-ysql-language-features
     weight: 620
+isTocNested: true
+showAsideToc: true
 ---
 
 YugabyteDB comes bundled with a number of [PostgreSQL extensions](/latest/api/ysql/extensions/#pre-bundled-extensions) that are tested to work with YSQL. We're incrementally developing support for as many extensions as possible. (Since YugabyteDB’s underlying storage architecture is not the same as PostgreSQL, many PostgreSQL extensions, particularly those that interact with the storage layer, won't work as-is on YugabyteDB.)

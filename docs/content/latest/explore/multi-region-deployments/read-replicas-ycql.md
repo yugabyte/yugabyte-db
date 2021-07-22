@@ -1,17 +1,38 @@
 ---
-title: Read replicas in YCQL
-headerTitle: Read replicas in YCQL
-linkTitle: Read replicas in YCQL
-description: Read replicas in YCQL
+title: Read replicas
+headerTitle: Read replicas
+linkTitle: Read replicas
+description: Read replicas
+aliases:
+  - /latest/explore/multi-region-deployments/read-replicas
 menu:
   latest:
-    name: Read replicas in YCQL
-    identifier: explore-multi-region-deployments-read-replicas
+    name: Read replicas
+    identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments
-    weight: 720
+    weight: 750
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/latest/explore/multi-region-deployments/read-replicas-ysql/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="/latest/explore/multi-region-deployments/read-replicas-ycql/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
 
 YugabyteDB supports the following types of reads: 
 
