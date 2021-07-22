@@ -1127,7 +1127,7 @@ tserver_log_latency:
   function: "rate|avg"
   range : true
   layout:
-    title: "TServer Log Latency"
+    title: "WAL Latency"
     xaxis:
       type: "date"
     yaxis:
@@ -1144,7 +1144,7 @@ tserver_log_bytes_written:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Log Bytes Written / Sec / Node"
+    title: "WAL Bytes Written / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -1158,7 +1158,7 @@ tserver_log_bytes_read:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Log Bytes Read / Sec / Node"
+    title: "WAL Bytes Read / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -1174,7 +1174,7 @@ tserver_log_ops_second:
     saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
   group_by: "saved_name"
   layout:
-    title: "TServer Log Ops / Sec / Node"
+    title: "WAL Ops / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -1192,7 +1192,7 @@ tserver_tc_malloc_stats:
     saved_name: "generic_current_allocated_bytes|generic_heap_size"
   group_by: "saved_name"
   layout:
-    title: "TServer TCMalloc Stats"
+    title: "TCMalloc Stats"
     xaxis:
       type: "date"
     yaxis:
@@ -1210,7 +1210,7 @@ tserver_log_stats:
     saved_name: "log_reader_bytes_read|log_cache_size"
   group_by: "saved_name"
   layout:
-    title: "Log Stats / Node"
+    title: "WAL Stats / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -1225,7 +1225,7 @@ tserver_cache_reader_num_ops:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Log Cache Num Ops / Node"
+    title: "WAL Cache Num Ops / Node"
     xaxis:
       type: "date"
     yaxis:
