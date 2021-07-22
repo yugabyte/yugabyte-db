@@ -23,10 +23,9 @@ import org.apache.commons.collections.CollectionUtils;
 public class AlertApiFilter {
   private Set<UUID> uuids;
   private UUID groupUuid;
-  private AlertDefinitionGroup.Severity severity;
-  private AlertDefinitionGroup.TargetType groupType;
+  private Set<AlertDefinitionGroup.Severity> severities;
+  private Set<AlertDefinitionGroup.TargetType> groupTypes;
   private Set<Alert.State> states;
-  private Set<Alert.State> targetStates;
 
   public AlertFilter toFilter() {
     AlertFilter.AlertFilterBuilder builder = AlertFilter.builder();
@@ -36,17 +35,14 @@ public class AlertApiFilter {
     if (groupUuid != null) {
       builder.groupUuid(groupUuid);
     }
-    if (severity != null) {
-      builder.severity(severity);
+    if (!CollectionUtils.isEmpty(severities)) {
+      builder.severities(severities);
     }
-    if (groupType != null) {
-      builder.groupType(groupType);
+    if (!CollectionUtils.isEmpty(groupTypes)) {
+      builder.groupTypes(groupTypes);
     }
     if (!CollectionUtils.isEmpty(states)) {
-      builder.states(states);
-    }
-    if (!CollectionUtils.isEmpty(targetStates)) {
-      builder.targetStates(targetStates);
+      builder.targetStates(states);
     }
     return builder.build();
   }

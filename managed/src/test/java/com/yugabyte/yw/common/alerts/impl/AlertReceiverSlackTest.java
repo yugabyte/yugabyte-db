@@ -65,7 +65,7 @@ public class AlertReceiverSlackTest extends FakeDBApplication {
           equalTo(
               "{\"username\":\"Slack Bot\","
                   + "\"text\":\"*Yugabyte Platform Alert - <[test@customer.com][tc]>*\\n"
-                  + "Common failure for customer 'test@customer.com', state: firing\\n"
+                  + "Common failure for customer 'Target 1', state: firing\\n"
                   + "Failure details:\\n\\nUniverse on fire!\",\"icon_url\":null}"));
     }
   }

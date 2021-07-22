@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createAlertDefinitionGroup;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
@@ -15,9 +16,16 @@ import static org.hamcrest.Matchers.not;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.models.Alert.SortBy;
+import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.AlertDefinitionGroup.Severity;
+import com.yugabyte.yw.models.AlertDefinitionGroup.TargetType;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.paging.AlertPagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -187,6 +195,60 @@ public class AlertTest extends FakeDBApplication {
   }
 
   @Test
+  public void testSortBy() {
+    AlertDefinition definition = createDefinition();
+    Alert alert1 = ModelFactory.createAlert(cust1, definition);
+    Alert alert2 = ModelFactory.createAlert(cust1, definition);
+    Alert alert3 = ModelFactory.createAlert(cust1, definition);
+
+    alert2.setName("Alert 2");
+    alert2.setTargetName("Target 3");
+    alert2.setGroupType(TargetType.CUSTOMER);
+    alert2.setGroupType(TargetType.CUSTOMER);
+    alert2.setSeverity(Severity.WARNING);
+    alert2.setTargetState(State.ACKNOWLEDGED);
+    alert2.setCreateTime(Date.from(alert1.getCreateTime().toInstant().minusSeconds(5)));
+    alert2.save();
+
+    alert3.setName("Alert 3");
+    alert3.setTargetName("Target 2");
+    alert3.setTargetState(Alert.State.RESOLVED);
+    alert3.setCreateTime(Date.from(alert1.getCreateTime().toInstant().minusSeconds(2)));
+    alert3.save();
+
+    AlertFilter filter = AlertFilter.builder().build();
+    AlertPagedQuery query = new AlertPagedQuery();
+    query.setFilter(filter);
+    query.setOffset(0);
+    query.setLimit(10);
+
+    List<Alert> result = alertService.pagedList(query).getEntities();
+    // Sort by create time desc by default
+    assertThat(result, contains(alert1, alert3, alert2));
+
+    query.setSortBy(SortBy.createTime);
+    query.setDirection(SortDirection.ASC);
+    result = alertService.pagedList(query).getEntities();
+    assertThat(result, contains(alert2, alert3, alert1));
+
+    query.setSortBy(SortBy.name);
+    result = alertService.pagedList(query).getEntities();
+    assertThat(result, contains(alert1, alert2, alert3));
+
+    query.setSortBy(SortBy.targetName);
+    result = alertService.pagedList(query).getEntities();
+    assertThat(result, contains(alert1, alert3, alert2));
+
+    query.setSortBy(SortBy.severity);
+    result = alertService.pagedList(query).getEntities();
+    assertThat(result, contains(alert2, alert3, alert1));
+
+    query.setSortBy(SortBy.state);
+    result = alertService.pagedList(query).getEntities();
+    assertThat(result, contains(alert1, alert2, alert3));
+  }
+
+  @Test
   public void testAcknowledge() {
     Alert alert = createAlert();
     alert = alertService.save(alert);
@@ -230,6 +292,8 @@ public class AlertTest extends FakeDBApplication {
     return new Alert()
         .setCustomerUUID(definition.getCustomerUUID())
         .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+        .setName("Alert 1")
+        .setTargetName("Target 1")
         .setMessage("Universe on fire!")
         .setDefinitionUuid(definition.getUuid())
         .setGroupUuid(group.getUuid())
@@ -287,6 +351,8 @@ public class AlertTest extends FakeDBApplication {
         new AlertLabel(alert, KnownAlertLabels.DEFINITION_NAME.labelName(), group.getName());
     assertThat(alert.getCustomerUUID(), is(cust1.uuid));
     assertThat(alert.getSeverity(), is(AlertDefinitionGroup.Severity.SEVERE));
+    assertThat(alert.getName(), is("Alert 1"));
+    assertThat(alert.getTargetName(), is("Target 1"));
     assertThat(alert.getMessage(), is("Universe on fire!"));
     assertThat(alert.getDefinitionUuid(), equalTo(definition.getUuid()));
     assertThat(alert.getGroupUuid(), equalTo(group.getUuid()));

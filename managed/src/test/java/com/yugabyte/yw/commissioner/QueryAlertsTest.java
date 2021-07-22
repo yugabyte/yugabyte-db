@@ -338,6 +338,7 @@ public class QueryAlertsTest extends FakeDBApplication {
         .setGroupUuid(definition.getGroupUUID())
         .setGroupType(AlertDefinitionGroup.TargetType.UNIVERSE)
         .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+        .setName("Clock Skew Alert")
         .setMessage("Clock Skew Alert for universe Test is firing")
         .setState(Alert.State.ACTIVE)
         .setTargetState(Alert.State.ACTIVE)

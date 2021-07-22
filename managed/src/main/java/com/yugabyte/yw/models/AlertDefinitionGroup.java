@@ -44,11 +44,10 @@ import play.data.validation.Constraints;
 public class AlertDefinitionGroup extends Model {
 
   public enum SortBy implements PagedQuery.SortByIF {
-    NAME("name"),
-    ACTIVE("active"),
-    TARGET_TYPE("targetType"),
-    CREATE_TIME("createTime"),
-    ALERT_COUNT("alertCount");
+    name("name"),
+    active("active"),
+    targetType("targetType"),
+    createTime("createTime");
 
     private final String sortField;
 

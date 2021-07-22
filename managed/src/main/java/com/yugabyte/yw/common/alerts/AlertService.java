@@ -18,11 +18,13 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.SortBy;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertPagedQuery;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
@@ -151,6 +153,10 @@ public class AlertService {
   }
 
   public AlertPagedResponse pagedList(AlertPagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.createTime);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
     Query<Alert> query = Alert.createQueryByFilter(pagedQuery.getFilter()).query();
     return performPagedQuery(query, pagedQuery, AlertPagedResponse.class);
   }

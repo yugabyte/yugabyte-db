@@ -68,10 +68,9 @@ public class AlertUtils {
   @VisibleForTesting
   static String getDefaultNotificationText(Alert alert) {
     String targetType = alert.getLabelValue(KnownAlertLabels.TARGET_TYPE);
-    String targetName = alert.getLabelValue(KnownAlertLabels.TARGET_NAME);
     return String.format(
         "Common failure for %s '%s', state: %s\nFailure details:\n\n%s",
-        targetType, targetName, alert.getState().getAction(), alert.getMessage());
+        targetType, alert.getTargetName(), alert.getState().getAction(), alert.getMessage());
   }
 
   public static Class<?> getAlertParamsClass(AlertReceiver.TargetType targetType) {

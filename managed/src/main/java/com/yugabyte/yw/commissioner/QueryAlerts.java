@@ -391,7 +391,9 @@ public class QueryAlerts {
               .setCreateTime(Date.from(alertData.getActiveAt().toInstant()))
               .setCustomerUUID(UUID.fromString(customerUuid))
               .setDefinitionUuid(definitionUuid)
-              .setGroupUuid(groupUuid);
+              .setGroupUuid(groupUuid)
+              .setName(alertData.getLabels().get(KnownAlertLabels.DEFINITION_NAME.labelName()))
+              .setTargetName(alertData.getLabels().get(KnownAlertLabels.TARGET_NAME.labelName()));
     }
     AlertDefinitionGroup.Severity severity = getSeverity(alertData);
     AlertDefinitionGroup.TargetType groupType = getGroupType(alertData);

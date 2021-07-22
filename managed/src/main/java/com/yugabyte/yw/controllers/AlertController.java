@@ -71,6 +71,14 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertRouteService alertRouteService;
 
+  @ApiOperation(value = "getAlert", response = Alert.class)
+  public Result get(UUID customerUUID, UUID alertUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    Alert alert = alertService.getOrBadRequest(alertUUID);
+    return YWResults.withData(alert);
+  }
+
   /** Lists alerts for given customer. */
   @ApiOperation(
       value = "listAlerts",
@@ -115,6 +123,17 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(alerts);
   }
 
+  @ApiOperation(value = "acknowledgeAlert", response = Alert.class)
+  public Result acknowledge(UUID customerUUID, UUID alertUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertFilter filter = AlertFilter.builder().uuid(alertUUID).build();
+    alertService.acknowledge(filter);
+
+    Alert alert = alertService.getOrBadRequest(alertUUID);
+    return YWResults.withData(alert);
+  }
+
   @ApiOperation(value = "acknowledgeAlerts", response = Alert.class, responseContainer = "List")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -122,7 +141,7 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
-  public Result acknowledge(UUID customerUUID) {
+  public Result acknowledgeByFilter(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
     AlertApiFilter apiFilter = Json.fromJson(request().body().asJson(), AlertApiFilter.class);

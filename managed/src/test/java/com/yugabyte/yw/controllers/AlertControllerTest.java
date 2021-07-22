@@ -52,6 +52,7 @@ import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroup.SortBy;
 import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
 import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
 import com.yugabyte.yw.models.AlertReceiver;
@@ -660,6 +661,20 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetAlert() {
+    Alert initial = ModelFactory.createAlert(customer, alertDefinition);
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.uuid + "/alerts/" + initial.getUuid(), authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode alertsJson = Json.parse(contentAsString(result));
+    Alert alert = Json.fromJson(alertsJson, Alert.class);
+
+    assertThat(alert, equalTo(initial));
+  }
+
+  @Test
   public void testListAlerts() {
     checkEmptyAnswer("/api/customers/" + customer.uuid + "/alerts");
     Alert initial = ModelFactory.createAlert(customer, alertDefinition);
@@ -702,7 +717,7 @@ public class AlertControllerTest extends FakeDBApplication {
     initial3.setCreateTime(Date.from(initial3.getCreateTime().toInstant().minusSeconds(10))).save();
 
     AlertPagedApiQuery query = new AlertPagedApiQuery();
-    query.setSortBy(Alert.SortBy.CREATE_TIME);
+    query.setSortBy(Alert.SortBy.createTime);
     query.setDirection(PagedQuery.SortDirection.DESC);
     query.setFilter(new AlertApiFilter());
     query.setLimit(2);
@@ -728,6 +743,26 @@ public class AlertControllerTest extends FakeDBApplication {
 
   @Test
   public void testAcknowledgeAlert() {
+    Alert initial = ModelFactory.createAlert(customer, alertDefinition);
+
+    Result result =
+        doRequestWithAuthToken(
+            "POST",
+            "/api/customers/" + customer.uuid + "/alerts/" + initial.getUuid() + "/acknowledge",
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+
+    JsonNode alertsJson = Json.parse(contentAsString(result));
+    Alert acknowledged = Json.fromJson(alertsJson, Alert.class);
+
+    initial.setState(Alert.State.ACKNOWLEDGED);
+    initial.setTargetState(Alert.State.ACKNOWLEDGED);
+    initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());
+    assertThat(acknowledged, equalTo(initial));
+  }
+
+  @Test
+  public void testAcknowledgeAlerts() {
     Alert initial = ModelFactory.createAlert(customer, alertDefinition);
     Alert initial2 = ModelFactory.createAlert(customer, alertDefinition);
 
@@ -831,7 +866,7 @@ public class AlertControllerTest extends FakeDBApplication {
     group3.setCreateTime(Date.from(group3.getCreateTime().toInstant().minusSeconds(10))).save();
 
     AlertDefinitionGroupPagedApiQuery query = new AlertDefinitionGroupPagedApiQuery();
-    query.setSortBy(AlertDefinitionGroup.SortBy.CREATE_TIME);
+    query.setSortBy(SortBy.createTime);
     query.setDirection(PagedQuery.SortDirection.DESC);
     query.setFilter(new AlertDefinitionGroupApiFilter());
     query.setLimit(2);
