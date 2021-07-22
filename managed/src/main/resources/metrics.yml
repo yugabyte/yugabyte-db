@@ -1149,7 +1149,7 @@ tserver_log_bytes_written:
       type: "date"
     yaxis:
       alias:
-        "log_bytes_logged": "Log Bytes Logged"
+        "log_bytes_logged": "WAL Bytes Logged"
 
 tserver_log_bytes_read:
   metric: "log_reader_bytes_read"
@@ -1163,7 +1163,7 @@ tserver_log_bytes_read:
       type: "date"
     yaxis:
       alias:
-        "log_reader_bytes_read": "Log Bytes Read"
+        "log_reader_bytes_read": "WAL Bytes Read"
 
 tserver_log_ops_second:
   metric: ""
@@ -1215,8 +1215,8 @@ tserver_log_stats:
       type: "date"
     yaxis:
       alias:
-        "log_reader_bytes_read": "Log Bytes Read"
-        "log_cache_size": "Log Cache Size"
+        "log_reader_bytes_read": "WAL Bytes Read"
+        "log_cache_size": "WAL Cache Size"
       ticksuffix: "&nbsp;KB"
 
 tserver_cache_reader_num_ops:
