@@ -121,8 +121,6 @@ class AnsibleProcess(object):
             "-e", "ansible_python_interpreter='/usr/bin/env python'"
         ])
 
-        os.environ['SITE_PACKAGES'] = sysconfig.get_path('purelib')
-
         # Setup the full list of extra-vars needed for ansible plays.
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
         env = os.environ.copy()

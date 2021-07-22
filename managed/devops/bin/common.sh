@@ -54,6 +54,13 @@ set_python_executable() {
     executables=( "${PYTHON2_EXECUTABLES[@]}" )
   fi
 
+  for py_executable in "${executables[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      return
+    fi
+  done
+
   if which python > /dev/null 2>&1; then
     if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
       if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
@@ -66,21 +73,15 @@ set_python_executable() {
     fi
   fi
 
-  for py_executable in "${executables[@]}"; do
-    if which "$py_executable" > /dev/null 2>&1; then
-      PYTHON_EXECUTABLE="$py_executable"
-      return
-    fi
-  done
-
-  fatal "Failed to find python executable."
+  echo "Failed to find python executable."
+  exit 1
 }
 
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
-readonly PYTHON3_EXECUTABLES=('python3' 'python3.6' 'python3.7' 'python3.8')
+readonly PYTHON3_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8')
 PYTHON_EXECUTABLE=""
 
 readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
@@ -269,6 +270,7 @@ deactivate_virtualenv() {
 
     unset VIRTUAL_ENV
     unset PYTHONPATH
+    set_python_executable
   fi
 }
 
@@ -280,6 +282,7 @@ activate_virtualenv() {
   if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
     export PYTHONPATH="${YB_INSTALLED_MODULES_DIR}:${MANAGED_PYTHONPATH_ORIGINAL}"
     export PATH="${YB_INSTALLED_MODULES_DIR}/bin:${MANAGED_PATH_ORIGINAL}"
+    export SITE_PACKAGES="$YB_INSTALLED_MODULES_DIR"
     return
   fi
 
@@ -290,7 +293,6 @@ activate_virtualenv() {
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
-    set_python_executable
     if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
       pip_install "virtualenv<20"
     fi
@@ -316,6 +318,9 @@ activate_virtualenv() {
   set +u
   . "$virtualenv_dir"/bin/activate
   set -u
+  export SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+  PYTHON_EXECUTABLE="python"
+  log "Using virtualenv python executable now."
 
   # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
   unset PYTHONPATH
@@ -345,7 +350,7 @@ create_pymodules_package() {
   # Change shebangs to be path-independent.
   current_py_exec=$(which $PYTHON_EXECUTABLE)
   LC_ALL=C find "$YB_PYTHON_MODULES_DIR"/bin ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
-    -e "1s|${current_py_exec}|/usr/bin/env python|" {} \; -exec rm {}.yb_tmp \;
+    -e "1s|${current_py_exec}|/usr/bin/env ${PYTHON_EXECUTABLE}|" {} \; -exec rm {}.yb_tmp \;
   tar -C $(dirname "$YB_PYTHON_MODULES_DIR") -czvf "$YB_PYTHON_MODULES_PACKAGE" \
     $(basename "$YB_PYTHON_MODULES_DIR")
   rm -rf "$YB_PYTHON_MODULES_DIR"
