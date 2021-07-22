@@ -85,6 +85,6 @@ extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
-extern int32_t YBCAnalyzeTable(Relation rel);
+extern bool YBCIsTableColocated(Oid dboid, Oid relationId);
 
 #endif
