@@ -56,6 +56,7 @@ import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
@@ -90,6 +91,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     return new GuiceApplicationBuilder()
+        .disable(SwaggerModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))

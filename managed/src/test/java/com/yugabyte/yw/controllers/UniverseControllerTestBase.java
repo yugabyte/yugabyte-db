@@ -67,6 +67,7 @@ import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 import play.test.WithApplication;
 
@@ -119,6 +120,7 @@ public class UniverseControllerTestBase extends WithApplication {
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
 
     return new GuiceApplicationBuilder()
+        .disable(SwaggerModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))

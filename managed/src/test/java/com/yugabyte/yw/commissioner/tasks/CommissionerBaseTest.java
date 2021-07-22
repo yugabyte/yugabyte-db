@@ -48,6 +48,7 @@ import org.yb.master.Master;
 import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 import play.test.WithApplication;
 
@@ -133,6 +134,7 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
+        .disable(SwaggerModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))

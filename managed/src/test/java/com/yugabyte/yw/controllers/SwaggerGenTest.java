@@ -14,6 +14,14 @@ import static junit.framework.TestCase.fail;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.route;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.Lists;
 import com.yugabyte.yw.common.FakeDBApplication;
 import java.io.File;
 import java.io.FileInputStream;
@@ -22,8 +30,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
+import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 
@@ -49,6 +60,8 @@ public class SwaggerGenTest extends FakeDBApplication {
       String actualSwaggerSpec = getSwaggerSpec();
       if (actualSwaggerSpec.length() != expectedSwagger.length()) {
         // TODO: Fix this: Only length comparison because the json ordering change
+        // There still may be some ordering changes depending on machine architecture since
+        // the json still has few lists that are not sorted. But most likely this is a non-issue.
         File outFile = File.createTempFile("swagger", ".json");
         try (FileWriter fileWriter = new FileWriter(outFile)) {
           fileWriter.write(actualSwaggerSpec);
@@ -62,9 +75,35 @@ public class SwaggerGenTest extends FakeDBApplication {
     }
   }
 
-  private String getSwaggerSpec() {
+  private String getSwaggerSpec() throws JsonProcessingException {
     Result result = route(Helpers.fakeRequest("GET", "/docs/swagger.json"));
-    return contentAsString(result, mat);
+    return sort(contentAsString(result, mat));
+  }
+
+  // we will deserialize and serialize back using this mapper so as to generate deterministic
+  // sorted diffable/mergable json:
+  private static final ObjectMapper SORTED_MAPPER = Json.mapper();
+
+  static {
+    SORTED_MAPPER.configure(SerializationFeature.INDENT_OUTPUT, true);
+    SORTED_MAPPER.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
+    SORTED_MAPPER.configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+  }
+
+  private String sort(String jsonString) throws JsonProcessingException {
+    ObjectNode specJsonNode = (ObjectNode) Json.parse(jsonString);
+    sortTagsList(specJsonNode);
+    final Object obj = SORTED_MAPPER.treeToValue(specJsonNode, Object.class);
+    return SORTED_MAPPER.writeValueAsString(obj);
+  }
+
+  // This way swagger UI will show tags in sorted order.
+  private void sortTagsList(ObjectNode specJsonNode) {
+    ArrayNode tagsArrayNode = (ArrayNode) specJsonNode.get("tags");
+    List<JsonNode> tagsList = Lists.newArrayList(tagsArrayNode.elements());
+    tagsList.sort(Comparator.comparing(tagObject -> tagObject.get("name").asText()));
+    ArrayNode sortedTagsArrayNode = Json.newArray().addAll(tagsList);
+    specJsonNode.set("tags", sortedTagsArrayNode);
   }
 
   public static void main(String[] args) throws IOException {

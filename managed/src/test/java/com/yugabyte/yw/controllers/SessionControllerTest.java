@@ -65,6 +65,7 @@ import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.modules.swagger.SwaggerModule;
 import play.mvc.Result;
 import play.test.Helpers;
 
@@ -93,6 +94,7 @@ public class SessionControllerTest {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
+            .disable(SwaggerModule.class)
             .configure((Map) Helpers.inMemoryDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
             .overrides(bind(Scheduler.class).toInstance(mockScheduler))

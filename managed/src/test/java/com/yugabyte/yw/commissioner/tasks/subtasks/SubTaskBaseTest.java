@@ -13,6 +13,7 @@ import java.util.Map;
 import org.junit.Before;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 import play.test.WithApplication;
 
@@ -32,6 +33,7 @@ public class SubTaskBaseTest extends WithApplication {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
+        .disable(SwaggerModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
