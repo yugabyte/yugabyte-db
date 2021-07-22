@@ -36,10 +36,7 @@ public class AlertDefinitionLabel extends Model
   @Column(nullable = false)
   private String value;
 
-  @ManyToOne
-  @MapsId("definition")
-  @JsonIgnore
-  private AlertDefinition definition;
+  @ManyToOne @JsonIgnore private AlertDefinition definition;
 
   public AlertDefinitionLabel() {
     this.key = new AlertDefinitionLabelKey();

@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
@@ -101,6 +102,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private int alertRouteIndex;
 
+  private MetricService metricService;
   private AlertService alertService;
   private AlertDefinitionService alertDefinitionService;
   private AlertDefinitionGroupService alertDefinitionGroupService;
@@ -117,6 +119,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     universe = ModelFactory.createUniverse();
 
+    metricService = new MetricService();
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
     alertDefinitionGroupService =
@@ -126,6 +129,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertDefinitionGroup = ModelFactory.createAlertDefinitionGroup(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertDefinitionGroup);
 
+    controller.setMetricService(metricService);
     controller.setAlertService(alertService);
     controller.setAlertDefinitionGroupService(alertDefinitionGroupService);
   }
@@ -694,10 +698,8 @@ public class AlertControllerTest extends FakeDBApplication {
     Alert initial2 = ModelFactory.createAlert(customer, alertDefinition);
     Alert initial3 = ModelFactory.createAlert(customer, alertDefinition);
 
-    initial2.setCreateTime(Date.from(initial2.getCreateTime().toInstant().minusSeconds(5)));
-    initial3.setCreateTime(Date.from(initial3.getCreateTime().toInstant().minusSeconds(10)));
-    alertService.save(initial2);
-    alertService.save(initial3);
+    initial2.setCreateTime(Date.from(initial2.getCreateTime().toInstant().minusSeconds(5))).save();
+    initial3.setCreateTime(Date.from(initial3.getCreateTime().toInstant().minusSeconds(10))).save();
 
     AlertPagedApiQuery query = new AlertPagedApiQuery();
     query.setSortBy(Alert.SortBy.CREATE_TIME);
@@ -825,10 +827,8 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertDefinitionGroup group2 = ModelFactory.createAlertDefinitionGroup(customer, universe);
     AlertDefinitionGroup group3 = ModelFactory.createAlertDefinitionGroup(customer, universe);
 
-    group2.setCreateTime(Date.from(group2.getCreateTime().toInstant().minusSeconds(5)));
-    group3.setCreateTime(Date.from(group3.getCreateTime().toInstant().minusSeconds(10)));
-    alertDefinitionGroupService.save(group2);
-    alertDefinitionGroupService.save(group3);
+    group2.setCreateTime(Date.from(group2.getCreateTime().toInstant().minusSeconds(5))).save();
+    group3.setCreateTime(Date.from(group3.getCreateTime().toInstant().minusSeconds(10))).save();
 
     AlertDefinitionGroupPagedApiQuery query = new AlertDefinitionGroupPagedApiQuery();
     query.setSortBy(AlertDefinitionGroup.SortBy.CREATE_TIME);

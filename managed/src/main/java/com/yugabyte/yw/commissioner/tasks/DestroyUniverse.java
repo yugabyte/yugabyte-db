@@ -10,9 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
-import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
-
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
@@ -25,15 +22,8 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
-import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.EntityOperation;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -111,7 +101,11 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
-      handleAlerts(universe);
+      alertDefinitionGroupService.handleTargetRemoval(
+          params().customerUUID,
+          AlertDefinitionGroup.TargetType.UNIVERSE,
+          universe.getUniverseUUID());
+      metricService.handleTargetRemoval(params().customerUUID, universe.getUniverseUUID());
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {
@@ -123,51 +117,6 @@ public class DestroyUniverse extends UniverseTaskBase {
       throw t;
     }
     log.info("Finished {} task.", getName());
-  }
-
-  private void handleAlerts(Universe universe) {
-
-    AlertDefinitionGroupFilter filter =
-        AlertDefinitionGroupFilter.builder()
-            .customerUuid(params().customerUUID)
-            .targetType(AlertDefinitionGroup.TargetType.UNIVERSE)
-            .build();
-
-    List<AlertDefinitionGroup> groups =
-        alertDefinitionGroupService
-            .list(filter)
-            .stream()
-            .filter(
-                group ->
-                    group.getTarget().isAll()
-                        || group.getTarget().getUuids().remove(universe.getUniverseUUID()))
-            .collect(Collectors.toList());
-
-    Map<EntityOperation, List<AlertDefinitionGroup>> toUpdateAndDelete =
-        groups
-            .stream()
-            .collect(
-                Collectors.groupingBy(
-                    group ->
-                        group.getTarget().isAll() || !group.getTarget().getUuids().isEmpty()
-                            ? UPDATE
-                            : DELETE));
-    // Just need to save - service will create definition itself.
-    alertDefinitionGroupService.save(toUpdateAndDelete.get(UPDATE));
-    alertDefinitionGroupService.delete(toUpdateAndDelete.get(DELETE));
-
-    // TODO - remove that once all alerts will be based on groups and definitions.
-    AlertFilter alertFilter =
-        AlertFilter.builder()
-            .customerUuid(params().customerUUID)
-            .label(KnownAlertLabels.TARGET_UUID, params().universeUUID.toString())
-            .build();
-    alertService.markResolved(alertFilter);
-    alertDefinitionService.delete(
-        AlertDefinitionFilter.builder()
-            .customerUuid(params().customerUUID)
-            .label(KnownAlertLabels.TARGET_UUID, params().universeUUID.toString())
-            .build());
   }
 
   public SubTaskGroup createRemoveUniverseEntryTask() {

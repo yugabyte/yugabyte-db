@@ -10,22 +10,13 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -69,8 +60,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final Config config;
   protected final ConfigHelper configHelper;
   protected final RuntimeConfigFactory runtimeConfigFactory;
-  protected final AlertService alertService;
-  protected final AlertDefinitionService alertDefinitionService;
+  protected final MetricService metricService;
   protected final AlertDefinitionGroupService alertDefinitionGroupService;
   protected final YBClientService ybService;
   protected final TableManager tableManager;
@@ -82,8 +72,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.config = baseTaskDependencies.getConfig();
     this.configHelper = baseTaskDependencies.getConfigHelper();
     this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
-    this.alertService = baseTaskDependencies.getAlertService();
-    this.alertDefinitionService = baseTaskDependencies.getAlertDefinitionService();
+    this.metricService = baseTaskDependencies.getMetricService();
     this.alertDefinitionGroupService = baseTaskDependencies.getAlertDefinitionGroupService();
     this.ybService = baseTaskDependencies.getYbService();
     this.tableManager = baseTaskDependencies.getTableManager();
@@ -182,57 +171,6 @@ public abstract class AbstractTaskBase implements ITask {
         };
     return updater;
   }
-
-  @Override
-  public boolean shouldSendNotification() {
-    try {
-      CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-      Customer customer = Customer.get(task.getCustomerUUID());
-      CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-      CustomerRegisterFormData.AlertingData alertingData =
-          Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-      return task.getType().equals(CustomerTask.TaskType.Create)
-          && task.getTarget().equals(CustomerTask.TargetType.Backup)
-          && alertingData.reportBackupFailures;
-    } catch (Exception e) {
-      return false;
-    }
-  }
-
-  @Override
-  public void sendNotification() {
-    CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-    Customer customer = Customer.get(task.getCustomerUUID());
-    String content =
-        String.format(
-            "%s %s failed for %s.\n\nTask Info: %s",
-            task.getType().name(),
-            task.getTarget().name(),
-            task.getNotificationTargetName(),
-            taskInfo);
-
-    AlertDefinitionLabelsBuilder labelsBuilder = AlertDefinitionLabelsBuilder.create();
-    if (task.getTarget().isUniverseTarget()) {
-      Universe universe = Universe.maybeGet(task.getTargetUUID()).orElse(null);
-      if (universe == null) {
-        log.warn("Missing universe with UUID {}", task.getTargetUUID());
-      } else {
-        labelsBuilder.appendTarget(universe);
-      }
-    } else {
-      labelsBuilder.appendTarget(customer);
-    }
-    Alert alert =
-        new Alert()
-            .setCustomerUUID(customer.getUuid())
-            .setErrCode(KnownAlertCodes.TASK_FAILURE)
-            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
-            .setMessage(content)
-            .setSendEmail(true)
-            .setLabels(labelsBuilder.getAlertLabels());
-    alertService.save(alert);
-  }
-
   /**
    * Creates task with appropriate dependency injection
    *

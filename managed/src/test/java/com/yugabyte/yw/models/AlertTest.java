@@ -11,14 +11,12 @@ import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
-import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -161,7 +159,6 @@ public class AlertTest extends FakeDBApplication {
     Alert alert2 = ModelFactory.createAlert(cust2, definition2);
     alert2.setState(Alert.State.RESOLVED);
     alert2.setTargetState(Alert.State.RESOLVED);
-    alert2.setErrCode(KnownAlertCodes.ALERT_MANAGER_FAILURE.name());
 
     alertService.save(alert2);
 
@@ -180,9 +177,6 @@ public class AlertTest extends FakeDBApplication {
                 KnownAlertLabels.UNIVERSE_UUID,
                 definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID))
             .build();
-    queryAndAssertByFilter(filter, definition);
-
-    filter = AlertFilter.builder().errorCode(KnownAlertCodes.CUSTOMER_ALERT).build();
     queryAndAssertByFilter(filter, definition);
 
     filter = AlertFilter.builder().definitionUuid(definition.getUuid()).build();
@@ -235,10 +229,8 @@ public class AlertTest extends FakeDBApplication {
             .collect(Collectors.toList());
     return new Alert()
         .setCustomerUUID(definition.getCustomerUUID())
-        .setErrCode(KnownAlertCodes.CUSTOMER_ALERT)
         .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
         .setMessage("Universe on fire!")
-        .setSendEmail(true)
         .setDefinitionUuid(definition.getUuid())
         .setGroupUuid(group.getUuid())
         .setGroupType(group.getTargetType())
@@ -276,9 +268,6 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.TARGET_TYPE.labelName(),
             definition.getLabelValue(KnownAlertLabels.TARGET_TYPE));
-    AlertLabel errorCodeLabel =
-        new AlertLabel(
-            alert, KnownAlertLabels.ERROR_CODE.labelName(), KnownAlertCodes.CUSTOMER_ALERT.name());
     AlertLabel groupUuidLabel =
         new AlertLabel(
             alert, KnownAlertLabels.GROUP_UUID.labelName(), definition.getGroupUUID().toString());
@@ -290,23 +279,17 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.SEVERITY.labelName(),
             AlertDefinitionGroup.Severity.SEVERE.name());
+    AlertLabel thresholdLabel = new AlertLabel(alert, KnownAlertLabels.THRESHOLD.labelName(), "1");
     AlertLabel definitionUuidLabel =
         new AlertLabel(
             alert, KnownAlertLabels.DEFINITION_UUID.labelName(), definition.getUuid().toString());
-    AlertLabel definitionActiveLabel =
-        new AlertLabel(
-            alert,
-            KnownAlertLabels.DEFINITION_ACTIVE.labelName(),
-            String.valueOf(group.isActive()));
     AlertLabel definitionNameLabel =
         new AlertLabel(alert, KnownAlertLabels.DEFINITION_NAME.labelName(), group.getName());
     assertThat(alert.getCustomerUUID(), is(cust1.uuid));
-    assertThat(alert.getErrCode(), is(KnownAlertCodes.CUSTOMER_ALERT.name()));
     assertThat(alert.getSeverity(), is(AlertDefinitionGroup.Severity.SEVERE));
     assertThat(alert.getMessage(), is("Universe on fire!"));
     assertThat(alert.getDefinitionUuid(), equalTo(definition.getUuid()));
     assertThat(alert.getGroupUuid(), equalTo(group.getUuid()));
-    assertTrue(alert.isSendEmail());
     assertThat(
         alert.getLabels(),
         containsInAnyOrder(
@@ -316,12 +299,11 @@ public class AlertTest extends FakeDBApplication {
             targetUuidLabel,
             targetNameLabel,
             targetTypeLabel,
-            errorCodeLabel,
             groupUuidLabel,
             groupTypeLabel,
             severityLabel,
+            thresholdLabel,
             definitionUuidLabel,
-            definitionNameLabel,
-            definitionActiveLabel));
+            definitionNameLabel));
   }
 }
