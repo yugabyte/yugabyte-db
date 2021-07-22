@@ -241,6 +241,28 @@ public class CertificateInfo extends Model {
     return cert;
   }
 
+  public static CertificateInfo createCopy(
+      CertificateInfo certificateInfo, String label, String certFilePath)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo copy = new CertificateInfo();
+    copy.uuid = UUID.randomUUID();
+    copy.customerUUID = certificateInfo.customerUUID;
+    copy.label = label;
+    copy.startDate = certificateInfo.startDate;
+    copy.expiryDate = certificateInfo.expiryDate;
+    copy.privateKey = certificateInfo.privateKey;
+    copy.certificate = certFilePath;
+    copy.certType = certificateInfo.certType;
+    copy.checksum = Util.getFileChecksum(certFilePath);
+    copy.customCertInfo = certificateInfo.customCertInfo;
+    copy.save();
+    return copy;
+  }
+
+  public static boolean isTemporary(CertificateInfo certificateInfo) {
+    return certificateInfo.certificate.endsWith("ca.multi.root.crt");
+  }
+
   private static final Finder<UUID, CertificateInfo> find =
       new Finder<UUID, CertificateInfo>(CertificateInfo.class) {};
 
@@ -280,12 +302,21 @@ public class CertificateInfo extends Model {
   }
 
   public static List<CertificateInfo> getAllNoChecksum() {
-    return find.query().where().isNull("checksum").findList();
+    List<CertificateInfo> certificateInfoList = find.query().where().isNull("checksum").findList();
+    return certificateInfoList
+        .stream()
+        .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+        .collect(Collectors.toList());
   }
 
   public static List<CertificateInfo> getAll(UUID customerUUID) {
     List<CertificateInfo> certificateInfoList =
         find.query().where().eq("customer_uuid", customerUUID).findList();
+    certificateInfoList =
+        certificateInfoList
+            .stream()
+            .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+            .collect(Collectors.toList());
     populateUniverseData(customerUUID, certificateInfoList);
     return certificateInfoList;
   }

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Certs;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
@@ -45,8 +46,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -57,6 +60,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -233,10 +237,22 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private List<String> getCertificatePaths(
       AnsibleConfigureServers.Params configureParams, String yb_home_dir) {
-    ArrayList<String> expectedCommand = new ArrayList<String>();
+    return getCertificatePaths(
+        configureParams,
+        configureParams.enableNodeToNodeEncrypt
+            || (configureParams.rootAndClientRootCASame
+                && configureParams.enableClientToNodeEncrypt),
+        !configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt,
+        yb_home_dir);
+  }
 
-    if (configureParams.enableNodeToNodeEncrypt
-        || (configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt)) {
+  private List<String> getCertificatePaths(
+      AnsibleConfigureServers.Params configureParams,
+      boolean isRootCARequired,
+      boolean isClientRootCARequired,
+      String yb_home_dir) {
+    ArrayList<String> expectedCommand = new ArrayList<>();
+    if (isRootCARequired) {
       expectedCommand.add("--certs_node_dir");
       expectedCommand.add(yb_home_dir + "/yugabyte-tls-config");
 
@@ -304,7 +320,7 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add(certsLocation);
       }
     }
-    if (!configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt) {
+    if (isClientRootCARequired) {
       expectedCommand.add("--certs_client_dir");
       expectedCommand.add(yb_home_dir + "/yugabyte-client-tls-config");
 
@@ -645,7 +661,8 @@ public class NodeManagerTest extends FakeDBApplication {
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (configureParams.enableNodeToNodeEncrypt
                 || configureParams.enableClientToNodeEncrypt) {
-              expectedCommand.add("--adding_certs");
+              expectedCommand.add("--cert_rotate_action");
+              expectedCommand.add(CertRotateAction.ROTATE_CERTS.toString());
             }
             if (configureParams.enableNodeToNodeEncrypt
                 || (configureParams.rootAndClientRootCASame
@@ -702,6 +719,52 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--replace_gflags");
             expectedCommand.add("--gflags");
             expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+          }
+        } else if (configureParams.type == Certs) {
+          String processType = configureParams.getProperty("processType");
+          expectedCommand.add("--yb_process_type");
+          expectedCommand.add(processType.toLowerCase());
+
+          String yb_home_dir =
+              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
+          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+
+          expectedCommand.add("--cert_rotate_action");
+          expectedCommand.add(configureParams.certRotateAction.toString());
+
+          CertificateInfo rootCert = null;
+          if (configureParams.rootCA != null) {
+            rootCert = CertificateInfo.get(configureParams.rootCA);
+          }
+          switch (configureParams.certRotateAction) {
+            case APPEND_NEW_ROOT_CERT:
+            case REMOVE_OLD_ROOT_CERT:
+              {
+                String rootCertPath = "";
+                String certsLocation = "";
+                if (rootCert.certType == Type.SelfSigned) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
+                } else if (rootCert.certType == Type.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                  certsLocation = NodeManager.CERT_LOCATION_NODE;
+                }
+                expectedCommand.add("--root_cert_path");
+                expectedCommand.add(rootCertPath);
+                expectedCommand.add("--certs_location");
+                expectedCommand.add(certsLocation);
+                expectedCommand.add("--certs_node_dir");
+                expectedCommand.add(certsNodeDir);
+              }
+              break;
+            case ROTATE_CERTS:
+              expectedCommand.addAll(
+                  getCertificatePaths(
+                      configureParams,
+                      configureParams.rootCARotationType != CertRotationType.None,
+                      configureParams.clientRootCARotationType != CertRotationType.None,
+                      yb_home_dir));
+              break;
           }
         } else {
           expectedCommand.add("--extra_gflags");
@@ -2219,6 +2282,257 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+    }
+  }
+
+  private UUID createCertificate(Type certType, UUID customerUUID, String label)
+      throws IOException, NoSuchAlgorithmException {
+    UUID certUUID = UUID.randomUUID();
+    Calendar cal = Calendar.getInstance();
+    Date today = cal.getTime();
+    cal.add(Calendar.YEAR, 1);
+    Date nextYear = cal.getTime();
+    if (certType == Type.SelfSigned) {
+      certUUID = CertificateHelper.createRootCA("foobar", customerUUID, TestHelper.TMP_PATH);
+    } else if (certType == Type.CustomCertHostPath) {
+      CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
+      customCertInfo.rootCertPath = "/path/to/cert.crt";
+      customCertInfo.nodeCertPath = "/path/to/rootcert.crt";
+      customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
+      CertificateInfo.create(
+          certUUID,
+          customerUUID,
+          label,
+          today,
+          nextYear,
+          TestHelper.TMP_PATH + "/ca.crt",
+          customCertInfo);
+    } else if (certType == Type.CustomServerCert) {
+      CertificateInfo.create(
+          certUUID,
+          customerUUID,
+          label,
+          today,
+          nextYear,
+          "privateKey",
+          TestHelper.TMP_PATH + "/ca.crt",
+          Type.CustomServerCert);
+    }
+
+    return certUUID;
+  }
+
+  @Test
+  public void testCertRotateWithoutCertRotateAction() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = Certs;
+      params.certRotateAction = null;
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), containsString("Cert Rotation Action is null."));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"APPEND_NEW_ROOT_CERT", "REMOVE_OLD_ROOT_CERT"})
+  @TestCaseName("testCertsRotateWithNoRootCertRotation:{0}")
+  public void testCertsRotateWithNoRootCertRotation(String action) {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = Certs;
+      params.certRotateAction = CertRotateAction.valueOf(action);
+      params.rootCARotationType = CertRotationType.None;
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(
+            re.getMessage(),
+            containsString(action + " is needed only when there is rootCA rotation."));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"APPEND_NEW_ROOT_CERT", "REMOVE_OLD_ROOT_CERT"})
+  @TestCaseName("testCertsRotateWithNoRootCert:{0}")
+  public void testCertsRotateWithNoRootCert(String action) {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = Certs;
+      params.certRotateAction = CertRotateAction.valueOf(action);
+      params.rootCARotationType = CertRotationType.RootCert;
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), containsString("Certificate is null: null"));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"APPEND_NEW_ROOT_CERT", "REMOVE_OLD_ROOT_CERT"})
+  @TestCaseName("testCertsRotateWithCustomServerCert:{0}")
+  public void testCertsRotateWithCustomServerCert(String action)
+      throws IOException, NoSuchAlgorithmException {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+
+      params.type = Certs;
+      params.certRotateAction = CertRotateAction.valueOf(action);
+      params.rootCARotationType = CertRotationType.RootCert;
+      params.rootCA =
+          createCertificate(Type.CustomServerCert, data.provider.customerUUID, params.nodePrefix);
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(
+            re.getMessage(),
+            containsString("Root certificate cannot be of type CustomServerCert."));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({
+    "APPEND_NEW_ROOT_CERT, SelfSigned",
+    "APPEND_NEW_ROOT_CERT, CustomCertHostPath",
+    "REMOVE_OLD_ROOT_CERT, SelfSigned",
+    "REMOVE_OLD_ROOT_CERT, CustomCertHostPath"
+  })
+  @TestCaseName("testCertsRotateWithValidParams_Action:{0}_CertType:{1}")
+  public void testCertsRotateWithValidParams(String action, String certType)
+      throws IOException, NoSuchAlgorithmException {
+    for (TestData data : testData) {
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+
+      params.type = Certs;
+      params.certRotateAction = CertRotateAction.valueOf(action);
+      params.rootCARotationType = CertRotationType.RootCert;
+      params.rootCA =
+          createCertificate(Type.valueOf(certType), data.provider.customerUUID, params.nodePrefix);
+      params.setProperty("processType", MASTER.toString());
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  @Parameters({"true, true", "true, false", "false, true", "false, false"})
+  @TestCaseName("testCertsRotateCopyCerts_rootCA:{0}_clientRootCA:{1}")
+  public void testCertsRotateCopyCerts(boolean isRootCA, boolean isClientRootCA)
+      throws IOException, NoSuchAlgorithmException {
+    for (TestData data : testData) {
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.getOrBadRequest(universeUuid)
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+
+      params.type = Certs;
+      params.certRotateAction = CertRotateAction.ROTATE_CERTS;
+      if (isRootCA) {
+        params.rootCARotationType = CertRotationType.RootCert;
+        params.rootCA =
+            createCertificate(Type.SelfSigned, data.provider.customerUUID, params.nodePrefix);
+      }
+      if (isClientRootCA) {
+        params.clientRootCARotationType = CertRotationType.RootCert;
+        params.clientRootCA =
+            createCertificate(Type.SelfSigned, data.provider.customerUUID, params.nodePrefix);
+      }
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        List<String> expectedCommand = data.baseCommand;
+        expectedCommand.addAll(
+            nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+        verify(shellProcessHandler, times(1))
+            .run(
+                captor.capture(),
+                eq(data.region.provider.getConfig()),
+                eq(
+                    String.format(
+                        "bin/ybcloud.sh %s --region %s instance configure %s",
+                        data.region.provider.name, data.region.code, data.node.getNodeName())));
+        List<String> actualCommand = captor.getValue();
+        if (isRootCA) {
+          int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+          int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+          expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+          expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+        }
+        if (isClientRootCA) {
+          int serverCertPathIndex =
+              expectedCommand.indexOf("--server_cert_path_client_to_server") + 1;
+          int serverKeyPathIndex =
+              expectedCommand.indexOf("--server_key_path_client_to_server") + 1;
+          expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+          expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+        }
+        assertEquals(expectedCommand, actualCommand);
+      } catch (RuntimeException re) {
+        assertThat(
+            re.getMessage(), containsString("No cert rotation can be done with the given params"));
+      }
     }
   }
 }
