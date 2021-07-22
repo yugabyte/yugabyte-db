@@ -49,6 +49,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -251,19 +252,19 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   @Parameters({
-    "true, false, false, false, false",
-    "true, true, false, true, false",
-    "true, false, true, true, true",
-    "true, true, true, true, true",
-    "false, false, true, false, true",
-    "false, true, true, true, true",
+    "true, true, true",
+    "true, true, false",
+    "true, false, true",
+    "true, false, false",
+    "false, true, true",
+    "false, true, false",
+    "false, false, true",
+    "false, false, false"
   })
   public void testUniverseCreateForSelfSignedTLS(
       boolean rootAndClientRootCASame,
       boolean enableNodeToNodeEncrypt,
-      boolean enableClientToNodeEncrypt,
-      boolean rootCAExists,
-      boolean clientRootCAExists) {
+      boolean enableClientToNodeEncrypt) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
@@ -300,16 +301,29 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     bodyJson.put("rootAndClientRootCASame", rootAndClientRootCASame);
 
     Result result = sendCreateRequest(bodyJson);
-    ArgumentCaptor<UniverseTaskParams> taskParams =
-        ArgumentCaptor.forClass(UniverseTaskParams.class);
     assertOk(result);
     checkTaskUUID(fakeTaskUUID, result);
+
+    ArgumentCaptor<UniverseTaskParams> taskParams =
+        ArgumentCaptor.forClass(UniverseTaskParams.class);
     verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), taskParams.capture());
     UniverseDefinitionTaskParams taskParam = (UniverseDefinitionTaskParams) taskParams.getValue();
-    if (rootCAExists) assertNotNull(taskParam.rootCA);
-    else assertNull(taskParam.rootCA);
-    if (clientRootCAExists) assertNotNull(taskParam.clientRootCA);
-    else assertNull(taskParam.clientRootCA);
+    UserIntent userIntent = taskParam.getPrimaryCluster().userIntent;
+    assertEquals(enableNodeToNodeEncrypt, userIntent.enableNodeToNodeEncrypt);
+    assertEquals(enableClientToNodeEncrypt, userIntent.enableClientToNodeEncrypt);
+    assertEquals(rootAndClientRootCASame, taskParam.rootAndClientRootCASame);
+    if (userIntent.enableNodeToNodeEncrypt
+        || (taskParam.rootAndClientRootCASame && userIntent.enableClientToNodeEncrypt)) {
+      assertNotNull(taskParam.rootCA);
+    } else {
+      assertNull(taskParam.rootCA);
+    }
+    if (userIntent.enableClientToNodeEncrypt) {
+      assertNotNull(taskParam.clientRootCA);
+    } else {
+      assertNull(taskParam.clientRootCA);
+    }
+
     assertAuditEntry(1, customer.uuid);
   }
 

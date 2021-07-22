@@ -2164,7 +2164,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    if (!rootAndClientRootCASame && clientToNode)
+      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     else assertNull(universe.getUniverseDetails().clientRootCA);
     assertEquals(
         nodeToNode,
@@ -2293,7 +2294,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    if (!rootAndClientRootCASame && clientToNode)
+      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     else assertNull(universe.getUniverseDetails().clientRootCA);
     assertEquals(
         nodeToNode,
