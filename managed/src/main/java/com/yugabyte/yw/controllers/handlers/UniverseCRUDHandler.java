@@ -219,6 +219,7 @@ public class UniverseCRUDHandler {
               BAD_REQUEST, "IPV6 not supported for platform deployed VMs.");
         }
       }
+
       if (primaryCluster.userIntent.enableNodeToNodeEncrypt) {
         // create self signed rootCA in case it is not provided by the user.
         if (taskParams.rootCA == null) {
@@ -226,24 +227,28 @@ public class UniverseCRUDHandler {
               CertificateHelper.createRootCA(
                   taskParams.nodePrefix, customer.uuid, appConfig.getString("yb.storage.path"));
         }
+
         CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
         if (cert.certType == CertificateInfo.Type.CustomServerCert) {
           throw new YWServiceException(
               BAD_REQUEST,
               "CustomServerCert are only supported for Client to Server Communication.");
         }
-        if (cert.certType != CertificateInfo.Type.SelfSigned) {
+
+        if (cert.certType == CertificateInfo.Type.CustomCertHostPath) {
           if (!taskParams
               .getPrimaryCluster()
               .userIntent
               .providerType
               .equals(Common.CloudType.onprem)) {
             throw new YWServiceException(
-                BAD_REQUEST, "Custom certificates are only supported for onprem providers.");
+                BAD_REQUEST,
+                "CustomCertHostPath certificates are only supported for onprem providers.");
           }
           checkValidRootCA(taskParams.rootCA);
         }
       }
+
       if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
         if (taskParams.clientRootCA == null) {
           if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
@@ -258,6 +263,20 @@ public class UniverseCRUDHandler {
           }
         }
 
+        CertificateInfo cert = CertificateInfo.get(taskParams.clientRootCA);
+        if (cert.certType == CertificateInfo.Type.CustomCertHostPath) {
+          if (!taskParams
+              .getPrimaryCluster()
+              .userIntent
+              .providerType
+              .equals(Common.CloudType.onprem)) {
+            throw new YWServiceException(
+                BAD_REQUEST,
+                "CustomCertHostPath certificates are only supported for onprem providers.");
+          }
+          checkValidRootCA(taskParams.rootCA);
+        }
+
         // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
         // This is necessary to set to ensure backward compatibity as existing parts of
         // codebase (kubernetes) uses rootCA for Client to Node Encryption
@@ -265,38 +284,22 @@ public class UniverseCRUDHandler {
           taskParams.rootCA = taskParams.clientRootCA;
         }
 
-        // If client encryption is enabled, generate the client cert file for each node.
-        CertificateInfo cert = CertificateInfo.get(taskParams.clientRootCA);
-        if (cert.certType == CertificateInfo.Type.SelfSigned) {
-          CertificateHelper.createClientCertificate(
-              taskParams.clientRootCA,
-              String.format(
-                  CertificateHelper.CERT_PATH,
-                  appConfig.getString("yb.storage.path"),
-                  customer.uuid.toString(),
-                  taskParams.clientRootCA.toString()),
-              CertificateHelper.DEFAULT_CLIENT,
-              null,
-              null);
-        } else {
-          if (cert.certType == CertificateInfo.Type.CustomCertHostPath
-              && !taskParams
-                  .getPrimaryCluster()
-                  .userIntent
-                  .providerType
-                  .equals(Common.CloudType.onprem)) {
-            throw new YWServiceException(
-                BAD_REQUEST,
-                "CustomCertHostPath certificates are only supported for onprem providers.");
+        // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
+        // This is there only for legacy support, no need if rootCA and clientRootCA are different.
+        if (taskParams.rootAndClientRootCASame) {
+          CertificateInfo rootCert = CertificateInfo.get(taskParams.rootCA);
+          if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+            CertificateHelper.createClientCertificate(
+                taskParams.rootCA,
+                String.format(
+                    CertificateHelper.CERT_PATH,
+                    appConfig.getString("yb.storage.path"),
+                    customer.uuid.toString(),
+                    taskParams.rootCA.toString()),
+                CertificateHelper.DEFAULT_CLIENT,
+                null,
+                null);
           }
-          checkValidRootCA(taskParams.clientRootCA);
-          LOG.info(
-              "Skipping client certificate creation for universe {} ({}) "
-                  + "because cert {} (type {})is not a self-signed cert.",
-              universe.name,
-              universe.universeUUID,
-              taskParams.clientRootCA,
-              cert.certType);
         }
       }
 
