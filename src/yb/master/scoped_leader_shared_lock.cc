@@ -39,7 +39,12 @@
 
 using namespace std::literals;
 
-DEFINE_int32(master_log_lock_warning_ms, 100,
+// Since we don't have the split between logging and stack trace in 2.4, just bring in the higher
+// value here.
+constexpr int32_t kMasterLeaderLockStackTraceMsDefault =
+    ::yb::RegularBuildVsSanitizers<int32_t>(3000, 9000);
+
+DEFINE_int32(master_log_lock_warning_ms, kMasterLeaderLockStackTraceMsDefault,
              "Print warnings if lock is held for longer than this amount of time.");
 
 using yb::consensus::Consensus;
