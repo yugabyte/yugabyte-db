@@ -108,7 +108,7 @@ public class TestYsqlDump extends BasePgSQLTest {
                         final String expectedFileRelativePath,
                         final String stdoutFileRelativePath) throws Exception {
     // Location of Postgres regression tests
-    File pgRegressDir = PgRegressRunner.getPgRegressDir();
+    File pgRegressDir = PgRegressBuilder.getPgRegressDir();
 
     // Create the data
     try (BufferedReader inputIn = createFileReader(new File(pgRegressDir,
@@ -124,7 +124,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     }
 
     // Dump and validate the data
-    File pgBinDir = PgRegressRunner.getPgBinDir();
+    File pgBinDir = PgRegressBuilder.getPgBinDir();
     File ysqlDumpExec = new File(pgBinDir, binaryName);
 
     final int tserverIndex = 0;

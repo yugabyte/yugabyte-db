@@ -675,7 +675,7 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     assertTrue("Dump SQL resource not found!", sqlFileRes != null);
     File sqlFile = new File(sqlFileRes.getFile());
 
-    String ysqlshPath = new File(PgRegressRunner.getPgBinDir(), "ysqlsh").getAbsolutePath();
+    String ysqlshPath = new File(PgRegressBuilder.getPgBinDir(), "ysqlsh").getAbsolutePath();
     ProcessBuilder procBuilder = new ProcessBuilder(
         ysqlshPath,
         "-h", getPgHost(0),
