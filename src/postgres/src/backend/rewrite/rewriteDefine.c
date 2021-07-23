@@ -54,6 +54,9 @@ static void setRuleCheckAsUser_Query(Query *qry, Oid userid);
  * InsertRule -
  *	  takes the arguments and inserts them as a row into the system
  *	  relation "pg_rewrite"
+ *
+ * YB NOTE: yb_rule_id is used to specify a predefined OID for a
+ * pg_rewrite entry, should be InvalidOid otherwise.
  */
 static Oid
 InsertRule(const char *rulname,
@@ -62,7 +65,8 @@ InsertRule(const char *rulname,
 		   bool evinstead,
 		   Node *event_qual,
 		   List *action,
-		   bool replace)
+		   bool replace,
+		   Oid yb_rule_oid)
 {
 	char	   *evqual = nodeToString(event_qual);
 	char	   *actiontree = nodeToString((Node *) action);
@@ -134,6 +138,9 @@ InsertRule(const char *rulname,
 	else
 	{
 		tup = heap_form_tuple(pg_rewrite_desc->rd_att, values, nulls);
+
+		/* yb_rule_oid might be InvalidOid. */
+		HeapTupleSetOid(tup, yb_rule_oid);
 
 		rewriteObjectId = CatalogTupleInsert(pg_rewrite_desc, tup);
 	}
@@ -213,7 +220,8 @@ DefineRule(RuleStmt *stmt, const char *queryString)
 							  stmt->event,
 							  stmt->instead,
 							  stmt->replace,
-							  actions);
+							  actions,
+							  InvalidOid /* yb_rule_id */);
 }
 
 
@@ -223,6 +231,9 @@ DefineRule(RuleStmt *stmt, const char *queryString)
  *
  * This is essentially the same as DefineRule() except that the rule's
  * action and qual have already been passed through parse analysis.
+ *
+ * YB NOTE: yb_rule_id is used to specify a predefined OID for a
+ * pg_rewrite entry, should be InvalidOid otherwise.
  */
 ObjectAddress
 DefineQueryRewrite(const char *rulename,
@@ -231,13 +242,14 @@ DefineQueryRewrite(const char *rulename,
 				   CmdType event_type,
 				   bool is_instead,
 				   bool replace,
-				   List *action)
+				   List *action,
+				   Oid yb_rule_id)
 {
 	Relation	event_relation;
 	ListCell   *l;
 	Query	   *query;
 	bool		RelisBecomingView = false;
-	Oid			ruleId = InvalidOid;
+	Oid			ruleId = yb_rule_id;
 	ObjectAddress address;
 
 	/*
@@ -475,6 +487,12 @@ DefineQueryRewrite(const char *rulename,
 						 errmsg("could not convert table \"%s\" to a view because it has row security policies",
 								RelationGetRelationName(event_relation))));
 
+			if (IsSystemNamespace(event_relation->rd_rel->relnamespace))
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("could not convert table \"%s\" to a view because it's a system table",
+								RelationGetRelationName(event_relation))));
+
 			RelisBecomingView = true;
 		}
 	}
@@ -528,7 +546,8 @@ DefineQueryRewrite(const char *rulename,
 							is_instead,
 							event_qual,
 							action,
-							replace);
+							replace,
+							ruleId);
 
 		/*
 		 * Set pg_class 'relhasrules' field true for event relation.

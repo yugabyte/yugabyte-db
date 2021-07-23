@@ -392,6 +392,17 @@ static relopt_int intRelOpts[] =
 		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
 		INT_MAX
 	},
+	{
+		{
+			"rewrite_rule_oid",
+			"Postgres rewrite rule oid for the new rewrite rule defined for this view.",
+			RELOPT_KIND_VIEW,
+			AccessExclusiveLock
+		},
+		InvalidOid,
+		1,
+		FirstNormalObjectId - 1 /* we don't expect this for non-system views */
+	},
 	/* list terminator */
 	{{NULL}}
 };
@@ -828,6 +839,24 @@ Datum
 transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 					char *validnsps[], bool ignoreOids, bool isReset)
 {
+	return ybTransformRelOptions(oldOptions, defList, namspace, validnsps,
+								 ignoreOids, isReset,
+								 false /* ybIgnoreYsqlUpgradeViewOptions */);
+}
+
+/*
+ * See above for transformRelOptions description.
+ * 
+ * If ybIgnoreYsqlUpgradeViewOptions is specified, ignore "table_oid",
+ * "row_type_oid" and "rewrite_rule_oid" options. This is needed in
+ * YSQL upgrade mode, where we use them to simulate initdb-like behaviour
+ * for creating relations but don't want them to be persisted.
+ */
+Datum
+ybTransformRelOptions(Datum oldOptions, List *defList, const char *namspace,
+					  char *validnsps[], bool ignoreOids, bool isReset,
+					  bool ybIgnoreYsqlUpgradeOptions)
+{
 	Datum		result;
 	ArrayBuildState *astate;
 	ListCell   *cell;
@@ -938,6 +967,12 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 			}
 
 			if (ignoreOids && strcmp(def->defname, "oids") == 0)
+				continue;
+
+			if (ybIgnoreYsqlUpgradeOptions &&
+				(strcmp(def->defname, "table_oid") == 0 ||
+				 strcmp(def->defname, "row_type_oid") == 0 ||
+				 strcmp(def->defname, "rewrite_rule_oid") == 0))
 				continue;
 
 			/* ignore if not in the same namespace */
@@ -1475,7 +1510,9 @@ view_reloptions(Datum reloptions, bool validate)
 		{"security_barrier", RELOPT_TYPE_BOOL,
 		offsetof(ViewOptions, security_barrier)},
 		{"check_option", RELOPT_TYPE_STRING,
-		offsetof(ViewOptions, check_option_offset)}
+		offsetof(ViewOptions, check_option_offset)},
+		{"rewrite_rule_oid", RELOPT_TYPE_BOOL,
+		offsetof(ViewOptions, rewrite_rule_oid)},
 	};
 
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_VIEW, &numoptions);
