@@ -5,15 +5,11 @@ linkTitle: Cluster management
 description: Cluster management in YugabyteDB
 headcontent: Cluster management in YugabyteDB
 image: /images/section_icons/manage/enterprise.png
-aliases:
-- /latest/explore/backup-restore/point-in-time-restore-ycql
-- /latest/explore/backup-restore/point-in-time-restore
-- /latest/explore/backup-restore
 menu:
   latest:
     identifier: explore-cluster-management
     parent: explore
-    weight: 315
+    weight: 250
 ---
 
 
