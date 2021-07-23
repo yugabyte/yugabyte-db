@@ -63,6 +63,7 @@ export default class EditProviderForm extends Component {
     const { providersInUse } = this.state;
     let isHostedZoneIdValid = true;
     let verifyEditConditions = true;
+    
     if (!isNonEmptyString(hostedZoneId)) {
       isHostedZoneIdValid = false;
       verifyEditConditions = false;
@@ -83,7 +84,7 @@ export default class EditProviderForm extends Component {
               type="text"
               label="Name"
               component={YBTextInputWithLabel}
-              isReadOnly={providersInUse.has(uuid)}
+              isReadOnly={true}
             />
             <Field
               name="accountUUID"
@@ -98,7 +99,7 @@ export default class EditProviderForm extends Component {
               type="text"
               label="SSH Key"
               component={YBTextInputWithLabel}
-              isReadOnly={providersInUse.has(uuid)}
+              isReadOnly={true}
             />
             <Field
               name="hostedZoneId"

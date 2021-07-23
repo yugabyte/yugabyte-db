@@ -49,6 +49,7 @@ export const CREATE_ACCESS_KEY_FAILURE = 'CREATE_ACCESS_KEY_FAILURE';
 export const INITIALIZE_PROVIDER = 'INITIALIZE_PROVIDER';
 export const INITIALIZE_PROVIDER_SUCCESS = 'INITIALIZE_PROVIDER_SUCCESS';
 export const INITIALIZE_PROVIDER_FAILURE = 'INITIALIZE_PROVIDER_FAILURE';
+export const EDIT_PROVIDER_FAILURE = 'EDIT_PROVIDER_FAILURE';
 
 export const DELETE_PROVIDER = 'DELETE_PROVIDER';
 export const DELETE_PROVIDER_SUCCESS = 'DELETE_PROVIDER_SUCCESS';
@@ -414,6 +415,13 @@ export function initializeProviderSuccess(result) {
 export function initializeProviderFailure(error) {
   return {
     type: INITIALIZE_PROVIDER_FAILURE,
+    payload: error
+  };
+}
+
+export function editProviderFailure(error) {
+  return {
+    type: EDIT_PROVIDER_FAILURE,
     payload: error
   };
 }

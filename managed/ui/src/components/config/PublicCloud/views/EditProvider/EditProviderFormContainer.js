@@ -6,15 +6,22 @@ import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import {
   editProvider,
   editProviderResponse,
-  fetchCloudMetadata
+  fetchCloudMetadata,
+  editProviderFailure
 } from '../../../../../actions/cloud';
 import EditProviderForm from './EditProviderForm';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../../../actions/universe';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     submitEditProvider: (payload) => {
       dispatch(editProvider(payload)).then((response) => {
+        if (response.payload.isAxiosError || (response.payload?.response?.status !== 200)) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+          dispatch(editProviderFailure(response.payload));
+        }
         dispatch(editProviderResponse(response.payload));
       });
     },
