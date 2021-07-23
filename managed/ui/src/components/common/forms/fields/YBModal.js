@@ -75,6 +75,7 @@ export default class YBModal extends Component {
                     disabled={btnDisabled}
                     btnText={submitLabel}
                     onClick={onFormSubmit}
+                    btnType="submit"
                   />
                 )}
                 {showCancelButton && (
