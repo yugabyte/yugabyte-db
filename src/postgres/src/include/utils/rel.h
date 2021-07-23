@@ -362,6 +362,9 @@ typedef struct ViewOptions
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	bool		security_barrier;
 	int			check_option_offset;
+
+	/* YB additions. */
+	bool		rewrite_rule_oid;
 } ViewOptions;
 
 /*
