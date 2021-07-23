@@ -4,12 +4,8 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
-import play.data.validation.Constraints;
-
 import java.util.List;
-
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import play.data.validation.Constraints;
 
 /** This class will be used by the API validate constraints for NodeInstance data. */
 public class NodeInstanceFormData {

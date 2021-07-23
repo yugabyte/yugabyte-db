@@ -7,33 +7,40 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.YWResults.YWError;
 import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.YWResults.YWError;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
 @Api(value = "Backups", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
+  private static int maxRetryCount = 5;
 
   @Inject Commissioner commissioner;
 
@@ -237,5 +244,47 @@ public class BackupsController extends AuthenticatedController {
       }
     }
     return new YWResults.YWTasks(taskUUIDList).asResult();
+  }
+
+  public Result stop(UUID customerUUID, UUID backupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Process process = Util.getProcessOrBadRequest(backupUUID);
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    if (backup.state != Backup.BackupState.InProgress) {
+      LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
+      throw new YWServiceException(
+          BAD_REQUEST, "The backup you are trying to stop is not in process.");
+    }
+    if (process == null) {
+      LOG.info("The backup {} process you want to stop doesn't exist.", backupUUID);
+      throw new YWServiceException(
+          BAD_REQUEST, "The backup process you want to stop doesn't exist.");
+    } else {
+      process.destroyForcibly();
+    }
+    Util.removeProcess(backupUUID);
+    try {
+      waitForTask(backup.taskUUID);
+    } catch (InterruptedException e) {
+      LOG.info("Error while waiting for the backup task to get finished.");
+    }
+    backup.transitionState(BackupState.Stopped);
+    return YWResults.YWSuccess.withMessage("Successfully stopped the backup process.");
+  }
+
+  private static void waitForTask(UUID taskUUID) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < maxRetryCount) {
+      TaskInfo taskInfo = TaskInfo.get(taskUUID);
+      if (taskInfo.getTaskState() == TaskInfo.State.Success
+          || taskInfo.getTaskState() == TaskInfo.State.Failure) {
+        return;
+      }
+      Thread.sleep(1000);
+      numRetries++;
+    }
+    throw new YWServiceException(
+        BAD_REQUEST,
+        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 }

@@ -14,9 +14,8 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class SwamperTargetsFileUpdate extends AbstractTaskBase {

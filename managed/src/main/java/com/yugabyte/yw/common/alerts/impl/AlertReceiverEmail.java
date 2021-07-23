@@ -2,13 +2,6 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
-import java.util.Collections;
-import java.util.List;
-
-import javax.mail.MessagingException;
-
-import org.apache.commons.collections.CollectionUtils;
-
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.EmailHelper;
@@ -20,8 +13,11 @@ import com.yugabyte.yw.common.alerts.YWNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
-
+import java.util.Collections;
+import java.util.List;
+import javax.mail.MessagingException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 @Slf4j
 @Singleton

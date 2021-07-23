@@ -428,6 +428,12 @@ DEFINE_bool(enable_tablet_split_of_pitr_tables, false,
             "Point In Time Restore schedules.");
 TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
 
+DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
+            "When set, it enables automatic tablet splitting for tables that are part of an "
+            "xCluster replication setup");
+TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
+TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
+
 namespace yb {
 namespace master {
 
@@ -2134,9 +2140,10 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
+  const TableInfo& table = *tablet_info.table().get();
   // Check if this tablet is covered by an PITR schedule.
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
-      VERIFY_RESULT(IsTablePartOfSomeSnapshotSchedule(*tablet_info.table().get()))) {
+      VERIFY_RESULT(IsTablePartOfSomeSnapshotSchedule(table))) {
     VLOG(1) << Substitute("Tablet splitting is not supported for tables that are a part of"
                           " some active PITR schedule, tablet_id: $0",
                           tablet_info.tablet_id());
@@ -2144,6 +2151,18 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
         " some active PITR schedule, tablet_id: $0",
+        tablet_info.tablet_id());
+  }
+  // Check if this tablet is part of a cdc stream.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
+      IsCdcEnabled(table)) {
+    VLOG(1) << Substitute("Tablet splitting is not supported for tables that are a part of"
+                          " a CDC stream, tablet_id: $0",
+                          tablet_info.tablet_id());
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDC stream, tablet_id: $0",
         tablet_info.tablet_id());
   }
   if (tablet_info.table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
@@ -7477,14 +7496,14 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
 
     // Do not update replicas in the NOT_STARTED or BOOTSTRAPPING state (unless they are stale).
     bool use_existing = false;
-    const TabletReplica* existing_replica;
-    if (peer.permanent_uuid() != sender_uuid) {
-      auto it = prev_rl->find(ts_desc->permanent_uuid());
-      if (it != prev_rl->end()) {
-        existing_replica = &it->second;
-        // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
-        use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
-      }
+    const TabletReplica* existing_replica = nullptr;
+    auto it = prev_rl->find(ts_desc->permanent_uuid());
+    if (it != prev_rl->end()) {
+      existing_replica = &it->second;
+    }
+    if (existing_replica && peer.permanent_uuid() != sender_uuid) {
+      // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
+      use_existing = existing_replica->IsStarting() && !existing_replica->IsStale();
     }
     if (use_existing) {
       InsertOrDie(replica_locations.get(), existing_replica->ts_desc->permanent_uuid(),
@@ -7492,7 +7511,11 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     } else {
       TabletReplica replica;
       CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, report, &replica);
-      InsertOrDie(replica_locations.get(), replica.ts_desc->permanent_uuid(), replica);
+      auto result = replica_locations.get()->insert({replica.ts_desc->permanent_uuid(), replica});
+      LOG_IF(FATAL, !result.second) << "duplicate uuid: " << replica.ts_desc->permanent_uuid();
+      if (existing_replica) {
+        result.first->second.UpdateDriveInfo(existing_replica->drive_info);
+      }
     }
   }
 
@@ -9734,6 +9757,7 @@ void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
         SharedLock lock(mutex_);
         tablet = FindPtrOrNull(*tablet_map_, tablet_id);
       }
+
       if (!tablet) {
         VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
         continue;

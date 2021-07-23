@@ -106,6 +106,9 @@ template <class Req, class Resp>
 class ClientMasterRpc;
 }
 
+using GetTableLocationsCallback =
+    std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
+
 // This needs to be called by a client app before performing any operations that could result in
 // logging.
 void InitLogging();
@@ -548,6 +551,10 @@ class YBClient {
                     StdStatusCallback callback);
 
   void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
+  void GetTableLocations(
+      const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
+      GetTableLocationsCallback callback);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.

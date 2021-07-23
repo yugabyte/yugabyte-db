@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Iterables;
@@ -14,19 +16,24 @@ import io.ebean.PagedList;
 import io.ebean.Query;
 import io.ebean.common.BeanList;
 import io.jsonwebtoken.lang.Collections;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
-
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.function.BiFunction;
-import java.util.function.Predicate;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Slf4j
 public class CommonUtils {
@@ -38,6 +45,7 @@ public class CommonUtils {
 
   public static final int DB_MAX_IN_CLAUSE_ITEMS = 1000;
   public static final int DB_IN_CLAUSE_TO_WARN = 50000;
+  public static final int DB_OR_CHAIN_TO_WARN = 100;
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -312,9 +320,11 @@ public class CommonUtils {
       throw new IllegalStateException(
           "Failed to create " + responseClass.getSimpleName() + " instance", e);
     }
-    response.setEntities(pagedList.getList().subList(0, pagedQuery.getLimit()));
+    int actualSize = pagedList.getList().size();
+    response.setEntities(
+        pagedList.getList().subList(0, Math.min(actualSize, pagedQuery.getLimit())));
     response.setHasPrev(pagedList.hasPrev());
-    response.setHasNext(pagedList.getList().size() > pagedQuery.getLimit());
+    response.setHasNext(actualSize > pagedQuery.getLimit());
     if (pagedQuery.isNeedTotalCount()) {
       response.setTotalCount(pagedList.getTotalCount());
     }
@@ -323,5 +333,9 @@ public class CommonUtils {
 
   public static Date nowWithoutMillis() {
     return Date.from(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+  }
+
+  public static Date nowPlusWithoutMillis(long amount, TemporalUnit timeUnit) {
+    return Date.from(Instant.now().plus(amount, timeUnit).truncatedTo(ChronoUnit.SECONDS));
   }
 }

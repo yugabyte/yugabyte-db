@@ -145,8 +145,8 @@ class MiniCluster : public MiniClusterBase {
   // Same as above, but get options from flags.
   CHECKED_STATUS AddTabletServer();
 
-  // Add a Tablet Server to the blacklist
-  CHECKED_STATUS AddTServerToBlacklist(master::MiniMaster* master, tserver::MiniTabletServer* ts);
+  CHECKED_STATUS AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
+  CHECKED_STATUS ClearBlacklist();
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
@@ -271,6 +271,8 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster,
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
 
+// By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
+// i.e. not yet completed split or deleted (tombstoned).
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id);
 

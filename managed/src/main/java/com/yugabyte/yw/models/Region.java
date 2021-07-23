@@ -1,28 +1,43 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.*;
+import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
+import static io.ebean.Ebean.beginTransaction;
+import static io.ebean.Ebean.commitTransaction;
+import static io.ebean.Ebean.endTransaction;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.YWServiceException;
+import io.ebean.Ebean;
+import io.ebean.Finder;
+import io.ebean.Model;
 import io.ebean.Query;
-import io.ebean.*;
+import io.ebean.RawSql;
+import io.ebean.RawSqlBuilder;
+import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import play.data.validation.Constraints;
-import play.libs.Json;
-
-import javax.persistence.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
-import static io.ebean.Ebean.*;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
+import javax.persistence.OneToMany;
+import play.data.validation.Constraints;
+import play.libs.Json;
 
 @Entity
 @JsonInclude(JsonInclude.Include.NON_NULL)

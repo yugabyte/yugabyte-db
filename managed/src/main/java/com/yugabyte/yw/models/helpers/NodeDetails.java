@@ -2,17 +2,22 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static com.yugabyte.yw.common.NodeActionType.ADD;
+import static com.yugabyte.yw.common.NodeActionType.DELETE;
+import static com.yugabyte.yw.common.NodeActionType.QUERY;
+import static com.yugabyte.yw.common.NodeActionType.RELEASE;
+import static com.yugabyte.yw.common.NodeActionType.REMOVE;
+import static com.yugabyte.yw.common.NodeActionType.START;
+import static com.yugabyte.yw.common.NodeActionType.STOP;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.Set;
 import java.util.UUID;
-
-import static com.yugabyte.yw.common.NodeActionType.*;
 
 /** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(ignoreUnknown = true)

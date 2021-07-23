@@ -1457,6 +1457,14 @@ void YBClient::DeleteTablet(const TabletId& tablet_id, StdStatusCallback callbac
   data_->DeleteTablet(this, tablet_id, deadline, callback);
 }
 
+void YBClient::GetTableLocations(
+    const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
+    GetTableLocationsCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->GetTableLocations(
+      this, table_id, max_tablets, require_tablets_running, deadline, std::move(callback));
+}
+
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
   int tserver_count_cached = data_->tserver_count_cached_.load(std::memory_order_acquire);
   if (use_cache && tserver_count_cached > 0) {

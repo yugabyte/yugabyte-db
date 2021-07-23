@@ -25,20 +25,19 @@ import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
-import play.libs.concurrent.HttpExecutionContext;
-import play.mvc.Result;
-import play.mvc.Results;
-
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
+import play.libs.concurrent.HttpExecutionContext;
+import play.mvc.Result;
+import play.mvc.Results;
 
 @Api(
     value = "UniverseInfo",
@@ -172,22 +171,27 @@ public class UniverseInfoController extends AuthenticatedController {
    * @param nodeName name of the node
    * @return tar file of the tserver and master log files (if the node is a master server).
    */
-  // TODO: API
+  @ApiOperation(value = "download Node logs", produces = "application/x-compressed")
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
     return CompletableFuture.supplyAsync(
         () -> {
           File file =
               universeInfoHandler.downloadNodeLogs(customerUUID, universeUUID, nodeName).toFile();
-          try (InputStream is = new FileInputStream(file)) {
-            file.delete(); // TODO: should this be done in finally?
-            // return the file to client
-            response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());
-            return ok(is).as("application/x-compressed");
-          } catch (IOException e) {
-            throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-          }
+          InputStream is = getInputStreamOrFail(file);
+          file.delete(); // TODO: should this be done in finally?
+          // return the file to client
+          response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());
+          return ok(is).as("application/x-compressed");
         },
         ec.current());
+  }
+
+  private static InputStream getInputStreamOrFail(File file) {
+    try {
+      return new FileInputStream(file);
+    } catch (FileNotFoundException e) {
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 }

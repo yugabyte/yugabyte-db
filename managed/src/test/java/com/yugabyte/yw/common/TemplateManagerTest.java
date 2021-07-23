@@ -2,9 +2,25 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+import static com.yugabyte.yw.common.DevopsBase.YBCLOUD_SCRIPT;
+import static com.yugabyte.yw.common.TemplateManager.PROVISION_SCRIPT;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -15,26 +31,6 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.YBServerException;
-
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
-import static com.yugabyte.yw.common.DevopsBase.YBCLOUD_SCRIPT;
-import com.yugabyte.yw.common.ShellResponse;
-import static com.yugabyte.yw.common.TemplateManager.PROVISION_SCRIPT;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TemplateManagerTest extends FakeDBApplication {

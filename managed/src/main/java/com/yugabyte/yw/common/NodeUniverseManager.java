@@ -8,9 +8,10 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import javax.xml.soap.Node;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.UUID;
 
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
@@ -45,7 +46,8 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--namespace");
       commandArgs.add(namespace);
     } else if (!getNodeDeploymentMode(node, universe).equals(Common.CloudType.unknown)) {
-      AccessKey accessKey = AccessKey.get(providerUUID, cluster.userIntent.accessKeyCode);
+      AccessKey accessKey =
+          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       commandArgs.add("ssh");
       commandArgs.add("--port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());

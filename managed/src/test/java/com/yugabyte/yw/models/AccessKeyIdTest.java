@@ -2,16 +2,15 @@
 
 package com.yugabyte.yw.models;
 
-import org.junit.Test;
-
-import java.util.UUID;
-
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.core.AllOf.allOf;
+
+import java.util.UUID;
+import org.junit.Test;
 
 public class AccessKeyIdTest {
   @Test

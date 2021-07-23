@@ -577,6 +577,11 @@ Status TabletPeer::CheckRunning() const {
   return Status::OK();
 }
 
+bool TabletPeer::IsShutdownStarted() const {
+  auto state = state_.load(std::memory_order_acquire);
+  return state == RaftGroupStatePB::QUIESCING || state == RaftGroupStatePB::SHUTDOWN;
+}
+
 Status TabletPeer::CheckShutdownOrNotStarted() const {
   RaftGroupStatePB value = state_.load(std::memory_order_acquire);
   if (value != RaftGroupStatePB::SHUTDOWN && value != RaftGroupStatePB::NOT_STARTED) {

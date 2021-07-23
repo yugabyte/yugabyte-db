@@ -77,8 +77,14 @@ public class PgRegressRunner {
       throw new RuntimeException("Failed to create directory " + pgRegressOutputDir);
     }
     try {
+      // Copy files needed by pg_regress.  "input" and "ouput" don't need to be
+      // copied since they can be read from the src dir.  Their purpose is to
+      // generate files into "expected" and "sql" in the dst dir (implying
+      // "expected" and "sql" should be copied).  "data" doesn't need to be
+      // copied since it's only read from (by convention), which can be done
+      // from the src dir.
       for (String name : new String[]{
-          "expected", "output", "sql", "data"}) {
+          "expected", "sql"}) {
         FileUtils.copyDirectory(new File(pgRegressDir, name), new File(pgRegressOutputDir, name));
       }
       File scheduleInputFile = new File(pgRegressDir, schedule);

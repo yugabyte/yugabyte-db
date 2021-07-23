@@ -18,28 +18,41 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.jsonwebtoken.lang.Collections;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.Value;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import scala.concurrent.ExecutionContext;
+import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -57,6 +70,8 @@ public class QueryAlerts {
 
   private final MetricQueryHelper queryHelper;
 
+  private final MetricService metricService;
+
   private final AlertService alertService;
 
   private final AlertDefinitionService alertDefinitionService;
@@ -71,6 +86,7 @@ public class QueryAlerts {
       ActorSystem actorSystem,
       AlertService alertService,
       MetricQueryHelper queryHelper,
+      MetricService metricService,
       AlertDefinitionService alertDefinitionService,
       AlertDefinitionGroupService alertDefinitionGroupService,
       AlertManager alertManager) {
@@ -78,6 +94,7 @@ public class QueryAlerts {
     this.executionContext = executionContext;
     this.queryHelper = queryHelper;
     this.alertService = alertService;
+    this.metricService = metricService;
     this.alertDefinitionService = alertDefinitionService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
     this.alertManager = alertManager;
@@ -88,7 +105,9 @@ public class QueryAlerts {
     this.actorSystem
         .scheduler()
         .schedule(
-            Duration.Zero(),
+            // Start 30 seconds later to allow Prometheus to get Platform metrics
+            // and evaluate alerts based on them.
+            Duration.create(YB_QUERY_ALERTS_INTERVAL_SEC, TimeUnit.SECONDS),
             Duration.create(YB_QUERY_ALERTS_INTERVAL_SEC, TimeUnit.SECONDS),
             this::scheduleRunner,
             this.executionContext);
@@ -102,9 +121,19 @@ public class QueryAlerts {
     }
     if (running.compareAndSet(false, true)) {
       try {
-        List<UUID> activeAlertsUuids = processActiveAlerts();
-        resolveAlerts(activeAlertsUuids);
+        try {
+          List<UUID> activeAlertsUuids = processActiveAlerts();
+          resolveAlerts(activeAlertsUuids);
+          metricService.setOkStatusMetric(
+              metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS));
+        } catch (Exception e) {
+          metricService.setStatusMetric(
+              metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS),
+              "Error querying for alerts: " + e.getMessage());
+          log.error("Error querying for alerts alerts", e);
+        }
         transitionAlerts();
+        alertManager.sendNotifications();
       } catch (Exception e) {
         log.error("Error processing alerts", e);
       } finally {
@@ -115,28 +144,46 @@ public class QueryAlerts {
 
   private List<UUID> processActiveAlerts() {
     List<AlertData> alerts = queryHelper.queryAlerts();
-    List<AlertData> alertsWithDefinitionUuids =
+    metricService.setMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS), alerts.size());
+    List<AlertData> validAlerts =
         alerts
             .stream()
+            .filter(alertData -> getCustomerUuid(alertData) != null)
+            .filter(alertData -> getGroupUuid(alertData) != null)
             .filter(alertData -> getDefinitionUuid(alertData) != null)
             .collect(Collectors.toList());
-    if (alerts.size() < alertsWithDefinitionUuids.size()) {
+    if (alerts.size() > validAlerts.size()) {
       log.warn(
-          "Found {} alerts without definition uuid",
-          alerts.size() - alertsWithDefinitionUuids.size());
+          "Found {} alerts without customer, group or definition uuid",
+          alerts.size() - validAlerts.size());
     }
+    metricService.setMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_INVALID_ALERTS),
+        alerts.size() - validAlerts.size());
+
+    List<AlertData> activeAlerts =
+        validAlerts
+            .stream()
+            .filter(alertData -> alertData.getState() != AlertState.pending)
+            .collect(Collectors.toList());
+    metricService.setMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_PENDING_ALERTS),
+        validAlerts.size() - activeAlerts.size());
+
     List<AlertData> deduplicatedAlerts =
         new ArrayList<>(
-            alertsWithDefinitionUuids
+            activeAlerts
                 .stream()
                 .collect(
                     Collectors.toMap(
-                        this::getDefinitionUuid,
+                        this::getAlertKey,
                         Function.identity(),
                         (a, b) ->
                             getSeverity(a).getPriority() > getSeverity(b).getPriority() ? a : b,
                         LinkedHashMap::new))
                 .values());
+
     List<UUID> activeAlertUuids = new ArrayList<>();
     for (List<AlertData> batch : Lists.partition(deduplicatedAlerts, ALERTS_BATCH)) {
       Set<UUID> definitionUuids =
@@ -151,11 +198,11 @@ public class QueryAlerts {
               .definitionUuids(definitionUuids)
               .targetState(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
               .build();
-      Map<UUID, Alert> existingAlertsByDefinitionUuid =
+      Map<AlertKey, Alert> existingAlertsByKey =
           alertService
               .list(alertFilter)
               .stream()
-              .collect(Collectors.toMap(Alert::getDefinitionUuid, Function.identity()));
+              .collect(Collectors.toMap(this::getAlertKey, Function.identity()));
 
       AlertDefinitionFilter definitionFilter =
           AlertDefinitionFilter.builder().uuids(definitionUuids).build();
@@ -186,13 +233,24 @@ public class QueryAlerts {
                   data ->
                       processAlert(
                           data,
-                          existingAlertsByDefinitionUuid,
+                          existingAlertsByKey,
                           existingDefinitionsByUuid,
                           existingGroupsByUuid))
               .filter(Objects::nonNull)
               .collect(Collectors.toList());
+      metricService.setMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_FILTERED_ALERTS),
+          activeAlerts.size() - toSave.size());
+      long newAlerts = toSave.stream().filter(Alert::isNew).count();
+      long updatedAlerts = toSave.size() - newAlerts;
 
       List<Alert> savedAlerts = alertService.save(toSave);
+      metricService.setMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_NEW_ALERTS), newAlerts);
+      metricService.setMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_UPDATED_ALERTS),
+          updatedAlerts);
+
       activeAlertUuids.addAll(
           savedAlerts.stream().map(Alert::getUuid).collect(Collectors.toList()));
     }
@@ -200,34 +258,36 @@ public class QueryAlerts {
   }
 
   private void resolveAlerts(List<UUID> activeAlertsUuids) {
-    AlertFilter toResolveFilter =
-        AlertFilter.builder()
-            .errorCode(KnownAlertCodes.CUSTOMER_ALERT)
-            .excludeUuids(activeAlertsUuids)
-            .build();
+    AlertFilter toResolveFilter = AlertFilter.builder().excludeUuids(activeAlertsUuids).build();
     List<Alert> resolved = alertService.markResolved(toResolveFilter);
     if (!resolved.isEmpty()) {
       log.info("Resolved {} alerts", resolved.size());
     }
+    metricService.setMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_RESOLVED_ALERTS),
+        resolved.size());
   }
 
   private void transitionAlerts() {
-    AlertNotificationReport report = new AlertNotificationReport();
     AlertFilter toSendRaisedFilter =
         AlertFilter.builder()
             .state(Alert.State.CREATED)
             .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
             .build();
     List<Alert> toSendRaisedAlerts = alertService.list(toSendRaisedFilter);
-    toSendRaisedAlerts.forEach(alert -> alertManager.transitionAlert(alert, report));
+    toSendRaisedAlerts.forEach(alert -> alertManager.transitionAlert(alert));
 
     AlertFilter toSendResolvedFilter =
         AlertFilter.builder().state(Alert.State.ACTIVE).targetState(Alert.State.RESOLVED).build();
     List<Alert> toSendResolvedAlerts = alertService.list(toSendResolvedFilter);
-    toSendResolvedAlerts.forEach(alert -> alertManager.transitionAlert(alert, report));
-    if (!report.isEmpty()) {
-      log.info("{}", report);
+    toSendResolvedAlerts.forEach(alert -> alertManager.transitionAlert(alert));
+  }
+
+  private String getCustomerUuid(AlertData alertData) {
+    if (Collections.isEmpty(alertData.getLabels())) {
+      return null;
     }
+    return alertData.getLabels().get(KnownAlertLabels.CUSTOMER_UUID.labelName());
   }
 
   private String getDefinitionUuid(AlertData alertData) {
@@ -242,6 +302,22 @@ public class QueryAlerts {
       return null;
     }
     return alertData.getLabels().get(KnownAlertLabels.GROUP_UUID.labelName());
+  }
+
+  private String getTargetUuid(AlertData alertData) {
+    if (Collections.isEmpty(alertData.getLabels())) {
+      return null;
+    }
+    return alertData.getLabels().get(KnownAlertLabels.TARGET_UUID.labelName());
+  }
+
+  private AlertKey getAlertKey(AlertData alertData) {
+    return new AlertKey(getDefinitionUuid(alertData), getTargetUuid(alertData));
+  }
+
+  private AlertKey getAlertKey(Alert alert) {
+    return new AlertKey(
+        alert.getDefinitionUuid().toString(), alert.getLabelValue(KnownAlertLabels.TARGET_UUID));
   }
 
   private AlertDefinitionGroup.Severity getSeverity(AlertData alertData) {
@@ -264,25 +340,27 @@ public class QueryAlerts {
 
   private Alert processAlert(
       AlertData alertData,
-      Map<UUID, Alert> existingAlertsByDefinitionUuid,
+      Map<AlertKey, Alert> existingAlertsByKey,
       Map<UUID, AlertDefinition> definitionsByUuid,
       Map<UUID, AlertDefinitionGroup> groupsByUuid) {
-    String definitionUuidStr = getDefinitionUuid(alertData);
-    if (definitionUuidStr == null) {
+    AlertKey alertKey = getAlertKey(alertData);
+    if (alertKey.getDefinitionUuid() == null) {
       // Should be filtered earlier
       log.error("Alert {} has no definition uuid", alertData);
       return null;
     }
     String groupUuidStr = getGroupUuid(alertData);
     if (groupUuidStr == null) {
+      // Should be filtered earlier
       log.error("Alert {} has no group uuid", alertData);
       return null;
     }
     if (alertData.getState() == AlertState.pending) {
-      log.debug("Alert {} is in pending state - skip for now", alertData);
+      // Should be filtered earlier
+      log.error("Alert {} is in pending state - skip for now", alertData);
       return null;
     }
-    UUID definitionUuid = UUID.fromString(definitionUuidStr);
+    UUID definitionUuid = UUID.fromString(alertKey.getDefinitionUuid());
     AlertDefinition definition = definitionsByUuid.get(definitionUuid);
     if (definition == null) {
       log.debug("Definition is missing for alert {}", alertData);
@@ -294,7 +372,7 @@ public class QueryAlerts {
       log.debug("Definition group is missing or inactive for alert {}", alertData);
       return null;
     }
-    Alert alert = existingAlertsByDefinitionUuid.get(definitionUuid);
+    Alert alert = existingAlertsByKey.get(alertKey);
     if (alert == null) {
       String customerUuid = alertData.getLabels().get(KnownAlertLabels.CUSTOMER_UUID.labelName());
       if (StringUtils.isEmpty(customerUuid)) {
@@ -307,15 +385,10 @@ public class QueryAlerts {
               .setCreateTime(Date.from(alertData.getActiveAt().toInstant()))
               .setCustomerUUID(UUID.fromString(customerUuid))
               .setDefinitionUuid(definitionUuid)
-              .setGroupUuid(groupUuid);
+              .setGroupUuid(groupUuid)
+              .setName(alertData.getLabels().get(KnownAlertLabels.DEFINITION_NAME.labelName()))
+              .setTargetName(alertData.getLabels().get(KnownAlertLabels.TARGET_NAME.labelName()));
     }
-    String definitionActive =
-        Optional.ofNullable(
-                alertData.getLabels().get(KnownAlertLabels.DEFINITION_ACTIVE.labelName()))
-            .orElse(Boolean.TRUE.toString());
-    String errorCode =
-        Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.ERROR_CODE.labelName()))
-            .orElse(KnownAlertCodes.CUSTOMER_ALERT.name());
     AlertDefinitionGroup.Severity severity = getSeverity(alertData);
     AlertDefinitionGroup.TargetType groupType = getGroupType(alertData);
     String message = alertData.getAnnotations().get(SUMMARY_ANNOTATION_NAME);
@@ -328,13 +401,13 @@ public class QueryAlerts {
             .map(e -> new AlertLabel(e.getKey(), e.getValue()))
             .sorted(Comparator.comparing(AlertLabel::getName))
             .collect(Collectors.toList());
-    alert
-        .setErrCode(errorCode)
-        .setSeverity(severity)
-        .setGroupType(groupType)
-        .setMessage(message)
-        .setSendEmail(Boolean.parseBoolean(definitionActive))
-        .setLabels(labels);
+    alert.setSeverity(severity).setGroupType(groupType).setMessage(message).setLabels(labels);
     return alert;
+  }
+
+  @Value
+  private static class AlertKey {
+    String definitionUuid;
+    String targetUuid;
   }
 }
