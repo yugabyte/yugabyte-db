@@ -13,7 +13,7 @@ menu:
   latest:
     identifier: explore-cluster-management
     parent: explore
-    weight: 315
+    weight: 250
 ---
 
 
