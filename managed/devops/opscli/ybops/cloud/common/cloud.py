@@ -22,14 +22,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import (load_pem_private_key, Encoding,
                                                           PrivateFormat, NoEncryption)
-import backports.tempfile as tempfile
 import datetime
-import six
 import logging
 import os
-import yaml
 import re
+import six
 import ssl
+import tempfile
+import yaml
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -56,9 +56,9 @@ class AbstractCloud(AbstractCommandParser):
         vars_file = os.path.join(devops_home,
                                  AbstractCloud.VARS_DIR_SUFFIX,
                                  "{}.yml".format(self.name))
-        self.ansible_vars = yaml.load(open(vars_file))
+        self.ansible_vars = yaml.load(open(vars_file), yaml.SafeLoader)
         with open(vars_file, 'r') as f:
-            self.ansible_vars = yaml.load(f) or {}
+            self.ansible_vars = yaml.load(f, yaml.SafeLoader) or {}
 
         # The metadata file name is the same internally and externally.
         metadata_filename = "{}-metadata.yml".format(self.name)
@@ -70,7 +70,7 @@ class AbstractCloud(AbstractCommandParser):
             path = path_getter(metadata_filename)
             if os.path.isfile(path):
                 with open(path) as ymlfile:
-                    metadata = yaml.load(ymlfile)
+                    metadata = yaml.load(ymlfile, yaml.SafeLoader)
                     self.metadata.update(metadata)
 
     def update_metadata(self, override_filename):
@@ -325,10 +325,10 @@ class AbstractCloud(AbstractCommandParser):
         root_cert_path = extra_vars["rootCA_cert"]
         root_key_path = extra_vars["rootCA_key"]
         certs_node_dir = extra_vars["certs_node_dir"]
-        with open(root_cert_path, 'r') as cert_in:
+        with open(root_cert_path, 'rb') as cert_in:
             certlines = cert_in.read()
         root_cert = x509.load_pem_x509_certificate(certlines, default_backend())
-        with open(root_key_path, 'r') as key_in:
+        with open(root_key_path, 'rb') as key_in:
             keylines = key_in.read()
         root_key = load_pem_private_key(keylines, None, default_backend())
         private_key = rsa.generate_private_key(
