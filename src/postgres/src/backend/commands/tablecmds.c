@@ -658,6 +658,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("shared relations can not be partitioned")));
+			else if (relkind != RELKIND_RELATION)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("only ordinary tables may be shared")));
 
 			relisshared = true;
 
@@ -691,11 +695,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					 errmsg("only shared relations can be placed in pg_global tablespace")));
 		}
 	}
-
-	if (IsYsqlUpgrade && relkind == RELKIND_VIEW && IsSystemNamespace(namespaceId))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("creating system views during YSQL upgrade is not yet supported")));
 
 	/*
 	 * Select tablegroup to use. If not specified, InvalidOid.
@@ -758,8 +757,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/*
 	 * Parse and validate reloptions, if any.
 	 */
-	reloptions = transformRelOptions((Datum) 0, stmt->options, NULL, validnsps,
-									 true, false);
+	reloptions = ybTransformRelOptions((Datum) 0, stmt->options, NULL, validnsps,
+									   true, false, IsYsqlUpgrade);
 
 	if (relkind == RELKIND_VIEW)
 		(void) view_reloptions(reloptions, true);

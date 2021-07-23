@@ -31,7 +31,8 @@ extern ObjectAddress DefineQueryRewrite(const char *rulename,
 				   CmdType event_type,
 				   bool is_instead,
 				   bool replace,
-				   List *action);
+				   List *action,
+				   Oid yb_rule_id);
 
 extern ObjectAddress RenameRewriteRule(RangeVar *relation, const char *oldName,
 				  const char *newName);

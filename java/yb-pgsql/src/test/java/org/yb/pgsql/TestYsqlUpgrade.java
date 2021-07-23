@@ -438,6 +438,97 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
   }
 
+  /** Create a system view just like pg_stats and verify they look the same. */
+  @Test
+  public void creatingSystemViewsIsLikeInitdb() throws Exception {
+    TableInfo origTi = new TableInfo("pg_stats", 12081L, 12082L, 12083L,
+        Arrays.asList());
+
+    TableInfo newTi = new TableInfo("pg_stats_2", newSysOid(), newSysOid(), newSysOid(),
+        Arrays.asList());
+
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmtA = conn.createStatement();
+         Statement stmtB = conn.createStatement()) {
+      enableSystemRelsModification(stmtA);
+
+      String createViewSql = "CREATE VIEW pg_catalog." + newTi.name + " WITH ("
+          + "  table_oid = " + newTi.oid
+          + ", row_type_oid = " + newTi.typeOid
+          + ", rewrite_rule_oid = " + newTi.ruleOid
+          + ", security_barrier = true"
+          + ") AS"
+          + " SELECT"
+          + "     nspname AS schemaname,"
+          + "     relname AS tablename,"
+          + "     attname AS attname,"
+          + "     stainherit AS inherited,"
+          + "     stanullfrac AS null_frac,"
+          + "     stawidth AS avg_width,"
+          + "     stadistinct AS n_distinct,"
+          + "     CASE"
+          + "         WHEN stakind1 = 1 THEN stavalues1"
+          + "         WHEN stakind2 = 1 THEN stavalues2"
+          + "         WHEN stakind3 = 1 THEN stavalues3"
+          + "         WHEN stakind4 = 1 THEN stavalues4"
+          + "         WHEN stakind5 = 1 THEN stavalues5"
+          + "     END AS most_common_vals,"
+          + "     CASE"
+          + "         WHEN stakind1 = 1 THEN stanumbers1"
+          + "         WHEN stakind2 = 1 THEN stanumbers2"
+          + "         WHEN stakind3 = 1 THEN stanumbers3"
+          + "         WHEN stakind4 = 1 THEN stanumbers4"
+          + "         WHEN stakind5 = 1 THEN stanumbers5"
+          + "     END AS most_common_freqs,"
+          + "     CASE"
+          + "         WHEN stakind1 = 2 THEN stavalues1"
+          + "         WHEN stakind2 = 2 THEN stavalues2"
+          + "         WHEN stakind3 = 2 THEN stavalues3"
+          + "         WHEN stakind4 = 2 THEN stavalues4"
+          + "         WHEN stakind5 = 2 THEN stavalues5"
+          + "     END AS histogram_bounds,"
+          + "     CASE"
+          + "         WHEN stakind1 = 3 THEN stanumbers1[1]"
+          + "         WHEN stakind2 = 3 THEN stanumbers2[1]"
+          + "         WHEN stakind3 = 3 THEN stanumbers3[1]"
+          + "         WHEN stakind4 = 3 THEN stanumbers4[1]"
+          + "         WHEN stakind5 = 3 THEN stanumbers5[1]"
+          + "     END AS correlation,"
+          + "     CASE"
+          + "         WHEN stakind1 = 4 THEN stavalues1"
+          + "         WHEN stakind2 = 4 THEN stavalues2"
+          + "         WHEN stakind3 = 4 THEN stavalues3"
+          + "         WHEN stakind4 = 4 THEN stavalues4"
+          + "         WHEN stakind5 = 4 THEN stavalues5"
+          + "     END AS most_common_elems,"
+          + "     CASE"
+          + "         WHEN stakind1 = 4 THEN stanumbers1"
+          + "         WHEN stakind2 = 4 THEN stanumbers2"
+          + "         WHEN stakind3 = 4 THEN stanumbers3"
+          + "         WHEN stakind4 = 4 THEN stanumbers4"
+          + "         WHEN stakind5 = 4 THEN stanumbers5"
+          + "     END AS most_common_elem_freqs,"
+          + "     CASE"
+          + "         WHEN stakind1 = 5 THEN stanumbers1"
+          + "         WHEN stakind2 = 5 THEN stanumbers2"
+          + "         WHEN stakind3 = 5 THEN stanumbers3"
+          + "         WHEN stakind4 = 5 THEN stanumbers4"
+          + "         WHEN stakind5 = 5 THEN stanumbers5"
+          + "     END AS elem_count_histogram"
+          + " FROM pg_statistic s JOIN pg_class c ON (c.oid = s.starelid)"
+          + "      JOIN pg_attribute a ON (c.oid = attrelid AND attnum = s.staattnum)"
+          + "      LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)"
+          + " WHERE NOT attisdropped"
+          + " AND has_column_privilege(c.oid, a.attnum, 'select')"
+          + " AND (c.relrowsecurity = false OR NOT row_security_active(c.oid));";
+
+      LOG.info("Executing '{}'", createViewSql);
+      stmtA.execute(createViewSql);
+
+      assertTablesAreSimilar(origTi, newTi, stmtA, stmtB);
+    }
+  }
+
   //
   // Helpers
   //
@@ -487,6 +578,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .map(r -> expectRelfilenodeMismatch ? excluded(r, "relfilenode") : r)
           .map(r -> replaced(r, newTi.oid, origTi.oid))
           .map(r -> replaced(r, newTi.typeOid, origTi.typeOid))
+          .map(r -> origTi.ruleOid != 0 ? replaced(r, newTi.ruleOid, origTi.ruleOid) : r)
           .map(r -> replacedString(r, newTi.name, origTi.name))
           .map(r -> {
             for (int i = 0; i < newTi.indexes.size(); ++i) {
@@ -498,8 +590,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     };
 
     {
-      // pg_class and pg_type (for rel and indexes)
-      String sql = "SELECT cl.oid, cl.*, tp.oid, tp.* FROM pg_class cl"
+      // pg_class and pg_type (for rel and indexes), as well as pg_get_viewdef (view query)
+      String sql = "SELECT cl.oid, cl.*, tp.oid, tp.*, pg_get_viewdef(cl.oid) FROM pg_class cl"
           + " LEFT JOIN pg_type tp ON cl.oid = tp.typrelid"
           + " WHERE cl.oid = %d ORDER By cl.oid, tp.oid";
       {
@@ -690,12 +782,20 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     public final String name;
     public final long oid;
     public final long typeOid;
+    /** Only when applicable, set to 0 otherwise. */
+    public final long ruleOid;
     public final List<Pair<String, Long>> indexes;
 
     public TableInfo(String name, long oid, long typeOid, List<Pair<String, Long>> indexes) {
+      this(name, oid, typeOid, 0L, indexes);
+    }
+
+    public TableInfo(String name, long oid, long typeOid, long ruleOid,
+        List<Pair<String, Long>> indexes) {
       this.name = name;
       this.oid = oid;
       this.typeOid = typeOid;
+      this.ruleOid = ruleOid;
       this.indexes = Collections.unmodifiableList(new ArrayList<>(indexes));
     }
   }

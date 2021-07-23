@@ -1206,17 +1206,29 @@ heap_create_with_catalog(const char *relname,
 	}
 
 	/*
+	 * YSQL upgrade notes:
+	 * -------------------
 	 * At this point, reloptions no longer affects the relation
 	 * creation process, the only remaining use for them is to be
-	 * stored in pg_class.
+	 * stored in pg_class. ybTransformRelOptions has already
+	 * removed all temporary reloptions.
 	 *
-	 * For YSQL upgrade, we want system relations to not have
-	 * reloptions stored to imitate BKI processing, so we can safely
-	 * remove them now.
+	 * We want system tables to not have any reloptions stored to
+	 * imitate BKI processing, so we don't allow any reloption not
+	 * removed by ybTransformRelOptions.
+	 *
+	 * System views, on the other hand, are defined in
+	 * yb_system_views.sql rather than via BKI, so they are allowed
+	 * to have non-temporary reloptions.
 	 */
-	if (is_system && IsYsqlUpgrade)
+	if (IsYsqlUpgrade && is_system && relkind != RELKIND_VIEW
+		&& reloptions != (Datum) 0)
 	{
-		reloptions = (Datum) 0;
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("unsuppored reloptions were used for a system table "
+				        "during YSQL upgrade"),
+				 errhint("Only a small subset is allowed due to BKI restrictions.")));
 	}
 
 	/*
