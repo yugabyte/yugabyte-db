@@ -69,8 +69,8 @@ const char kConnectionHeaderBytes[] = "YB\1";
 const size_t kConnectionHeaderSize = sizeof(kConnectionHeaderBytes) - 1;
 
 OutboundDataPtr ConnectionHeaderInstance() {
-  static OutboundDataPtr result(
-      new StringOutboundData(kConnectionHeaderBytes, kConnectionHeaderSize, "ConnectionHeader"));
+  static OutboundDataPtr result = std::make_shared<StringOutboundData>(
+      kConnectionHeaderBytes, kConnectionHeaderSize, "ConnectionHeader");
   return result;
 }
 
