@@ -1382,6 +1382,8 @@ CreateSchemaStmt:
 					/* One can omit the schema name or the authorization id. */
 					n->schemaname = $3;
 					n->authrole = $5;
+					if ($6 != NIL)
+						parser_ybc_not_support(@6, "CREATE SCHEMA with elements");
 					n->schemaElts = $6;
 					n->if_not_exists = false;
 					$$ = (Node *)n;
@@ -1392,6 +1394,8 @@ CreateSchemaStmt:
 					/* ...but not both */
 					n->schemaname = $3;
 					n->authrole = NULL;
+					if ($4 != NIL)
+						parser_ybc_not_support(@4, "CREATE SCHEMA with elements");
 					n->schemaElts = $4;
 					n->if_not_exists = false;
 					$$ = (Node *)n;
@@ -1436,7 +1440,6 @@ OptSchemaName:
 OptSchemaEltList:
 			OptSchemaEltList schema_stmt
 				{
-					parser_ybc_not_support(@2, "CREATE SCHEMA with elements");
 					if (@$ < 0)			/* see comments for YYLLOC_DEFAULT */
 						@$ = @2;
 					$$ = lappend($1, $2);
@@ -9413,7 +9416,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER SCHEMA name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER SCHEMA");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_SCHEMA;
 					n->subname = $3;
