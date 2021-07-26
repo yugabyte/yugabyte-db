@@ -80,8 +80,8 @@ class TcpStream : public Stream {
   bool IsConnected() override { return connected_; }
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
 
-  const Endpoint& Remote() override { return remote_; }
-  const Endpoint& Local() override { return local_; }
+  const Endpoint& Remote() const override { return remote_; }
+  const Endpoint& Local() const override { return local_; }
 
   const Protocol* GetProtocol() override {
     return StaticProtocol();

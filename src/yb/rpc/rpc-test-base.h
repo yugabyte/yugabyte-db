@@ -177,7 +177,7 @@ class RpcTestBase : public YBTest {
   RpcTestBase();
 
   void TearDown() override;
- protected:
+
   std::unique_ptr<Messenger> CreateMessenger(
       const string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
