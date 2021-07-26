@@ -101,6 +101,11 @@ class StreamContext {
 
 class Stream {
  public:
+  Stream() = default;
+
+  Stream(const Stream&) = delete;
+  void operator=(const Stream&) = delete;
+
   virtual CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) = 0;
   virtual void Close() = 0;
   virtual void Shutdown(const Status& status) = 0;
@@ -120,12 +125,12 @@ class Stream {
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
 
   // The address of the remote end of the connection.
-  virtual const Endpoint& Remote() = 0;
+  virtual const Endpoint& Remote() const = 0;
 
   // The address of the local end of the connection.
-  virtual const Endpoint& Local() = 0;
+  virtual const Endpoint& Local() const = 0;
 
-  virtual std::string ToString() {
+  virtual std::string ToString() const {
     return Format("{ local: $0 remote: $1 }", Local(), Remote());
   }
 

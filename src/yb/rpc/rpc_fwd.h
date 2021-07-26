@@ -47,6 +47,7 @@ class RpcService;
 class Rpcs;
 class Poller;
 class Protocol;
+class RefinedStream;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;

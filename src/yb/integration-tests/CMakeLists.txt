@@ -97,6 +97,7 @@ ADD_YB_TEST(tablet-split-itest)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
 ADD_YB_TEST(compaction-test)
+ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
