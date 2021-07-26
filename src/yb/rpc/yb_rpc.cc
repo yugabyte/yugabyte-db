@@ -442,7 +442,7 @@ void YBInboundCall::LogTrace() const {
   }
 }
 
-void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void YBInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
   output->push_back(std::move(response_buf_));

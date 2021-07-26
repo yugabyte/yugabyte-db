@@ -374,7 +374,8 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   req.set_sleep_micros(200 * 1000);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(
+      CalculatorServiceMethods::SleepMethod(), nullptr, req, &resp, &controller));
 }
 
 // Test that connections are kept alive by heartbeats between calls.
@@ -520,9 +521,9 @@ TEST_F(TestRpc, TestServerShutsDown) {
   for (int i = 0; i < n_calls; i++) {
     auto controller = new RpcController();
     controllers.push_back(controller);
-    p.AsyncRequest(CalculatorServiceMethods::AddMethod(), req, &resp, controller, [&latch]() {
-      latch.CountDown();
-    });
+    p.AsyncRequest(
+        CalculatorServiceMethods::AddMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller, latch.CountDownCallback());
   }
 
   // Accept the TCP connection.
@@ -603,7 +604,9 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
   req.set_sleep_micros(sleep_micros);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(
+      CalculatorServiceMethods::SleepMethod(), /* method_metrics= */ nullptr, req, &resp,
+      &controller));
 
   const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
     server_messenger()->metric_entity()->UnsafeMetricsMapForTests();
@@ -642,7 +645,8 @@ TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
     Proxy p(client_messenger.get(), bad_addr);
     static RemoteMethod method(
         rpc_test::CalculatorServiceIf::static_service_name(), "my-fake-method");
-    p.AsyncRequest(&method, req, &resp, &controller, [&latch]() { latch.CountDown(); });
+    p.AsyncRequest(&method, /* method_metrics= */ nullptr, req, &resp, &controller,
+                   latch.CountDownCallback());
   }
   latch.Wait();
 }
@@ -666,13 +670,13 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   rpc_test::SleepResponsePB resp;
   RpcController controller;
   const auto* method = CalculatorServiceMethods::SleepMethod();
-  Status s = p.SyncRequest(method, req, &resp, &controller);
+  Status s = p.SyncRequest(method, /* method_metrics= */ nullptr, req, &resp, &controller);
   ASSERT_TRUE(s.IsRemoteError());
   ASSERT_STR_CONTAINS(s.ToString(), "Missing required timeout");
 
   controller.Reset();
   controller.set_timeout(MonoDelta::FromMilliseconds(1000));
-  ASSERT_OK(p.SyncRequest(method, req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(method, /* method_metrics= */ nullptr, req, &resp, &controller));
 }
 
 // Send multiple long running calls to a single worker thread. All of them except the first one,
@@ -708,7 +712,7 @@ TEST_F(TestRpc, QueueTimeout) {
     req.set_sleep_micros(kSleep.ToMicroseconds());
     req.set_client_timeout_defined(true);
     call.controller.set_timeout(kSleep / 2);
-    p.AsyncRequest(method, req, &call.resp, &call.controller,
+    p.AsyncRequest(method, /* method_metrics= */ nullptr, req, &call.resp, &call.controller,
         [&latch, &call] {
       latch.CountDown();
       ASSERT_TRUE(call.controller.status().IsTimedOut()) << call.controller.status();
@@ -751,6 +755,7 @@ class DisconnectTask {
   void Launch() {
     controller_.set_timeout(MonoDelta::FromSeconds(1));
     share_->proxy.AsyncRequest(CalculatorServiceMethods::DisconnectMethod(),
+                               /* method_metrics= */ nullptr,
                                rpc_test::DisconnectRequestPB(),
                                &response_,
                                &controller_,
@@ -838,7 +843,9 @@ TEST_F(TestRpc, DumpTimedOutCall) {
     std::aligned_storage<sizeof(RpcController), alignof(RpcController)>::type storage;
     auto controller = new (&storage) RpcController;
     controller->set_timeout(100ms);
-    auto status = p.SyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller);
+    auto status = p.SyncRequest(
+        CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller);
     ASSERT_TRUE(status.IsTimedOut()) << status;
     controller->~RpcController();
     memset(&storage, 0xff, sizeof(storage));
@@ -956,9 +963,9 @@ void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& ser
     // No need to wait more than kTimeToWaitForOom + some delay, because we only need these
     // calls to cause hitting hard memory limit.
     controller->set_timeout(kTimeToWaitForOom + 5s);
-    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
-      latch.CountDown();
-    });
+    p.AsyncRequest(
+        CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller, latch.CountDownCallback());
     if ((i + 1) % 10 == 0) {
       LOG(INFO) << "Sent " << i + 1 << " calls.";
       LOG(INFO) << DumpMemoryUsage();
@@ -1017,9 +1024,9 @@ void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& ser
     auto controller = new RpcController();
     controllers.push_back(std::unique_ptr<RpcController>(controller));
     controller->set_timeout(kCallsTimeout);
-    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
-      latch.CountDown();
-    });
+    p.AsyncRequest(
+        CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller, latch.CountDownCallback());
   }
   LOG(INFO) << n_calls << " calls sent.";
   latch.Wait();

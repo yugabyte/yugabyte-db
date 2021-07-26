@@ -46,13 +46,6 @@ using strings::Substitute;
 namespace yb {
 namespace rpc {
 
-RpcMethodMetrics::RpcMethodMetrics(scoped_refptr<Histogram> handler_latency_)
-    : handler_latency(std::move(handler_latency_)) {}
-
-RpcMethodMetrics::RpcMethodMetrics() {}
-
-RpcMethodMetrics::~RpcMethodMetrics() {}
-
 ServiceIf::~ServiceIf() {
 }
 
