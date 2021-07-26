@@ -204,6 +204,11 @@ class InvokeCallbackTask : public rpc::ThreadPoolTask {
   OutboundCallPtr call_;
 };
 
+struct OutboundMethodMetrics {
+  scoped_refptr<Counter> request_bytes;
+  scoped_refptr<Counter> response_bytes;
+};
+
 // Tracks the status of a call on the client side.
 //
 // This is an internal-facing class -- clients interact with the
@@ -217,11 +222,13 @@ class OutboundCall : public RpcCall {
  public:
   OutboundCall(const RemoteMethod* remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
+               std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                google::protobuf::Message* response_storage,
                RpcController* controller,
                RpcMetrics* rpc_metrics,
                ResponseCallback callback,
                ThreadPool* callback_thread_pool);
+
   virtual ~OutboundCall();
 
   // Serialize the given request PB into this call's internal storage.
@@ -329,7 +336,7 @@ class OutboundCall : public RpcCall {
 
   ConnectionId conn_id_;
   const std::string* hostname_;
-  MonoTime start_;
+  CoarseTimePoint start_;
   RpcController* controller_;
   // Pointer for the protobuf where the response should be written.
   // Can be used only while callback_ object is alive.
@@ -399,6 +406,8 @@ class OutboundCall : public RpcCall {
   RpcMetrics* rpc_metrics_;
 
   Status thread_pool_failure_;
+
+  std::shared_ptr<const OutboundMethodMetrics> method_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };

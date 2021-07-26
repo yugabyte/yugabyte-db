@@ -69,7 +69,7 @@ DECLARE_int32(tracing_level);
             level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
       yb::Trace* _trace = Trace::CurrentTrace(); \
       if (_trace) { \
-        _trace->SubstituteAndTrace(__FILE__, __LINE__, MonoTime::Now(), (format),  \
+        _trace->SubstituteAndTrace(__FILE__, __LINE__, CoarseMonoClock::Now(), (format),  \
           ##substitutions); \
       } \
     } \
@@ -88,7 +88,7 @@ DECLARE_int32(tracing_level);
     if (GetAtomicFlag(&FLAGS_enable_tracing) && \
             level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
       (trace)->SubstituteAndTrace( \
-          __FILE__, __LINE__, MonoTime::Now(), (format), ##substitutions); \
+          __FILE__, __LINE__, CoarseMonoClock::Now(), (format), ##substitutions); \
     } \
   } while (0)
 
@@ -147,7 +147,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // N.B.: the file path passed here is not copied, so should be a static
   // constant (eg __FILE__).
   void SubstituteAndTrace(const char* file_path, int line_number,
-                          MonoTime now, GStringPiece format,
+                          CoarseTimePoint now, GStringPiece format,
                           const strings::internal::SubstituteArg& arg0,
                           const strings::internal::SubstituteArg& arg1 =
                             strings::internal::SubstituteArg::NoArg,
@@ -169,7 +169,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
                             strings::internal::SubstituteArg::NoArg);
 
   void SubstituteAndTrace(
-      const char* file_path, int line_number, MonoTime now, GStringPiece format);
+      const char* file_path, int line_number, CoarseTimePoint now, GStringPiece format);
 
   // Dump the trace buffer to the given output stream.
   //
@@ -224,7 +224,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
 
   // Allocate a new entry from the arena, with enough space to hold a
   // message of length 'len'.
-  TraceEntry* NewEntry(int len, const char* file_path, int line_number, MonoTime now);
+  TraceEntry* NewEntry(int len, const char* file_path, int line_number, CoarseTimePoint now);
 
   // Add the entry to the linked list of entries.
   void AddEntry(TraceEntry* entry);
@@ -290,7 +290,7 @@ class PlainTrace {
     const char* file_path;
     int line_number;
     const char* message;
-    MonoTime timestamp;
+    CoarseTimePoint timestamp;
 
     void Dump(std::ostream* out) const;
   };

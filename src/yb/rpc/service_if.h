@@ -53,10 +53,8 @@ class Histogram;
 namespace rpc {
 
 struct RpcMethodMetrics {
-  RpcMethodMetrics();
-  explicit RpcMethodMetrics(scoped_refptr<Histogram> handler_latency);
-  ~RpcMethodMetrics();
-
+  scoped_refptr<Counter> request_bytes;
+  scoped_refptr<Counter> response_bytes;
   scoped_refptr<Histogram> handler_latency;
 };
 

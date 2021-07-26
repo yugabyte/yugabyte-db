@@ -115,7 +115,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void LogTrace() const override;
   std::string ToString() const override;

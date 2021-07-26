@@ -118,7 +118,7 @@ class Proxy {
   Proxy(ProxyContext* context,
         const HostPort& remote,
         const Protocol* protocol = nullptr,
-        const boost::optional<MonoDelta>& resolve_cache_timeout = boost::none);
+        const MonoDelta& resolve_cache_timeout = MonoDelta());
   ~Proxy();
 
   Proxy(const Proxy&) = delete;
@@ -150,6 +150,7 @@ class Proxy {
   // caller's thread or asynchronously. RpcController::set_invoke_callback_mode could be used to
   // specify on which thread to invoke callback in case of asynchronous invocation.
   void AsyncRequest(const RemoteMethod* method,
+                    std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                     const google::protobuf::Message& req,
                     google::protobuf::Message* resp,
                     RpcController* controller,
@@ -158,12 +159,17 @@ class Proxy {
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
   CHECKED_STATUS SyncRequest(const RemoteMethod* method,
+                             std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                              const google::protobuf::Message& req,
                              google::protobuf::Message* resp,
                              RpcController* controller);
 
   // Is the service local?
   bool IsServiceLocal() const { return call_local_service_; }
+
+  scoped_refptr<MetricEntity> metric_entity() const {
+    return context_->metric_entity();
+  }
 
  private:
   void Resolve();
@@ -177,6 +183,7 @@ class Proxy {
   // Implements logic for AsyncRequest function, but allows to force to run callback on
   // reactor thread. This is an optimisation used by SyncRequest function.
   void DoAsyncRequest(const RemoteMethod* method,
+                      std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                       const google::protobuf::Message& req,
                       google::protobuf::Message* resp,
                       RpcController* controller,
@@ -188,7 +195,6 @@ class Proxy {
   ProxyContext* context_;
   HostPort remote_;
   const Protocol* const protocol_;
-  mutable std::atomic<bool> is_started_{false};
   mutable std::atomic<size_t> num_calls_{0};
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
   const bool call_local_service_;
@@ -205,14 +211,28 @@ class Proxy {
   MemTrackerPtr mem_tracker_;
 };
 
+using ProxyPtr = std::shared_ptr<Proxy>;
+
+struct ProxyMetrics {};
+
+template <size_t size>
+struct ProxyMetricsImpl : public ProxyMetrics {
+  std::array<OutboundMethodMetrics, size> value;
+};
+
+using ProxyMetricsPtr = std::shared_ptr<ProxyMetrics>;
+
+using ProxyMetricsFactory = ProxyMetricsPtr(*)(const scoped_refptr<MetricEntity>& entity);
+
 class ProxyCache {
  public:
   explicit ProxyCache(ProxyContext* context)
       : context_(context) {}
 
-  std::shared_ptr<Proxy> Get(const HostPort& remote,
-                             const Protocol* protocol,
-                             const boost::optional<MonoDelta>& resolve_cache_timeout);
+  ProxyPtr GetProxy(
+      const HostPort& remote, const Protocol* protocol, const MonoDelta& resolve_cache_timeout);
+
+  ProxyMetricsPtr GetMetrics(const std::string& service_name, ProxyMetricsFactory factory);
 
  private:
   typedef std::pair<HostPort, const Protocol*> ProxyKey;
@@ -227,8 +247,38 @@ class ProxyCache {
   };
 
   ProxyContext* context_;
-  std::mutex mutex_;
-  std::unordered_map<ProxyKey, std::shared_ptr<Proxy>, ProxyKeyHash> proxies_;
+
+  std::mutex proxy_mutex_;
+  std::unordered_map<ProxyKey, ProxyPtr, ProxyKeyHash> proxies_ GUARDED_BY(proxy_mutex_);
+
+  std::mutex metrics_mutex_;
+  std::unordered_map<std::string , ProxyMetricsPtr> metrics_ GUARDED_BY(metrics_mutex_);
+};
+
+class ProxyBase {
+ public:
+  ProxyBase(const std::string& service_name, ProxyMetricsFactory metrics_factory,
+            ProxyCache* cache, const HostPort& remote,
+            const Protocol* protocol = nullptr,
+            const MonoDelta& resolve_cache_timeout = MonoDelta())
+      : proxy_(cache->GetProxy(remote, protocol, resolve_cache_timeout)),
+        metrics_(cache->GetMetrics(service_name, metrics_factory)) {
+  }
+
+  template <size_t size>
+  std::shared_ptr<const OutboundMethodMetrics> metrics(size_t index) const {
+    if (!metrics_) {
+      return nullptr;
+    }
+    auto* metrics_impl = static_cast<ProxyMetricsImpl<size>*>(metrics_.get());
+    return std::shared_ptr<const OutboundMethodMetrics>(metrics_, &metrics_impl->value[index]);
+  }
+
+  Proxy& proxy() { return *proxy_; }
+
+ private:
+  const ProxyPtr proxy_;
+  const ProxyMetricsPtr metrics_;
 };
 
 }  // namespace rpc

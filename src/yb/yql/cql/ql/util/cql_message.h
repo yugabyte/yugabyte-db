@@ -250,6 +250,10 @@ class CQLRequest : public CQLMessage {
     return static_cast<StreamId>(NetworkByteOrder::Load16(mesg.data() + kHeaderPosStreamId));
   }
 
+  size_t body_size() const {
+    return body_.size();
+  }
+
   virtual ~CQLRequest();
 
  protected:

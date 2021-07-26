@@ -80,6 +80,12 @@ class CountDownLatch {
   void Reset(uint64_t count);
   uint64_t count() const;
 
+  auto CountDownCallback() {
+    return [this] {
+      this->CountDown();
+    };
+  }
+
  private:
   mutable Mutex lock_;
   ConditionVariable cond_;

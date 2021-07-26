@@ -202,7 +202,7 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
     async_client_init_.AddPostCreateHook([this](client::YBClient *client) {
       const auto& tserver_shared_data = **tserver_shared_object_;
       HostPort host_port(tserver_shared_data.endpoint());
-      boost::optional<MonoDelta> resolve_cache_timeout;
+      MonoDelta resolve_cache_timeout;
       if (FLAGS_use_node_hostname_for_local_tserver) {
         host_port = HostPort(tserver_shared_data.host().ToBuffer(),
                              tserver_shared_data.endpoint().port());

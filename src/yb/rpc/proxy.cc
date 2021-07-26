@@ -75,7 +75,7 @@ namespace rpc {
 Proxy::Proxy(ProxyContext* context,
              const HostPort& remote,
              const Protocol* protocol,
-             const boost::optional<MonoDelta>& resolve_cache_timeout)
+             const MonoDelta& resolve_cache_timeout)
     : context_(context),
       remote_(remote),
       protocol_(protocol ? protocol : context_->DefaultProtocol()),
@@ -84,8 +84,8 @@ Proxy::Proxy(ProxyContext* context,
       call_local_service_(remote == HostPort()),
       resolve_waiters_(30),
       resolved_ep_(std::chrono::milliseconds(
-          resolve_cache_timeout ? (*resolve_cache_timeout).ToMilliseconds()
-                                : FLAGS_proxy_resolve_cache_ms)),
+          resolve_cache_timeout.Initialized() ? resolve_cache_timeout.ToMilliseconds()
+                                              : FLAGS_proxy_resolve_cache_ms)),
       latency_hist_(ScopedDnsTracker::active_metric()),
       // Use the context->num_connections_to_server() here as opposed to directly reading the
       // FLAGS_num_connections_to_server, because the flag value could have changed since then.
@@ -116,12 +116,13 @@ Proxy::~Proxy() {
 }
 
 void Proxy::AsyncRequest(const RemoteMethod* method,
+                         std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                          const google::protobuf::Message& req,
                          google::protobuf::Message* resp,
                          RpcController* controller,
                          ResponseCallback callback) {
   DoAsyncRequest(
-      method, req, resp, controller, std::move(callback),
+      method, std::move(method_metrics), req, resp, controller, std::move(callback),
       false /* force_run_callback_on_reactor */);
 }
 
@@ -143,13 +144,13 @@ ThreadPool* Proxy::GetCallbackThreadPool(
 }
 
 void Proxy::DoAsyncRequest(const RemoteMethod* method,
+                           std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                            const google::protobuf::Message& req,
                            google::protobuf::Message* resp,
                            RpcController* controller,
                            ResponseCallback callback,
                            bool force_run_callback_on_reactor) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
-  is_started_.store(true, std::memory_order_release);
 
   controller->call_ =
       call_local_service_ ?
@@ -161,6 +162,7 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
                                           std::move(callback)) :
       std::make_shared<OutboundCall>(method,
                                      outbound_call_metrics_,
+                                     std::move(method_metrics),
                                      resp,
                                      controller,
                                      &context_->rpc_metrics(),
@@ -299,6 +301,7 @@ void Proxy::NotifyFailed(RpcController* controller, const Status& status) {
 }
 
 Status Proxy::SyncRequest(const RemoteMethod* method,
+                          std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                           const google::protobuf::Message& req,
                           google::protobuf::Message* resp,
                           RpcController* controller) {
@@ -306,23 +309,36 @@ Status Proxy::SyncRequest(const RemoteMethod* method,
   // We want to execute this fast callback in reactor thread to avoid overhead on putting in
   // separate pool.
   DoAsyncRequest(
-      method, req, DCHECK_NOTNULL(resp), controller, [&latch]() { latch.CountDown(); },
-      true /* force_run_callback_on_reactor */);
+      method, std::move(method_metrics), req, DCHECK_NOTNULL(resp), controller,
+      [&latch]() { latch.CountDown(); }, true /* force_run_callback_on_reactor */);
   latch.Wait();
   return controller->status();
 }
 
-std::shared_ptr<Proxy> ProxyCache::Get(const HostPort& remote,
-                                       const Protocol* protocol,
-                                       const boost::optional<MonoDelta>& resolve_cache_timeout) {
+ProxyPtr ProxyCache::GetProxy(
+    const HostPort& remote, const Protocol* protocol, const MonoDelta& resolve_cache_timeout) {
   ProxyKey key(remote, protocol);
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(proxy_mutex_);
   auto it = proxies_.find(key);
   if (it == proxies_.end()) {
     it = proxies_.emplace(
         key, std::make_unique<Proxy>(context_, remote, protocol, resolve_cache_timeout)).first;
   }
   return it->second;
+}
+
+ProxyMetricsPtr ProxyCache::GetMetrics(
+    const std::string& service_name, ProxyMetricsFactory factory) {
+  std::lock_guard<std::mutex> lock(metrics_mutex_);
+  auto it = metrics_.find(service_name);
+  if (it != metrics_.end()) {
+    return it->second;
+  }
+
+  auto entity = context_->metric_entity();
+  auto metrics = entity ? factory(entity) : nullptr;
+  it = metrics_.emplace(service_name, metrics).first;
+  return metrics;
 }
 
 }  // namespace rpc

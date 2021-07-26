@@ -361,7 +361,7 @@ RefCntBuffer SerializeResponses(const Collection& responses) {
   return result;
 }
 
-void RedisInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void RedisInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   output->push_back(SerializeResponses(responses_));
 }
 
@@ -388,7 +388,7 @@ void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* res
     // Did we get all responses and ready to send data.
     size_t responded = ready_count_.fetch_add(1, std::memory_order_release) + 1;
     if (responded == client_batch_.size()) {
-      RecordHandlingCompleted(/* handler_run_time */ nullptr);
+      RecordHandlingCompleted();
       QueueResponse(!had_failures_.load(std::memory_order_acquire));
     }
   }

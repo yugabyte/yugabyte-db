@@ -239,7 +239,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   } else {
     if (tserver_shared_object_) {
       if (!tablet_server_proxy_) {
-        boost::optional<MonoDelta> resolve_cache_timeout;
+        MonoDelta resolve_cache_timeout;
         const auto& tserver_shared_data_ = **tserver_shared_object_;
         HostPort host_port(tserver_shared_data_.endpoint());
         if (FLAGS_use_node_hostname_for_local_tserver) {

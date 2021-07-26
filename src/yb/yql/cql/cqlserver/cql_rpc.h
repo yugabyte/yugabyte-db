@@ -104,7 +104,7 @@ class CQLInboundCall : public rpc::InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -127,7 +127,7 @@ class CQLInboundCall : public rpc::InboundCall {
   const std::string& service_name() const override;
   const std::string& method_name() const override;
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
-  void RespondSuccess(const RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
+  void RespondSuccess(const RefCntBuffer& buffer);
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void SetRequest(std::shared_ptr<const ql::CQLRequest> request, CQLServiceImpl* service_impl) {
     service_impl_ = service_impl;
