@@ -370,6 +370,10 @@ std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSelect() {
   return YBPgsqlReadOp::NewSelect(shared_from_this());
 }
 
+std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSample() {
+  return YBPgsqlReadOp::NewSample(shared_from_this());
+}
+
 std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlRead() {
   return std::unique_ptr<YBPgsqlReadOp>(new YBPgsqlReadOp(shared_from_this()));
 }

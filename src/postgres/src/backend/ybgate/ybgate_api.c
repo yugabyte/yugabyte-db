@@ -258,3 +258,24 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	return PG_STATUS_OK;
 }
 
+//-----------------------------------------------------------------------------
+// Relation sampling
+//-----------------------------------------------------------------------------
+
+YbgStatus YbgSamplerRandomFract(SamplerRandomState randstate, double *value)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*value = sampler_random_fract(randstate);
+
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgReservoirGetNextS(ReservoirState rs, double t, int n, double *s)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*s = reservoir_get_next_S(rs, t, n);
+
+	return PG_STATUS_OK;
+}

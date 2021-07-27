@@ -421,6 +421,20 @@ class PgApiImpl {
   CHECKED_STATUS ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
+  // Analyze.
+  CHECKED_STATUS NewSample(const PgObjectId& table_id,
+                           const int targrows,
+                           PgStatement **handle);
+
+  CHECKED_STATUS InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
+
+  CHECKED_STATUS SampleNextBlock(PgStatement *handle, bool *has_more);
+
+  CHECKED_STATUS ExecSample(PgStatement *handle);
+
+  CHECKED_STATUS GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows);
+
+  //------------------------------------------------------------------------------------------------
   // Transaction control.
   PgTxnManager* GetPgTxnManager() { return pg_txn_manager_.get(); }
 

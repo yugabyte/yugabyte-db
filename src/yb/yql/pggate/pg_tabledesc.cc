@@ -171,6 +171,10 @@ std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSelect() {
   return table_->NewPgsqlSelect();
 }
 
+std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSample() {
+  return table_->NewPgsqlSample();
+}
+
 std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlInsert() {
   return table_->NewPgsqlInsert();
 }
