@@ -511,6 +511,60 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
   ASSERT_EQ(res, "before");
 }
 
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore DDL for YSQL database");
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.Execute("DROP INDEX test_table_idx"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore DDL for YSQL database");
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value2 TEXT"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_NOK(restore_status);
+  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore DDL for YSQL database");
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
 

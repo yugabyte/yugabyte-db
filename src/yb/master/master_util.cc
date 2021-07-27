@@ -99,9 +99,9 @@ void TakeRegistration(consensus::RaftPeerPB* source, TSInfoPB* dest) {
 }
 
 void CopyRegistration(const consensus::RaftPeerPB& source, TSInfoPB* dest) {
-  dest->mutable_private_rpc_addresses()->CopyFrom(source.last_known_private_addr());
-  dest->mutable_broadcast_addresses()->CopyFrom(source.last_known_broadcast_addr());
-  dest->mutable_cloud_info()->CopyFrom(source.cloud_info());
+  *dest->mutable_private_rpc_addresses() = source.last_known_private_addr();
+  *dest->mutable_broadcast_addresses() = source.last_known_broadcast_addr();
+  *dest->mutable_cloud_info() = source.cloud_info();
 }
 
 void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest) {

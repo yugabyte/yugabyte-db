@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
@@ -64,6 +65,7 @@ import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.modules.swagger.SwaggerModule;
 import play.mvc.Result;
 import play.test.Helpers;
 
@@ -75,6 +77,7 @@ public class SessionControllerTest {
   private CallbackController mockCallbackController;
   private PlayCacheSessionStore mockSessionStore;
   private QueryAlerts mockQueryAlerts;
+  private CleanExpiredMetrics mockCleanExpiredMetrics;
   private AlertConfigurationWriter mockAlertConfigurationWriter;
   private AlertRouteService alertRouteService;
 
@@ -87,9 +90,11 @@ public class SessionControllerTest {
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockQueryAlerts = mock(QueryAlerts.class);
+    mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
+            .disable(SwaggerModule.class)
             .configure((Map) Helpers.inMemoryDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
             .overrides(bind(Scheduler.class).toInstance(mockScheduler))
@@ -98,6 +103,7 @@ public class SessionControllerTest {
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
             .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+            .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();

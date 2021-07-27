@@ -3,13 +3,13 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.ToggleTls;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.ToggleTls;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -36,7 +36,6 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -53,6 +52,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -509,8 +510,8 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (configureParams.getProperty("taskSubType") != null) {
-          UpgradeUniverse.UpgradeTaskSubType taskSubType =
-              UpgradeUniverse.UpgradeTaskSubType.valueOf(
+          UpgradeTaskSubType taskSubType =
+              UpgradeTaskParams.UpgradeTaskSubType.valueOf(
                   configureParams.getProperty("taskSubType"));
           String processType = configureParams.getProperty("processType");
           expectedCommand.add("--yb_process_type");
@@ -641,7 +642,7 @@ public class NodeManagerTest extends FakeDBApplication {
           String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
 
           String subType = configureParams.getProperty("taskSubType");
-          if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+          if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (configureParams.enableNodeToNodeEncrypt
                 || configureParams.enableClientToNodeEncrypt) {
               expectedCommand.add("--adding_certs");
@@ -656,7 +657,8 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
             }
             expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
-          } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
+              .equals(subType)) {
             gflags = new HashMap<>();
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
@@ -685,7 +687,8 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--replace_gflags");
             expectedCommand.add("--gflags");
             expectedCommand.add(Json.stringify(Json.toJson(gflags)));
-          } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name()
+              .equals(subType)) {
             gflags = new HashMap<>();
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("allow_insecure_connections", allowInsecureString);
@@ -2086,7 +2089,7 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
-      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.setProperty("taskSubType", UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name());
       params.enableNodeToNodeEncrypt = true;
       params.enableClientToNodeEncrypt = true;
       params.rootCA = UUID.randomUUID();
@@ -2125,7 +2128,7 @@ public class NodeManagerTest extends FakeDBApplication {
           Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
-      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.setProperty("taskSubType", UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name());
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
@@ -2175,7 +2178,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
       params.setProperty(
-          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name());
+          "taskSubType", UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name());
       params.nodeToNodeChange = nodeToNodeChange;
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -2207,7 +2210,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
       params.setProperty(
-          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name());
+          "taskSubType", UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name());
       params.nodeToNodeChange = nodeToNodeChange;
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);

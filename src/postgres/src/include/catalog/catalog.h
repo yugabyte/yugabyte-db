@@ -52,4 +52,6 @@ extern Oid GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
 
 extern Oid GetRowTypeOidFromRelOptions(List *relOptions);
 
+extern Oid GetRewriteRuleOidFromRelOptions(List *relOptions);
+
 #endif							/* CATALOG_H */

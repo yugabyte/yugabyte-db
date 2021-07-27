@@ -13,6 +13,7 @@ import static com.yugabyte.yw.models.AlertDefinitionGroup.createQueryByFilter;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
@@ -21,6 +22,7 @@ import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroup.SortBy;
 import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
 import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
 import com.yugabyte.yw.models.AlertRoute;
@@ -31,6 +33,7 @@ import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedQuery;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.ArrayList;
@@ -143,6 +146,10 @@ public class AlertDefinitionGroupService {
   }
 
   public AlertDefinitionGroupPagedResponse pagedList(AlertDefinitionGroupPagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.createTime);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
     Query<AlertDefinitionGroup> query = createQueryByFilter(pagedQuery.getFilter()).query();
     return performPagedQuery(query, pagedQuery, AlertDefinitionGroupPagedResponse.class);
   }
@@ -227,9 +234,45 @@ public class AlertDefinitionGroupService {
         throw new YWServiceException(
             BAD_REQUEST, "Can't change target type for group " + group.getUuid());
       }
+      if (!group.getCreateTime().equals(before.getCreateTime())) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change create time for group " + group.getUuid());
+      }
     } else if (!group.isNew()) {
       throw new YWServiceException(BAD_REQUEST, "Can't update missing group " + group.getUuid());
     }
+  }
+
+  @Transactional
+  public void handleTargetRemoval(
+      UUID customerUuid, AlertDefinitionGroup.TargetType groupType, UUID targetUuid) {
+    AlertDefinitionGroupFilter filter =
+        AlertDefinitionGroupFilter.builder()
+            .customerUuid(customerUuid)
+            .targetType(groupType)
+            .build();
+
+    List<AlertDefinitionGroup> groups =
+        list(filter)
+            .stream()
+            .filter(
+                group ->
+                    group.getTarget().isAll() || group.getTarget().getUuids().remove(targetUuid))
+            .collect(Collectors.toList());
+
+    Map<EntityOperation, List<AlertDefinitionGroup>> toUpdateAndDelete =
+        groups
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    group ->
+                        group.getTarget().isAll() || !group.getTarget().getUuids().isEmpty()
+                            ? UPDATE
+                            : DELETE));
+
+    // Just need to save - service will delete definition itself.
+    save(toUpdateAndDelete.get(UPDATE));
+    delete(toUpdateAndDelete.get(DELETE));
   }
 
   private void manageDefinitions(
@@ -279,10 +322,10 @@ public class AlertDefinitionGroupService {
             } else {
               definition = currentDefinitions.get(0);
             }
-            // For now it's just a query
-            definition.setQuery(group.getTemplate().getTemplate());
-            definition.setLabels(
-                AlertDefinitionLabelsBuilder.create().appendTarget(customer).get());
+            definition.setQuery(group.getTemplate().buildTemplate(customer));
+            if (!group.getTemplate().isSkipTargetLabels()) {
+              definition.setLabels(AlertLabelsBuilder.create().appendTarget(customer).get());
+            }
             toSave.add(definition);
             break;
           case UNIVERSE:
@@ -320,10 +363,11 @@ public class AlertDefinitionGroupService {
                   universeDefinition = createEmptyDefinition(group);
                 }
                 universeDefinition.setConfigWritten(false);
-                String nodePrefix = universe.getUniverseDetails().nodePrefix;
-                universeDefinition.setQuery(group.getTemplate().buildTemplate(nodePrefix));
-                universeDefinition.setLabels(
-                    AlertDefinitionLabelsBuilder.create().appendTarget(universe).get());
+                universeDefinition.setQuery(group.getTemplate().buildTemplate(customer, universe));
+                if (!group.getTemplate().isSkipTargetLabels()) {
+                  universeDefinition.setLabels(
+                      AlertLabelsBuilder.create().appendTarget(universe).get());
+                }
                 toSave.add(universeDefinition);
               } else if (universeDefinition != null) {
                 toRemove.add(universeDefinition);
@@ -355,7 +399,7 @@ public class AlertDefinitionGroupService {
         .setTarget(new AlertDefinitionGroupTarget().setAll(true))
         .setThresholds(
             template
-                .getDefaultThresholdParamMap()
+                .getDefaultThresholdMap()
                 .entrySet()
                 .stream()
                 .collect(
@@ -365,9 +409,11 @@ public class AlertDefinitionGroupService {
                             new AlertDefinitionGroupThreshold()
                                 .setCondition(template.getDefaultThresholdCondition())
                                 .setThreshold(
-                                    runtimeConfigFactory
-                                        .globalRuntimeConf()
-                                        .getDouble(e.getValue())))))
+                                    e.getValue().isParamName()
+                                        ? runtimeConfigFactory
+                                            .globalRuntimeConf()
+                                            .getDouble(e.getValue().getParamName())
+                                        : e.getValue().getThreshold()))))
         .setThresholdUnit(template.getDefaultThresholdUnit())
         .setTemplate(template)
         .setDurationSec(template.getDefaultDurationSec());

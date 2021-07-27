@@ -552,14 +552,12 @@ class PostgresBuilder(YbBuildToolBase):
                 ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + pathspec
             ).decode('utf-8').strip()
             # Get uncommitted changes to tracked postgres files.
-            git_diff = subprocess.check_output(
-                ['git', 'diff', 'HEAD', '--'] + pathspec
-            ).decode('utf-8')
+            git_diff = subprocess.check_output(['git', 'diff', 'HEAD', '--'] + pathspec)
 
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
             "git_commit_sha1=%s" % git_hash,
-            "git_diff_sha256=%s" % sha256(git_diff),
+            "git_diff_sha256=%s" % hashlib.sha256(git_diff),
             ])
 
         if include_env_vars:

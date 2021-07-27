@@ -50,6 +50,7 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 
+#include "yb/rpc/compressed_stream.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/tcp_stream.h"
@@ -76,6 +77,7 @@ DECLARE_int32(rpc_throttle_threshold_bytes);
 DECLARE_bool(TEST_pause_calculator_echo_request);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 DECLARE_string(vmodule);
+DECLARE_int32(stream_compression_algo);
 
 using namespace std::chrono_literals;
 using std::string;
@@ -83,6 +85,9 @@ using std::shared_ptr;
 using std::unordered_map;
 
 namespace yb {
+
+using rpc_test::CalculatorServiceProxy;
+
 namespace rpc {
 
 class TestRpc : public RpcTestBase {
@@ -374,7 +379,8 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   req.set_sleep_micros(200 * 1000);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(
+      CalculatorServiceMethods::SleepMethod(), nullptr, req, &resp, &controller));
 }
 
 // Test that connections are kept alive by heartbeats between calls.
@@ -520,9 +526,9 @@ TEST_F(TestRpc, TestServerShutsDown) {
   for (int i = 0; i < n_calls; i++) {
     auto controller = new RpcController();
     controllers.push_back(controller);
-    p.AsyncRequest(CalculatorServiceMethods::AddMethod(), req, &resp, controller, [&latch]() {
-      latch.CountDown();
-    });
+    p.AsyncRequest(
+        CalculatorServiceMethods::AddMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller, latch.CountDownCallback());
   }
 
   // Accept the TCP connection.
@@ -603,7 +609,9 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
   req.set_sleep_micros(sleep_micros);
   req.set_deferred(true);
   rpc_test::SleepResponsePB resp;
-  ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(
+      CalculatorServiceMethods::SleepMethod(), /* method_metrics= */ nullptr, req, &resp,
+      &controller));
 
   const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
     server_messenger()->metric_entity()->UnsafeMetricsMapForTests();
@@ -642,7 +650,8 @@ TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
     Proxy p(client_messenger.get(), bad_addr);
     static RemoteMethod method(
         rpc_test::CalculatorServiceIf::static_service_name(), "my-fake-method");
-    p.AsyncRequest(&method, req, &resp, &controller, [&latch]() { latch.CountDown(); });
+    p.AsyncRequest(&method, /* method_metrics= */ nullptr, req, &resp, &controller,
+                   latch.CountDownCallback());
   }
   latch.Wait();
 }
@@ -666,13 +675,13 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   rpc_test::SleepResponsePB resp;
   RpcController controller;
   const auto* method = CalculatorServiceMethods::SleepMethod();
-  Status s = p.SyncRequest(method, req, &resp, &controller);
+  Status s = p.SyncRequest(method, /* method_metrics= */ nullptr, req, &resp, &controller);
   ASSERT_TRUE(s.IsRemoteError());
   ASSERT_STR_CONTAINS(s.ToString(), "Missing required timeout");
 
   controller.Reset();
   controller.set_timeout(MonoDelta::FromMilliseconds(1000));
-  ASSERT_OK(p.SyncRequest(method, req, &resp, &controller));
+  ASSERT_OK(p.SyncRequest(method, /* method_metrics= */ nullptr, req, &resp, &controller));
 }
 
 // Send multiple long running calls to a single worker thread. All of them except the first one,
@@ -708,7 +717,7 @@ TEST_F(TestRpc, QueueTimeout) {
     req.set_sleep_micros(kSleep.ToMicroseconds());
     req.set_client_timeout_defined(true);
     call.controller.set_timeout(kSleep / 2);
-    p.AsyncRequest(method, req, &call.resp, &call.controller,
+    p.AsyncRequest(method, /* method_metrics= */ nullptr, req, &call.resp, &call.controller,
         [&latch, &call] {
       latch.CountDown();
       ASSERT_TRUE(call.controller.status().IsTimedOut()) << call.controller.status();
@@ -751,6 +760,7 @@ class DisconnectTask {
   void Launch() {
     controller_.set_timeout(MonoDelta::FromSeconds(1));
     share_->proxy.AsyncRequest(CalculatorServiceMethods::DisconnectMethod(),
+                               /* method_metrics= */ nullptr,
                                rpc_test::DisconnectRequestPB(),
                                &response_,
                                &controller_,
@@ -838,7 +848,9 @@ TEST_F(TestRpc, DumpTimedOutCall) {
     std::aligned_storage<sizeof(RpcController), alignof(RpcController)>::type storage;
     auto controller = new (&storage) RpcController;
     controller->set_timeout(100ms);
-    auto status = p.SyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller);
+    auto status = p.SyncRequest(
+        CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller);
     ASSERT_TRUE(status.IsTimedOut()) << status;
     controller->~RpcController();
     memset(&storage, 0xff, sizeof(storage));
@@ -956,9 +968,9 @@ void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& ser
     // No need to wait more than kTimeToWaitForOom + some delay, because we only need these
     // calls to cause hitting hard memory limit.
     controller->set_timeout(kTimeToWaitForOom + 5s);
-    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
-      latch.CountDown();
-    });
+    p.AsyncRequest(
+        CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller, latch.CountDownCallback());
     if ((i + 1) % 10 == 0) {
       LOG(INFO) << "Sent " << i + 1 << " calls.";
       LOG(INFO) << DumpMemoryUsage();
@@ -1017,9 +1029,9 @@ void TestCantAllocateReadBuffer(Messenger* client_messenger, const HostPort& ser
     auto controller = new RpcController();
     controllers.push_back(std::unique_ptr<RpcController>(controller));
     controller->set_timeout(kCallsTimeout);
-    p.AsyncRequest(CalculatorServiceMethods::EchoMethod(), req, &resp, controller, [&latch]() {
-      latch.CountDown();
-    });
+    p.AsyncRequest(
+        CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+        controller, latch.CountDownCallback());
   }
   LOG(INFO) << n_calls << " calls sent.";
   latch.Wait();
@@ -1047,6 +1059,22 @@ TEST_F(TestRpc, CantAllocateReadBuffer) {
   TestCantAllocateReadBuffer(client_messenger.get(), server_addr);
 }
 
+template <class MessengerFactory, class F>
+void RunTest(RpcTestBase* test, const MessengerFactory& messenger_factory, const F& f) {
+  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(
+      messenger_factory("Client", kDefaultClientMessengerOptions));
+  auto proxy_cache = std::make_unique<ProxyCache>(client_messenger.get());
+
+  TestServerOptions options;
+  HostPort server_hostport;
+  test->StartTestServerWithGeneratedCode(
+      messenger_factory("TestServer", kDefaultServerMessengerOptions), &server_hostport,
+      options);
+
+  CalculatorServiceProxy p(proxy_cache.get(), server_hostport, client_messenger->DefaultProtocol());
+  f(&p);
+}
+
 class TestRpcSecure : public RpcTestBase {
  public:
   void SetUp() override {
@@ -1068,28 +1096,84 @@ class TestRpcSecure : public RpcTestBase {
   }
 
   std::unique_ptr<SecureContext> secure_context_;
+
+  template <class F>
+  void RunSecureTest(const F& f) {
+    RunTest(this, [this](const std::string& name, const MessengerOptions& options) {
+      return CreateSecureMessenger(name, options);
+    }, f);
+  }
 };
 
-TEST_F(TestRpcSecure, TLS) {
-  auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(CreateSecureMessenger("Client"));
-  auto proxy_cache = std::make_unique<ProxyCache>(client_messenger.get());
-
-  TestServerOptions options;
-  HostPort server_hostport;
-  StartTestServerWithGeneratedCode(
-      CreateSecureMessenger("TestServer", kDefaultServerMessengerOptions), &server_hostport,
-      options);
-
-  rpc_test::CalculatorServiceProxy p(proxy_cache.get(), server_hostport, SecureStreamProtocol());
-
+void TestSimple(CalculatorServiceProxy* proxy) {
   RpcController controller;
-  controller.set_timeout(5s);
+  controller.set_timeout(5s * kTimeMultiplier);
   rpc_test::AddRequestPB req;
   req.set_x(10);
   req.set_y(20);
   rpc_test::AddResponsePB resp;
-  ASSERT_OK(p.Add(req, &resp, &controller));
+  ASSERT_OK(proxy->Add(req, &resp, &controller));
   ASSERT_EQ(30, resp.result());
+}
+
+TEST_F(TestRpcSecure, TLS) {
+  RunSecureTest(&TestSimple);
+}
+
+void TestBigOp(CalculatorServiceProxy* proxy) {
+  RpcController controller;
+  controller.set_timeout(5s * kTimeMultiplier);
+  rpc_test::EchoRequestPB req;
+  req.set_data(RandomHumanReadableString(4_MB));
+  rpc_test::EchoResponsePB resp;
+  ASSERT_OK(proxy->Echo(req, &resp, &controller));
+  ASSERT_EQ(req.data(), resp.data());
+}
+
+TEST_F(TestRpcSecure, BigOp) {
+  RunSecureTest(&TestBigOp);
+}
+
+void TestManyOps(CalculatorServiceProxy* proxy) {
+  for (int i = 0; i != RegularBuildVsSanitizers(1000, 100); ++i) {
+    RpcController controller;
+    controller.set_timeout(5s * kTimeMultiplier);
+    rpc_test::EchoRequestPB req;
+    req.set_data(RandomHumanReadableString(4_KB));
+    rpc_test::EchoResponsePB resp;
+    ASSERT_OK(proxy->Echo(req, &resp, &controller));
+    ASSERT_EQ(req.data(), resp.data());
+  }
+}
+
+TEST_F(TestRpcSecure, ManyOps) {
+  RunSecureTest(&TestManyOps);
+}
+
+void TestConcurrentOps(CalculatorServiceProxy* proxy) {
+  struct Op {
+    RpcController controller;
+    rpc_test::EchoRequestPB req;
+    rpc_test::EchoResponsePB resp;
+  };
+  std::vector<Op> ops(RegularBuildVsSanitizers(1000, 100));
+  CountDownLatch latch(ops.size());
+  for (auto& op : ops) {
+    op.controller.set_timeout(5s * kTimeMultiplier);
+    op.req.set_data(RandomHumanReadableString(4_KB));
+    proxy->EchoAsync(op.req, &op.resp, &op.controller, [&latch]() {
+      latch.CountDown();
+    });
+  }
+  latch.Wait();
+  for (const auto& op : ops) {
+    ASSERT_OK(op.controller.status());
+    ASSERT_EQ(op.req.data(), op.resp.data());
+  }
+}
+
+TEST_F(TestRpcSecure, ConcurrentOps) {
+  RunSecureTest(&TestConcurrentOps);
 }
 
 TEST_F(TestRpcSecure, CantAllocateReadBuffer) {
@@ -1103,6 +1187,48 @@ TEST_F(TestRpcSecure, CantAllocateReadBuffer) {
   auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(CreateSecureMessenger("Client"));
 
   TestCantAllocateReadBuffer(client_messenger.get(), server_addr);
+}
+
+class TestRpcCompression : public RpcTestBase {
+ public:
+  void SetUp() override {
+    FLAGS_stream_compression_algo = 1;
+    RpcTestBase::SetUp();
+  }
+
+ protected:
+  std::unique_ptr<Messenger> CreateCompressedMessenger(
+      const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
+    auto builder = CreateMessengerBuilder(name, options);
+    builder.SetListenProtocol(CompressedStreamProtocol());
+    builder.AddStreamFactory(
+        CompressedStreamProtocol(),
+        CompressedStreamFactory(TcpStream::Factory(), MemTracker::GetRootTracker()));
+    return EXPECT_RESULT(builder.Build());
+  }
+
+  template <class F>
+  void RunCompressionTest(const F& f) {
+    RunTest(this, [this](const std::string& name, const MessengerOptions& options) {
+      return CreateCompressedMessenger(name, options);
+    }, f);
+  }
+};
+
+TEST_F(TestRpcCompression, GZip) {
+  RunCompressionTest(&TestSimple);
+}
+
+TEST_F(TestRpcCompression, BigOp) {
+  RunCompressionTest(&TestBigOp);
+}
+
+TEST_F(TestRpcCompression, ManyOps) {
+  RunCompressionTest(&TestManyOps);
+}
+
+TEST_F(TestRpcCompression, ConcurrentOps) {
+  RunCompressionTest(&TestConcurrentOps);
 }
 
 } // namespace rpc

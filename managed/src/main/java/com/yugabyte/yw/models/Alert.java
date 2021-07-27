@@ -14,12 +14,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.Formula;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Comparator;
@@ -34,6 +34,7 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
+import javax.persistence.Transient;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -63,8 +64,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public enum SortBy implements PagedQuery.SortByIF {
-    CREATE_TIME("createTime"),
-    SEVERITY("severity");
+    createTime("createTime"),
+    severity("severityIndex"),
+    name("name"),
+    targetName("targetName"),
+    state("targetStateIndex");
 
     private final String sortField;
 
@@ -99,17 +103,28 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Resolved Date time info.", accessMode = READ_ONLY)
   private Date resolvedTime;
 
-  @Column(columnDefinition = "Text", nullable = false)
-  @ApiModelProperty(value = "Error Code.", accessMode = READ_ONLY)
-  private String errCode;
-
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert definition group serverity.", accessMode = READ_ONLY)
   private AlertDefinitionGroup.Severity severity;
 
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when severity = 'WARNING' then 1"
+              + " when severity = 'SEVERE' then 2"
+              + " else 0 end)")
+  private Integer severityIndex;
+
+  @ApiModelProperty(value = "Alert name.", accessMode = READ_ONLY)
+  private String name;
+
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Alert Message.", accessMode = READ_ONLY)
   private String message;
+
+  @ApiModelProperty(value = "Alert target name.", accessMode = READ_ONLY)
+  private String targetName;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert State.", accessMode = READ_ONLY)
@@ -119,20 +134,43 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Target State.", accessMode = READ_ONLY)
   private State targetState = State.ACTIVE;
 
-  @ApiModelProperty(value = "Whether to send an Email or not.", accessMode = READ_ONLY)
-  private boolean sendEmail;
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when target_state = 'ACTIVE' then 1"
+              + " when target_state = 'ACKNOWLEDGED' then 2"
+              + " when target_state = 'RESOLVED' then 3"
+              + " else 0 end)")
+  private Integer targetStateIndex;
 
   @ApiModelProperty(value = "Alert Definition Uuid", accessMode = READ_ONLY)
   private UUID definitionUuid;
 
-  @ApiModelProperty(value = "Alert group Uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert group Uuid.", accessMode = READ_ONLY)
   private UUID groupUuid;
 
-  @ApiModelProperty(value = "Alert definition group type", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert definition group type.", accessMode = READ_ONLY)
   private AlertDefinitionGroup.TargetType groupType;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
+
+  @ApiModelProperty(value = "Time of the last notification attempt.", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  private Date notificationAttemptTime;
+
+  @ApiModelProperty(value = "Time of the nex notification attempt.", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  private Date nextNotificationTime;
+
+  @ApiModelProperty(value = "Count of failures to send a notification.", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private int notificationsFailed = 0;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Alert state in last sent notification.", accessMode = READ_ONLY)
+  private State notifiedState;
 
   private static final Finder<UUID, Alert> find = new Finder<UUID, Alert>(Alert.class) {};
 
@@ -169,16 +207,6 @@ public class Alert extends Model implements AlertLabelsProvider {
         .orElse(null);
   }
 
-  public Alert setErrCode(String errCode) {
-    this.errCode = errCode;
-    return this;
-  }
-
-  public Alert setErrCode(KnownAlertCodes errCode) {
-    this.errCode = errCode.name();
-    return this;
-  }
-
   public Alert setLabel(KnownAlertLabels label, String value) {
     return setLabel(label.labelName(), value);
   }
@@ -211,9 +239,6 @@ public class Alert extends Model implements AlertLabelsProvider {
     }
     appendInClause(query, "state", filter.getStates());
     appendInClause(query, "targetState", filter.getTargetStates());
-    if (filter.getErrorCode() != null) {
-      query.eq("errCode", filter.getErrorCode());
-    }
     appendInClause(query, "definitionUuid", filter.getDefinitionUuids());
     if (filter.getLabel() != null) {
       query
@@ -223,11 +248,15 @@ public class Alert extends Model implements AlertLabelsProvider {
     if (filter.getGroupUuid() != null) {
       query.eq("groupUuid", filter.getGroupUuid());
     }
-    if (filter.getSeverity() != null) {
-      query.eq("severity", filter.getSeverity());
-    }
-    if (filter.getGroupType() != null) {
-      query.eq("groupType", filter.getGroupType());
+    appendInClause(query, "severity", filter.getSeverities());
+    appendInClause(query, "groupType", filter.getGroupTypes());
+
+    if (filter.getNotificationPending() != null) {
+      if (filter.getNotificationPending()) {
+        query.isNotNull("nextNotificationTime").le("nextNotificationTime", new Date());
+      } else {
+        query.or().isNull("nextNotificationTime").gt("nextNotificationTime", new Date()).endOr();
+      }
     }
     return query;
   }

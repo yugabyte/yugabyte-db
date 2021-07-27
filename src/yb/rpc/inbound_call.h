@@ -72,11 +72,6 @@ class Trace;
 
 namespace rpc {
 
-class DumpRunningRpcsRequestPB;
-class RpcCallInProgressPB;
-class RpcCallDetailsPB;
-class CQLCallDetailsPB;
-
 struct InboundCallTiming {
   MonoTime time_received;   // Time the call was first accepted.
   MonoTime time_handled;    // Time the call handler was kicked off.
@@ -106,6 +101,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
               CallProcessedListener call_processed_listener);
   virtual ~InboundCall();
 
+  void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
+
   // Return the serialized request parameter protobuf.
   const Slice &serialized_request() const {
     return serialized_request_;
@@ -134,7 +131,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // Updates the Histogram with time elapsed since the call was started,
   // and should only be called once on a given instance.
   // Not thread-safe. Should only be called by the current "owner" thread.
-  void RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time);
+  void RecordHandlingCompleted();
 
   // Return true if the deadline set by the client has already elapsed.
   // In this case, the server may stop processing the call, since the
@@ -145,6 +142,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // account for transmission delays between the client and the server.
   // If the client did not specify a deadline, returns MonoTime::Max().
   virtual CoarseTimePoint GetClientDeadline() const = 0;
+
+  virtual void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) = 0;
 
   // Returns the time spent in the service queue -- from the time the call was received, until
   // it gets handled.
@@ -197,6 +196,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   size_t DynamicMemoryUsage() const override;
 
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override final;
+
   const CallData& request_data() const { return request_data_; }
 
  protected:
@@ -228,6 +229,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   std::atomic<bool> processing_started_{false};
 
   std::atomic<bool> responded_{false};
+
+  const RpcMethodMetrics* rpc_method_metrics_ = nullptr;
 
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.

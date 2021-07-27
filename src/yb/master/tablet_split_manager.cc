@@ -23,7 +23,7 @@
 #include "yb/util/format.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_int32(process_split_tablet_candidates_interval_msec, 2000,
+DEFINE_int32(process_split_tablet_candidates_interval_msec, 15000,
              "The tick interval time for processing accumulated tablet split candidates.");
 DEFINE_int32(max_queued_split_candidates, 5,
              "The max number of pending tablet split candidates we will hold onto. We potentially "
