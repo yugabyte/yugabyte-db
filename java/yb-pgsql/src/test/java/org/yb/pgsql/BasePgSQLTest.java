@@ -105,9 +105,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static boolean pgInitialized = false;
 
-  public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
+  public void runPgRegressTest(File inputDir, String schedule, long maxRuntimeMillis)
+        throws Exception {
     final int tserverIndex = 0;
-    File inputDir = PgRegressBuilder.getPgRegressDir();
     String label = String.format("using schedule %s at %s", schedule, inputDir);
     PgRegressRunner pgRegress = new PgRegressRunner(inputDir, label, maxRuntimeMillis);
     ProcessBuilder procBuilder = new PgRegressBuilder()
@@ -123,9 +123,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     pgRegress.stop();
   }
 
+  public void runPgRegressTest(File inputDir, String schedule) throws Exception {
+    runPgRegressTest(inputDir, schedule, 0 /* maxRuntimeMillis */);
+  }
+
+  public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
+    File inputDir = PgRegressBuilder.getPgRegressDir();
+    runPgRegressTest(inputDir, schedule, maxRuntimeMillis);
+  }
+
   public void runPgRegressTest(String schedule) throws Exception {
-    // Run test without maximum time.
-    runPgRegressTest(schedule, 0);
+    runPgRegressTest(schedule, 0 /* maxRuntimeMillis */);
   }
 
   private static int getRetryableRpcSingleCallTimeoutMs() {
