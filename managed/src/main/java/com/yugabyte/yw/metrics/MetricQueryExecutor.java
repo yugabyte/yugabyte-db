@@ -6,15 +6,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.models.MetricConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
-import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 public class MetricQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryExecutor.class);

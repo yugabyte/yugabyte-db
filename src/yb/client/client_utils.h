@@ -29,7 +29,7 @@ namespace client {
 
 // Lookup first tablet of specified table.
 std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
-    const std::shared_ptr<const YBTable>& table);
+    const std::shared_ptr<YBTable>& table);
 
 Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     const string &client_name,

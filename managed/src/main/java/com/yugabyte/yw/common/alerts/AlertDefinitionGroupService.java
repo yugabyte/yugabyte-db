@@ -9,35 +9,50 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.models.AlertDefinitionGroup.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroup.SortBy;
+import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
+import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedQuery;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang3.StringUtils;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static com.yugabyte.yw.models.AlertDefinitionGroup.createQueryByFilter;
-import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
-import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
-import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -84,6 +99,7 @@ public class AlertDefinitionGroupService {
 
     if (toCreateAndUpdate.containsKey(CREATE)) {
       List<AlertDefinitionGroup> toCreate = toCreateAndUpdate.get(CREATE);
+      toCreate.forEach(group -> group.setCreateTime(nowWithoutMillis()));
       toCreate.forEach(AlertDefinitionGroup::generateUUID);
       AlertDefinitionGroup.db().saveAll(toCreate);
     }
@@ -106,7 +122,7 @@ public class AlertDefinitionGroupService {
 
   public AlertDefinitionGroup get(UUID uuid) {
     if (uuid == null) {
-      throw new IllegalArgumentException("Can't get Alert Definition Group by null uuid");
+      throw new YWServiceException(BAD_REQUEST, "Can't get Alert Definition Group by null uuid");
     }
     return list(AlertDefinitionGroupFilter.builder().uuid(uuid).build())
         .stream()
@@ -130,6 +146,10 @@ public class AlertDefinitionGroupService {
   }
 
   public AlertDefinitionGroupPagedResponse pagedList(AlertDefinitionGroupPagedQuery pagedQuery) {
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(SortBy.createTime);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
     Query<AlertDefinitionGroup> query = createQueryByFilter(pagedQuery.getFilter()).query();
     return performPagedQuery(query, pagedQuery, AlertDefinitionGroupPagedResponse.class);
   }
@@ -171,43 +191,88 @@ public class AlertDefinitionGroupService {
 
   private void validate(AlertDefinitionGroup group, AlertDefinitionGroup before) {
     if (group.getCustomerUUID() == null) {
-      throw new IllegalArgumentException("Customer UUID field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (StringUtils.isEmpty(group.getName())) {
-      throw new IllegalArgumentException("Name field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Name field is mandatory");
     }
     if (group.getTargetType() == null) {
-      throw new IllegalArgumentException("Target type field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Target type field is mandatory");
     }
     if (group.getTarget() == null) {
-      throw new IllegalArgumentException("Target field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Target field is mandatory");
     }
     AlertDefinitionGroupTarget target = group.getTarget();
     if (target.isAll() != CollectionUtils.isEmpty(target.getUuids())) {
-      throw new IllegalArgumentException(
-          "Should select either all entries or particular UUIDs as target");
+      throw new YWServiceException(
+          BAD_REQUEST, "Should select either all entries or particular UUIDs as target");
     }
     if (group.getTemplate() == null) {
-      throw new IllegalArgumentException("Template field is mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Template field is mandatory");
     }
     if (MapUtils.isEmpty(group.getThresholds())) {
-      throw new IllegalArgumentException("Query thresholds are mandatory");
+      throw new YWServiceException(BAD_REQUEST, "Query thresholds are mandatory");
     }
     if (group.getRouteUUID() != null
         && AlertRoute.get(group.getCustomerUUID(), group.getRouteUUID()) == null) {
-      throw new IllegalArgumentException("Alert route " + group.getRouteUUID() + " is missing");
+      throw new YWServiceException(
+          BAD_REQUEST, "Alert route " + group.getRouteUUID() + " is missing");
+    }
+    if (group.getThresholdUnit() == null) {
+      throw new YWServiceException(BAD_REQUEST, "Threshold unit is mandatory");
+    }
+    if (group.getThresholdUnit() != group.getTemplate().getDefaultThresholdUnit()) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Can't set threshold unit incompatible with alert definition template");
     }
     if (before != null) {
       if (!group.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new IllegalArgumentException(
-            "Can't change customer UUID for group " + group.getUuid());
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change customer UUID for group " + group.getUuid());
       }
       if (!group.getTargetType().equals(before.getTargetType())) {
-        throw new IllegalArgumentException("Can't change target type for group " + group.getUuid());
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change target type for group " + group.getUuid());
+      }
+      if (!group.getCreateTime().equals(before.getCreateTime())) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change create time for group " + group.getUuid());
       }
     } else if (!group.isNew()) {
-      throw new IllegalArgumentException("Can't update missing group " + group.getUuid());
+      throw new YWServiceException(BAD_REQUEST, "Can't update missing group " + group.getUuid());
     }
+  }
+
+  @Transactional
+  public void handleTargetRemoval(
+      UUID customerUuid, AlertDefinitionGroup.TargetType groupType, UUID targetUuid) {
+    AlertDefinitionGroupFilter filter =
+        AlertDefinitionGroupFilter.builder()
+            .customerUuid(customerUuid)
+            .targetType(groupType)
+            .build();
+
+    List<AlertDefinitionGroup> groups =
+        list(filter)
+            .stream()
+            .filter(
+                group ->
+                    group.getTarget().isAll() || group.getTarget().getUuids().remove(targetUuid))
+            .collect(Collectors.toList());
+
+    Map<EntityOperation, List<AlertDefinitionGroup>> toUpdateAndDelete =
+        groups
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    group ->
+                        group.getTarget().isAll() || !group.getTarget().getUuids().isEmpty()
+                            ? UPDATE
+                            : DELETE));
+
+    // Just need to save - service will delete definition itself.
+    save(toUpdateAndDelete.get(UPDATE));
+    delete(toUpdateAndDelete.get(DELETE));
   }
 
   private void manageDefinitions(
@@ -257,10 +322,10 @@ public class AlertDefinitionGroupService {
             } else {
               definition = currentDefinitions.get(0);
             }
-            // For now it's just a query
-            definition.setQuery(group.getTemplate().getTemplate());
-            definition.setLabels(
-                AlertDefinitionLabelsBuilder.create().appendTarget(customer).get());
+            definition.setQuery(group.getTemplate().buildTemplate(customer));
+            if (!group.getTemplate().isSkipTargetLabels()) {
+              definition.setLabels(AlertLabelsBuilder.create().appendTarget(customer).get());
+            }
             toSave.add(definition);
             break;
           case UNIVERSE:
@@ -298,10 +363,11 @@ public class AlertDefinitionGroupService {
                   universeDefinition = createEmptyDefinition(group);
                 }
                 universeDefinition.setConfigWritten(false);
-                String nodePrefix = universe.getUniverseDetails().nodePrefix;
-                universeDefinition.setQuery(group.getTemplate().buildTemplate(nodePrefix));
-                universeDefinition.setLabels(
-                    AlertDefinitionLabelsBuilder.create().appendTarget(universe).get());
+                universeDefinition.setQuery(group.getTemplate().buildTemplate(customer, universe));
+                if (!group.getTemplate().isSkipTargetLabels()) {
+                  universeDefinition.setLabels(
+                      AlertLabelsBuilder.create().appendTarget(universe).get());
+                }
                 toSave.add(universeDefinition);
               } else if (universeDefinition != null) {
                 toRemove.add(universeDefinition);
@@ -333,7 +399,7 @@ public class AlertDefinitionGroupService {
         .setTarget(new AlertDefinitionGroupTarget().setAll(true))
         .setThresholds(
             template
-                .getDefaultThresholdParamMap()
+                .getDefaultThresholdMap()
                 .entrySet()
                 .stream()
                 .collect(
@@ -343,9 +409,12 @@ public class AlertDefinitionGroupService {
                             new AlertDefinitionGroupThreshold()
                                 .setCondition(template.getDefaultThresholdCondition())
                                 .setThreshold(
-                                    runtimeConfigFactory
-                                        .globalRuntimeConf()
-                                        .getDouble(e.getValue())))))
+                                    e.getValue().isParamName()
+                                        ? runtimeConfigFactory
+                                            .globalRuntimeConf()
+                                            .getDouble(e.getValue().getParamName())
+                                        : e.getValue().getThreshold()))))
+        .setThresholdUnit(template.getDefaultThresholdUnit())
         .setTemplate(template)
         .setDurationSec(template.getDefaultDurationSec());
   }

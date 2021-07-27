@@ -2,25 +2,28 @@
 
 package com.yugabyte.yw.models;
 
-import play.mvc.Http;
-import play.mvc.Result;
-import io.ebean.*;
-import io.ebean.annotation.DbJson;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.YWServiceException;
-
-import play.data.validation.Constraints;
-
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
+import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
-import java.util.List;
-import java.util.UUID;
-
-import static play.mvc.Http.Status.*;
+import play.data.validation.Constraints;
 
 @Entity
+@ApiModel(
+    description =
+        "Access key for the provider. This will help to "
+            + "authenticate the user and get the access to the cloud provider.")
 public class AccessKey extends Model {
   public static class KeyInfo {
     public String publicKey;
@@ -52,6 +55,7 @@ public class AccessKey extends Model {
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
+  @ApiModelProperty(value = "Cloud provider key info", required = true)
   @DbJson
   private KeyInfo keyInfo;
 

@@ -8,20 +8,19 @@
 [![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://www.yugabyte.com/slack)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
-- [What is YugabyteDB?](#what-is-yugabytedb)
-- [Get Started](#get-started)
-- [Build Apps](#build-apps)
-- [What's being worked on?](#whats-being-worked-on)
-- [Architecture](#architecture)
-- [Need Help?](#need-help)
-- [Contribute](#contribute)
-- [License](#license)
-- [Read More](#read-more)
+* [What is YugabyteDB?](#what-is-yugabytedb)
+* [Get Started](#get-started)
+* [Build Apps](#build-apps)
+* [What's being worked on?](#whats-being-worked-on)
+* [Architecture](#architecture)
+* [Need Help?](#need-help)
+* [Contribute](#contribute)
+* [License](#license)
+* [Read More](#read-more)
 
 # What is YugabyteDB?
 
 **YugabyteDB** is a **high-performance, cloud-native distributed SQL database** that aims to support **all PostgreSQL features**. It is best to fit for **cloud-native OLTP (i.e. real-time, business-critical) applications** that need absolute **data correctness** and require at least one of the following: **scalability, high tolerance to failures, or globally-distributed deployments.**
-
 
 The core features of YugabyteDB include:
 
@@ -48,8 +47,8 @@ Read more about YugabyteDB in our [Docs](https://docs.yugabyte.com/latest/introd
 * [Connect and try out SQL commands](https://docs.yugabyte.com/latest/quick-start/explore-ysql/)
 * [Build an app](https://docs.yugabyte.com/latest/quick-start/build-apps/) using a PostgreSQL-compatible driver or ORM.
 * Try running a real-world demo application:
-    * [Microservices-oriented e-commerce app](https://github.com/yugabyte/yugastore-java)
-    * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/develop/realworld-apps/iot-spark-kafka-ksql/)
+  * [Microservices-oriented e-commerce app](https://github.com/yugabyte/yugastore-java)
+  * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/develop/realworld-apps/iot-spark-kafka-ksql/)
 
 Cannot find what you are looking for? Have a question? Please post your questions or comments on our Community [Slack](https://www.yugabyte.com/slack) or [Forum](https://forum.yugabyte.com).
 
@@ -70,11 +69,11 @@ YugabyteDB supports several languages and client drivers. Below is a brief list.
 
 # What's being worked on?
 
-> This section was last updated in **June, 2021**.
+> This section was last updated in **July, 2021**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.7 latest release** has been released in **May, 2021**, and the **v2.4 stable release** was released in **Jan 2021**).
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.7 latest release** has been released in **May, 2021**, and the **v2.6 stable release** was released in **July 2021**).
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
@@ -86,15 +85,15 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | [[YSQL] Online schema migration](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-schema-migrations.md)  | PROGRESS  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4192) |  |
 | [YSQL] Collation Support - support COLLATE option for text-based columns | PROGRESS | v2.7           |[Track](https://github.com/yugabyte/yugabyte-db/issues/7853)                 |               |
 [YSQL] Support SAVEPOINT - Transaction Control Commands | PROGRESS | v2.7           |[Track](https://github.com/yugabyte/yugabyte-db/issues/1125) |  |
+| [Spring Data YugabyteDB module](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/spring-data-yugabytedb.md) | PROGRESS  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/7956) |  |
 | [YCQL] LDAP Support for Yugabyte's YCQL API | PROGRESS | v2.7           |[Track](https://github.com/yugabyte/yugabyte-db/issues/4421)  |  |
 | Incorporate PostgreSQL 12 features | PLANNING  | v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) |  |
-| Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.5 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
+| Improving day 2 operations of Yugabyte Platform | PROGRESS  |  v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/4420) |  |
 | [Row-level geo-partitioning](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-row-level-partitioning.md) | PROGRESS  |  v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1958) | Enhance YSQL language support |
 | Improve TPC-C benchmarking | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/3226) |  |
-| Transparently restart transactions | PROGRESS  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | Decrease the incidence of transaction restart errors seen in various scenarios |
+| Transparently restart transactions | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | Decrease the incidence of transaction restart errors seen in various scenarios |
 | Pessimistic locking Design | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.7           |                 |               |
-
 
 ## Planned additions to the roadmap
 
@@ -102,7 +101,7 @@ The following items are being planned as additions to the roadmap.
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
-| Support `pgloader` to migrate from MySQL | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) | 
+| Support `pgloader` to migrate from MySQL | PLANNING  |   | [Track](https://github.com/yugabyte/yugabyte-db/issues/3725) |
 | Make [`COLOCATED` tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) default for YSQL | PLANNING  |  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5239)  |  |
 | Support Kafka as source and sink | PLANNING |  |  | Support source and sink for both YSQL and YCQL |
 | Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1808) | Apply transactions atomically on consumer cluster. |
@@ -111,7 +110,7 @@ The following items are being planned as additions to the roadmap.
 
 | Feature                                         | Status    | Release Target | Docs / Enhancements |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | ------------------- | ------------- |
-| Support Spark 3.x on YCQL API | ✅ *DONE* | v2.5, v2.6           |  [Track](https://github.com/yugabyte/yugabyte-db/issues/6488)  |     
+| Support Spark 3.x on YCQL API | ✅ *DONE* | v2.5, v2.6           |  [Track](https://github.com/yugabyte/yugabyte-db/issues/6488)  |
 | [Support `ALTER TABLE` add primary key](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.6, v2.7 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) |  |
 | Identity and access management in YSQL | ✅ *DONE*  | v2.5  | [Track](https://github.com/yugabyte/yugabyte-db/issues/2393) | LDAP and Active Directory support |
 | Follower reads in YSQL | ✅ *BETA* | v2.5 | [Issue](https://github.com/yugabyte/yugabyte-db/issues/5232) | Ability to perform follower reads for YSQL and transactional tables in YCQL.  |
@@ -128,7 +127,6 @@ The following items are being planned as additions to the roadmap.
 | [Change data capture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md) | ✅ *BETA* |   |  | This feature is currently available but in beta. |
 | [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-2DC-deployment.md) (async cross-cluster replication) | ✅ *DONE* | v2.1 | [Docs](https://docs.yugabyte.com/latest/deploy/multi-dc/2dc-deployment/) |  |
 | [Encryption of data at rest](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md) | ✅ *DONE* | v2.1 | [Docs](https://docs.yugabyte.com/latest/secure/encryption-at-rest/) |  |
-
 
 # Architecture
 
@@ -151,13 +149,13 @@ As an an open-source project with a strong focus on the user community, we welco
 Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
 
 The build produces two sets of binaries:
+
 * The entire database with all its features (including the enterprise ones) are licensed under the Apache License 2.0
 * The  binaries that contain `-managed` in the artifact and help run a managed service are licensed under the Polyform Free Trial License 1.0.0.
 
 > By default, the build options generate only the Apache License 2.0 binaries.
 
-
 # Read More
 
 * To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
-* See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/). 
+* See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/).

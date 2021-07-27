@@ -2,15 +2,12 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import java.util.List;
-
-import org.apache.commons.validator.routines.EmailValidator;
-
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.yugabyte.yw.common.EmailHelper;
-
+import java.util.List;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.commons.validator.routines.EmailValidator;
 
 @EqualsAndHashCode(callSuper = false)
 @ToString

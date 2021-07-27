@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.Users.Role;
+import static play.test.Helpers.route;
+
 import akka.stream.Materializer;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
@@ -9,18 +12,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.BiFunction;
 import play.Application;
 import play.libs.Files;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
-
-import java.util.List;
-import java.util.concurrent.*;
-import java.util.function.BiFunction;
-
-import static com.yugabyte.yw.models.Users.Role;
-import static play.test.Helpers.route;
 
 public class FakeApiHelper {
   private static String getAuthToken() {

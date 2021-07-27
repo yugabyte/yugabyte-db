@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
@@ -22,17 +24,14 @@ import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
 import play.mvc.Http;
-
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.Optional;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class UniverseYbDbAdminHandler {
   @VisibleForTesting

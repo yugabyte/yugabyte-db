@@ -2,22 +2,33 @@
 
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-import java.util.Map;
-
 import static com.yugabyte.yw.models.Users.Role;
 
-/** This class will be used by the API and UI Form Elements to validate constraints are met */
-public class UserRegisterFormData {
-  @Constraints.Required() @Constraints.Email private String email;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Map;
+import play.data.validation.Constraints;
 
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
+@ApiModel(value = "User Register", description = "User registration data")
+public class UserRegisterFormData {
+  @Constraints.Required()
+  @ApiModelProperty(value = "User email address", example = "test@gmail.com", required = true)
+  @Constraints.Email
+  private String email;
+
+  @ApiModelProperty(value = "User password", example = "Test@1234")
   private String password;
 
+  @ApiModelProperty(value = "User password", example = "Test@1234")
   private String confirmPassword;
 
+  @ApiModelProperty(value = "User Features")
   private Map features;
 
-  @Constraints.Required() private Role role;
+  @Constraints.Required()
+  @ApiModelProperty(value = "User role", example = "Admin", required = true)
+  private Role role;
 
   public String getEmail() {
     return email;

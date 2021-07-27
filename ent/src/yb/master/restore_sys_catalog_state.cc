@@ -21,6 +21,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/util/pb_util.h"
@@ -94,6 +95,26 @@ Status RestoreSysCatalogState::Process() {
         CheckExistingEntry(id_and_pb.first, id_and_pb.second, buffer);
   }), "Determine obsolete entries failed");
 
+  for (const auto& table : restoring_objects_.tables) {
+    if (!restoration_.objects_to_restore.count(table.first)) {
+      continue;
+    }
+    auto it = existing_objects_.tables.find(table.first);
+    if (it == existing_objects_.tables.end()) {
+      restoration_.modified_tables.push_back(ModifiedTable{
+        .name = table.second.name(),
+        .type = table.second.table_type(),
+        .modification = TableModificationType::kDrop,
+      });
+    } else if (table.second.version() != it->second.version()) {
+      restoration_.modified_tables.push_back(ModifiedTable{
+        .name = table.second.name(),
+        .type = table.second.table_type(),
+        .modification = TableModificationType::kAlter,
+      });
+    }
+  }
+
   // Sort generated vectors, so binary search could be used to check whether object is obsolete.
   std::sort(restoration_.obsolete_tablets.begin(), restoration_.obsolete_tablets.end());
   std::sort(restoration_.obsolete_tables.begin(), restoration_.obsolete_tables.end());
@@ -153,42 +174,6 @@ Status RestoreSysCatalogState::DetermineEntries(
   return Status::OK();
 }
 
-Result<bool> RestoreSysCatalogState::Objects::TableMatchesIdentifier(
-    const TableId& id, const SysTablesEntryPB& table,
-    const TableIdentifierPB& table_identifier) const {
-  VLOG_WITH_FUNC(4) << "id: " << id << ", table: " << table.ShortDebugString()
-                    << ", table_identifier: " << table_identifier.ShortDebugString();
-
-  if (table_identifier.has_table_id()) {
-    return id == table_identifier.table_id();
-  }
-  if (!table_identifier.table_name().empty() && table_identifier.table_name() != table.name()) {
-    return false;
-  }
-  if (table_identifier.has_namespace_()) {
-    auto namespace_it = namespaces.find(table.namespace_id());
-    if (namespace_it == namespaces.end()) {
-      return STATUS_FORMAT(Corruption, "Namespace $0 was not loaded", table.namespace_id());
-    }
-
-    const auto& ns = table_identifier.namespace_();
-    if (ns.has_id()) {
-      return table.namespace_id() == ns.id();
-    }
-    if (ns.has_database_type() && ns.database_type() != namespace_it->second.database_type()) {
-      return false;
-    }
-    if (ns.has_name()) {
-      return table.namespace_name() == ns.name();
-    }
-
-    return STATUS_FORMAT(
-      InvalidArgument, "Wrong namespace identifier format: $0", ns);
-  }
-  return STATUS_FORMAT(
-    InvalidArgument, "Wrong table identifier format: $0", table_identifier);
-}
-
 std::string RestoreSysCatalogState::Objects::SizesToString() const {
   return Format("{ tablets: $0 tables: $1 namespaces: $2 }",
                 tablets.size(), tables.size(), namespaces.size());
@@ -204,7 +189,7 @@ Result<bool> RestoreSysCatalogState::Objects::MatchTable(
     return false;
   }
   for (const auto& table_identifier : filter.tables().tables()) {
-    if (VERIFY_RESULT(TableMatchesIdentifier(id, table, table_identifier))) {
+    if (VERIFY_RESULT(master::TableMatchesIdentifier(id, table, table_identifier))) {
       return true;
     }
   }
@@ -253,8 +238,10 @@ Status RestoreSysCatalogState::PatchVersions() {
       return STATUS_FORMAT(NotFound, "Not found restoring table: $0", id_and_pb.first);
     }
 
-    // Force schema update after restoration.
-    id_and_pb.second.set_version(it->second.version() + 1);
+    if (id_and_pb.second.version() != it->second.version()) {
+      // Force schema update after restoration, if schema has changes.
+      id_and_pb.second.set_version(it->second.version() + 1);
+    }
   }
   return Status::OK();
 }
@@ -277,6 +264,11 @@ void RestoreSysCatalogState::CheckExistingEntry(
   }
   LOG(INFO) << "PITR: Will remove table: " << id;
   restoration_.obsolete_tables.push_back(id);
+  restoration_.modified_tables.push_back(ModifiedTable {
+    .name = pb.name(),
+    .type = pb.table_type(),
+    .modification = TableModificationType::kCreate,
+  });
 }
 
 // We don't delete newly created namespaces, because our filters namespace based.

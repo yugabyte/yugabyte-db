@@ -34,7 +34,7 @@ DECLARE_int64(transaction_abort_check_interval_ms);
 
 namespace yb {
 
-class CqlIndexTest : public CqlTestBase {
+class CqlIndexTest : public CqlTestBase<MiniCluster> {
  public:
   virtual ~CqlIndexTest() = default;
 

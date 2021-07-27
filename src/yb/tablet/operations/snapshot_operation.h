@@ -59,7 +59,7 @@ class SnapshotOperation :
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
   CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
   CHECKED_STATUS DoAborted(const Status& status) override;
-  CHECKED_STATUS Apply(int64_t leader_term);
+  CHECKED_STATUS Apply(int64_t leader_term, Status* complete_status);
 
   void AddedAsPending() override;
   void RemovedFromPending() override;

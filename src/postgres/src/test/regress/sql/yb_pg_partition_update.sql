@@ -396,3 +396,17 @@ drop table hash_parted;
 drop operator class custom_opclass using hash;
 drop function dummy_hashint4(a int4, seed int8);
 */
+CREATE TABLE parted (a int, b text) PARTITION BY RANGE(a);
+CREATE TABLE part_a_1_5 PARTITION OF parted (a, b, PRIMARY KEY(a)) FOR VALUES FROM (1) TO (5);
+CREATE TABLE part_a_5_10 PARTITION OF parted (a, b, PRIMARY KEY(a)) FOR VALUES FROM (5) TO (10);
+INSERT INTO parted VALUES (1, '1'), (2, '2'), (4, '4'), (6, '6'), (8, '8');
+-- Test whether single row optimization is invoked when
+-- only one partition is being updated.
+EXPLAIN UPDATE parted SET b='5' WHERE a = 1;
+UPDATE parted SET b='5' WHERE a = 1;
+-- Verify that single row optimization is not invoked when
+-- multiple partitions are being updated.
+EXPLAIN UPDATE parted SET b='6' WHERE a > 1;
+UPDATE parted SET b='6' WHERE a > 1;
+-- Verify that the updates happened successfully.
+SELECT * FROM parted ORDER BY a;

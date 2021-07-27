@@ -2,40 +2,54 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendNotInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
+import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.KnownAlertTypes;
+import com.yugabyte.yw.models.paging.PagedQuery;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.experimental.Accessors;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
+import io.ebean.annotation.Formula;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.helpers.CommonUtils.*;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
+import javax.persistence.OneToMany;
+import javax.persistence.Transient;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
 
 @Entity
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
+@ApiModel(description = "Alert information. which is used to send alert notification.")
 public class Alert extends Model implements AlertLabelsProvider {
 
   public enum State {
     CREATED("firing"),
     ACTIVE("firing"),
+    ACKNOWLEDGED("acknowledged"),
     RESOLVED("resolved");
 
     private final String action;
@@ -49,45 +63,114 @@ public class Alert extends Model implements AlertLabelsProvider {
     }
   }
 
-  @Constraints.Required
+  public enum SortBy implements PagedQuery.SortByIF {
+    createTime("createTime"),
+    severity("severityIndex"),
+    name("name"),
+    targetName("targetName"),
+    state("targetStateIndex");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+  }
+
   @Id
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "Alert uuid", accessMode = READ_ONLY)
   private UUID uuid;
 
-  @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Cutomer uuid", accessMode = READ_ONLY)
   private UUID customerUUID;
 
-  @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  private Date createTime = new Date();
+  @ApiModelProperty(value = "Create Date time info.", accessMode = READ_ONLY)
+  private Date createTime = nowWithoutMillis();
 
-  @Constraints.Required
-  @Column(columnDefinition = "Text", nullable = false)
-  private String errCode;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(value = "Acknowledge Date time info.", accessMode = READ_ONLY)
+  private Date acknowledgedTime;
 
-  @Constraints.Required
-  @Column(length = 255)
-  private String type;
-
-  @Constraints.Required
-  @Column(columnDefinition = "Text", nullable = false)
-  private String message;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(value = "Resolved Date time info.", accessMode = READ_ONLY)
+  private Date resolvedTime;
 
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Alert definition group serverity.", accessMode = READ_ONLY)
+  private AlertDefinitionGroup.Severity severity;
+
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when severity = 'WARNING' then 1"
+              + " when severity = 'SEVERE' then 2"
+              + " else 0 end)")
+  private Integer severityIndex;
+
+  @ApiModelProperty(value = "Alert name.", accessMode = READ_ONLY)
+  private String name;
+
+  @Column(columnDefinition = "Text", nullable = false)
+  @ApiModelProperty(value = "Alert Message.", accessMode = READ_ONLY)
+  private String message;
+
+  @ApiModelProperty(value = "Alert target name.", accessMode = READ_ONLY)
+  private String targetName;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Alert State.", accessMode = READ_ONLY)
   private State state = State.CREATED;
 
   @Enumerated(EnumType.STRING)
-  @JsonIgnore
+  @ApiModelProperty(value = "Target State.", accessMode = READ_ONLY)
   private State targetState = State.ACTIVE;
 
-  @Constraints.Required @JsonIgnore private boolean sendEmail;
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when target_state = 'ACTIVE' then 1"
+              + " when target_state = 'ACKNOWLEDGED' then 2"
+              + " when target_state = 'RESOLVED' then 3"
+              + " else 0 end)")
+  private Integer targetStateIndex;
 
-  private UUID definitionUUID;
+  @ApiModelProperty(value = "Alert Definition Uuid", accessMode = READ_ONLY)
+  private UUID definitionUuid;
+
+  @ApiModelProperty(value = "Alert group Uuid.", accessMode = READ_ONLY)
+  private UUID groupUuid;
+
+  @ApiModelProperty(value = "Alert definition group type.", accessMode = READ_ONLY)
+  private AlertDefinitionGroup.TargetType groupType;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
+
+  @ApiModelProperty(value = "Time of the last notification attempt.", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  private Date notificationAttemptTime;
+
+  @ApiModelProperty(value = "Time of the nex notification attempt.", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  private Date nextNotificationTime;
+
+  @ApiModelProperty(value = "Count of failures to send a notification.", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private int notificationsFailed = 0;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Alert state in last sent notification.", accessMode = READ_ONLY)
+  private State notifiedState;
 
   private static final Finder<UUID, Alert> find = new Finder<UUID, Alert>(Alert.class) {};
 
@@ -124,26 +207,6 @@ public class Alert extends Model implements AlertLabelsProvider {
         .orElse(null);
   }
 
-  public Alert setType(String type) {
-    this.type = type;
-    return this;
-  }
-
-  public Alert setType(KnownAlertTypes type) {
-    this.type = type.name();
-    return this;
-  }
-
-  public Alert setErrCode(String errCode) {
-    this.errCode = errCode;
-    return this;
-  }
-
-  public Alert setErrCode(KnownAlertCodes errCode) {
-    this.errCode = errCode.name();
-    return this;
-  }
-
   public Alert setLabel(KnownAlertLabels label, String value) {
     return setLabel(label.labelName(), value);
   }
@@ -176,16 +239,25 @@ public class Alert extends Model implements AlertLabelsProvider {
     }
     appendInClause(query, "state", filter.getStates());
     appendInClause(query, "targetState", filter.getTargetStates());
-    if (filter.getErrorCode() != null) {
-      query.eq("errCode", filter.getErrorCode());
-    }
-    appendInClause(query, "definitionUUID", filter.getDefinitionUuids());
+    appendInClause(query, "definitionUuid", filter.getDefinitionUuids());
     if (filter.getLabel() != null) {
       query
           .eq("labels.key.name", filter.getLabel().getName())
           .eq("labels.value", filter.getLabel().getValue());
     }
-    query.orderBy().desc("createTime");
+    if (filter.getGroupUuid() != null) {
+      query.eq("groupUuid", filter.getGroupUuid());
+    }
+    appendInClause(query, "severity", filter.getSeverities());
+    appendInClause(query, "groupType", filter.getGroupTypes());
+
+    if (filter.getNotificationPending() != null) {
+      if (filter.getNotificationPending()) {
+        query.isNotNull("nextNotificationTime").le("nextNotificationTime", new Date());
+      } else {
+        query.or().isNull("nextNotificationTime").gt("nextNotificationTime", new Date()).endOr();
+      }
+    }
     return query;
   }
 }

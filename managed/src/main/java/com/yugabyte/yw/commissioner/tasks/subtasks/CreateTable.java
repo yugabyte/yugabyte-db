@@ -18,17 +18,15 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TableDetails;
-import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.net.InetSocketAddress;
+import java.util.List;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.Common.TableType;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
-
-import javax.inject.Inject;
-import java.net.InetSocketAddress;
-import java.util.List;
 
 @Slf4j
 public class CreateTable extends AbstractTaskBase {

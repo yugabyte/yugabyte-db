@@ -27,10 +27,6 @@
 #include "yb/rocksdb/options.h"
 
 namespace yb {
-
-class DocHybridTime;
-class TransactionStatusManager;
-
 namespace docdb {
 
 class Value;

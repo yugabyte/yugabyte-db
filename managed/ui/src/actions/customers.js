@@ -172,7 +172,8 @@ export function registerResponse(response) {
 }
 
 export function fetchPasswordPolicy() {
-  const request = axios.get(`${ROOT_URL}/password_policy`);
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/password_policy`);
   return {
     type: FETCH_PASSWORD_POLICY,
     payload: request

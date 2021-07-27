@@ -17,11 +17,11 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import java.util.List;
+import java.util.Map;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
-
-import javax.inject.Inject;
-import java.util.Map;
 
 @Slf4j
 public class BackupTable extends AbstractTaskBase {
@@ -38,9 +38,16 @@ public class BackupTable extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Backup backup = taskParams().backup;
-    if (backup == null) {
-      backup = Backup.fetchByTaskUUID(userTaskUUID);
+    Backup backup;
+    if (taskParams().backupUuid != null) {
+      backup = Backup.get(taskParams().customerUuid, taskParams().backupUuid);
+    } else {
+      List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
+      if (backups.size() == 1) {
+        backup = backups.get(0);
+      } else {
+        throw new RuntimeException("Unable to fetch backup info");
+      }
     }
 
     try {

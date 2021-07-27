@@ -2,6 +2,10 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -17,15 +21,22 @@ import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
 import play.data.validation.Constraints;
 
-import javax.persistence.*;
-import java.util.*;
-
-import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 @Entity
+@ApiModel(description = "Task Information.")
 public class TaskInfo extends Model {
 
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
@@ -53,37 +64,49 @@ public class TaskInfo extends Model {
   }
 
   // The task UUID.
-  @Id private UUID uuid;
+  @Id
+  @ApiModelProperty(value = "Task uuid", accessMode = READ_ONLY)
+  private UUID uuid;
 
   // The UUID of the parent task (if any; CustomerTasks have no parent)
+  @ApiModelProperty(value = "Parent task uuid", accessMode = READ_ONLY)
   private UUID parentUuid;
 
   // The position within the parent task's taskQueue (-1 for a CustomerTask)
   @Column(columnDefinition = "integer default -1")
+  @ApiModelProperty(value = "Position", accessMode = READ_ONLY)
   private Integer position = -1;
 
   // The task type.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Task Type", accessMode = READ_ONLY)
   private final TaskType taskType;
 
   // The task state.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Task State", accessMode = READ_ONLY)
   private State taskState = State.Created;
 
   // The subtask group type (if it is a subtask)
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "Sub task type", accessMode = READ_ONLY)
   private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
-  @CreatedTimestamp private Date createTime;
+  @CreatedTimestamp
+  @ApiModelProperty(value = "Created time", accessMode = READ_ONLY, example = "1624295239113")
+  private Date createTime;
 
   // The task update time. Time of the latest update (including heartbeat updates) on this task.
-  @UpdatedTimestamp private Date updateTime;
+  @UpdatedTimestamp
+  @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
+  private Date updateTime;
 
   // The percentage completeness of the task, which is a number from 0 to 100.
   @Column(columnDefinition = "integer default 0")
+  @ApiModelProperty(value = "Percentage of task", accessMode = READ_ONLY)
   private Integer percentDone = 0;
 
   // Details of the task, usually a JSON representation of the incoming task. This is used to
@@ -91,11 +114,13 @@ public class TaskInfo extends Model {
   @Constraints.Required
   @Column(columnDefinition = "TEXT default '{}'", nullable = false)
   @DbJson
+  @ApiModelProperty(value = "Task details", accessMode = READ_ONLY, required = true)
   private JsonNode details;
 
   // Identifier of the process owning the task.
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Owner of task", accessMode = READ_ONLY, required = true)
   private String owner;
 
   public TaskInfo(TaskType taskType) {

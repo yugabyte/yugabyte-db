@@ -19,6 +19,12 @@ import com.yugabyte.yw.forms.DemoteInstanceFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import java.io.File;
+import java.net.URL;
+import java.util.Date;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Files;
@@ -26,13 +32,6 @@ import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.With;
-
-import java.io.File;
-import java.net.URL;
-import java.util.Date;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 
 @With(HAAuthenticator.class)
 public class InternalHAController extends Controller {

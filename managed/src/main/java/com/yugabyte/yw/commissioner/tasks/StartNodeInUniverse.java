@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
@@ -20,13 +22,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.HashSet;
-
-import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Class contains the tasks to start a node in a given universe. It starts the tserver process and
@@ -125,11 +124,6 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
               new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Update the swamper target file.
-      // It is required because the node could be removed from the swamper file
-      // between the Stop/Start actions as Inactive.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-
       // Update all server conf files with new master information.
       if (masterAdded) {
         createMasterInfoUpdateTask(universe, currentNode);
@@ -144,6 +138,11 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+
+      // Update the swamper target file.
+      // It is required because the node could be removed from the swamper file
+      // between the Stop/Start actions as Inactive.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);

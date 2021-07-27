@@ -18,9 +18,8 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UpdateNodeProcess extends NodeTaskBase {

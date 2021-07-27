@@ -13,16 +13,14 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import play.Application;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 
 @Singleton
 @Getter
@@ -34,8 +32,7 @@ public class BaseTaskDependencies {
   private final Config config;
   private final ConfigHelper configHelper;
   private final RuntimeConfigFactory runtimeConfigFactory;
-  private final AlertService alertService;
-  private final AlertDefinitionService alertDefinitionService;
+  private final MetricService metricService;
   private final AlertDefinitionGroupService alertDefinitionGroupService;
   private final YBClientService ybService;
   private final TableManager tableManager;

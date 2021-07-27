@@ -10,21 +10,18 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Results.ok;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonSetter;
-import com.fasterxml.jackson.annotation.Nulls;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
+import java.util.UUID;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import java.util.List;
-import java.util.UUID;
-
-import static play.mvc.Results.ok;
 
 public class YWResults {
 
@@ -86,7 +83,13 @@ public class YWResults {
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class YWSuccess extends OkResult {
+
+    @ApiModelProperty(value = "Has API success", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final boolean success;
+
+    @ApiModelProperty(
+        value = "API response mssage.",
+        accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final String message;
 
     YWSuccess() {
@@ -108,7 +111,9 @@ public class YWResults {
   }
 
   public static class YWTask extends OkResult {
-    @VisibleForTesting public UUID taskUUID;
+    @VisibleForTesting
+    @ApiModelProperty(value = "Task UUID", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+    public UUID taskUUID;
 
     @ApiModelProperty(
         value = "UUID of the resource being modified  by the task",

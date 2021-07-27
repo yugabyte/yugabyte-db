@@ -1,6 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -12,10 +16,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
@@ -29,17 +29,26 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
-
-import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
+  private static Map<UUID, Process> processMap = new HashMap<>();
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -126,7 +135,10 @@ public class Util {
     return mastersToAZMap;
   }
 
-  /* Helper function to check if the set of nodes are in a single AZ or spread across multiple AZ's */
+  /*
+   * Helper function to check if the set of nodes are in a single AZ or spread
+   * across multiple AZ's
+   */
   public static boolean isSingleAZ(Collection<NodeDetails> nodeDetailsSet) {
     UUID firstAZ = null;
     for (NodeDetails node : nodeDetailsSet) {
@@ -158,7 +170,8 @@ public class Util {
       NodeDetails currentNode, Set<NodeDetails> nodeDetailsSet, long numMastersToBeAdded) {
     Map<UUID, Integer> mastersToAZMap = getMastersToAZMap(nodeDetailsSet);
 
-    // If this is a single AZ deploy or if no master in current AZ, then start a master.
+    // If this is a single AZ deploy or if no master in current AZ, then start a
+    // master.
     if (isSingleAZ(nodeDetailsSet) || mastersToAZMap.get(currentNode.azUuid) == 0) {
       return true;
     }
@@ -221,12 +234,14 @@ public class Util {
 
   public static String UNIV_NAME_ERROR_MESG =
       "Invalid universe name format, valid characters [a-zA-Z0-9-].";
+
   // Validate the universe name pattern.
   public static boolean isValidUniverseNameFormat(String univName) {
     return univName.matches("^[a-zA-Z0-9-]*$");
   }
 
-  // Helper API to create a CSV of any keys present in existing map but not in new map.
+  // Helper API to create a CSV of any keys present in existing map but not in new
+  // map.
   public static String getKeysNotPresent(Map<String, String> existing, Map<String, String> newMap) {
     Set<String> keysNotPresent = new HashSet<>();
     Set<String> existingKeySet = existing.keySet();
@@ -402,5 +417,20 @@ public class Util {
       return src.substring(1, src.length() - 1);
     }
     return src;
+  }
+
+  public static void setPID(UUID uuid, Process pid) {
+    processMap.put(uuid, pid);
+  }
+
+  public static Process getProcessOrBadRequest(UUID uuid) {
+    if (processMap.get(uuid) == null) {
+      throw new YWServiceException(BAD_REQUEST, "The process you want to stop is not in progress.");
+    }
+    return processMap.get(uuid);
+  }
+
+  public static void removeProcess(UUID uuid) {
+    processMap.remove(uuid);
   }
 }

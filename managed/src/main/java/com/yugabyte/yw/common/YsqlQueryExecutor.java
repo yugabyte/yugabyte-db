@@ -1,24 +1,29 @@
 package com.yugabyte.yw.common;
 
+import static play.libs.Json.newObject;
+import static play.libs.Json.toJson;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.mvc.Http;
-
-import javax.inject.Singleton;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static play.libs.Json.newObject;
-import static play.libs.Json.toJson;
+import java.util.Properties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 
 @Singleton
 public class YsqlQueryExecutor {
@@ -65,7 +70,18 @@ public class YsqlQueryExecutor {
     String ysqlEndpoints = universe.getYSQLServerAddresses();
     String connectString =
         String.format("jdbc:postgresql://%s/%s", ysqlEndpoints.split(",")[0], queryParams.db_name);
-    try (Connection conn = DriverManager.getConnection(connectString, username, password)) {
+    Properties props = new Properties();
+    props.put("user", username);
+    props.put("password", password);
+    String caCert = universe.getCertificateClientToNode();
+    if (caCert != null) {
+      // Using verify CA since it is possible that the CN for the server cert
+      // is the loadbalancer DNS/some generic ID. Just verifying the cert
+      // is good enough.
+      props.put("sslmode", "verify-ca");
+      props.put("sslrootcert", caCert);
+    }
+    try (Connection conn = DriverManager.getConnection(connectString, props)) {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
       } else {
@@ -74,7 +90,7 @@ public class YsqlQueryExecutor {
         if (hasResult) {
           ResultSet result = p.getResultSet();
           List<Map<String, Object>> rows = resultSetToMap(result);
-          response.put("result", toJson(rows));
+          response.set("result", toJson(rows));
         } else {
           response
               .put("queryType", getQueryType(queryParams.query))

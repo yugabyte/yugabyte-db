@@ -70,6 +70,7 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/strings/strip.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
@@ -79,6 +80,7 @@
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/zlib.h"
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
@@ -89,6 +91,18 @@ DEFINE_int32(webserver_max_post_length_bytes, 1024 * 1024,
              "the embedded web server.");
 TAG_FLAG(webserver_max_post_length_bytes, advanced);
 TAG_FLAG(webserver_max_post_length_bytes, runtime);
+
+DEFINE_int32(webserver_zlib_compression_level, 1,
+             "The zlib compression level."
+             "Lower compression levels result in faster execution, but less compression");
+TAG_FLAG(webserver_zlib_compression_level, advanced);
+TAG_FLAG(webserver_zlib_compression_level, runtime);
+
+DEFINE_int64(webserver_compression_threshold_kb, 4,
+             "The threshold of response size above which compression is performed."
+             "Default value is 4KB");
+TAG_FLAG(webserver_compression_threshold_kb, advanced);
+TAG_FLAG(webserver_compression_threshold_kb, runtime);
 
 namespace yb {
 
@@ -435,20 +449,51 @@ int Webserver::RunPathHandler(const PathHandler& handler,
   if (use_style) {
     BootstrapPageFooter(output);
   }
+  // Check if gzip compression is accepted by the caller. If so, compress the
+  // content and replace the prerendered output.
+  const char* accept_encoding_str = sq_get_header(connection, "Accept-Encoding");
+  bool is_compressed = false;
+  vector<string> encodings = strings::Split(accept_encoding_str, ",");
+  for (string& encoding : encodings) {
+    StripWhiteSpace(&encoding);
+    if (encoding == "gzip") {
+      // Don't bother compressing empty content.
+      const string& uncompressed = resp_ptr->output.str();
+      if (uncompressed.size() < FLAGS_webserver_compression_threshold_kb * 1024) {
+        break;
+      }
+
+      std::ostringstream oss;
+      int level = FLAGS_webserver_zlib_compression_level > 0 &&
+        FLAGS_webserver_zlib_compression_level <= 9 ?
+        FLAGS_webserver_zlib_compression_level : 1;
+      Status s = zlib::CompressLevel(uncompressed, level, &oss);
+      if (s.ok()) {
+        resp_ptr->output.str(oss.str());
+        is_compressed = true;
+      } else {
+        LOG(WARNING) << "Could not compress output: " << s.ToString();
+      }
+      break;
+    }
+  }
+
   string str = output->str();
   // Without styling, render the page as plain text
   if (!use_style) {
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/plain\r\n"
               "Content-Length: %zd\r\n"
+              "%s"
               "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length());
+              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
   } else {
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/html\r\n"
               "Content-Length: %zd\r\n"
+              "%s"
               "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length());
+              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
   }
 
   // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb

@@ -11,26 +11,25 @@ package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
-import lombok.*;
-
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
 
-@Data
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class AlertDefinitionGroupFilter {
-  private Set<UUID> uuids;
-  private UUID customerUuid;
-  private String name;
-  private Boolean active;
-  private AlertDefinitionGroup.TargetType targetType;
-  private AlertDefinitionTemplate template;
-  private UUID targetUuid;
-  private UUID routeUuid;
+  Set<UUID> uuids;
+  UUID customerUuid;
+  String name;
+  Boolean active;
+  AlertDefinitionGroup.TargetType targetType;
+  AlertDefinitionTemplate template;
+  UUID targetUuid;
+  UUID routeUuid;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.

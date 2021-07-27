@@ -13,6 +13,8 @@
 package org.yb.cql;
 
 import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 import org.junit.Before;
@@ -553,5 +555,26 @@ public class TestYbBackup extends BaseCQLTest {
     } catch (YBBackupException ex) {
       LOG.info("Expected exception", ex);
     }
+  }
+
+  @Test
+  public void testRestoreWithRestoreTime() throws Exception {
+    TableProperties tp = new TableProperties(TableProperties.TP_TRANSACTIONAL);
+    // Create tables and verify.
+    setupTablesBeforeBackup(tp);
+    checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.SOURCE);
+    // Get the current timestamp in microseconds.
+    String ts = Long.toString(ChronoUnit.MICROS.between(Instant.EPOCH, Instant.now()));
+    // Make some changes to the tables.
+    updateValuesInTables(DEFAULT_TEST_KEYSPACE, tp);
+    checkValuesInTables(DEFAULT_TEST_KEYSPACE, tp, ValuesUpdateState.UPDATED);
+    // Perform the backup.
+    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
+    // Restore with the timestamp provided.
+    // Check that we only restored the original tables and not the updated values.
+    testYCQLRestoreIntoKeyspace(
+        tp, DEFAULT_TEST_KEYSPACE,
+        "--keyspace", DEFAULT_TEST_KEYSPACE,
+        "--restore_time", ts);
   }
 }

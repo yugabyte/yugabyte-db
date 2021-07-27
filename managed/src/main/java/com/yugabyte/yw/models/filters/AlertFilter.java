@@ -10,26 +10,34 @@
 package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroup.Severity;
 import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import lombok.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
 
-import java.util.*;
-
-@Data
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class AlertFilter {
-  private Set<UUID> uuids;
-  private Set<UUID> excludeUuids;
-  private UUID customerUuid;
-  private String errorCode;
-  private Set<Alert.State> states;
-  private Set<Alert.State> targetStates;
-  private Set<UUID> definitionUuids;
-  private AlertLabel label;
+  Set<UUID> uuids;
+  Set<UUID> excludeUuids;
+  UUID customerUuid;
+  Set<Alert.State> states;
+  Set<Alert.State> targetStates;
+  Set<UUID> definitionUuids;
+  UUID groupUuid;
+  Set<AlertDefinitionGroup.Severity> severities;
+  Set<AlertDefinitionGroup.TargetType> groupTypes;
+  AlertLabel label;
+  Boolean notificationPending;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -44,9 +52,6 @@ public class AlertFilter {
     if (customerUuid != null) {
       result.customerUuid(customerUuid);
     }
-    if (errorCode != null) {
-      result.errorCode(errorCode);
-    }
     if (label != null) {
       result.label(label);
     }
@@ -59,6 +64,18 @@ public class AlertFilter {
     if (definitionUuids != null) {
       result.definitionUuids(definitionUuids);
     }
+    if (groupUuid != null) {
+      result.groupUuid(groupUuid);
+    }
+    if (severities != null) {
+      result.severities(severities);
+    }
+    if (groupTypes != null) {
+      result.groupTypes(groupTypes);
+    }
+    if (notificationPending != null) {
+      result.notificationPending(notificationPending);
+    }
     return result;
   }
 
@@ -68,6 +85,8 @@ public class AlertFilter {
     Set<Alert.State> states = EnumSet.noneOf(Alert.State.class);
     Set<Alert.State> targetStates = EnumSet.noneOf(Alert.State.class);
     Set<UUID> definitionUuids = new HashSet<>();
+    Set<AlertDefinitionGroup.Severity> severities = new HashSet<>();
+    Set<AlertDefinitionGroup.TargetType> groupTypes = new HashSet<>();
 
     public AlertFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
@@ -129,16 +148,6 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder errorCode(@NonNull String errorCode) {
-      this.errorCode = errorCode;
-      return this;
-    }
-
-    public AlertFilterBuilder errorCode(@NonNull KnownAlertCodes errorCode) {
-      this.errorCode = errorCode.name();
-      return this;
-    }
-
     public AlertFilterBuilder definitionUuid(@NonNull UUID uuid) {
       this.definitionUuids.add(uuid);
       return this;
@@ -146,6 +155,31 @@ public class AlertFilter {
 
     public AlertFilterBuilder definitionUuids(Collection<UUID> definitionUuids) {
       this.definitionUuids = new HashSet<>(definitionUuids);
+      return this;
+    }
+
+    public AlertFilterBuilder severity(@NonNull Severity... severities) {
+      this.severities.addAll(Arrays.asList(severities));
+      return this;
+    }
+
+    public AlertFilterBuilder severities(@NonNull Set<Severity> severities) {
+      this.severities.addAll(severities);
+      return this;
+    }
+
+    public AlertFilterBuilder groupType(@NonNull AlertDefinitionGroup.TargetType... groupTypes) {
+      this.groupTypes.addAll(Arrays.asList(groupTypes));
+      return this;
+    }
+
+    public AlertFilterBuilder groupTypes(@NonNull Set<AlertDefinitionGroup.TargetType> groupTypes) {
+      this.groupTypes.addAll(groupTypes);
+      return this;
+    }
+
+    public AlertFilterBuilder notificationPending(boolean notificationPending) {
+      this.notificationPending = notificationPending;
       return this;
     }
   }

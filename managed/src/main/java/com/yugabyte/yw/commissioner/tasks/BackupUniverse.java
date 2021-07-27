@@ -16,11 +16,11 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.Set;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class BackupUniverse extends UniverseTaskBase {
@@ -37,12 +37,12 @@ public class BackupUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
+
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     try {
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       if (universe.getUniverseDetails().backupInProgress) {
         throw new RuntimeException("A backup for this universe is already in progress.");
       }
@@ -96,12 +96,17 @@ public class BackupUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
+      metricService.setOkStatusMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
         unlockUniverseForUpdate();
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
+      metricService.setStatusMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe),
+          t.getMessage());
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
       unlockUniverseForUpdate();

@@ -111,8 +111,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
-                                                cluster_->leader_mini_master()->bound_rpc_addr()));
+    proxy_.reset(new master::MasterServiceProxy(
+        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr())));
 
     // Create the namespace.
     ASSERT_OK(client_->CreateNamespace(kNamespace));

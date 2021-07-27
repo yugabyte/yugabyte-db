@@ -15,12 +15,11 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
-
-import javax.inject.Inject;
 import java.util.Map;
 import java.util.Map.Entry;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
 
 @Slf4j
 public class SetFlagInMemory extends ServerSubTaskBase {

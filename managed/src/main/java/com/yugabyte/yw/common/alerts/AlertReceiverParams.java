@@ -5,7 +5,6 @@ package com.yugabyte.yw.common.alerts;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
-
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 

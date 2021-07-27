@@ -17,15 +17,18 @@ import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-import io.swagger.annotations.*;
-import play.libs.Json;
-import play.mvc.Result;
-
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import play.libs.Json;
+import play.mvc.Result;
 
 @Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderController extends AuthenticatedController {
@@ -42,6 +45,7 @@ public class CloudProviderController extends AuthenticatedController {
    *
    * @return JSON response of newly created provider
    */
+  @ApiOperation(value = "UI_ONLY", nickname = "createCloudProvider", hidden = true)
   public Result create(UUID customerUUID) throws IOException {
     JsonNode reqBody = maybeMassageRequestConfig(request().body().asJson());
     CloudProviderFormData cloudProviderFormData =
@@ -136,7 +140,7 @@ public class CloudProviderController extends AuthenticatedController {
     */
   }
 
-  @ApiOperation(value = "editProvider", response = Provider.class)
+  @ApiOperation(value = "editProvider", response = Provider.class, nickname = "editProvider")
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "edit provider form data",

@@ -29,6 +29,7 @@
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -158,35 +159,63 @@ void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_t
                 .Create());
 }
 
+OpId LastReceivedOpId(master::MiniMaster* master) {
+  auto consensus = master->master()->catalog_manager()->sys_catalog()->tablet_peer()->consensus();
+  return consensus->GetLastReceivedOpId();
+}
+
 TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
-  // This test was added during Jepsen/CQL testing before preelections
-  // were implemented. Enabling preelections will prevent us from getting
-  // into the case that we want to test -- where the master leader has to
-  // step down because it sees that another master has moved on to a higher
-  // term.
-  FLAGS_use_preelection = false;
+  const auto kTimeout = 60s;
 
   DontVerifyClusterBeforeNextTearDown();
+
+  auto master_0_is_leader = [this]() {
+    auto l = cluster_->GetLeaderMiniMaster();
+    return l.ok() && (*l)->permanent_uuid() == cluster_->mini_master(0)->permanent_uuid();
+  };
 
   // Break connectivity so that :
   //   master 0 can make outgoing RPCs to 1 and 2.
   //   but 1 and 2 cannot do Outgoing rpcs.
   // This should result in master 0 becoming the leader.
   //   Network topology:  1 <-- 0 --> 2
-  BreakMasterConnectivityTo(1, 0);
-  BreakMasterConnectivityTo(1, 2);
-  BreakMasterConnectivityTo(2, 1);
-  BreakMasterConnectivityTo(2, 0);
+  std::vector<std::pair<int, int>> break_connectivity = {{1, 0}, {1, 2}, {2, 1}, {2, 0}};
+  bool connectivity_broken = false;
 
-  auto wait_for_0_as_leader = [this]() {
-    auto l = cluster_->leader_mini_master();
-    return l != nullptr && l->permanent_uuid() == cluster_->mini_master(0)->permanent_uuid();
-  };
-  ASSERT_OK(Wait(wait_for_0_as_leader, MonoTime::kMax, "Wait for master 0 to become the leader"));
+  ASSERT_OK(WaitFor([this, &master_0_is_leader, &break_connectivity, &connectivity_broken]() {
+    auto leader_mini_master = cluster_->GetLeaderMiniMaster();
+    if (!leader_mini_master.ok()) {
+      return false;
+    }
+    if (LastReceivedOpId(*leader_mini_master) != LastReceivedOpId(cluster_->mini_master(0))) {
+      if (connectivity_broken) {
+        for (const auto& p : break_connectivity) {
+          RestoreMasterConnectivityTo(p.first, p.second);
+        }
+        connectivity_broken = false;
+      }
+      return false;
+    }
 
-  ASSERT_OK(Wait(
+    if (!connectivity_broken) {
+      for (const auto& p : break_connectivity) {
+        BreakMasterConnectivityTo(p.first, p.second);
+      }
+      connectivity_broken = true;
+    }
+
+    LOG(INFO) << "Master 0: " << cluster_->mini_master(0)->permanent_uuid();
+
+    if (master_0_is_leader()) {
+      return true;
+    }
+
+    return false;
+  }, kTimeout, "Master 0 is leader"));
+
+  ASSERT_OK(WaitFor(
       [this]() { return cluster_->WaitForTabletServerCount(num_tservers_).ok(); },
-      MonoTime::kMax,
+      kTimeout,
       "Wait for master 0 to hear from all tservers"));
 
   YBTableName table_name(YQL_DATABASE_REDIS, "my_keyspace", "test_table");
@@ -195,7 +224,15 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
 
   constexpr int kNumLoops = 3;
   for (int i = 0; i < kNumLoops; i++) {
-    LOG(INFO) << "iteration " << i;
+    LOG(INFO) << "Iteration " << i;
+
+    // This test was added during Jepsen/CQL testing before preelections
+    // were implemented. Enabling preelections will prevent us from getting
+    // into the case that we want to test -- where the master leader has to
+    // step down because it sees that another master has moved on to a higher
+    // term.
+    FLAGS_use_preelection = false;
+
     consensus::ConsensusStatePB cpb;
     ASSERT_OK(cluster_->mini_master(0)->master()->catalog_manager()->GetCurrentConfig(&cpb));
     const auto initial_term = cpb.current_term();
@@ -204,7 +241,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     // to increase its term. And cause the leader (master-0) to step down
     // and re-elect himself
     BreakMasterConnectivityTo(0, 2);
-    ASSERT_OK(Wait(
+    ASSERT_OK(WaitFor(
         [this, initial_term]() {
           consensus::ConsensusStatePB cpb;
           return cluster_->mini_master(2)
@@ -214,14 +251,14 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
                      .ok() &&
                  cpb.current_term() > initial_term;
         },
-        MonoTime::kMax,
+        kTimeout,
         "Wait for master 2 to do elections and increase the term"));
 
     RestoreMasterConnectivityTo(0, 2);
 
     ASSERT_OK(cluster_->mini_master(2)->master()->catalog_manager()->GetCurrentConfig(&cpb));
     const auto new_term = cpb.current_term();
-    ASSERT_OK(Wait(
+    ASSERT_OK(WaitFor(
         [this, new_term]() {
           consensus::ConsensusStatePB cpb;
           return cluster_->mini_master(0)
@@ -231,11 +268,13 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
                      .ok() &&
                  cpb.current_term() > new_term;
         },
-        MonoTime::kMax,
+        kTimeout,
         "Wait for master 0 to update its term"));
 
-    ASSERT_OK(
-        Wait(wait_for_0_as_leader, MonoTime::kMax, "Wait for master 0 to become the leader again"));
+    FLAGS_use_preelection = true;
+
+    ASSERT_OK(WaitFor(
+        master_0_is_leader, kTimeout, "Wait for master 0 to become the leader again"));
   }
 }
 

@@ -8,11 +8,10 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import java.lang.reflect.InvocationTargetException;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.lang.reflect.InvocationTargetException;
 
 public class AlertUtils {
   public static final Logger LOG = LoggerFactory.getLogger(AlertUtils.class);
@@ -58,7 +57,7 @@ public class AlertUtils {
   public static String getNotificationText(Alert alert, AlertReceiver receiver) {
     String template = receiver.getParams().textTemplate;
     if (StringUtils.isEmpty(template)) {
-      if (alert.getDefinitionUUID() == null) {
+      if (alert.getDefinitionUuid() == null) {
         return getDefaultNotificationText(alert);
       }
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
@@ -69,10 +68,9 @@ public class AlertUtils {
   @VisibleForTesting
   static String getDefaultNotificationText(Alert alert) {
     String targetType = alert.getLabelValue(KnownAlertLabels.TARGET_TYPE);
-    String targetName = alert.getLabelValue(KnownAlertLabels.TARGET_NAME);
     return String.format(
         "Common failure for %s '%s', state: %s\nFailure details:\n\n%s",
-        targetType, targetName, alert.getState().getAction(), alert.getMessage());
+        targetType, alert.getTargetName(), alert.getState().getAction(), alert.getMessage());
   }
 
   public static Class<?> getAlertParamsClass(AlertReceiver.TargetType targetType) {

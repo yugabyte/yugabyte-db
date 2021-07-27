@@ -19,18 +19,25 @@ import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import io.swagger.annotations.*;
-import play.mvc.Result;
-
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.util.UUID;
+import play.mvc.Result;
 
 @Api(value = "Provider1", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
 
-  @ApiOperation(value = "listProvider", response = Provider.class, responseContainer = "List")
+  @ApiOperation(
+      value = "listProvider",
+      response = Provider.class,
+      responseContainer = "List",
+      nickname = "getListOfProviders")
   public Result list(UUID customerUUID) {
     return YWResults.withData(Provider.getAll(customerUUID));
   }
@@ -46,7 +53,10 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
-  @ApiOperation(value = "createProvider", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "createProvider",
+      response = YWResults.YWTask.class,
+      nickname = "createProviders")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateProviderRequest",

@@ -478,3 +478,7 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _change_instance_type(self, args, host_info):
         self.cloud.change_instance_type(host_info, args.instance_type)
+
+    # We have to use this to uniform accessing host_info for AWS and GCP
+    def _host_info(self, args, host_info):
+        return host_info

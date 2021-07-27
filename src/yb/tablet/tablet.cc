@@ -254,6 +254,7 @@ DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
+DECLARE_bool(enable_pg_savepoints);
 
 using namespace std::placeholders;
 
@@ -1071,7 +1072,7 @@ Status Tablet::ApplyRowOperations(
           : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
-    metrics_->rows_inserted->IncrementBy(write_request.write_batch().write_pairs().size());
+    metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
   }
 
   return ApplyOperation(
@@ -1238,6 +1239,15 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
   if (batch_request->write_batch().has_transaction()) {
     write_request->mutable_write_batch()->mutable_transaction()->Swap(
         batch_request->mutable_write_batch()->mutable_transaction());
+  }
+  if (FLAGS_enable_pg_savepoints) {
+    if (batch_request->write_batch().has_subtransaction()) {
+      write_request->mutable_write_batch()->mutable_subtransaction()->Swap(
+          batch_request->mutable_write_batch()->mutable_subtransaction());
+    }
+  } else {
+    DCHECK(!batch_request->write_batch().has_subtransaction())
+        << "Unexpected subtransaction metadata in write request without --enable_pg_savepoints";
   }
   write_request->mutable_write_batch()->set_deprecated_may_have_metadata(true);
   if (batch_request->has_request_id()) {
@@ -1800,6 +1810,7 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
         // Use the value of is_ysql_catalog_table from the first operation in the batch.
         txn_op_ctx = CreateTransactionOperationContext(
             operation->request()->write_batch().transaction(),
+            // TODO(savepoints) -- mask aborted subtransactions.
             table_info->schema.table_properties().is_ysql_catalog_table());
         RETURN_NOT_OK(txn_op_ctx);
       }
@@ -1965,7 +1976,7 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 
   rocksdb::WriteBatch regular_write_batch;
   auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state, data.log_ht,
+      tablet_id(), data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state, data.log_ht,
       &regular_write_batch, intents_db_.get(), nullptr /* intents_write_batch */));
 
   // data.hybrid_time contains transaction commit time.
@@ -1986,8 +1997,9 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(), HybridTime(),
-          nullptr /* regular_write_batch */, intents_db_.get(), &intents_write_batch));
+          tablet_id(), id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(),
+          HybridTime(), nullptr /* regular_write_batch */, intents_db_.get(),
+          &intents_write_batch));
       if (new_apply_state.key.empty()) {
         break;
       }
@@ -3472,7 +3484,8 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey() const {
         IllegalState,
         "Failed to detect middle key (got \"$0\") for tablet $1 (key_bounds: $2 - $3), this can "
         "happen if post-split tablet wasn't fully compacted after split",
-        middle_key, tablet_id(), key_bounds_.lower, key_bounds_.upper);
+        middle_key_slice.ToDebugHexString(), tablet_id(),
+        Slice(key_bounds_.lower).ToDebugHexString(), Slice(key_bounds_.upper).ToDebugHexString());
   }
   return middle_key;
 }

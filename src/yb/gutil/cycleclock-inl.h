@@ -161,6 +161,19 @@ inline int64 CycleClock::Now() {
 }
 
 // ----------------------------------------------------------------
+#elif defined(__aarch64__)
+#include "yb/gutil/sysinfo.h"
+inline int64 CycleClock::Now() {
+  // System timer of ARMv8 runs at a different frequency than the CPU's.
+  // The frequency is fixed, typically in the range 1-50MHz.  It can be
+  // read at CNTFRQ special register.  We assume the OS has set up
+  // the virtual timer properly.
+  int64_t virtual_timer_value;
+  asm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_value));
+  return virtual_timer_value;
+}
+
+// ----------------------------------------------------------------
 #elif defined(ARMV6)  // V6 is the earliest arm that has a standard cyclecount
 #include "yb/gutil/sysinfo.h"
 inline int64 CycleClock::Now() {

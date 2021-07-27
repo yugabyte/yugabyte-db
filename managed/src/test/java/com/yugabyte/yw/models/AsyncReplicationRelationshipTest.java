@@ -1,17 +1,21 @@
 package com.yugabyte.yw.models;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import java.util.List;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-
-import java.util.UUID;
-
-import static org.junit.Assert.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class AsyncReplicationRelationshipTest extends FakeDBApplication {
@@ -70,6 +74,32 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
             relationship.targetUniverse.universeUUID, relationship.targetTableID);
 
     assertEquals(relationship, queryResult);
+  }
+
+  @Test
+  public void testGetBySourceUniverseUUID() {
+    AsyncReplicationRelationship relationship =
+        AsyncReplicationRelationship.create(
+            source, "sourceTableID", target, "targetTableID", false);
+
+    List<AsyncReplicationRelationship> queryResult =
+        AsyncReplicationRelationship.getBySourceUniverseUUID(source.universeUUID);
+
+    assertEquals(1, queryResult.size());
+    assertEquals(relationship, queryResult.get(0));
+  }
+
+  @Test
+  public void testGetByTargetUniverseUUID() {
+    AsyncReplicationRelationship relationship =
+        AsyncReplicationRelationship.create(
+            source, "sourceTableID", target, "targetTableID", false);
+
+    List<AsyncReplicationRelationship> queryResult =
+        AsyncReplicationRelationship.getByTargetUniverseUUID(target.universeUUID);
+
+    assertEquals(1, queryResult.size());
+    assertEquals(relationship, queryResult.get(0));
   }
 
   @Test

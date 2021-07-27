@@ -3777,6 +3777,12 @@ ColConstraintElem:
 				}
 			| PRIMARY KEY opt_definition OptConsTableSpace
 				{
+					if ($4)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+								errmsg("Cannot set TABLESPACE for PRIMARY KEY INDEX."),
+								errdetail("The tablespace of the indexed table will be used.")));
+					}
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_PRIMARY;
 					n->location = @1;
@@ -4031,6 +4037,12 @@ ConstraintElem:
 					n->including = $6;
 					n->options = $7;
 					n->indexname = NULL;
+					if ($8)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+								errmsg("Cannot set TABLESPACE for PRIMARY KEY INDEX."),
+								errdetail("The tablespace of the indexed table will be used.")));
+					}
 					n->indexspace = $8;
 					processCASbits($9, @9, "PRIMARY KEY",
 								   &n->deferrable, &n->initdeferred, NULL,
@@ -4313,7 +4325,6 @@ OptTableSpace:
 OptConsTableSpace:
 			USING INDEX TABLESPACE name
 				{
-					parser_ybc_signal_unsupported(@1, "USING INDEX TABLESPACE", 1129);
 					$$ = $4;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -10781,7 +10792,9 @@ TransactionStmt:
 				}
 			| SAVEPOINT ColId
 				{
-					parser_ybc_signal_unsupported(@1, "SAVEPOINT <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "SAVEPOINT <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_SAVEPOINT;
 					n->savepoint_name = $2;
@@ -10789,7 +10802,9 @@ TransactionStmt:
 				}
 			| RELEASE SAVEPOINT ColId
 				{
-					parser_ybc_signal_unsupported(@1, "RELEASE SAVEPOINT <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "RELEASE SAVEPOINT <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $3;
@@ -10797,7 +10812,9 @@ TransactionStmt:
 				}
 			| RELEASE ColId
 				{
-					parser_ybc_signal_unsupported(@1, "RELEASE <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "RELEASE <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $2;
@@ -10805,6 +10822,7 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
+					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
 					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
@@ -10813,6 +10831,7 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO ColId
 				{
+					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
 					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;

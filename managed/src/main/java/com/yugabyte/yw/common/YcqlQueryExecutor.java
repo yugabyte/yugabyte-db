@@ -1,22 +1,30 @@
 package com.yugabyte.yw.common;
 
-import com.datastax.driver.core.*;
+import static play.libs.Json.newObject;
+import static play.libs.Json.toJson;
+
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.ColumnDefinitions;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
+import com.datastax.driver.core.Session;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
+import java.io.Closeable;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
-
-import javax.inject.Singleton;
-import java.net.InetSocketAddress;
-import java.util.*;
-
-import static play.libs.Json.newObject;
-import static play.libs.Json.toJson;
 
 @Singleton
 public class YcqlQueryExecutor {
@@ -63,9 +71,15 @@ public class YcqlQueryExecutor {
     }
   }
 
-  private static class CassandraConnection {
+  private static class CassandraConnection implements Closeable {
     Cluster cluster = null;
     Session session = null;
+
+    @Override
+    public void close() {
+      session.close();
+      cluster.close();
+    }
   }
 
   private CassandraConnection createCassandraConnection(
@@ -133,7 +147,7 @@ public class YcqlQueryExecutor {
       ResultSet rs = cc.session.execute(queryParams.query);
       if (rs.iterator().hasNext()) {
         List<Map<String, Object>> rows = resultSetToMap(rs);
-        response.put("result", toJson(rows));
+        response.set("result", toJson(rows));
       } else {
         // For commands without a result we return only executed command identifier
         // (SELECT/UPDATE/...). We can't return query itself to avoid logging of
@@ -142,6 +156,8 @@ public class YcqlQueryExecutor {
       }
     } catch (Exception e) {
       response.put("error", e.getMessage());
+    } finally {
+      cc.close();
     }
     return response;
   }

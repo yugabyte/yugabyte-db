@@ -10,13 +10,16 @@ import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
-import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.UUID;
 
 @Api(
     value = "Customer Config",
@@ -26,7 +29,10 @@ public class CustomerConfigController extends AuthenticatedController {
 
   @Inject private CustomerConfigValidator configValidator;
 
-  @ApiOperation(value = "Create customer configuration", response = CustomerConfig.class)
+  @ApiOperation(
+      value = "Create customer configuration",
+      response = CustomerConfig.class,
+      nickname = "createCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",
@@ -52,7 +58,10 @@ public class CustomerConfigController extends AuthenticatedController {
     return YWResults.withData(customerConfig);
   }
 
-  @ApiOperation(value = "Delete customer configuration", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Delete customer configuration",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteCustomerConfig")
   public Result delete(UUID customerUUID, UUID configUUID) {
     CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     customerConfig.deleteOrThrow();
@@ -63,12 +72,16 @@ public class CustomerConfigController extends AuthenticatedController {
   @ApiOperation(
       value = "List of customer configuration",
       response = CustomerConfig.class,
-      responseContainer = "List")
+      responseContainer = "List",
+      nickname = "getListOfCustomerConfig")
   public Result list(UUID customerUUID) {
     return YWResults.withData(CustomerConfig.getAll(customerUUID));
   }
 
-  @ApiOperation(value = "List of customer configuration", response = CustomerConfig.class)
+  @ApiOperation(
+      value = "List of customer configuration",
+      response = CustomerConfig.class,
+      nickname = "getCustomerConfig")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Config",

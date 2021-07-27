@@ -15,7 +15,7 @@ menu:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="oss/">
+    <a class="section-link icon-offset" href="oss/helm-chart/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
         <div class="title">Open Source Kubernetes</div>
@@ -27,7 +27,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="eks/">
+    <a class="section-link icon-offset" href="eks/helm-chart/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/amazon-eks.png" aria-hidden="true" />
         <div class="title">Amazon Elastic Kubernetes Service (Amazon EKS)</div>
@@ -39,7 +39,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gke/">
+    <a class="section-link icon-offset" href="gke/helm-chart/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/gke.png" aria-hidden="true" />
         <div class="title">Google Kubernetes Engine (GKE)</div>
@@ -51,7 +51,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="aks/">
+    <a class="section-link icon-offset" href="aks/helm-chart/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/aks.svg" aria-hidden="true" />
         <div class="title">Azure Kubernetes Service (AKS)</div>
