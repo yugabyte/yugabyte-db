@@ -1235,7 +1235,7 @@ const TransactionId& YBTransaction::id() const {
   return impl_->id();
 }
 
-const IsolationLevel YBTransaction::isolation() const {
+IsolationLevel YBTransaction::isolation() const {
   return impl_->isolation();
 }
 

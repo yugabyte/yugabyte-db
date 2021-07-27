@@ -99,7 +99,7 @@ class PgApiImpl {
   CHECKED_STATUS InvalidateCache();
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
-  const bool GetDisableTransparentCacheRefreshRetry();
+  bool GetDisableTransparentCacheRefreshRetry();
 
   Result<bool> IsInitDbDone();
 
