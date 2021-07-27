@@ -449,7 +449,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
     if (expr.has_condition()) {
       const auto prefix_len = range_components.size();
       // Form ybctid for each value in IN clause.
-      std::vector <std::string> ybctids;
+      std::vector<std::string> ybctids;
       for (const auto& in_exp : expr.condition().operands(1).condition().operands()) {
         range_components.push_back(VERIFY_RESULT(BuildKeyColumnValue(col, in_exp)));
         // Range key component has one and only one IN clause,
@@ -463,7 +463,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
         ybctids.push_back(doc_key.Encode().ToStringBuffer());
         range_components.resize(prefix_len);
       }
-      return std::move(ybctids);
+      return ybctids;
     } else {
       range_components.push_back(VERIFY_RESULT(BuildKeyColumnValue(col, expr)));
     }

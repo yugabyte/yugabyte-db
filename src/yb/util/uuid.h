@@ -143,7 +143,7 @@ class Uuid {
     }
     if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
       // Compare the hi timestamp bits.
-      for (int i = 6; i < kUuidMsbSize; i++) {
+      for (size_t i = 6; i < kUuidMsbSize; i++) {
         if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
           return true;
         } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
@@ -168,7 +168,7 @@ class Uuid {
       }
     } else {
       // Compare all the other bits
-      for (int i = 0; i < kUuidMsbSize; i++) {
+      for (size_t i = 0; i < kUuidMsbSize; i++) {
         if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
           return true;
         } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
@@ -178,7 +178,7 @@ class Uuid {
     }
 
     // Then compare the remaining bytes.
-    for (int i = kUuidMsbSize; i < kUuidSize; i++) {
+    for (size_t i = kUuidMsbSize; i < kUuidSize; i++) {
       if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
         return true;
       } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
