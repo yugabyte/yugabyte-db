@@ -5,7 +5,7 @@ Before starting the workload, you need to load the data. In addition, you need t
 For 10k warehouses, you would need ten clients of type c5.2xlarge to drive the benchmark.
 For multiple clients, you need to perform three steps.
 
-First, you create the database and the corresponding tables. The following command is to be executed from only one client:
+First, you create the database and the corresponding tables. Execute the following command from one of the clients:
 
 ```sh
 ./tpccbenchmark  --nodes=$IPS  --create=true
@@ -64,7 +64,7 @@ Before starting the execution, you have to move all the tablet leaders out of th
 ```
 
 Make sure that the IPS used in the execution phase does not include the `master-leader-ip`.
-You can then run the workload against the database from each of the client:
+You can then run the workload against the database from each client:
 
 | Client | Command
 -------------|-----------|
