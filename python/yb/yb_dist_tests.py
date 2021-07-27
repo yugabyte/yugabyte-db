@@ -285,7 +285,8 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'linuxbrew_path.txt',
     'thirdparty_path.txt',
     'thirdparty_url.txt',
-    'postgres_build/src/test/regress'
+    'postgres_build/contrib',
+    'postgres_build/src/test/regress',
 ]
 
 ARCHIVED_PATHS_IN_SRC_DIR = [
