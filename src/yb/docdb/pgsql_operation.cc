@@ -137,6 +137,7 @@ Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     bool is_explicit_request_read_time) {
+  VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << yb::ToString(request);
 
   common::YQLRowwiseIteratorIf::UniPtr result;
   // TODO(neil) Remove the following IF block when it is completely obsolete.
@@ -166,6 +167,15 @@ Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
         } else {
           actual_read_time.read = start_sub_doc_key.hybrid_time();
         }
+      }
+    } else if (request.is_for_backfill()) {
+      RSTATUS_DCHECK(is_explicit_request_read_time, InvalidArgument,
+                     "Backfill request should already be using explicit read times.");
+      PgsqlBackfillSpecPB spec;
+      spec.ParseFromString(a2b_hex(request.backfill_spec()));
+      if (!spec.next_row_key().empty()) {
+        KeyBytes start_key_bytes(spec.next_row_key());
+        RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
       }
     }
     RETURN_NOT_OK(ql_storage.GetIterator(
