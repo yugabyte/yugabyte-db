@@ -15,26 +15,30 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.AlertConfigFormData;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.ToggleTlsParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.mvc.Http;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
 public class UniverseActionsHandler {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
@@ -190,7 +194,7 @@ public class UniverseActionsHandler {
 
     TaskType taskType = TaskType.UpgradeUniverse;
     UpgradeParams taskParams = new UpgradeParams();
-    taskParams.taskType = UpgradeUniverse.UpgradeTaskType.ToggleTls;
+    taskParams.taskType = UpgradeTaskType.ToggleTls;
     taskParams.upgradeOption = requestParams.upgradeOption;
     taskParams.universeUUID = universe.universeUUID;
     taskParams.expectedUniverseVersion = -1;

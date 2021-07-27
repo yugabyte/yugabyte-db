@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -19,23 +21,38 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
-
-import java.util.*;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class UniverseCRUDHandler {
 
@@ -48,6 +65,8 @@ public class UniverseCRUDHandler {
   @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject KubernetesManager kubernetesManager;
 
   /**
    * Function to Trim keys and values of the passed map.
@@ -73,6 +92,7 @@ public class UniverseCRUDHandler {
     if (taskParams.clusterOperation == null) {
       throw new YWServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
+
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
     //  uuid.
     Cluster c =
@@ -134,6 +154,7 @@ public class UniverseCRUDHandler {
         } catch (IllegalArgumentException e) {
           throw new YWServiceException(BAD_REQUEST, e.getMessage());
         }
+        checkHelmChartExists(c.userIntent.ybSoftwareVersion);
       }
 
       // Set the node exporter config based on the provider
@@ -355,6 +376,7 @@ public class UniverseCRUDHandler {
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
       notHelm2LegacyOrBadRequest(u);
+      checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
     } else {
       mergeNodeExporterInfo(u, taskParams);
     }
@@ -885,6 +907,14 @@ public class UniverseCRUDHandler {
                 + "Manually migrate the deployment to helm3 "
                 + "and then mark the universe as helm 3 compatible.");
       }
+
+      if (customerTaskType == CustomerTask.TaskType.UpgradeGflags) {
+        // UpgradeGflags does not change universe version. Check for current version of helm chart.
+        checkHelmChartExists(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+      } else {
+        checkHelmChartExists(taskParams.ybSoftwareVersion);
+      }
     }
 
     taskParams.rootCA = checkValidRootCA(universe.getUniverseDetails().rootCA);
@@ -972,5 +1002,13 @@ public class UniverseCRUDHandler {
         universe.universeUUID,
         universe.name);
     return taskUUID;
+  }
+
+  private void checkHelmChartExists(String ybSoftwareVersion) {
+    try {
+      kubernetesManager.getHelmPackagePath(ybSoftwareVersion);
+    } catch (RuntimeException e) {
+      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+    }
   }
 }

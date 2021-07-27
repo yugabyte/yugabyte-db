@@ -2,9 +2,8 @@
 
 package com.yugabyte.yw.models.paging;
 
-import lombok.Data;
-
 import java.util.List;
+import lombok.Data;
 
 @Data
 public class PagedResponse<E> {

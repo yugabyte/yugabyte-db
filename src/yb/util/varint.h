@@ -75,13 +75,13 @@ class VarInt {
   static Result<VarInt> CreateFromString(const std::string& input) {
     VarInt result;
     RETURN_NOT_OK(result.FromString(input));
-    return std::move(result);
+    return result;
   }
 
   static Result<VarInt> CreateFromString(const char* input) {
     VarInt result;
     RETURN_NOT_OK(result.FromString(input));
-    return std::move(result);
+    return result;
   }
 
   // <0, =0, >0 if this <,=,> other numerically.

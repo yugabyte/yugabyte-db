@@ -2,25 +2,51 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.*;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Rule;
@@ -30,16 +56,6 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import scala.concurrent.ExecutionContext;
-
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.*;
-
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class QueryAlertsTest extends FakeDBApplication {
@@ -70,6 +86,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   private AlertDefinition definition;
 
+  private MetricService metricService;
   private AlertDefinitionGroupService alertDefinitionGroupService;
   private AlertDefinitionService alertDefinitionService;
   private AlertService alertService;
@@ -87,6 +104,7 @@ public class QueryAlertsTest extends FakeDBApplication {
         .thenReturn(Collections.singletonList("to@to.com"));
     when(emailHelper.getSmtpData(customer.uuid)).thenReturn(smtpData);
 
+    metricService = new MetricService();
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
     alertDefinitionGroupService =
@@ -98,7 +116,8 @@ public class QueryAlertsTest extends FakeDBApplication {
             alertService,
             alertDefinitionGroupService,
             alertRouteService,
-            receiversManager);
+            receiversManager,
+            metricService);
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     queryAlerts =
         new QueryAlerts(
@@ -106,6 +125,7 @@ public class QueryAlertsTest extends FakeDBApplication {
             actorSystem,
             alertService,
             queryHelper,
+            metricService,
             alertDefinitionService,
             alertDefinitionGroupService,
             alertManager);
@@ -119,8 +139,7 @@ public class QueryAlertsTest extends FakeDBApplication {
   @Test
   public void testQueryAlertsNewAlert() {
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
-    when(queryHelper.queryAlerts())
-        .thenReturn(ImmutableList.of(createAlertData(raisedTime, false)));
+    when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
     queryAlerts.scheduleRunner();
 
@@ -131,8 +150,22 @@ public class QueryAlertsTest extends FakeDBApplication {
             .build();
     List<Alert> alerts = alertService.list(alertFilter);
 
-    Alert expectedAlert = createAlert(raisedTime, false).setUuid(alerts.get(0).getUuid());
+    Alert expectedAlert = createAlert(raisedTime).setUuid(alerts.get(0).getUuid());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_STATUS.getMetricName()).build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS.getMetricName()).build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_NEW_ALERTS.getMetricName()).build(),
+        1.0);
   }
 
   @Test
@@ -141,8 +174,8 @@ public class QueryAlertsTest extends FakeDBApplication {
     when(queryHelper.queryAlerts())
         .thenReturn(
             ImmutableList.of(
-                createAlertData(raisedTime, false),
-                createAlertData(raisedTime, false, AlertDefinitionGroup.Severity.WARNING)));
+                createAlertData(raisedTime),
+                createAlertData(raisedTime, AlertDefinitionGroup.Severity.WARNING)));
 
     queryAlerts.scheduleRunner();
 
@@ -153,14 +186,30 @@ public class QueryAlertsTest extends FakeDBApplication {
             .build();
     List<Alert> alerts = alertService.list(alertFilter);
 
-    Alert expectedAlert = createAlert(raisedTime, false).setUuid(alerts.get(0).getUuid());
+    Alert expectedAlert = createAlert(raisedTime).setUuid(alerts.get(0).getUuid());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS.getMetricName()).build(),
+        2.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_QUERY_FILTERED_ALERTS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_NEW_ALERTS.getMetricName()).build(),
+        1.0);
   }
 
   @Test
   public void testQueryAlertsNewAlertWithDefaults() {
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
-    when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime, true)));
+    when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
     queryAlerts.scheduleRunner();
 
@@ -173,17 +222,17 @@ public class QueryAlertsTest extends FakeDBApplication {
 
     assertThat(alerts, hasSize(1));
 
-    Alert expectedAlert = createAlert(raisedTime, true).setUuid(alerts.get(0).getUuid());
+    Alert expectedAlert = createAlert(raisedTime).setUuid(alerts.get(0).getUuid());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
   }
 
   @Test
   public void testQueryAlertsExistingAlert() {
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
-    when(queryHelper.queryAlerts())
-        .thenReturn(ImmutableList.of(createAlertData(raisedTime, false)));
+    when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
-    Alert alert = createAlert(raisedTime, true);
+    Alert alert = createAlert(raisedTime);
     alertService.save(alert);
 
     queryAlerts.scheduleRunner();
@@ -196,20 +245,42 @@ public class QueryAlertsTest extends FakeDBApplication {
     List<Alert> alerts = alertService.list(alertFilter);
 
     Alert expectedAlert =
-        createAlert(raisedTime, false)
+        createAlert(raisedTime)
             .setUuid(alert.getUuid())
             .setState(Alert.State.ACTIVE)
             .setTargetState(Alert.State.ACTIVE);
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS.getMetricName()).build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_QUERY_UPDATED_ALERTS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_NEW_ALERTS.getMetricName()).build(),
+        0.0);
+  }
+
+  private void copyNotificationFields(Alert expectedAlert, Alert alert) {
+    expectedAlert
+        .setNotificationAttemptTime(alert.getNotificationAttemptTime())
+        .setNextNotificationTime(alert.getNextNotificationTime())
+        .setNotificationsFailed(alert.getNotificationsFailed());
   }
 
   @Test
   public void testQueryAlertsExistingResolvedAlert() {
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
-    when(queryHelper.queryAlerts())
-        .thenReturn(ImmutableList.of(createAlertData(raisedTime, false)));
+    when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
-    Alert alert = createAlert(raisedTime, true);
+    Alert alert = createAlert(raisedTime);
     alert.setTargetState(Alert.State.RESOLVED);
     alertService.save(alert);
 
@@ -223,6 +294,15 @@ public class QueryAlertsTest extends FakeDBApplication {
     List<Alert> alerts = alertService.list(alertFilter);
 
     assertThat(alerts, hasSize(2));
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS.getMetricName()).build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_NEW_ALERTS.getMetricName()).build(),
+        1.0);
   }
 
   @Test
@@ -230,7 +310,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
     when(queryHelper.queryAlerts()).thenReturn(Collections.emptyList());
 
-    Alert alert = createAlert(raisedTime, true);
+    Alert alert = createAlert(raisedTime);
     alertService.save(alert);
 
     queryAlerts.scheduleRunner();
@@ -243,47 +323,52 @@ public class QueryAlertsTest extends FakeDBApplication {
     List<Alert> alerts = alertService.list(alertFilter);
 
     Alert expectedAlert =
-        createAlert(raisedTime, true)
+        createAlert(raisedTime)
             .setUuid(alert.getUuid())
             .setState(Alert.State.RESOLVED)
             .setTargetState(Alert.State.RESOLVED)
             .setResolvedTime(alerts.get(0).getResolvedTime());
+    copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS.getMetricName()).build(),
+        0.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_QUERY_RESOLVED_ALERTS.getMetricName())
+            .build(),
+        1.0);
   }
 
-  private Alert createAlert(ZonedDateTime raisedTime, boolean defaults) {
-    Alert expectedAlert =
-        new Alert()
-            .setCreateTime(Date.from(raisedTime.toInstant()))
-            .setCustomerUUID(customer.getUuid())
-            .setDefinitionUuid(definition.getUuid())
-            .setErrCode(KnownAlertCodes.CUSTOMER_ALERT)
-            .setGroupUuid(definition.getGroupUUID())
-            .setGroupType(AlertDefinitionGroup.TargetType.UNIVERSE)
-            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
-            .setMessage("Clock Skew Alert for universe Test is firing")
-            .setSendEmail(true)
-            .setState(Alert.State.ACTIVE)
-            .setTargetState(Alert.State.ACTIVE)
-            .setLabel(KnownAlertLabels.CUSTOMER_UUID, customer.getUuid().toString())
-            .setLabel(KnownAlertLabels.DEFINITION_UUID, definition.getUuid().toString())
-            .setLabel(KnownAlertLabels.GROUP_UUID, definition.getGroupUUID().toString())
-            .setLabel(KnownAlertLabels.GROUP_TYPE, AlertDefinitionGroup.TargetType.UNIVERSE.name())
-            .setLabel(KnownAlertLabels.DEFINITION_NAME, "Clock Skew Alert")
-            .setLabel(KnownAlertLabels.ERROR_CODE, KnownAlertCodes.CUSTOMER_ALERT.name())
-            .setLabel(KnownAlertLabels.SEVERITY, AlertDefinitionGroup.Severity.SEVERE.name());
-    if (!defaults) {
-      expectedAlert.setLabel(KnownAlertLabels.DEFINITION_ACTIVE, "true");
-    }
-    return expectedAlert;
+  private Alert createAlert(ZonedDateTime raisedTime) {
+    return new Alert()
+        .setCreateTime(Date.from(raisedTime.toInstant()))
+        .setCustomerUUID(customer.getUuid())
+        .setDefinitionUuid(definition.getUuid())
+        .setGroupUuid(definition.getGroupUUID())
+        .setGroupType(AlertDefinitionGroup.TargetType.UNIVERSE)
+        .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+        .setName("Clock Skew Alert")
+        .setMessage("Clock Skew Alert for universe Test is firing")
+        .setState(Alert.State.ACTIVE)
+        .setTargetState(Alert.State.ACTIVE)
+        .setLabel(KnownAlertLabels.CUSTOMER_UUID, customer.getUuid().toString())
+        .setLabel(KnownAlertLabels.DEFINITION_UUID, definition.getUuid().toString())
+        .setLabel(KnownAlertLabels.GROUP_UUID, definition.getGroupUUID().toString())
+        .setLabel(KnownAlertLabels.GROUP_TYPE, AlertDefinitionGroup.TargetType.UNIVERSE.name())
+        .setLabel(KnownAlertLabels.DEFINITION_NAME, "Clock Skew Alert")
+        .setLabel(KnownAlertLabels.SEVERITY, AlertDefinitionGroup.Severity.SEVERE.name());
   }
 
-  private AlertData createAlertData(ZonedDateTime raisedTime, boolean defaults) {
-    return createAlertData(raisedTime, defaults, AlertDefinitionGroup.Severity.SEVERE);
+  private AlertData createAlertData(ZonedDateTime raisedTime) {
+    return createAlertData(raisedTime, AlertDefinitionGroup.Severity.SEVERE);
   }
 
   private AlertData createAlertData(
-      ZonedDateTime raisedTime, boolean defaults, AlertDefinitionGroup.Severity severity) {
+      ZonedDateTime raisedTime, AlertDefinitionGroup.Severity severity) {
     Map<String, String> labels = new HashMap<>();
     labels.put("customer_uuid", customer.getUuid().toString());
     labels.put("definition_uuid", definition.getUuid().toString());
@@ -291,10 +376,6 @@ public class QueryAlertsTest extends FakeDBApplication {
     labels.put("group_type", "UNIVERSE");
     labels.put("definition_name", "Clock Skew Alert");
     labels.put("severity", severity.name());
-    if (!defaults) {
-      labels.put("definition_active", "true");
-      labels.put("error_code", KnownAlertCodes.CUSTOMER_ALERT.name());
-    }
     return AlertData.builder()
         .activeAt(raisedTime.withZoneSameInstant(ZoneId.of("UTC")))
         .annotations(ImmutableMap.of("summary", "Clock Skew Alert for universe Test is firing"))

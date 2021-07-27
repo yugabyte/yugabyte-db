@@ -1,13 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import com.google.inject.Inject;
-import play.mvc.EssentialFilter;
+import java.util.ArrayList;
+import java.util.List;
 import play.filters.cors.CORSFilter;
 import play.filters.csrf.CSRFFilter;
 import play.http.HttpFilters;
-
-import java.util.ArrayList;
-import java.util.List;
+import play.mvc.EssentialFilter;
 
 public class Filters implements HttpFilters {
 

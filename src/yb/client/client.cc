@@ -530,13 +530,6 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Result<master::AnalyzeTableResponsePB> YBClient::AnalyzeTable(const std::string& table_id) {
-  master::AnalyzeTableRequestPB req;
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  req.mutable_table()->set_table_id(table_id);
-  return data_->AnalyzeTable(this, req, deadline);
-}
-
 Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
   auto deadline = (CoarseMonoClock::Now()
                    + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));
@@ -1455,6 +1448,14 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
 void YBClient::DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->DeleteTablet(this, tablet_id, deadline, callback);
+}
+
+void YBClient::GetTableLocations(
+    const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
+    GetTableLocationsCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->GetTableLocations(
+      this, table_id, max_tablets, require_tablets_running, deadline, std::move(callback));
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {

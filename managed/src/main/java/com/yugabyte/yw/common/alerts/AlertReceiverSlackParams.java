@@ -2,20 +2,18 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.UrlValidator;
-
 import com.fasterxml.jackson.annotation.JsonTypeName;
-
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.UrlValidator;
 
 @EqualsAndHashCode(callSuper = false)
 @ToString
 @JsonTypeName("Slack")
 public class AlertReceiverSlackParams extends AlertReceiverParams {
 
-  public String channel;
+  public String username;
 
   public String webhookUrl;
 
@@ -24,8 +22,8 @@ public class AlertReceiverSlackParams extends AlertReceiverParams {
   public void validate() throws YWValidateException {
     super.validate();
 
-    if (StringUtils.isEmpty(channel)) {
-      throw new YWValidateException("Slack parameters: channel is empty.");
+    if (StringUtils.isEmpty(username)) {
+      throw new YWValidateException("Slack parameters: username is empty.");
     }
 
     UrlValidator urlValidator = new UrlValidator();

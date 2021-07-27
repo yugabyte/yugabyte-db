@@ -31,7 +31,7 @@ class SnapshotCoordinator {
       int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual CHECKED_STATUS RestoreSysCatalogReplicated(
-      int64_t leader_term, const SnapshotOperation& operation) = 0;
+      int64_t leader_term, const SnapshotOperation& operation, Status* complete_status) = 0;
 
   virtual CHECKED_STATUS Load(Tablet* tablet) = 0;
 

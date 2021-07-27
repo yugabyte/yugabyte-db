@@ -24,42 +24,55 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AlertDefinitionTemplate;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.forms.AlertingFormData;
-import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
+import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
-import com.yugabyte.yw.forms.YWResults;
-
-import java.util.*;
-import java.util.stream.Collectors;
 
 @Api(value = "Customer", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
 
+  @Inject private MetricService metricService;
+
   @Inject private MetricQueryHelper metricQueryHelper;
 
   @Inject private CloudQueryHelper cloudQueryHelper;
-
-  @Inject private AlertService alertService;
 
   @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
@@ -187,6 +200,24 @@ public class CustomerController extends AuthenticatedController {
             "Updated {} Clock Skew Alert definition groups, new state {}",
             groups.size(),
             alertingFormData.alertingData.enableClockSkew);
+
+        // Update Backup alert definitions
+        // TODO: Remove after implementation of a separate window for
+        // all definition groups configuration.
+        groups =
+            alertDefinitionGroupService.list(
+                AlertDefinitionGroupFilter.builder()
+                    .customerUuid(customerUUID)
+                    .name(AlertDefinitionTemplate.BACKUP_FAILURE.getName())
+                    .build());
+        for (AlertDefinitionGroup group : groups) {
+          group.setActive(alertingFormData.alertingData.reportBackupFailures);
+        }
+        alertDefinitionGroupService.save(groups);
+        LOG.info(
+            "Updated {} Backup Failure definition groups, new state {}",
+            groups.size(),
+            alertingFormData.alertingData.reportBackupFailures);
       }
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
@@ -230,6 +261,9 @@ public class CustomerController extends AuthenticatedController {
       throw new YWServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
+
+    metricService.handleTargetRemoval(customerUUID, null);
+
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
   }

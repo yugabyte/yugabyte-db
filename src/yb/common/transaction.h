@@ -45,6 +45,12 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
+using SubTransactionId = uint32_t;
+
+// By default, postgres SubTransactionId's propagated to DocDB start at 1, so we use this as a
+// minimum value on the DocDB side as well. All intents written without an explicit SubTransactionId
+// are assumed to belong to the subtransaction with this kMinSubTransactionId.
+constexpr SubTransactionId kMinSubTransactionId = 1;
 
 // Decodes transaction id from its binary representation.
 // Checks that slice contains only TransactionId.
@@ -63,6 +69,9 @@ struct TransactionStatusResult {
   // COMMITTED - status_time is a commit time.
   // ABORTED - not used.
   HybridTime status_time;
+
+  // TODO(savepoints) -- Add aborted subtransaction bitset here to enable ignoring aborted
+  // subtransactions during conflict resolution.
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
@@ -254,6 +263,25 @@ inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
+
+struct SubTransactionMetadata {
+  SubTransactionId subtransaction_id = kMinSubTransactionId;
+
+  void ToPB(SubTransactionMetadataPB* dest) const;
+
+  std::string ToString() const {
+    return Format("{ subtransaction_id: $0 }", subtransaction_id);
+  }
+
+  // Returns true if this is the default state, i.e. default subtransaction_id. This indicates
+  // whether the client has interacted with savepoints at all in the context of a session. If true,
+  // the client could, for example, skip sending subtransaction-related metadata in RPCs.
+  // TODO(savepoints) -- update behavior and comment to track default aborted subtransaction state
+  // as well.
+  bool IsDefaultState() const;
+};
+
+std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);
 
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();

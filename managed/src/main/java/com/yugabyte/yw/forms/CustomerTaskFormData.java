@@ -2,10 +2,10 @@
 
 package com.yugabyte.yw.forms;
 
-import java.util.Date;
-import java.util.UUID;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.UUID;
 
 @ApiModel(value = "Customer Task Data", description = "Customer Task data")
 public class CustomerTaskFormData {

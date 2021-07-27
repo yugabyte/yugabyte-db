@@ -1,14 +1,15 @@
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
-
-import java.util.UUID;
-
-import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-import static org.junit.Assert.*;
 
 public class ScopedRuntimeConfigTest extends FakeDBApplication {
   private Customer defaultCustomer;

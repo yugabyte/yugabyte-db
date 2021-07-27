@@ -10,15 +10,19 @@
 package com.yugabyte.yw.models.common;
 
 public enum Unit {
-  PERCENT(Measure.PERCENTAGE, "%"),
-  MILLISECOND(Measure.TIME, "ms");
+  STATUS(Measure.STATUS, "", ""),
+  COUNT(Measure.COUNT, "", ""),
+  PERCENT(Measure.PERCENTAGE, "%", "pct"),
+  MILLISECOND(Measure.TIME, "ms", "ms");
 
   private final Measure measure;
   private final String displayName;
+  private final String metricName;
 
-  Unit(Measure measure, String displayName) {
+  Unit(Measure measure, String displayName, String metricName) {
     this.measure = measure;
     this.displayName = displayName;
+    this.metricName = metricName;
   }
 
   public Measure getMeasure() {
@@ -27,5 +31,9 @@ public enum Unit {
 
   public String getDisplayName() {
     return displayName;
+  }
+
+  public String getMetricName() {
+    return metricName;
   }
 }

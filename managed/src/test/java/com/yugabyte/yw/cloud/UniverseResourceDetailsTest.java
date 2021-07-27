@@ -2,30 +2,43 @@
 
 package com.yugabyte.yw.cloud;
 
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP2_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_THROUGHPUT;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
+import static com.yugabyte.yw.common.ApiUtils.getDummyDeviceInfo;
+import static com.yugabyte.yw.common.ApiUtils.getDummyUserIntent;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.PriceComponent;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.stubbing.OngoingStubbing;
 import play.libs.Json;
-
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
-
-import static com.yugabyte.yw.cloud.PublicCloudConstants.*;
-import static com.yugabyte.yw.common.ApiUtils.getDummyDeviceInfo;
-import static com.yugabyte.yw.common.ApiUtils.getDummyUserIntent;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.mockito.Mockito.*;
 
 public class UniverseResourceDetailsTest extends FakeDBApplication {
 

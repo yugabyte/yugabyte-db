@@ -43,6 +43,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -232,6 +233,18 @@ inline std::string GetToolPath(const std::string& tool_name) {
 
 inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
+}
+
+// Run a yb-admin command and return the output.
+template <class... Args>
+Result<std::string> RunAdminToolCommand(const string& masterAddresses, Args&&... args) {
+  auto command = ToStringVector(
+      GetToolPath("yb-admin"), "-master_addresses", masterAddresses,
+      std::forward<Args>(args)...);
+  std::string result;
+  LOG(INFO) << "Run tool: " << AsString(command);
+  RETURN_NOT_OK(Subprocess::Call(command, &result));
+  return result;
 }
 
 int CalcNumTablets(int num_tablet_servers);

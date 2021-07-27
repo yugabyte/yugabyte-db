@@ -2,10 +2,38 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.models.Users.Role;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+import static play.test.Helpers.route;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
@@ -18,9 +46,17 @@ import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.scheduler.Scheduler;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.After;
 import org.junit.Test;
 import org.pac4j.play.CallbackController;
@@ -29,22 +65,9 @@ import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.modules.swagger.SwaggerModule;
 import play.mvc.Result;
 import play.test.Helpers;
-
-import java.util.Map;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.models.Users.Role;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.mock;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.*;
-import static play.test.Helpers.*;
 
 public class SessionControllerTest {
 
@@ -54,6 +77,7 @@ public class SessionControllerTest {
   private CallbackController mockCallbackController;
   private PlayCacheSessionStore mockSessionStore;
   private QueryAlerts mockQueryAlerts;
+  private CleanExpiredMetrics mockCleanExpiredMetrics;
   private AlertConfigurationWriter mockAlertConfigurationWriter;
   private AlertRouteService alertRouteService;
 
@@ -66,9 +90,11 @@ public class SessionControllerTest {
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockQueryAlerts = mock(QueryAlerts.class);
+    mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
+            .disable(SwaggerModule.class)
             .configure((Map) Helpers.inMemoryDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
             .overrides(bind(Scheduler.class).toInstance(mockScheduler))
@@ -77,6 +103,7 @@ public class SessionControllerTest {
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
             .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+            .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();

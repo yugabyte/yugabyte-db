@@ -1,81 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.naming.TestCaseName;
-import org.apache.commons.lang3.StringUtils;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import play.libs.Json;
-
-import java.io.File;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.Predicate;
-
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.ToggleTls;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.ToggleTls;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -93,6 +27,72 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Predicate;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.StringUtils;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -510,8 +510,8 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (configureParams.getProperty("taskSubType") != null) {
-          UpgradeUniverse.UpgradeTaskSubType taskSubType =
-              UpgradeUniverse.UpgradeTaskSubType.valueOf(
+          UpgradeTaskSubType taskSubType =
+              UpgradeTaskParams.UpgradeTaskSubType.valueOf(
                   configureParams.getProperty("taskSubType"));
           String processType = configureParams.getProperty("processType");
           expectedCommand.add("--yb_process_type");
@@ -642,7 +642,7 @@ public class NodeManagerTest extends FakeDBApplication {
           String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
 
           String subType = configureParams.getProperty("taskSubType");
-          if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+          if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (configureParams.enableNodeToNodeEncrypt
                 || configureParams.enableClientToNodeEncrypt) {
               expectedCommand.add("--adding_certs");
@@ -657,7 +657,8 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
             }
             expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
-          } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
+              .equals(subType)) {
             gflags = new HashMap<>();
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
@@ -686,7 +687,8 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--replace_gflags");
             expectedCommand.add("--gflags");
             expectedCommand.add(Json.stringify(Json.toJson(gflags)));
-          } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name()
+              .equals(subType)) {
             gflags = new HashMap<>();
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("allow_insecure_connections", allowInsecureString);
@@ -2087,7 +2089,7 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
-      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.setProperty("taskSubType", UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name());
       params.enableNodeToNodeEncrypt = true;
       params.enableClientToNodeEncrypt = true;
       params.rootCA = UUID.randomUUID();
@@ -2126,7 +2128,7 @@ public class NodeManagerTest extends FakeDBApplication {
           Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
-      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.setProperty("taskSubType", UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name());
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
@@ -2176,7 +2178,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
       params.setProperty(
-          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name());
+          "taskSubType", UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name());
       params.nodeToNodeChange = nodeToNodeChange;
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -2208,7 +2210,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
       params.setProperty(
-          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name());
+          "taskSubType", UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name());
       params.nodeToNodeChange = nodeToNodeChange;
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);

@@ -9,11 +9,19 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import akka.dispatch.Dispatcher;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -22,17 +30,16 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import scala.concurrent.ExecutionContext;
-
-import java.util.UUID;
-
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class AlertConfigurationWriterTest extends FakeDBApplication {
@@ -59,12 +66,15 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Mock private Config globalConfig;
 
+  private MetricService metricService;
+
   private AlertDefinitionGroup group;
 
   private AlertDefinition definition;
 
   @Before
   public void setUp() {
+    metricService = new MetricService();
     AlertService alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
     alertDefinitionGroupService =
@@ -77,6 +87,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
         new AlertConfigurationWriter(
             executionContext,
             actorSystem,
+            metricService,
             alertDefinitionService,
             alertDefinitionGroupService,
             swamperHelper,
@@ -98,6 +109,17 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
     verify(swamperHelper, times(1)).writeAlertDefinition(group, expected);
     verify(queryHelper, times(1)).postManagementCommand("reload");
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_WRITTEN.getMetricName()).build(),
+        1.0);
   }
 
   @Test
@@ -110,6 +132,17 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
     verify(swamperHelper, times(1)).removeAlertDefinition(definition.getUuid());
     verify(queryHelper, times(1)).postManagementCommand("reload");
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_WRITTEN.getMetricName()).build(),
+        0.0);
   }
 
   @Test
@@ -124,6 +157,21 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     verify(swamperHelper, times(1)).writeAlertDefinition(group, expected);
     verify(swamperHelper, times(1)).removeAlertDefinition(missingDefinitionUuid);
     verify(queryHelper, times(1)).postManagementCommand("reload");
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_WRITTEN.getMetricName()).build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_REMOVED.getMetricName()).build(),
+        1.0);
   }
 
   @Test
@@ -143,5 +191,20 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     verify(swamperHelper, never()).removeAlertDefinition(any());
     // Not called on subsequent run
     verify(queryHelper, times(1)).postManagementCommand("reload");
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_WRITTEN.getMetricName()).build(),
+        0.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_REMOVED.getMetricName()).build(),
+        0.0);
   }
 }

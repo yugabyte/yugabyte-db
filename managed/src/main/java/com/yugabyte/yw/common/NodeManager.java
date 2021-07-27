@@ -10,18 +10,29 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.NodeInstance;
@@ -30,11 +41,6 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import play.libs.Json;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -45,8 +51,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @Singleton
 public class NodeManager extends DevopsBase {
@@ -574,10 +581,10 @@ public class NodeManager extends DevopsBase {
           String taskSubType = taskParam.getProperty("taskSubType");
           if (taskSubType == null) {
             throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
-          } else if (taskSubType.equals(UpgradeUniverse.UpgradeTaskSubType.Download.toString())) {
+          } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Download.toString())) {
             subcommand.add("--tags");
             subcommand.add("download-software");
-          } else if (taskSubType.equals(UpgradeUniverse.UpgradeTaskSubType.Install.toString())) {
+          } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
           }
@@ -700,12 +707,12 @@ public class NodeManager extends DevopsBase {
                 .getYbHome();
         String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
 
-        if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+        if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
           if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
             subcommand.add("--adding_certs");
           }
           subcommand.addAll(getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
-        } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+        } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
           Map<String, String> gflags = new HashMap<>();
           if (taskParam.nodeToNodeChange > 0) {
             gflags.put("use_node_to_node_encryption", nodeToNodeString);
@@ -734,7 +741,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--replace_gflags");
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
-        } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+        } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
           Map<String, String> gflags = new HashMap<>();
           if (taskParam.nodeToNodeChange > 0) {
             gflags.put("allow_insecure_connections", allowInsecureString);

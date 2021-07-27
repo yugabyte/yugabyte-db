@@ -2,8 +2,8 @@ package com.yugabyte.yw.commissioner.tasks.params;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.forms.AbstractTaskParams;
+import com.yugabyte.yw.models.KmsConfig;
 import java.util.UUID;
 
 public class KMSConfigTaskParams extends AbstractTaskParams {

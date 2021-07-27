@@ -15,9 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
-
-import javax.inject.Inject;
 import java.util.List;
+import javax.inject.Inject;
 
 public class CloudProviderCleanup extends CloudTaskBase {
   @Inject

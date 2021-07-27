@@ -59,6 +59,7 @@ class YBTableTestBase : public YBTest {
   virtual void SetUp() override;
   virtual void TearDown() override;
   virtual void BeforeCreateTable();
+  virtual void BeforeStartCluster();
 
   virtual bool use_external_mini_cluster();
   virtual bool use_yb_admin_client();

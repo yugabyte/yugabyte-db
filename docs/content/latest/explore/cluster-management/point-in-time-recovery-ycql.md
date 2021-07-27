@@ -4,11 +4,13 @@ headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YCQL
 aliases:
-- /latest/explore/backup-restore/point-in-time-restore-ycql
+- /latest/explore/backup-restore/point-in-time-recovery-ycql
+- /latest/explore/backup-restore/point-in-time-recovery
+- /latest/explore/backup-restore
 menu:
   latest:
-    identifier: explore-point-in-time-recovery-ycql
-    parent: explore
+    identifier: cluster-management-point-in-time-recovery-ycql
+    parent: explore-cluster-management
     weight: 704
 isTocNested: true
 showAsideToc: true
@@ -16,13 +18,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/explore/backup-restore/point-in-time-recovery-ysql" class="nav-link">
+    <a href="/latest/explore/cluster-management/point-in-time-recovery-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/explore/backup-restore/point-in-time-recovery-ycql" class="nav-link active">
+    <a href="/latest/explore/cluster-management/point-in-time-recovery-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
