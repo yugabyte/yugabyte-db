@@ -199,7 +199,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     JsonNode data =
         Json.parse(
-            "{\"BACKUP_LOCATION\": \"test\", \"ACCESS_KEY\": \"A-KEY\", "
+            "{\"BACKUP_LOCATION\": \"s3://foo\", \"ACCESS_KEY\": \"A-KEY\", "
                 + "\"ACCESS_SECRET\": \"A-SECRET\"}");
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
@@ -272,15 +272,42 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
+
+    assertBadRequest(result, "BACKUP_LOCATION field is read-only.");
+
+    // Should not update the field BACKUP_LOCATION to "test".
+    CustomerConfig fromDb = CustomerConfig.get(configUUID);
+    assertEquals("s3://foo", fromDb.data.get("BACKUP_LOCATION").textValue());
+  }
+
+  @Test
+  public void testEditStorageNameOnly_SecretKeysPersist() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    CustomerConfig fromDb = CustomerConfig.get(configUUID);
+
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = fromDb.data;
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", fromDb.configName);
+
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "PUT", url, defaultUser.createAuthToken(), bodyJson);
     assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    // Should not update the field BACKUP_LOCATION to "test".
-    assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
-    // SHould be updated and the API response should give asked data.
-    assertEquals("A-*****EW", json.get("data").get("ACCESS_KEY").textValue());
-    assertEquals("********", json.get("data").get("ACCESS_SECRET").textValue());
+
+    CustomerConfig newFromDb = CustomerConfig.get(configUUID);
+    assertEquals(
+        fromDb.data.get("ACCESS_KEY").textValue(), newFromDb.data.get("ACCESS_KEY").textValue());
+    assertEquals(
+        fromDb.data.get("ACCESS_SECRET").textValue(),
+        newFromDb.data.get("ACCESS_SECRET").textValue());
   }
 
   public void testInvalidPasswordPolicy() {

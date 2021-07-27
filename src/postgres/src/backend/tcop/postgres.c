@@ -4021,6 +4021,12 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
+	if (IsSubTransaction()) {
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, savepoints have been used");
+		return false;
+	}
+
 	const char* command_tag = restart_data->command_tag;
 
 	/*

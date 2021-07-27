@@ -28,7 +28,7 @@ namespace master {
 
 const string kNamespace = "test";
 
-class FlushManagerTest : public CqlTestBase {
+class FlushManagerTest : public CqlTestBase<MiniCluster> {
  protected:
 
   Result<OpId> GetOpIdAtLeader(const string& table_id) {

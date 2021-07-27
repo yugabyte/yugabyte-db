@@ -120,8 +120,10 @@ POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                c
 # Alerts API
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alerts/active                                        com.yugabyte.yw.controllers.AlertController.listActive(cUUID: java.util.UUID)
+GET     /customers/:cUUID/alerts/:alertUUID                                    com.yugabyte.yw.controllers.AlertController.get(cUUID: java.util.UUID, alertUUID: java.util.UUID)
 POST    /customers/:cUUID/alerts/page                                          com.yugabyte.yw.controllers.AlertController.pageAlerts(cUUID: java.util.UUID)
-POST    /customers/:cUUID/alerts/acknowledge                                   com.yugabyte.yw.controllers.AlertController.acknowledge(cUUID: java.util.UUID)
+POST    /customers/:cUUID/alerts/acknowledge                                   com.yugabyte.yw.controllers.AlertController.acknowledgeByFilter(cUUID: java.util.UUID)
+POST    /customers/:cUUID/alerts/:alertUUID/acknowledge                        com.yugabyte.yw.controllers.AlertController.acknowledge(cUUID: java.util.UUID, alertUUID: java.util.UUID)
 POST    /customers/:cUUID/alert_definition_templates                           com.yugabyte.yw.controllers.AlertController.listDefinitionGroupTemplates(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_definition_groups/:groupUUID                   com.yugabyte.yw.controllers.AlertController.getDefinitionGroup(cUUID: java.util.UUID, groupUUID: java.util.UUID)
 POST    /customers/:cUUID/alert_definition_groups/page                         com.yugabyte.yw.controllers.AlertController.pageDefinitionGroups(cUUID: java.util.UUID)
@@ -158,7 +160,6 @@ GET     /customers/:cUUID/universes/find                                       c
 POST    /customers/:cUUID/universes                                            com.yugabyte.yw.controllers.UniverseUiOnlyController.create(cUUID: java.util.UUID)
 POST    /customers/:cUUID/universe_configure                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.configure(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/universes/:uniUUID                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-# TODO: migrate to new API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseUiOnlyController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 # TODO: migrate to new API
 POST    /customers/:cUUID/universes/:uniUUID/disk_update                       com.yugabyte.yw.controllers.UniverseUiOnlyController.updateDiskSize(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -222,6 +223,14 @@ PUT     /customers/:cUUID/universes/:uniUUID/update_backup_state               c
 POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     com.yugabyte.yw.controllers.UniverseActionsController.configureAlerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseActionsController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/toggle_tls                        com.yugabyte.yw.controllers.UniverseActionsController.toggleTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
+# Universe upgrade API
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/software                  com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeSoftware(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/gflags                    com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeGFlags(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/certs                     com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeCerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/tls                       com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/vm                        com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeVMImage(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Table Management API
 GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID)

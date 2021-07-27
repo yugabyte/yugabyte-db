@@ -13,12 +13,12 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -57,7 +57,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
 
-      if (taskParams().taskType == UpgradeTaskType.Software) {
+      if (taskParams().taskType == UpgradeTaskParams.UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
           throw new IllegalArgumentException(
               "Invalid yugabyte software version: " + taskParams().ybSoftwareVersion);
@@ -124,14 +124,15 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   }
 
   private void createUpgradeTask(UserIntent userIntent, Universe universe, PlacementInfo pi) {
-    String version = null;
+    String ybSoftwareVersion = null;
     boolean masterChanged = false;
     boolean tserverChanged = false;
-    if (taskParams().taskType == UpgradeTaskType.Software) {
-      version = taskParams().ybSoftwareVersion;
+    if (taskParams().taskType == UpgradeTaskParams.UpgradeTaskType.Software) {
+      ybSoftwareVersion = taskParams().ybSoftwareVersion;
       masterChanged = true;
       tserverChanged = true;
     } else {
+      ybSoftwareVersion = userIntent.ybSoftwareVersion;
       if (!taskParams().masterGFlags.equals(userIntent.masterGFlags)) {
         masterChanged = true;
       }
@@ -164,7 +165,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           masterAddresses,
           null,
           ServerType.MASTER,
-          version,
+          ybSoftwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
           masterChanged,
           tserverChanged);
@@ -179,7 +180,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           masterAddresses,
           null,
           ServerType.TSERVER,
-          version,
+          ybSoftwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
           false /* master change is false since it has already been upgraded.*/,
           tserverChanged);

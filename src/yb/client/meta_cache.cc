@@ -64,6 +64,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/random_util.h"
+#include "yb/util/unique_lock.h"
 
 using std::map;
 using std::shared_ptr;
@@ -1179,20 +1180,38 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
 
   std::vector<LookupCallback> to_notify;
 
+  auto invalidate_needed = [this, &table_id, &table_partition_list](const auto& it) {
+    const auto table_data_partition_list_version = it->second.partition_list->version;
+    VLOG_WITH_PREFIX(1) << Format(
+        "tables_[$0].partition_list.version: $1", table_id, table_data_partition_list_version);
+    // Only need to invalidate table cache, if it is has partition list version older than table's
+    // one.
+    return table_data_partition_list_version < table_partition_list->version;
+  };
+
   {
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    SharedLock<decltype(mutex_)> lock(mutex_);
     auto it = tables_.find(table_id);
     if (it != tables_.end()) {
-      const auto table_data_partition_list_version = it->second.partition_list->version;
-      VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
-          "tables_[$0].partition_list.version: $1", table_id, table_data_partition_list_version);
-      if (table_data_partition_list_version >= table_partition_list->version) {
-        // No need to invalidate table cache, since is has newer partition list version than table.
+      if (!invalidate_needed(it)) {
+        return;
+      }
+    }
+  }
+
+  {
+    UniqueLock<decltype(mutex_)> lock(mutex_);
+    auto it = tables_.find(table_id);
+    if (it != tables_.end()) {
+      if (!invalidate_needed(it)) {
         return;
       }
     } else {
       it = InitTableDataUnlocked(table_id, table_partition_list);
+      // Nothing to invalidate, we have just initiliazed it first time.
+      return;
     }
+
     auto& table_data = it->second;
 
     // Some partitions could be mapped to tablets that have been split and we need to re-fetch
@@ -1997,15 +2016,17 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   const PartitionKey& partition_key,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
-  // TODO(tsplit): consider doing refresh tablet partitions async.
-  const auto partitions_refresh_result = table->MaybeRefreshPartitions();
-  if (!partitions_refresh_result.ok()) {
-    callback(partitions_refresh_result.status());
+  if (table->ArePartitionsStale()) {
+    table->RefreshPartitions([this, table, partition_key, deadline,
+                              callback = std::move(callback)](const Status& status) {
+      if (!status.ok()) {
+        callback(status);
+        return;
+      }
+      InvalidateTableCache(*table);
+      LookupTabletByKey(table, partition_key, deadline, std::move(callback));
+    });
     return;
-  }
-
-  if (partitions_refresh_result.get()) {
-    InvalidateTableCache(*table);
   }
 
   const auto table_partition_list = table->GetVersionedPartitions();

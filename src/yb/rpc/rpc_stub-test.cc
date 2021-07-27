@@ -58,6 +58,11 @@ DECLARE_bool(socket_inject_short_recvs);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int32(TEST_delay_connect_ms);
 
+METRIC_DECLARE_counter(service_request_bytes_yb_rpc_test_CalculatorService_Echo);
+METRIC_DECLARE_counter(service_response_bytes_yb_rpc_test_CalculatorService_Echo);
+METRIC_DECLARE_counter(proxy_request_bytes_yb_rpc_test_CalculatorService_Echo);
+METRIC_DECLARE_counter(proxy_response_bytes_yb_rpc_test_CalculatorService_Echo);
+
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -374,8 +379,10 @@ TEST_F(RpcStubTest, TestCallWithInvalidParam) {
   // AddRequestPartialPB is missing the 'y' field.
   AddResponsePB resp;
   RpcController controller;
-  Status s = p.SyncRequest(CalculatorServiceMethods::AddMethod(), req, &resp, &controller);
-  ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s.ToString();
+  Status s = p.SyncRequest(
+      CalculatorServiceMethods::AddMethod(), /* method_metrics= */ nullptr, req, &resp,
+      &controller);
+  ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s;
   // Remote error messages always contain file name and line number.
   ASSERT_STR_CONTAINS(s.ToString(), "Invalid argument (");
   ASSERT_STR_CONTAINS(s.ToString(),
@@ -817,6 +824,50 @@ TEST_F(RpcStubTest, ExpireInQueue) {
   }
 
   latch.Wait();
+}
+
+TEST_F(RpcStubTest, TrafficMetrics) {
+  constexpr size_t kStringLen = 1_KB;
+  constexpr size_t kUpperBytesLimit = kStringLen + 64;
+
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  rpc_test::EchoRequestPB req;
+  req.set_data(RandomHumanReadableString(kStringLen));
+  rpc_test::EchoResponsePB resp;
+  proxy.Echo(req, &resp, &controller);
+
+  auto server_metrics = server_messenger()->metric_entity()->UnsafeMetricsMapForTests();
+
+  auto* service_request_bytes = down_cast<Counter*>(FindOrDie(
+      server_metrics, &METRIC_service_request_bytes_yb_rpc_test_CalculatorService_Echo).get());
+  auto* service_response_bytes = down_cast<Counter*>(FindOrDie(
+      server_metrics, &METRIC_service_response_bytes_yb_rpc_test_CalculatorService_Echo).get());
+
+  auto client_metrics = client_messenger_->metric_entity()->UnsafeMetricsMapForTests();
+
+  auto* proxy_request_bytes = down_cast<Counter*>(FindOrDie(
+      client_metrics, &METRIC_proxy_request_bytes_yb_rpc_test_CalculatorService_Echo).get());
+  auto* proxy_response_bytes = down_cast<Counter*>(FindOrDie(
+      client_metrics, &METRIC_proxy_response_bytes_yb_rpc_test_CalculatorService_Echo).get());
+
+  LOG(INFO) << "Inbound request bytes: " << service_request_bytes->value()
+            << ", response bytes: " << service_response_bytes->value();
+  LOG(INFO) << "Outbound request bytes: " << proxy_request_bytes->value()
+            << ", response bytes: " << proxy_response_bytes->value();
+
+  // We don't expect that sent and received bytes on client and server matches, because some
+  // auxilary fields are not calculated.
+  // For instance request size is taken into account on client, but not server.
+  ASSERT_GE(service_request_bytes->value(), kStringLen);
+  ASSERT_LT(service_request_bytes->value(), kUpperBytesLimit);
+  ASSERT_GE(service_response_bytes->value(), kStringLen);
+  ASSERT_LT(service_response_bytes->value(), kUpperBytesLimit);
+  ASSERT_GE(proxy_request_bytes->value(), kStringLen);
+  ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
+  ASSERT_GE(proxy_request_bytes->value(), kStringLen);
+  ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
 }
 
 } // namespace rpc

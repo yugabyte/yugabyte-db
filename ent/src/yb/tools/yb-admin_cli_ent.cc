@@ -46,7 +46,7 @@ Result<HybridTime> ParseHybridTime(string input) {
   boost::trim(input);
 
   HybridTime ht;
-  // The HybridTime is given in milliseconds and will contain 16 chars.
+  // The HybridTime is given in microseconds and will contain 16 chars.
   static const std::regex int_regex("[0-9]{16}");
   if (std::regex_match(input, int_regex)) {
     return HybridTime::FromMicros(std::stoul(input));

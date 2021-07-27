@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.forms.AlertReceiverFormData;
 import com.yugabyte.yw.forms.AlertRouteFormData;
@@ -62,11 +63,21 @@ import play.mvc.Result;
 @Api(value = "Alert", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AlertController extends AuthenticatedController {
 
+  @Inject private MetricService metricService;
+
   @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
   @Inject private AlertService alertService;
 
   @Inject private AlertRouteService alertRouteService;
+
+  @ApiOperation(value = "getAlert", response = Alert.class)
+  public Result get(UUID customerUUID, UUID alertUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    Alert alert = alertService.getOrBadRequest(alertUUID);
+    return YWResults.withData(alert);
+  }
 
   /** Lists alerts for given customer. */
   @ApiOperation(
@@ -112,6 +123,17 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(alerts);
   }
 
+  @ApiOperation(value = "acknowledgeAlert", response = Alert.class)
+  public Result acknowledge(UUID customerUUID, UUID alertUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertFilter filter = AlertFilter.builder().uuid(alertUUID).build();
+    alertService.acknowledge(filter);
+
+    Alert alert = alertService.getOrBadRequest(alertUUID);
+    return YWResults.withData(alert);
+  }
+
   @ApiOperation(value = "acknowledgeAlerts", response = Alert.class, responseContainer = "List")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -119,7 +141,7 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
-  public Result acknowledge(UUID customerUUID) {
+  public Result acknowledgeByFilter(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
     AlertApiFilter apiFilter = Json.fromJson(request().body().asJson(), AlertApiFilter.class);
@@ -381,6 +403,8 @@ public class AlertController extends AuthenticatedController {
           INTERNAL_SERVER_ERROR, "Unable to delete alert receiver: " + alertReceiverUUID);
     }
 
+    metricService.handleTargetRemoval(receiver.getCustomerUUID(), receiver.getUuid());
+
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
   }
@@ -463,5 +487,10 @@ public class AlertController extends AuthenticatedController {
   @VisibleForTesting
   void setAlertService(AlertService alertService) {
     this.alertService = alertService;
+  }
+
+  @VisibleForTesting
+  void setMetricService(MetricService metricService) {
+    this.metricService = metricService;
   }
 }

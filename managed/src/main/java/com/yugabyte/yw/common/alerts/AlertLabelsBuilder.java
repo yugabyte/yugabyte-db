@@ -13,27 +13,28 @@ import com.yugabyte.yw.models.AlertDefinitionLabel;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.MetricLabel;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class AlertDefinitionLabelsBuilder {
+public class AlertLabelsBuilder {
   private final List<AlertDefinitionLabel> labels = new ArrayList<>();
 
-  public static AlertDefinitionLabelsBuilder create() {
-    return new AlertDefinitionLabelsBuilder();
+  public static AlertLabelsBuilder create() {
+    return new AlertLabelsBuilder();
   }
 
-  public AlertDefinitionLabelsBuilder appendUniverse(Universe universe) {
+  public AlertLabelsBuilder appendUniverse(Universe universe) {
     labels.add(
         new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_UUID, universe.universeUUID.toString()));
     labels.add(new AlertDefinitionLabel(KnownAlertLabels.UNIVERSE_NAME, universe.name));
     return this;
   }
 
-  public AlertDefinitionLabelsBuilder appendTarget(Universe universe) {
+  public AlertLabelsBuilder appendTarget(Universe universe) {
     appendUniverse(universe);
     labels.add(
         new AlertDefinitionLabel(KnownAlertLabels.TARGET_UUID, universe.universeUUID.toString()));
@@ -42,7 +43,7 @@ public class AlertDefinitionLabelsBuilder {
     return this;
   }
 
-  public AlertDefinitionLabelsBuilder appendTarget(Customer customer) {
+  public AlertLabelsBuilder appendTarget(Customer customer) {
     labels.add(
         new AlertDefinitionLabel(KnownAlertLabels.TARGET_UUID, customer.getUuid().toString()));
     labels.add(new AlertDefinitionLabel(KnownAlertLabels.TARGET_NAME, customer.name));
@@ -50,7 +51,7 @@ public class AlertDefinitionLabelsBuilder {
     return this;
   }
 
-  public AlertDefinitionLabelsBuilder appendTarget(AlertReceiver receiver) {
+  public AlertLabelsBuilder appendTarget(AlertReceiver receiver) {
     labels.add(
         new AlertDefinitionLabel(KnownAlertLabels.TARGET_UUID, receiver.getUuid().toString()));
     labels.add(new AlertDefinitionLabel(KnownAlertLabels.TARGET_NAME, receiver.getName()));
@@ -66,6 +67,13 @@ public class AlertDefinitionLabelsBuilder {
     return labels
         .stream()
         .map(label -> new AlertLabel(label.getName(), label.getValue()))
+        .collect(Collectors.toList());
+  }
+
+  public List<MetricLabel> getMetricLabels() {
+    return labels
+        .stream()
+        .map(label -> new MetricLabel(label.getName(), label.getValue()))
         .collect(Collectors.toList());
   }
 }

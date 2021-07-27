@@ -889,10 +889,6 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
   return s;
 }
 
-Result<master::AnalyzeTableResponsePB> PgSession::AnalyzeTable(const PgObjectId& table_id) {
-  return client_->AnalyzeTable(table_id.GetYBTableId());
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_id) {
@@ -991,7 +987,12 @@ Result<bool> PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op)
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
   }
-  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
+  // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
+  // read restart error because subsequent cache refresh used an outdated txn to read from the
+  // system catalog,
+  // As a quick fix, we prevent yb_non_ddl_txn_for_sys_tables_allowed from affecting reads.
+  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn
+                                       && op.type() == YBOperation::Type::PGSQL_WRITE)) {
     return true;
   }
   if (op.type() == YBOperation::Type::PGSQL_WRITE) {
@@ -1267,6 +1268,25 @@ void PgSession::ResetCatalogReadPoint() {
 
 void PgSession::SetCatalogReadPoint(const ReadHybridTime& read_ht) {
   catalog_session_->SetReadPoint(read_ht);
+}
+
+Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
+  // It's required that we flush all buffered operations before changing the SubTransactionMetadata
+  // used by the underlying batcher and RPC logic, as this will snapshot the current
+  // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
+  // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
+  // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
+  // they are eventually sent to DocDB.
+  RETURN_NOT_OK(FlushBufferedOperations());
+  pg_txn_manager_->SetActiveSubTransaction(id);
+  return Status::OK();
+}
+
+Status PgSession::RollbackSubTransaction(SubTransactionId id) {
+  // TODO(savepoints) -- update client-side aborted subtransaction bitset
+  // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
+  // eventually send this metadata.
+  return Status::OK();
 }
 
 }  // namespace pggate

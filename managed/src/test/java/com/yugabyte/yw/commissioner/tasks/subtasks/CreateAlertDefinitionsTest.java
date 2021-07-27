@@ -50,7 +50,6 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
   @Before
   public void setUp() {
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
-    when(baseTaskDependencies.getAlertDefinitionService()).thenReturn(alertDefinitionService);
     when(baseTaskDependencies.getAlertDefinitionGroupService())
         .thenReturn(alertDefinitionGroupService);
 

@@ -34,12 +34,7 @@ public class AlertLabel extends Model implements UniqueKeyListValue<AlertLabel> 
   @Column(nullable = false)
   private String value;
 
-  @ManyToOne
-  @MapsId("alert")
-  @JsonIgnore
-  @EqualsAndHashCode.Exclude
-  @ToString.Exclude
-  private Alert alert;
+  @ManyToOne @JsonIgnore @EqualsAndHashCode.Exclude @ToString.Exclude private Alert alert;
 
   public AlertLabel() {
     this.key = new AlertLabelKey();

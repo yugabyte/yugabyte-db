@@ -1204,12 +1204,15 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         if (!index_pred_existing_row) {
           VLOG(3) << "Skip index entry delete of existing row for index_id=" << index->table_id() <<
             " since predicate not satisfied";
-          return Status::OK();
+          continue;
         }
       }
 
       QLWriteRequestPB* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
+      VLOG(3) << "Issue index entry delete of existing row for index_id=" << index->table_id() <<
+        " since predicate was satisfied earlier AND (isn't satisfied now (OR) the key has changed)";
+
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);

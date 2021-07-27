@@ -177,6 +177,7 @@ void CQLProcessor::Shutdown() {
 
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   call_ = std::dynamic_pointer_cast<CQLInboundCall>(std::move(call));
+  call_->SetRpcMethodMetrics(cql_metrics_->rpc_method_metrics_);
   is_rescheduled_.store(IsRescheduled::kFalse, std::memory_order_release);
   audit_logger_.SetConnection(call_->connection());
   unique_ptr<CQLRequest> request;
@@ -234,7 +235,7 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   const auto compression_scheme = context.compression_scheme();
   faststring msg;
   response.Serialize(compression_scheme, &msg);
-  call_->RespondSuccess(RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
+  call_->RespondSuccess(RefCntBuffer(msg));
 
   MonoTime response_done = MonoTime::Now();
   cql_metrics_->time_to_process_request_->Increment(
