@@ -139,3 +139,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [jackstenglein](https://github.com/jackstenglein)
 * [BozhiYou](https://github.com/bozhiyou)
 * [pkj415](https://github.com/pkj415)
+* [leeleeian](https://github.com/leeleeian)

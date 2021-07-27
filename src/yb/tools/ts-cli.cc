@@ -469,6 +469,9 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
     return STATUS(IOError, "Failed to flush tablet: ",
                            resp.error().ShortDebugString());
   }
+  std::cout << "Successfully " << (is_compaction ? "compacted " : "flushed ")
+            << (tablet_id.empty() ? "all tablets" : "tablet <" + tablet_id + ">")
+            << std::endl;
   return Status::OK();
 }
 
