@@ -68,7 +68,7 @@ class TypeInfo {
   // Returns the type used to actually store the data.
   DataType physical_type() const { return physical_type_; }
   const std::string& name() const { return name_; }
-  const size_t size() const { return size_; }
+  size_t size() const { return size_; }
   void AppendDebugStringForValue(const void *ptr, std::string *str) const;
   int Compare(const void *lhs, const void *rhs) const;
   void CopyMinValue(void* dst) const {

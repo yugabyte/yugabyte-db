@@ -1122,11 +1122,11 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   // two strategy are possible:
   // 1. select keys belonging to same tablet to reduce number of simultaneous RPC
   // 2. select keys belonging to different tablets to distribute reads among different nodes
-  const auto intent_match = [table_id](const auto& it) { return it->table_id == table_id; };
+  const auto intent_match = [table_id](const auto& key) { return key.table_id == table_id; };
   for (auto it = fk_reference_intent_.begin();
        it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size;
        ++it) {
-    if (intent_match(it)) {
+    if (intent_match(*it)) {
       ybctids.push_back(it->ybctid);
     }
   }
@@ -1140,7 +1140,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   } else {
     for (auto it = fk_reference_intent_.begin();
         it != fk_reference_intent_.end() && intent_count_for_remove > 0;) {
-      if (intent_match(it)) {
+      if (intent_match(*it)) {
         it = fk_reference_intent_.erase(it);
         --intent_count_for_remove;
       } else {
