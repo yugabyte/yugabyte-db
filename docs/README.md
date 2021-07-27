@@ -94,7 +94,7 @@ Identify your fork as `origin` and the original YB repository as `upstream`:
 ```
 cd <your path>/yugabyte-db/
 git remote set-url origin git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
-git remote add upstream git@github.com:Yugabyte/yugabyte-db.git
+git remote add upstream git@github.com:yugabyte/yugabyte-db.git
 ```
 
 For belt-and-braces, make sure that your local git is still current with the YB repo:
