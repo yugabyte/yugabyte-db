@@ -776,7 +776,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
-  int number_rows_processed = 0;
+  size_t number_rows_processed = 0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -796,6 +796,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
+        &number_rows_processed,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
       DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";

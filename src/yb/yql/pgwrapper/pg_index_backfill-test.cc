@@ -11,6 +11,7 @@
 // under the License.
 
 #include <array>
+#include <cmath>
 #include <map>
 #include <string>
 #include <vector>
@@ -53,12 +54,18 @@ class PgIndexBackfillTest : public LibPqTestBase {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
+    options->extra_master_flags.push_back(
+        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
     options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
   }
 
  protected:
   void TestSimpleBackfill(const std::string& table_create_suffix = "");
+  void TestLargeBackfill(const int num_rows);
   void TestRetainDeleteMarkers(const std::string& db_name);
+  const int kTabletsPerServer = 8;
 
   std::unique_ptr<PGConn> conn_;
 };
@@ -76,6 +83,27 @@ Result<string> GetTableIdByTableName(
     }
   }
   return STATUS(NotFound, "The table does not exist");
+}
+
+Result<int> TotalBackfillRpcMetric(ExternalMiniCluster* cluster, const char* type) {
+  int total_rpc_calls = 0;
+  constexpr auto metric_name = "handler_latency_yb_tserver_TabletServerAdminService_BackfillIndex";
+  for (auto ts : cluster->tserver_daemons()) {
+    auto val = VERIFY_RESULT(ts->GetInt64Metric("server", "yb.tabletserver", metric_name, type));
+    total_rpc_calls += val;
+    VLOG(1) << ts->bind_host() << " for " << type << " returned " << val;
+  }
+  return total_rpc_calls;
+}
+
+Result<int> TotalBackfillRpcCalls(ExternalMiniCluster* cluster) {
+  return TotalBackfillRpcMetric(cluster, "total_count");
+}
+
+Result<double> AvgBackfillRpcLatencyInMicros(ExternalMiniCluster* cluster) {
+  auto num_calls = VERIFY_RESULT(TotalBackfillRpcMetric(cluster, "total_count"));
+  double total_latency = VERIFY_RESULT(TotalBackfillRpcMetric(cluster, "total_sum"));
+  return total_latency / num_calls;
 }
 
 } // namespace
@@ -126,6 +154,30 @@ void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
 
   ASSERT_EQ(table_info->schema.version(), 0);
   ASSERT_FALSE(table_info->schema.table_properties().retain_delete_markers());
+}
+
+void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+
+  // Insert bunch of rows.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))",
+      kTableName,
+      num_rows));
+
+  // Create index.
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i ASC)", kTableName));
+
+  // All rows should be in the index.
+  const std::string query = Format(
+      "SELECT COUNT(*) FROM $0 WHERE i > 0",
+      kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+  PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  int actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  ASSERT_EQ(actual_num_rows, num_rows);
 }
 
 // Make sure that backfill works.
@@ -321,28 +373,120 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(NonexistentDelete)) {
 // Make sure that index backfill on large tables backfills all data.
 TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
   constexpr int kNumRows = 10000;
+  TestLargeBackfill(kNumRows);
+  int expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
+  auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  ASSERT_EQ(actual_calls, expected_calls);
+}
 
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+class PgIndexBackfillTestChunking : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_backfill_paging_size=$0", kBatchSize));
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_write_batch_size=$0", kBatchSize));
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_prefetch_limit=$0", kPrefetchSize));
+  }
+  const int kBatchSize = 200;
+  const int kPrefetchSize = 128;
+};
 
-  // Insert bunch of rows.
-  ASSERT_OK(conn_->ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1))",
-      kTableName,
-      kNumRows));
+// Set batch size and prefetch limit such that:
+// Each tablet requires multiple RPC calls from the master to complete backfill.
+//     Also, set the ysql_prefetch_size small to ensure that each of these
+//     `BACKFILL INDEX` calls will fetch data from the tserver at least 2 times.
+// Fetch metrics to ensure that there have been > num_tablets rpc's.
+TEST_F_EX(
+    PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(BackfillInChunks), PgIndexBackfillTestChunking) {
+  constexpr int kNumRows = 10000;
+  TestLargeBackfill(kNumRows);
 
-  // Create index.
-  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i ASC)", kTableName));
+  const size_t effective_batch_size =
+      static_cast<size_t>(kPrefetchSize * ceil(1.0 * kBatchSize / kPrefetchSize));
+  const size_t min_expected_calls =
+      static_cast<size_t>(ceil(1.0 * kNumRows / effective_batch_size));
+  auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  LOG(INFO) << "Had " << actual_calls << " backfill rpc calls. "
+            << "Expected at least " << kNumRows << "/" << effective_batch_size << " = "
+            << min_expected_calls;
+  ASSERT_GE(actual_calls, min_expected_calls);
+}
 
-  // All rows should be in the index.
-  const std::string query = Format(
-      "SELECT COUNT(*) FROM $0 WHERE i > 0",
-      kTableName);
-  ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 1);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  int actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
-  ASSERT_EQ(actual_num_rows, kNumRows);
+class PgIndexBackfillTestThrottled : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_prefetch_limit=128");
+    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=256");
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_rate_rows_per_sec=$0", kBackfillRateRowsPerSec));
+    options->extra_tserver_flags.push_back(
+        Format("--num_concurrent_backfills_allowed=$0", kNumConcurrentBackfills));
+  }
+
+  const int kBackfillRateRowsPerSec = 100;
+  const int kNumConcurrentBackfills = 1;
+  const int kBackfillRpcDeadlineMs = 10000;
+};
+
+// Set the backfill batch size and backfill rate
+// Check that the time taken to backfill is no less than what is expected.
+TEST_F_EX(
+    PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(ThrottledBackfill), PgIndexBackfillTestThrottled) {
+  constexpr int kNumRows = 10000;
+  auto start_time = CoarseMonoClock::Now();
+  TestLargeBackfill(kNumRows);
+  auto end_time = CoarseMonoClock::Now();
+  auto expected_time = MonoDelta::FromSeconds(
+      kNumRows * 1.0 /
+      (cluster_->num_tablet_servers() * kNumConcurrentBackfills * kBackfillRateRowsPerSec));
+  ASSERT_GE(MonoDelta{end_time - start_time}, expected_time);
+
+  // Expect only 1 call per tablet
+  const size_t expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
+  auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  ASSERT_EQ(actual_calls, expected_calls);
+
+  auto avg_rpc_latency_usec = ASSERT_RESULT(AvgBackfillRpcLatencyInMicros(cluster_.get()));
+  LOG(INFO) << "Avg backfill latency was " << avg_rpc_latency_usec << " us";
+  // --ysql_index_backfill_rpc_timeout was not set for this test.
+  // Check to ensure that we have picked a reasonable value for kBackfillRpcDeadlineMs
+  // such that BackfillRespectsDeadline will only succeed if throttling is implemented.
+  ASSERT_GT(avg_rpc_latency_usec, kBackfillRpcDeadlineMs * 1000);
+}
+
+class PgIndexBackfillTestDeadlines : public PgIndexBackfillTestThrottled {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTestThrottled::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineMs));
+    options->extra_master_flags.push_back(
+        Format("--backfill_index_timeout_grace_margin_ms=$0", kBackfillRpcDeadlineMs / 2));
+  }
+};
+
+// Set the backfill batch size, backfill rate and a low timeout for backfill rpc.
+// Ensure that the backfill is completed. And that the avg rpc latency is
+// below what is set as the timeout.
+TEST_F_EX(
+    PgIndexBackfillTest,
+    YB_DISABLE_TEST_IN_TSAN(BackfillRespectsDeadline),
+    PgIndexBackfillTestDeadlines) {
+  constexpr int kNumRows = 10000;
+  TestLargeBackfill(kNumRows);
+
+  const size_t min_expected_calls = static_cast<size_t>(
+      ceil(kNumRows / (kBackfillRpcDeadlineMs * kBackfillRateRowsPerSec * 0.001)));
+  auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  ASSERT_GE(actual_calls, min_expected_calls);
+
+  auto avg_rpc_latency_usec = ASSERT_RESULT(AvgBackfillRpcLatencyInMicros(cluster_.get()));
+  LOG(INFO) << "Avg backfill latency was " << avg_rpc_latency_usec << " us";
+  ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineMs * 1000);
 }
 
 // Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
