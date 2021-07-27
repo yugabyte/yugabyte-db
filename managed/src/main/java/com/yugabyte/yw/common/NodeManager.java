@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -768,6 +769,18 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.subnetId);
 
             Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+
+            // Use case: cloud free tier instances.
+            if (config.getBoolean("yb.cloud.enabled")) {
+              // If low mem instance, configure small boot disk size.
+              List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2."); 
+              String instanceTypePrefix = taskParam.instanceType.split(".")[0] + ".";
+              if (lowMemInstanceTypePrefixes.contains(instanceTypePrefix)) {
+                String lowMemBootDiskSizeGB = "8";
+                commandArgs.add("--boot_disk_size_gb");
+                commandArgs.add(lowMemBootDiskSizeGB);
+              }
+            }
 
             if (config.hasPath(BOOT_SCRIPT_PATH)) {
               String bootScript = config.getString(BOOT_SCRIPT_PATH);
