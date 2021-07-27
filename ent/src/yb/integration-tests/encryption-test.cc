@@ -327,6 +327,11 @@ TEST_F(EncryptionTest, EnableEncryption) {
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
+TEST_F(EncryptionTest, EnvIsEncrypted) {
+  for (int i = 0; i < mini_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_TRUE(mini_cluster()->mini_tablet_server(i)->server()->GetEnv()->IsEncrypted());
+  }
+}
 
 } // namespace integration_tests
 } // namespace yb

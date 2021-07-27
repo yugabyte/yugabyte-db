@@ -83,6 +83,7 @@ class LoadBalancerMiniClusterTest : public YBTableTestBase {
   void SetUp() override {
     emu_env = new StatEmuEnv();
     ts_env_.reset(emu_env);
+    ts_rocksdb_env_ = std::make_unique<rocksdb::EnvWrapper>(rocksdb::Env::Default());
     YBTableTestBase::SetUp();
   }
 

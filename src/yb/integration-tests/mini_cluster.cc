@@ -318,6 +318,12 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   tablet_server->options()->master_addresses_flag = server::MasterAddressesToString(*master_addr);
   tablet_server->options()->SetMasterAddresses(master_addr);
   tablet_server->options()->webserver_opts.port = tserver_web_ports_[new_idx];
+  if (options_.ts_env) {
+    tablet_server->options()->env = options_.ts_env;
+  }
+  if (options_.ts_rocksdb_env) {
+    tablet_server->options()->rocksdb_env = options_.ts_rocksdb_env;
+  }
   RETURN_NOT_OK(tablet_server->Start());
   mini_tablet_servers_.push_back(tablet_server);
   return Status::OK();
@@ -326,7 +332,6 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
 Status MiniCluster::AddTabletServer() {
   auto options = tserver::TabletServerOptions::CreateTabletServerOptions();
   RETURN_NOT_OK(options);
-  options->env = options_.ts_env;
   return AddTabletServer(*options);
 }
 

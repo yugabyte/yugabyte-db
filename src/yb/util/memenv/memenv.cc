@@ -409,6 +409,10 @@ class InMemoryEnv : public EnvWrapper {
     LOG(FATAL) << "Not implemented";
   }
 
+  bool IsEncrypted() const override {
+    return false;
+  }
+
  private:
   void DeleteFileInternal(const std::string& fname) {
     if (!ContainsKey(file_map_, fname)) {

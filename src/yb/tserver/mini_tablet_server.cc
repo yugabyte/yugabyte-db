@@ -59,7 +59,11 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
+#include "yb/util/encrypted_file_factory.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/header_manager_impl.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
@@ -94,7 +98,10 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   : started_(false),
     opts_(extra_opts),
     index_(index + 1),
-    universe_key_manager_(new yb::UniverseKeyManager()) {
+    universe_key_manager_(new UniverseKeyManager()),
+    encrypted_env_(NewEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))),
+    rocksdb_encrypted_env_(
+      NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))) {
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
@@ -113,6 +120,8 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   opts_.fs_opts.wal_paths = wal_paths;
   opts_.fs_opts.data_paths = data_paths;
   opts_.universe_key_manager = universe_key_manager_.get();
+  opts_.env = encrypted_env_.get();
+  opts_.rocksdb_env = rocksdb_encrypted_env_.get();
 }
 
 MiniTabletServer::MiniTabletServer(const string& fs_root,
