@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -48,8 +48,8 @@ constexpr int kHybridTimeSizeMask = (1 << kNumBitsForHybridTimeSize) - 1;
 
 char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   // We compute the difference between the physical time as microseconds since the UNIX epoch and
-  // the "YugaByte epoch" as a signed operation, so that we can still represent hybrid times earlier
-  // than the YugaByte epoch.
+  // the "Yugabyte epoch" as a signed operation, so that we can still represent hybrid times earlier
+  // than the Yugabyte epoch.
   char* out = dest;
 
   // Hybrid time generation number. This is currently always 0. In the future this can be used to
@@ -58,7 +58,7 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   out = FastEncodeDescendingSignedVarInt(0, out);
 
   out = FastEncodeDescendingSignedVarInt(
-      static_cast<int64_t>(hybrid_time_.GetPhysicalValueMicros() - kYugaByteMicrosecondEpoch),
+      static_cast<int64_t>(hybrid_time_.GetPhysicalValueMicros() - kYugabyteMicrosecondEpoch),
       out);
   out = FastEncodeDescendingSignedVarInt(hybrid_time_.GetLogicalValue(), out);
 
@@ -90,7 +90,7 @@ Status DocHybridTime::DecodeFrom(Slice *slice) {
     // Currently we just ignore the generation number as it should always be 0.
     RETURN_NOT_OK(FastDecodeDescendingSignedVarInt(slice));
     int64_t decoded_micros =
-        kYugaByteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
+        kYugabyteMicrosecondEpoch + VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 
     int64_t decoded_logical = VERIFY_RESULT(FastDecodeDescendingSignedVarInt(slice));
 

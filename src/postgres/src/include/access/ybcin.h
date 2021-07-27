@@ -3,7 +3,7 @@
  * ybcin.h
  *	  prototypes for ybcin.c
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -27,7 +27,7 @@
 #include "nodes/execnodes.h"
 
 /*
- * external entry points for YugaByte indexes in ybcin.c
+ * external entry points for Yugabyte indexes in ybcin.c
  */
 extern IndexBuildResult *ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo);
 extern void ybcinbuildempty(Relation index);

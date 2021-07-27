@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of Yugabyte development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -5038,7 +5038,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     // 3. Deletes or SingleDeletes are not okay if filtering deletes
     //    (controlled by both batch and memtable setting)
     // 4. Merges are not okay
-    // 5. YugaByte-specific user-specified sequence numbers are currently not compatible with
+    // 5. Yugabyte-specific user-specified sequence numbers are currently not compatible with
     //    parallel memtable writes.
     //
     // Rules 1..3 are enforced by checking the options

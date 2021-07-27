@@ -136,7 +136,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 	 * System views created during upgrade must specify rewrite rule OID,
 	 * while normal views cannot have it set.
 	 */
-	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
+	if (IsYugabyteEnabled() && !IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
 	{
 		Oid namespaceOid;
 

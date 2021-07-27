@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import {
   CHANGE_GRAPH_QUERY_PERIOD,

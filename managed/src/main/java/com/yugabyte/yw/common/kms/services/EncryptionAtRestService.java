@@ -1,11 +1,11 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 Yugabyte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
  * may obtain a copy of the License at
  *
- *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ *     https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
 package com.yugabyte.yw.common.kms.services;
@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 /**
- * An interface to be implemented for each encryption key provider service that YugaByte supports
+ * An interface to be implemented for each encryption key provider service that Yugabyte supports
  */
 public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterface> {
 

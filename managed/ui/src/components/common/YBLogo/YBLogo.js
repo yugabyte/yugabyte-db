@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React from 'react';
 import LogoFull from './images/yb_yblogo_darkbg.svg';

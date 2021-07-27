@@ -566,7 +566,7 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 			/*
 			 * For libc, Yugabyte only supports the basic locales.
 			 */
-			if (IsYugaByteEnabled() && !IsYBSupportedLibcLocale(localebuf))
+			if (IsYugabyteEnabled() && !IsYBSupportedLibcLocale(localebuf))
 				continue;
 
 			enc = pg_get_encoding_from_locale(localebuf, false);

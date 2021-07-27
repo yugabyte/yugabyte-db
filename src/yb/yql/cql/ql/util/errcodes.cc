@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,7 +13,7 @@
 //
 //
 // Convert internal error code into readable texts. This text doesn't have to be English, and this
-// file can be translated into any languages that YugaByte supports.
+// file can be translated into any languages that Yugabyte supports.
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/util/errcodes.h"

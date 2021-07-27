@@ -27,7 +27,7 @@
 static char user_id[MAXPGPATH] = "";
 
 /*
- * YugaByte added functionality
+ * Yugabyte added functionality
  * Returns the current user name using `id` system command
  */
 const char*
@@ -65,7 +65,7 @@ get_user_name(char **errstr)
 	if (!pw)
 	{
     /*
-     * This is a YugaByte workaround for failures to look up a user by uid
+     * This is a Yugabyte workaround for failures to look up a user by uid
      * an LDAP environment. This is probably caused by our Linuxbrew
      * installation issues.
      * (1) Read username using `id` system command.

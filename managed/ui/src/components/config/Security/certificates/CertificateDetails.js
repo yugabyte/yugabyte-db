@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Fragment } from 'react';
 import { YBModal } from '../../../common/forms/fields';

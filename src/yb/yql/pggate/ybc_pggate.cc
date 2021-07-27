@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -111,7 +111,7 @@ void YBCDestroyPgGate() {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
   } else {
     pggate::PgApiImpl* local_pgapi = pgapi;
-    pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
+    pgapi = nullptr; // YBCPgIsYugabyteEnabled() must return false from now on.
     delete local_pgapi;
     ClearGlobalPgMemctxMap();
     VLOG(1) << __PRETTY_FUNCTION__ << " finished";
@@ -1005,7 +1005,7 @@ bool YBCGetDisableIndexBackfill() {
   return FLAGS_ysql_disable_index_backfill;
 }
 
-bool YBCPgIsYugaByteEnabled() {
+bool YBCPgIsYugabyteEnabled() {
   return pgapi;
 }
 

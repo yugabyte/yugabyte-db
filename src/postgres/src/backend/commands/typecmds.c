@@ -1960,7 +1960,7 @@ findRangeSubOpclass(List *opcname, Oid subtype)
 
 	if (opcname != NIL)
 	{
-		opcid = get_opclass_oid(IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID, opcname, false);
+		opcid = get_opclass_oid(IsYugabyteEnabled() ? LSM_AM_OID : BTREE_AM_OID, opcname, false);
 
 		/*
 		 * Verify that the operator class accepts this datatype. Note we will
@@ -1976,7 +1976,7 @@ findRangeSubOpclass(List *opcname, Oid subtype)
 	}
 	else
 	{
-		opcid = GetDefaultOpClass(subtype, IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID);
+		opcid = GetDefaultOpClass(subtype, IsYugabyteEnabled() ? LSM_AM_OID : BTREE_AM_OID);
 		if (!OidIsValid(opcid))
 		{
 			/* We spell the error message identically to ResolveOpClass */

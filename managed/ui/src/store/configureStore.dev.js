@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import { createStore, applyMiddleware, compose } from 'redux';
 import promise from 'redux-promise';

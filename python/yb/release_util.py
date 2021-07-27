@@ -1,5 +1,5 @@
 """
-Copyright (c) YugaByte, Inc.
+Copyright (c) Yugabyte, Inc.
 
 This module provides utilities for generating and publishing release.
 """
@@ -25,7 +25,7 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
 class ReleaseUtil(object):
-    """Packages a YugaByte package with the appropriate file naming schema."""
+    """Packages a Yugabyte package with the appropriate file naming schema."""
     def __init__(self, repository, build_type, distribution_path, force, commit, build_root,
                  package_name):
         self.repo = repository

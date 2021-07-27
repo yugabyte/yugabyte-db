@@ -1,10 +1,10 @@
 /*--------------------------------------------------------------------------------------------------
  *
  * ybcam.c
- *	  YugaByte catalog scan API.
- *	  This is used to access data from YugaByte's system catalog tables.
+ *	  Yugabyte catalog scan API.
+ *	  This is used to access data from Yugabyte's system catalog tables.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -93,7 +93,7 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 	bool is_hash    = false;
 
 	/*
-	 * TODO(neil) We shouldn't need to upload YugaByte table descriptor here because the structure
+	 * TODO(neil) We shouldn't need to upload Yugabyte table descriptor here because the structure
 	 * Postgres::Relation already has all information.
 	 * - Primary key indicator: IndexRelation->rd_index->indisprimary
 	 * - Number of key columns: IndexRelation->rd_index->indnkeyatts
@@ -118,7 +118,7 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 }
 
 /*
- * Get YugaByte-specific table metadata and load it into the scan_plan.
+ * Get Yugabyte-specific table metadata and load it into the scan_plan.
  * Currently only the hash and primary key info.
  */
 static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
@@ -374,25 +374,25 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
  *
  * 1. SequentialScan(Table) and PrimaryIndexScan(Table): index = 0
  *    - Table can be systable or usertable.
- *    - YugaByte doesn't have a separate PrimaryIndexTable. It's a special case.
+ *    - Yugabyte doesn't have a separate PrimaryIndexTable. It's a special case.
  *    - Both target and bind descriptors are specified by the <Table>
  *
  * 2. IndexScan(SysTable, Index).
  *    - Target descriptor is specifed by the SysTable.
  *    - Bind descriptor is specified by the IndexTable.
- *    - For this scan, YugaByte returns a heap-tuple, which has all user's requested data.
+ *    - For this scan, Yugabyte returns a heap-tuple, which has all user's requested data.
  *
  * 3. IndexScan(UserTable, Index)
  *    - Both target and bind descriptors are specifed by the IndexTable.
- *    - For this scan, YugaByte returns an index-tuple, which has a ybctid (ROWID) to be used for
+ *    - For this scan, Yugabyte returns an index-tuple, which has a ybctid (ROWID) to be used for
  *      querying data from the UserTable.
- *    - TODO(neil) By batching ybctid and processing it on YugaByte for all index-scans, the target
+ *    - TODO(neil) By batching ybctid and processing it on Yugabyte for all index-scans, the target
  *      for index-scan on regular table should also be the table itself (relation).
  *
  * 4. IndexOnlyScan(Table, Index)
  *    - Table can be systable or usertable.
  *    - Both target and bind descriptors are specifed by the IndexTable.
- *    - For this scan, YugaByte ALWAYS return index-tuple, which is expected by Postgres layer.
+ *    - For this scan, Yugabyte ALWAYS return index-tuple, which is expected by Postgres layer.
  */
 static void
 ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
@@ -410,7 +410,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * - "index_oid, index_only_scan, use_secondary_index": Different index
 	 *   scans.
 	 * NOTE: Primary index is a special case as there isn't a primary index
-	 * table in YugaByte.
+	 * table in Yugabyte.
 	 */
 
 	ybScan->prepare_params.querying_colocated_table =
@@ -446,7 +446,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	{
 		/*
 		 * SequentialScan or PrimaryIndexScan
-		 * - YugaByte does not have a separate table for PrimaryIndex.
+		 * - Yugabyte does not have a separate table for PrimaryIndex.
 		 * - The target table descriptor, where data is read and returned, is the main table.
 		 * - The binding table descriptor, whose column is bound to values, is also the main table.
 		 */
@@ -477,7 +477,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		{
 			/*
 			 * IndexScan ( SysTable / UserTable)
-			 * - YugaByte will use the binds to query base-ybctid in the index table, which is then used
+			 * - Yugabyte will use the binds to query base-ybctid in the index table, which is then used
 			 *   to query data from the main table.
 			 * - The target table descriptor, where data is read and returned, is the main table.
 			 * - The binding table descriptor, whose column is bound to values, is the index table.
@@ -510,7 +510,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		else if (index->rd_index->indisprimary)
 		{
 			/*
-			 * PrimaryIndex scan: This is a special case in YugaByte. There is no PrimaryIndexTable.
+			 * PrimaryIndex scan: This is a special case in Yugabyte. There is no PrimaryIndexTable.
 			 * The table itself will be scanned.
 			 */
 			ybScan->target_key_attnums[i] = scan_plan->bind_key_attnums[i] =
@@ -1104,7 +1104,7 @@ ybcBeginScan(
 				 errmsg("cannot use more than %d predicates in a table or index scan",
 						YB_MAX_SCAN_KEYS)));
 
-	/* Set up YugaByte scan description */
+	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
 	ybScan->key   = key;
 	ybScan->nkeys = nkeys;
@@ -1313,7 +1313,7 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 
 	/*
 	 * Look up the index to scan with if we can. If the index is the primary key which is part
-	 * of the table in YugaByte, we should scan the table directly.
+	 * of the table in Yugabyte, we should scan the table directly.
 	 */
 	if (indexOK && !IgnoreSystemIndexes && !ReindexIsProcessingIndex(indexId))
 	{

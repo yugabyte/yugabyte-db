@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 create table if not exists async_replication_relationship (
     uuid                            uuid primary key,

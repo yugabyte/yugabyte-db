@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { useState } from 'react';
 import { YBButton } from '../common/forms/fields';

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //--------------------------------------------------------------------------------------------------
 
 #include <thread>
@@ -905,7 +905,7 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToJson) {
             to_json_str(row_block->row(0).column(0)));
 
   // Feature Not Supported: UDT field types cannot refer to other user-defined types.
-  // https://github.com/YugaByte/yugabyte-db/issues/1630
+  // https://github.com/yugabyte/yugabyte-db/issues/1630
   CHECK_INVALID_STMT("CREATE TYPE udt8(i1 int, u1 udt)");
   // CHECK_VALID_STMT("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
   // CHECK_VALID_STMT("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");

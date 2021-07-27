@@ -71,7 +71,7 @@ For larger tables and indexes that are range-sharded and the value ranges of the
 
 ## Remove collation on columns
 
-YugabyteDB does not currently support any collation options using the COLLATE keyword (adding [collation support is in the roadmap](https://github.com/YugaByte/yugabyte-db/issues/1127)). Remove the COLLATE options in order move the schema over to YugabyteDB.
+YugabyteDB does not currently support any collation options using the COLLATE keyword (adding [collation support is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/1127)). Remove the COLLATE options in order move the schema over to YugabyteDB.
 
 For example, consider the table definition below.
 
@@ -88,7 +88,7 @@ Attempting to create this table would result in the following error.
 ERROR:  0A000: COLLATE not supported yet
 LINE 2:     a text COLLATE "de_DE" PRIMARY KEY,
                    ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
 LOCATION:  raise_feature_not_supported_signal, gram.y:17113
 Time: 31.543 ms
 ```

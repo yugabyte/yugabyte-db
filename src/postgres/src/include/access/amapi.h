@@ -82,7 +82,7 @@ typedef bool (*aminsert_function) (Relation indexRelation,
 								   IndexUniqueCheck checkUnique,
 								   struct IndexInfo *indexInfo);
 
-/* alternate insert callback for YugaByte-based index that passs ybctid instead of ctid */
+/* alternate insert callback for Yugabyte-based index that passs ybctid instead of ctid */
 typedef bool (*yb_aminsert_function) (Relation indexRelation,
 									  Datum *values,
 									  bool *isnull,
@@ -92,7 +92,7 @@ typedef bool (*yb_aminsert_function) (Relation indexRelation,
 									  struct IndexInfo *indexInfo,
 									  bool shared_insert);
 
-/* delete this tuple for YugaByte-based index */
+/* delete this tuple for Yugabyte-based index */
 typedef void (*yb_amdelete_function) (Relation indexRelation,
 									  Datum *values,
 									  bool *isnull,

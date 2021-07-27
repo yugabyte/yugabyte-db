@@ -90,7 +90,7 @@ extern TransactionId HeapTupleGetUpdateXid(HeapTupleHeader tuple);
 /* Copy ybctid from a source tuple to a new / destination tuple */
 #define HEAPTUPLE_COPY_YBCTID(src, dest)                            \
     do {                                                            \
-        if (IsYugaByteEnabled()) {                                  \
+        if (IsYugabyteEnabled()) {                                  \
             dest = (src == 0) ? 0 :                                 \
                 PointerGetDatum(cstring_to_text_with_len(VARDATA_ANY(src), \
                                                          VARSIZE_ANY_EXHDR(src))); \

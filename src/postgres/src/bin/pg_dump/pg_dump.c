@@ -1070,7 +1070,7 @@ help(const char *progname)
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
-	printf(_("Report bugs on https://github.com/YugaByte/yugabyte-db/issues/new\n"));
+	printf(_("Report bugs on https://github.com/yugabyte/yugabyte-db/issues/new\n"));
 }
 
 static void
@@ -15901,7 +15901,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
-			/* Get the table properties from YugaByte. */
+			/* Get the table properties from Yugabyte. */
 			HandleYBStatus(YBCPgGetTableDesc(dopt->db_oid, tbinfo->dobj.catId.oid, &ybc_tabledesc));
 			HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
 

@@ -346,7 +346,7 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 			   indexRelation->rd_index->indisready);
 
 		/*
-		 * No need to update YugaByte primary key which is intrinic part of
+		 * No need to update Yugabyte primary key which is intrinic part of
 		 * the base table.
 		 *
 		 * TODO(neil) The following YB check might not be needed due to later work on indexes.
@@ -566,12 +566,12 @@ ExecDeleteIndexTuplesOptimized(Datum ybctid,
 		  continue;
 
 		/*
-		 * No need to update YugaByte primary key which is intrinic part of
+		 * No need to update Yugabyte primary key which is intrinic part of
 		 * the base table.
 		 *
 		 * TODO(neil) This function is obsolete and removed from Postgres's original code.
-		 * - We need to update YugaByte's code path to stop using this function.
-		 * - As a result, we don't need distinguish between Postgres and YugaByte here.
+		 * - We need to update Yugabyte's code path to stop using this function.
+		 * - As a result, we don't need distinguish between Postgres and Yugabyte here.
 		 *   I update this code only for clarity.
 		 */
 		if (isYBRelation && indexRelation->rd_index->indisprimary)
@@ -968,11 +968,11 @@ retry:
 		 * want to hold any index internal locks while waiting.
 		 */
 		/*
-		 * YugaByte manages transaction at a lower level, so we don't need to execute the following
+		 * Yugabyte manages transaction at a lower level, so we don't need to execute the following
 		 * code block.
-		 * TODO(Mikhail) Verify correctness in YugaByte transaction management for on-conflict.
+		 * TODO(Mikhail) Verify correctness in Yugabyte transaction management for on-conflict.
 		 */
-		if (!IsYugaByteEnabled()) {
+		if (!IsYugabyteEnabled()) {
 			xwait = TransactionIdIsValid(DirtySnapshot.xmin) ?
 				DirtySnapshot.xmin : DirtySnapshot.xmax;
 
@@ -1002,7 +1002,7 @@ retry:
 		if (violationOK)
 		{
 			conflict = true;
-			if (IsYugaByteEnabled()) {
+			if (IsYugabyteEnabled()) {
 				estate->yb_conflict_slot = existing_slot;
 			}
 			if (conflictTid)

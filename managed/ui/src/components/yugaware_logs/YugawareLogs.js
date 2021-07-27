@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { useEffect, useMemo } from 'react';
 import { isDefinedNotNull, isNonEmptyObject } from '../../utils/ObjectUtils';

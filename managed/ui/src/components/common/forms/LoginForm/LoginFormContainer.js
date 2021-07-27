@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import LoginForm from './LoginForm';
 import { login, loginResponse, resetCustomerError } from '../../../../actions/customers';

@@ -11,9 +11,9 @@
  *	  src/backend/utils/init/postinit.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * Yugabyte development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -674,7 +674,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	if (!bootstrap)
 		pgstat_initialize();
 
-	/* Connect to YugaByte cluster. */
+	/* Connect to Yugabyte cluster. */
 	if (bootstrap)
 		YBInitPostgresBackend("postgres", "", username);
 	else
@@ -985,8 +985,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 					 errdetail("It seems to have just been dropped or renamed.")));
 	}
 
-	/* No local physical path for the database in YugaByte mode */
-	if (!IsYugaByteEnabled())
+	/* No local physical path for the database in Yugabyte mode */
+	if (!IsYugabyteEnabled())
 	{
 		/*
 		 * Now we should be able to access the database directory safely. Verify
@@ -1026,7 +1026,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
 	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId,
 										TableGroupRelationId,
@@ -1038,7 +1038,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/*
 	 * Also cache whather the database is colocated for optimization purposes.
 	 */
-	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
+	if (IsYugabyteEnabled() && !IsBootstrapProcessingMode())
 	{
 		HandleYBStatus(YBCPgIsDatabaseColocated(MyDatabaseId,
 												&MyDatabaseColocated));

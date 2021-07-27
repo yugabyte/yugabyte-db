@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -406,7 +406,7 @@ CHECKED_STATUS PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
     DCHECK(!type->IsUnknown());
 
     if (type->main() == TUPLE) {
-      // https://github.com/YugaByte/yugabyte-db/issues/936
+      // https://github.com/yugabyte/yugabyte-db/issues/936
       return sem_context->Error(args_->element(0),
           "Tuple type not implemented yet", ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
     }

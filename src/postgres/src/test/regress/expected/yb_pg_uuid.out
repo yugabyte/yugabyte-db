@@ -103,7 +103,7 @@ SELECT COUNT(*) FROM guid1 WHERE guid_field >= '22222222-2222-2222-2222-22222222
 (1 row)
 
 ----------------------------------------------------------------------------------------------------
--- Uncomment the following test cases once INDEX is supported in YugaByte
+-- Uncomment the following test cases once INDEX is supported in Yugabyte
 -- lsm and hash index creation test
 -- CREATE INDEX guid1_lsm ON guid1 USING LSM (guid_field);
 -- CREATE INDEX guid1_hash  ON guid1 USING HASH  (guid_field);

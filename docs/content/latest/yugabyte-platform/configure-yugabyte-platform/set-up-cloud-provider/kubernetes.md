@@ -151,7 +151,7 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
 
     ```sh
-    wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
+    wget https://raw.githubusercontent.com/Yugabyte/charts/master/stable/yugabyte/generate_kubeconfig.py
     ```
 
 2. Run the following command to generate the `kubeconfig` file:

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
@@ -177,8 +177,8 @@ export default class AlertProfileForm extends Component {
                           value: field.value,
                           onChange: field.onChange
                         }}
-                        label="Send alert emails to YugaByte team"
-                        subLabel="Whether or not to send alerting emails to the YugaByte team."
+                        label="Send alert emails to Yugabyte team"
+                        subLabel="Whether or not to send alerting emails to the Yugabyte team."
                       />
                     )}
                   </Field>

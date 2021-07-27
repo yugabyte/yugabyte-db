@@ -620,7 +620,7 @@ GetNewObjectId(void)
 	/* If we run out of logged for use oids then we must log more */
 	if (ShmemVariableCache->oidCount == 0)
 	{
-		if (IsYugaByteEnabled())
+		if (IsYugabyteEnabled())
 		{
 			Oid begin_oid = InvalidOid;
 			Oid end_oid   = InvalidOid;

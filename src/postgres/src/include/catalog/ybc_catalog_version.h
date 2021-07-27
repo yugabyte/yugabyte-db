@@ -3,7 +3,7 @@
  * ybc_catalog_version.h
  *	  utility functions related to the ysql catalog version table.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) Yugabyte, Inc.
  *
  * src/include/catalog/ybc_catalog_version.h
  *

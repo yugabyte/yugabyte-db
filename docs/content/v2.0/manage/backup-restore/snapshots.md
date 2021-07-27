@@ -26,9 +26,9 @@ You can create a backup for YugabyteDB using snapshots. Here are some points to 
 
 - Distributed backups using snapshots
   - Massively parallel, efficient for very large data sets
-  - Snapshots are not transactional across the whole table, but only on each tablet [#2086](https://github.com/YugaByte/yugabyte-db/issues/2086).
-  - Multi-table transactional snapshot is in the road map [#2084](https://github.com/YugaByte/yugabyte-db/issues/2084). 
-  - Single table snapshots don't work in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083).
+  - Snapshots are not transactional across the whole table, but only on each tablet [#2086](https://github.com/yugabyte/yugabyte-db/issues/2086).
+  - Multi-table transactional snapshot is in the road map [#2084](https://github.com/yugabyte/yugabyte-db/issues/2084). 
+  - Single table snapshots don't work in YSQL [#2083](https://github.com/yugabyte/yugabyte-db/issues/2083).
   - Yugabyte Platform automates these steps for you.
 - Implementation notes:
   - Once the snapshot command is issued, we will “buffer” newly incoming writes to that tablet without writing them immediately.

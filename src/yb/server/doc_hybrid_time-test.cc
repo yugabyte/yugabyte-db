@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -97,7 +97,7 @@ TEST(DocHybridTimeTest, TestToString) {
 }
 
 TEST(DocHybridTimeTest, TestExactByteRepresentation) {
-  const auto kYugaEpoch = kYugaByteMicrosecondEpoch;
+  const auto kYugaEpoch = kYugabyteMicrosecondEpoch;
 
   struct TestDesc {
     string expected_bytes_str;
@@ -180,9 +180,9 @@ TEST(DocHybridTimeTest, TestExactByteRepresentation) {
       if (micros == kYugaEpoch) {
         micros_str = "kYugaEpoch";
       } else if (micros > kYugaEpoch) {
-        micros_str = Substitute("kYugaEpoch + $0", micros - kYugaByteMicrosecondEpoch);
+        micros_str = Substitute("kYugaEpoch + $0", micros - kYugabyteMicrosecondEpoch);
       } else {
-        micros_str = Substitute("kYugaEpoch - $0", kYugaByteMicrosecondEpoch - micros);
+        micros_str = Substitute("kYugaEpoch - $0", kYugabyteMicrosecondEpoch - micros);
       }
     } else {
       micros_str = std::to_string(micros) + "LL";

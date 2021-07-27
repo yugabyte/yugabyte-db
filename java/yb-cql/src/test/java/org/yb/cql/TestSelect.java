@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2226,7 +2226,7 @@ public class TestSelect extends BaseCQLTest {
 
     // Test UDT2<int, UDT>.
     // Feature Not Supported: UDT field types cannot refer to other user-defined types.
-    // https://github.com/YugaByte/yugabyte-db/issues/1630
+    // https://github.com/yugabyte/yugabyte-db/issues/1630
     runInvalidQuery("CREATE TYPE udt8(i1 int, u1 udt)");
     // Uncomment the following block if we support UDT2<UDT1,..> types.
     //    session.execute("CREATE TABLE test_udt8 (h int PRIMARY KEY, u udt8)");
@@ -2236,7 +2236,7 @@ public class TestSelect extends BaseCQLTest {
 
     // Test TUPLE.
     // Feature Not Supported
-    // https://github.com/YugaByte/yugabyte-db/issues/936
+    // https://github.com/yugabyte/yugabyte-db/issues/936
     runInvalidQuery("CREATE TABLE test_tuple (h int PRIMARY KEY, t tuple<int>)");
     // Uncomment the following block if we support TUPLE.
     //    session.execute("CREATE TABLE test_tuple (h int PRIMARY KEY, t tuple<int, text>)");

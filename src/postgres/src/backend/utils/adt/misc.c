@@ -484,7 +484,7 @@ Datum
 pg_tablespace_location(PG_FUNCTION_ARGS)
 {
 	/* Not applicable for YB clusters. */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		PG_RETURN_TEXT_P(cstring_to_text(""));
 	}

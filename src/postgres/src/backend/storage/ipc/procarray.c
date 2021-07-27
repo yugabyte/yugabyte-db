@@ -350,7 +350,7 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	 * Postgres transaction related code-paths are disabled for YB.
 	 */
 
-	if (!IsYugaByteEnabled()) {
+	if (!IsYugabyteEnabled()) {
 		if (TransactionIdIsValid(latestXid))
 		{
 			Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
@@ -616,7 +616,7 @@ ProcArrayClearTransaction(PGPROC *proc)
 {
 	PGXACT	   *pgxact = &allPgXact[proc->pgprocno];
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		return;
 	}
 
@@ -653,7 +653,7 @@ ProcArrayInitRecovery(TransactionId initializedUptoXID)
 	Assert(standbyState == STANDBY_INITIALIZED);
 	Assert(TransactionIdIsNormal(initializedUptoXID));
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		return;
 	}
 
@@ -690,7 +690,7 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 	TransactionId nextXid;
 	int			i;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		return;
 	}
 
@@ -948,7 +948,7 @@ ProcArrayApplyXidAssignment(TransactionId topxid,
 	TransactionId max_xid;
 	int			i;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		return;
 	}
 
@@ -1039,7 +1039,7 @@ TransactionIdIsInProgress(TransactionId xid)
 	int			i,
 				j;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		return false;
 	}
 
@@ -1257,7 +1257,7 @@ TransactionIdIsActive(TransactionId xid)
 	ProcArrayStruct *arrayP = procArray;
 	int			i;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		return false;
 	}
 
@@ -1361,7 +1361,7 @@ GetOldestXmin(Relation rel, int flags)
 	int			index;
 	bool		allDbs;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		return InvalidTransactionId;
 	}
 

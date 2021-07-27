@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of Yugabyte development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -3530,7 +3530,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
           auto* pair = write_batch->mutable_read_pairs()->Add();
           pair->set_key(key.data(), key.size());
           // Empty values are disallowed by docdb.
-          // https://github.com/YugaByte/yugabyte-db/issues/736
+          // https://github.com/yugabyte/yugabyte-db/issues/736
           pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNullLow));
         }
       }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 import _ from 'lodash';
 
 export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';

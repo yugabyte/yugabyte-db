@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 Yugabyte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
 # may obtain a copy of the License at
 #
-# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+# https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import getpass
 import glob
@@ -268,7 +268,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
 
     This class will create an instance, if one does not already exist with the same conditions,
     such as name, region or zone, etc. It will also wait for this instance to become SSHable on
-    any of the valid YugaByte ports.
+    any of the valid Yugabyte ports.
     """
     INSTANCE_LOOKUP_RETRY_LIMIT = 120
     DEFAULT_OS_NAME = "centos"
@@ -685,7 +685,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     def callback(self, args):
         if args.type == self.YB_SERVER_TYPE:
             if args.master_addresses_for_tserver is None:
-                raise YBOpsRuntimeError("Missing argument for YugaByte configure")
+                raise YBOpsRuntimeError("Missing argument for Yugabyte configure")
             self.extra_vars.update({
                 "instance_name": args.search_pattern,
                 "master_addresses_for_tserver": args.master_addresses_for_tserver,

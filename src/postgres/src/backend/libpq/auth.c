@@ -573,7 +573,7 @@ ClientAuthentication(Port *port)
 
 		case uaYbTserverKey:
 #ifdef HAVE_UNIX_SOCKETS
-			Assert(IsYugaByteEnabled());
+			Assert(IsYugabyteEnabled());
 			Assert(!YBCGetDisableIndexBackfill());
 			status = CheckYbTserverKeyAuth(port, &logdetail);
 #else

@@ -117,8 +117,8 @@ create_ctas_internal(List *attrList, IntoClause *into)
 	 */
 	intoRelationAddr = DefineRelation(create, relkind, InvalidOid, NULL, NULL);
 
-	/* TOAST tables are not needed in YugaByte database */
-	if (!IsYugaByteEnabled())
+	/* TOAST tables are not needed in Yugabyte database */
+	if (!IsYugabyteEnabled())
 	{
 		/*
 		 * If necessary, create a TOAST table for the target table.  Note that
@@ -610,7 +610,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	 * we must use PG transaction codepaths as well
 	 */
 	if (myState->rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-			&& IsYugaByteEnabled())
+			&& IsYugabyteEnabled())
 		SetTxnWithPGRel();
 
 	if (IsYBRelation(myState->rel))

@@ -1363,7 +1363,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 		}
 
 		/*
-		 * Emit ybctid so that executor can find the row to update or delete from YugaByte tables.
+		 * Emit ybctid so that executor can find the row to update or delete from Yugabyte tables.
 		 */
 		var = makeVar(parsetree->resultRelation,
 					  YBTupleIdAttributeNumber,

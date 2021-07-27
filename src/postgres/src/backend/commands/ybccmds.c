@@ -3,7 +3,7 @@
  * ybccmds.c
  *        YB commands for creating and altering table structures and settings
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -321,7 +321,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 			{
 				case PARTITION_RANGE_DATUM_VALUE:
 				{
-					/* Given value is not null. Convert it to YugaByte format. */
+					/* Given value is not null. Convert it to Yugabyte format. */
 					Const *value = castNode(Const, datums[idx]->value);
 					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constvalue,
 												false /* is_null */);
@@ -330,7 +330,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 
 				case PARTITION_RANGE_DATUM_MAXVALUE:
 				{
-					/* Create MINVALUE in YugaByte format */
+					/* Create MINVALUE in Yugabyte format */
 					Form_pg_attribute attr = attrs[idx];
 					exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
 													   YB_YQL_DATUM_LIMIT_MAX);
@@ -339,7 +339,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 
 				case PARTITION_RANGE_DATUM_MINVALUE:
 				{
-					/* Create MINVALUE in YugaByte format */
+					/* Create MINVALUE in Yugabyte format */
 					Form_pg_attribute attr = attrs[idx];
 					exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
 													   YB_YQL_DATUM_LIMIT_MIN);
@@ -990,7 +990,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 		case AT_NoForceRowSecurity:
 		case AT_AttachPartition:
 		case AT_DetachPartition:
-			/* For these cases a YugaByte alter isn't required, so we do nothing. */
+			/* For these cases a Yugabyte alter isn't required, so we do nothing. */
 			break;
 
 		default:

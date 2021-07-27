@@ -560,7 +560,7 @@ void
 LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 {
 	/* In YB mode all messages originated by other processes are silently ignored */
-	if (IsYugaByteEnabled() && msg->yb_header.sender_pid != getpid())
+	if (IsYugabyteEnabled() && msg->yb_header.sender_pid != getpid())
 		return;
 
 	if (msg->id >= 0)
@@ -677,8 +677,8 @@ CallSystemCacheCallbacks(void)
 void
 InvalidateSystemCaches(void)
 {
-	if (IsYugaByteEnabled()) {
-		// In case of YugaByte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
+	if (IsYugabyteEnabled()) {
+		// In case of Yugabyte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
 		// But it can't be done here as 'YBRefreshCache' can't be called from within the transaction.
 		// Resetting catalog version will force cache refresh as soon as possible.
 		YBResetCatalogVersion();

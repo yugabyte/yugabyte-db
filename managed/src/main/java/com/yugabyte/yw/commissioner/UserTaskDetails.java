@@ -22,7 +22,7 @@ public class UserTaskDetails {
     // newly deployed machines, etc.
     Provisioning,
 
-    // Running software upgrade on YugaByte clusters.
+    // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
 
     // Download YB software locally but not install it.
@@ -123,13 +123,13 @@ public class UserTaskDetails {
     // Initialize Kubernetes cluster
     HelmInit,
 
-    // Install YugaByte helm chart.
+    // Install Yugabyte helm chart.
     HelmInstall,
 
     // Update number of nodes k8s
     UpdateNumNodes,
 
-    // Delete YugaByte helm chart.
+    // Delete Yugabyte helm chart.
     HelmDelete,
 
     // Delete Kubernetes volumes created by helm chart.
@@ -190,13 +190,13 @@ public class UserTaskDetails {
         break;
       case UpgradingSoftware:
         title = "Upgrading software";
-        description = "Upgrading YugaByte software on existing clusters.";
+        description = "Upgrading Yugabyte software on existing clusters.";
         break;
       case InstallingSoftware:
         title = "Installing software";
         description =
             "Configuring mount points, setting up the various directories and installing"
-                + " the YugaByte software on the newly provisioned nodes.";
+                + " the Yugabyte software on the newly provisioned nodes.";
         break;
       case ConfigureUniverse:
         title = "Configuring the universe";
@@ -230,7 +230,7 @@ public class UserTaskDetails {
         break;
       case DownloadingSoftware:
         title = "Downloading software";
-        description = "Downloading the YugaByte software on provisioned nodes.";
+        description = "Downloading the Yugabyte software on provisioned nodes.";
         break;
       case UpdatingGFlags:
         title = "Updating gflags";

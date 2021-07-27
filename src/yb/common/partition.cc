@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of Yugabyte development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -164,7 +164,7 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
   // Initialize partition schema.
   partition_schema->Clear();
 
-  // YugaByte hash partition.
+  // Yugabyte hash partition.
   if (pb.has_hash_schema()) {
     switch (pb.hash_schema()) {
       case PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA:
@@ -184,7 +184,7 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
     }
   }
 
-  // YugaByte range partition whose schema also defines split_rows.
+  // Yugabyte range partition whose schema also defines split_rows.
   if (pb.has_range_schema()) {
     const PartitionSchemaPB_RangeSchemaPB& range_pb = pb.range_schema();
     RETURN_NOT_OK(ExtractColumnIds(range_pb.columns(), schema,

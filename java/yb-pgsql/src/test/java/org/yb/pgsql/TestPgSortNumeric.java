@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -85,7 +85,7 @@ public class TestPgSortNumeric extends BasePgSortingOrderTest {
     // MONEY
     { "'0'", "'1'", "'-1'", "'100'", "'-100'", "'2.0001'", "'5,.06'", "'5,.6'", "'$3.0001'",
       "'$40'", "'1,2'", "'1,23'",
-      // TOFIX: https://github.com/YugaByte/yugabyte-db/issues/1949
+      // TOFIX: https://github.com/yugabyte/yugabyte-db/issues/1949
       // "'-92233720368547758.08'", "'92233720368547758.07'",
       // "'100,120'", "'100,23'", "'1000,23'", "'1,000,000.12'", "'2,000.00012'",
       // "'$3,000.00012'", "'$4,000,000.12'"

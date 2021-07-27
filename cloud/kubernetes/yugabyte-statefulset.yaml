@@ -111,7 +111,7 @@ spec:
           - "--use_private_ip=never"
           # FQDNs of each master. Update this in case your desired RF != 3.
           - "--master_addresses=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-1.yb-masters.$(NAMESPACE).svc.cluster.local:7100,yb-master-2.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
-          # To disable YugaByte SQL API functionality, set the
+          # To disable Yugabyte SQL API functionality, set the
           # "enable_ysql" flag to false. Flag supported after 2.0
           - "--enable_ysql=true"
           - "--replication_factor=3"
@@ -253,7 +253,7 @@ spec:
           - "--fs_data_dirs=/mnt/data0"
           - "--rpc_bind_addresses=$(POD_NAME).yb-tservers.$(NAMESPACE).svc.cluster.local:9100"
           - "--server_broadcast_addresses=$(POD_NAME).yb-tservers.$(NAMESPACE).svc.cluster.local:9100"
-          # To disable YugaByte SQL API functionality, set the enable_ysql flag to false
+          # To disable Yugabyte SQL API functionality, set the enable_ysql flag to false
           # and comment out the pgsql_proxy_bind_address flag
           - "--enable_ysql=true"
           - "--pgsql_proxy_bind_address=$(POD_IP):5433"

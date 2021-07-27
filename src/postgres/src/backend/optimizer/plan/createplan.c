@@ -2540,7 +2540,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	Bitmapset *pushdown_update_attrs = NULL;
 
 	/* Verify YB is enabled. */
-	if (!IsYugaByteEnabled())
+	if (!IsYugabyteEnabled())
 		return false;
 
 	/*

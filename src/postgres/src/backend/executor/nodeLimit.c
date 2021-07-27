@@ -59,7 +59,7 @@ ExecLimit(PlanState *pstate)
 	/*
 	 * Initialize LIMIT count and offset.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		pstate->state->yb_exec_params.limit_count = node->count;
 		pstate->state->yb_exec_params.limit_offset = node->offset;
 	}
@@ -81,7 +81,7 @@ ExecLimit(PlanState *pstate)
 			/*
 			 * Update LIMIT count and offset after recomputing.
 			 */
-			if (IsYugaByteEnabled()) {
+			if (IsYugabyteEnabled()) {
 				pstate->state->yb_exec_params.limit_count = node->count;
 				pstate->state->yb_exec_params.limit_offset = node->offset;
 			}

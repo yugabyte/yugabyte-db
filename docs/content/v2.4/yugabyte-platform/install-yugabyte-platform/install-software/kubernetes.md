@@ -49,7 +49,7 @@ Before you install Yugabyte Platform on a Kubernetes cluster, make sure you:
 1. Run the following `kubectl` command to apply the YAML file.
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/Yugabyte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
 ```
 
 The following output should appear:
@@ -66,7 +66,7 @@ To create a `kubeconfig` file for a yugabyte-helm service account:
 1. Run the following `wget` command to get the Python script for generating the `kubeconfig` file:
 
     ```sh
-    wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
+    wget https://raw.githubusercontent.com/Yugabyte/charts/master/stable/yugabyte/generate_kubeconfig.py
     ```
 
 2. Run the following command to generate the `kubeconfig` file:

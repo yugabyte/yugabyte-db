@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -378,7 +378,7 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(OnConflictWithKillMaster)) {
 
 // When auto-commit fails block state switched to TBLOCK_ABORT.
 // But correct state in this case is TBLOCK_DEFAULT.
-// https://github.com/YugaByte/yugabyte-db/commit/73e966e5735efc21bf2ad43f9d961a488afbe050
+// https://github.com/yugabyte/yugabyte-db/commit/73e966e5735efc21bf2ad43f9d961a488afbe050
 TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
   constexpr int kWriters = 5;
   constexpr int kKeys = 20;

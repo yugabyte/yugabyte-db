@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 
 docker-us-west-1:
   name: US West

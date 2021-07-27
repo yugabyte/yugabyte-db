@@ -1,6 +1,6 @@
 --
 -- YB_FEATURE_PARTITIONING Testsuite
---   An introduction on whether or not a feature is supported in YugaByte.
+--   An introduction on whether or not a feature is supported in Yugabyte.
 --   This test suite does not go in depth for each command.
 --
 -- Testing basic SPLIT AT functionalities.

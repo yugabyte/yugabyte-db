@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of Yugabyte development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -248,11 +248,11 @@ class PartitionSchema {
 
   static bool IsValidHashPartitionKeyBound(const string& partition_key);
 
-  // YugaByte partition creation
+  // Yugabyte partition creation
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
   // the [0, max_partition_key] range into the requested number of intervals.
   // - Inputs are from SQL and CQL.
-  // - YugaByte methods are used for hash and range partitioning to create tablets.
+  // - Yugabyte methods are used for hash and range partitioning to create tablets.
   // 'num_tablets' is just a recommendation for the target number of partitions. The final
   // partitions are in the result variable 'partitions', so the final number of tablets is
   // 'partitions.size()' value.
@@ -265,7 +265,7 @@ class PartitionSchema {
   // Kudu partition creation
   // NOTE: The following function from Kudu is to support a C++ API instead of SQL or CQL. They
   // also create partitions differently. There are code in this function that shouldn't be apply
-  // to YugaByte's database except for metadata in master, which is using Kudu's DB.
+  // to Yugabyte's database except for metadata in master, which is using Kudu's DB.
   //
   // Creates the set of table partitions for a partition schema and collection
   // of split rows.

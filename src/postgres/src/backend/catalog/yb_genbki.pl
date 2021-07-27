@@ -7,7 +7,7 @@
 #    formatted header files and data files.  The BKI files are used to
 #    initialize the postgres template database.
 #
-#    YugaByte: This is copied and modified from Postgres's standard genbki.pl.
+#    Yugabyte: This is copied and modified from Postgres's standard genbki.pl.
 #    The main changes are that indexes are now generated as clauses of the
 #    table creation statement rather than standalone statements (so we can
 #    choose a primary key from them). Additionally toast relation declarations
@@ -723,7 +723,7 @@ headers from specially formatted header files and .dat
 files.  The BKI files are used to initialize the
 postgres template database.
 
-It should be used in YugaByte mode instead of the standard genbki.pl, as it
+It should be used in Yugabyte mode instead of the standard genbki.pl, as it
 includes special handling of indexes, toast relations and
 pg_depend/pg_shdepend tables.
 

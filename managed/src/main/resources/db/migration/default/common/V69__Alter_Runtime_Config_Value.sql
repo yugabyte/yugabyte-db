@@ -1,2 +1,2 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 ALTER TABLE runtime_config_entry ALTER COLUMN value type TEXT;

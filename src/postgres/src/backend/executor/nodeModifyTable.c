@@ -11,9 +11,9 @@
  *	  src/backend/executor/nodeModifyTable.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * Yugabyte development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -512,7 +512,7 @@ ExecInsert(ModifyTableState *mtstate,
 					 */
 					Assert(onconflict == ONCONFLICT_NOTHING);
 					if (!IsYBRelation(resultRelationDesc)) {
-						// YugaByte does not use Postgres transaction control code.
+						// Yugabyte does not use Postgres transaction control code.
 						ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
 					}
 					InstrCountTuples2(&mtstate->ps, 1);
@@ -524,9 +524,9 @@ ExecInsert(ModifyTableState *mtstate,
 			if (IsYBRelation(resultRelationDesc))
 			{
 				/*
-				 * YugaByte handles transaction-control internally, so speculative token are not being
+				 * Yugabyte handles transaction-control internally, so speculative token are not being
 				 * locked and released in this call.
-				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
+				 * TODO(Mikhail) Verify the Yugabyte transaction support works properly for on-conflict.
 				 */
 				newId = YBCHeapInsert(slot, tuple, estate);
 
@@ -1238,7 +1238,7 @@ ExecUpdate(ModifyTableState *mtstate,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("This operation would cause a row to change the partition, "
 							"this is not yet supported"),
-					 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+					 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
 							 "Click '+' on the description to raise its priority", 5310)));
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
@@ -1670,17 +1670,17 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	 * This routine selects data and check with indexes for conflicts.
 	 * - When selecting data from disk, Postgres prepares a heap buffer to hold the selected row
 	 *   and performs transaction-control locking operations on the selected row.
-	 * - YugaByte usually uses Postgres heap buffer after selecting data from storage (DocDB).
+	 * - Yugabyte usually uses Postgres heap buffer after selecting data from storage (DocDB).
 	 *   However, in this case, it's complicated to use the heap buffer because the two systems use
 	 *   different tuple IDs - "ybctid" vs "ctid".
-	 * - Also, YugaByte manages transactions separately from Postgres's plan execution.
+	 * - Also, Yugabyte manages transactions separately from Postgres's plan execution.
 	 *
 	 * Coding-wise, Posgres writes tuple to heap buffer and writes its tuple ID to "conflictTid".
-	 * However, YugaByte writes the conflict tuple including its "ybctid" to execution state "estate"
+	 * However, Yugabyte writes the conflict tuple including its "ybctid" to execution state "estate"
 	 * and then frees the slot when done.
 	 */
 	if (IsYBBackedRelation(relation)) {
-		/* Not using heap buffer for YugaByte */
+		/* Not using heap buffer for Yugabyte */
 		buffer = InvalidBuffer;
 
 		/* Ensure the heap tuple is initialized to invalid too. */
@@ -1784,7 +1784,7 @@ yb_skip_transaction_control_check:
 	 */
 	ResetExprContext(econtext);
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		oldtuple = ExecMaterializeSlot(estate->yb_conflict_slot);
 		ExecStoreBufferHeapTuple(oldtuple, mtstate->mt_existing, buffer);
@@ -1824,8 +1824,8 @@ yb_skip_transaction_control_check:
 
 	if (!ExecQual(onConflictSetWhere, econtext))
 	{
-		/* YugaByte don't use the heap buffer to cache the conflict tuple */
-		if (!IsYugaByteEnabled())
+		/* Yugabyte don't use the heap buffer to cache the conflict tuple */
+		if (!IsYugabyteEnabled())
 			ReleaseBuffer(buffer);
 		InstrCountFiltered1(&mtstate->ps, 1);
 		return true;			/* done with the tuple */
@@ -1871,8 +1871,8 @@ yb_skip_transaction_control_check:
 							&mtstate->mt_epqstate, mtstate->ps.state,
 							canSetTag);
 
-	/* YugaByte don't use the heap buffer to cache the conflict tuple */
-	if (!IsYugaByteEnabled())
+	/* Yugabyte don't use the heap buffer to cache the conflict tuple */
+	if (!IsYugabyteEnabled())
 		ReleaseBuffer(buffer);
 	return true;
 }
@@ -2444,7 +2444,7 @@ ExecModifyTable(PlanState *pstate)
 
 				relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
 				/*
-				 * For YugaByte relations extract the old row from the wholerow junk
+				 * For Yugabyte relations extract the old row from the wholerow junk
 				 * attribute if needed.
 				 * 1. For tables with secondary indexes we need the (old) ybctid for
 				 *    removing old index entries (for UPDATE and DELETE)
@@ -2689,7 +2689,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * already, since we share the resultrel state with the original
 		 * query.
 		 *
-		 * For a YugaByte table, we need to update the secondary indices for
+		 * For a Yugabyte table, we need to update the secondary indices for
 		 * all of the INSERT, UPDATE, and DELETE statements. The ON CONFLICT UPDATE
 		 * execution also needs to process primary key index.
 		 */

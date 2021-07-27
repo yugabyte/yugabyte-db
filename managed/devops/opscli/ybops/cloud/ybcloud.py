@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 Yugabyte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
 # may obtain a copy of the License at
 #
-# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+# https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import argparse
 import json
@@ -21,7 +21,7 @@ from ybops.utils import init_env, init_logging
 
 
 class YbCloud(AbstractCommandParser):
-    """Top-level entry point into YugaByte ops CLI tool.
+    """Top-level entry point into Yugabyte ops CLI tool.
     """
     def __init__(self):
         super(YbCloud, self).__init__("ybcloud")

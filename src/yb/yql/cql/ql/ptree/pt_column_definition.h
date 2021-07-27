@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -223,7 +223,7 @@ class PTIndexColumn : public PTColumnDefinition {
   // Example:
   //   - TABLE tab(a, j)
   //   - INDEX (j->>'x') ==> colexpr_ = j->'x'
-  //   - When user insert to TABLE tab, YugaByte inserts to INDEX (j->'x', ybctid)
+  //   - When user insert to TABLE tab, Yugabyte inserts to INDEX (j->'x', ybctid)
   //   - DEFAULT: colexpr == EXPR_NOT_YET
   PTExpr::SharedPtr colexpr_;
 

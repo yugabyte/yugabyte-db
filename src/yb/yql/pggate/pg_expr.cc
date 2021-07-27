@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,7 +39,7 @@ using std::placeholders::_1;
 using std::placeholders::_2;
 
 //--------------------------------------------------------------------------------------------------
-// Mapping Postgres operator names to YugaByte opcodes.
+// Mapping Postgres operator names to Yugabyte opcodes.
 // When constructing expresions, Postgres layer will pass the operator name.
 const std::unordered_map<string, PgExpr::Opcode> kOperatorNames = {
   { "!", PgExpr::Opcode::PG_EXPR_NOT },

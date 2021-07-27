@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 
 #ifndef YB_UTIL_CONCURRENT_VALUE_H

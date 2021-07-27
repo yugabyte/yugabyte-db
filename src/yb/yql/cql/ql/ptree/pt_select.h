@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -302,7 +302,7 @@ class PTSelectStmt : public PTDmlStmt {
   // The current design for SELECT analysis is bit different from common compilation practice.
   // extended and required more analysis, we can redo this work then.
   // - Normally, step (1) should have collected information for processes in steps (2) and (3).
-  //   However, the existing implementation in YugaByte is different when choosing scan path.
+  //   However, the existing implementation in Yugabyte is different when choosing scan path.
   // - After step (2), the current design creates a duplicate of the parse tree for nested query
   //   and compile both SELECT twins to analyze PRIMARY and SECONDARY scan within the same context.
   // This adds unnecessary complexities to the compilation process. However, it affects all layers
@@ -416,7 +416,7 @@ class PTSelectStmt : public PTDmlStmt {
     return child_select_ ? child_select_->hash_col_indices() : PTDmlStmt::hash_col_indices();
   }
 
-  // CQL does not have nested DML statement, but YugaByte processes INDEX query as a nested DML.
+  // CQL does not have nested DML statement, but Yugabyte processes INDEX query as a nested DML.
   // - Returns true by default for all SELECT nodes.
   // - Returns false for index query node nested inside SELECT node. Because the data from the
   //   INDEX nested node is used for another READ, it is not the top level READ node where all
@@ -498,7 +498,7 @@ class PTSelectStmt : public PTDmlStmt {
   SelectScanInfo *select_scan_info_ = nullptr;
 
   // Flag for a top level SELECT.
-  // Although CQL does not have nested SELECT, YugaByte treats INDEX query as a nested DML.
+  // Although CQL does not have nested SELECT, Yugabyte treats INDEX query as a nested DML.
   bool is_top_level_ = true;
 };
 

@@ -186,10 +186,10 @@ DROP VIEW main_view;
 DROP TABLE main_table;
 
 -- Test self-referential triggers (on non-temp table).
--- Note: The YugaByte behavior in this case is different from vanilla Postgres.
+-- Note: The Yugabyte behavior in this case is different from vanilla Postgres.
 --  * Vanilla Postgres would throw an error when a row is modified by a before-row trigger
 --    and also by the main statement itself.
---  * However, in YugaByte this is allowed and both changes are applied to the row in the
+--  * However, in Yugabyte this is allowed and both changes are applied to the row in the
 --    expected order (i.e. the before trigger is applied first). This includes the case when
 --    the statement (latter) change would override the changes made by the before trigger
 -- For example, in the delete example below, the parent's row(s) will be deleted by the main statement

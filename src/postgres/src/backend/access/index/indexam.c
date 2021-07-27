@@ -219,10 +219,10 @@ index_insert(Relation indexRelation,
 									   InvalidBuffer);
 
 	/*
-	 * For YugaByte-based index, call the variant of aminsert that takes the full tuple instead of
+	 * For Yugabyte-based index, call the variant of aminsert that takes the full tuple instead of
 	 * the tuple id.
 	 */
-	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
+	if (IsYugabyteEnabled() && IsYBRelation(indexRelation))
 	{
 		CHECK_REL_PROCEDURE(yb_aminsert);
 		return indexRelation->rd_amroutine->yb_aminsert(indexRelation, values, isnull,
@@ -244,7 +244,7 @@ index_insert(Relation indexRelation,
  *      This is used only for indexes backed by YugabyteDB. For Postgres, when a tuple is updated,
  *      the ctid of the original tuple will be invalid (except for heap-only tuple (HOT)). Because
  *      of this, index entries of the original tuple do not need to be deleted in UPDATE. For
- *      YugaByte-based tables, the ybctid is the primary key of the tuple and will remain valid
+ *      Yugabyte-based tables, the ybctid is the primary key of the tuple and will remain valid
  *      after UPDATE. So when a tuple is updated, we need to delete all index entries associated
  *      explicitly.
  * ----------------
@@ -636,11 +636,11 @@ HeapTuple
 index_fetch_heap(IndexScanDesc scan)
 {
 	/*
-	 * For YugaByte secondary indexes, there are two scenarios.
-	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
-	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
+	 * For Yugabyte secondary indexes, there are two scenarios.
+	 * - If Yugabyte returns an index-tuple, the returned ybctid value should be used to query data.
+	 * - If Yugabyte returns a heap_tuple, all requested data was already selected in the tuple.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		if (scan->xs_hitup != 0)
 			return scan->xs_hitup;

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of Yugabyte development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -41,7 +41,7 @@
 namespace yb {
 namespace env_util {
 
-// Searches for the suitable "YugaByte distribution root" directory that contains the given
+// Searches for the suitable "Yugabyte distribution root" directory that contains the given
 // subdirectory. If the YB_HOME environment variable is specified, the value of that variable is
 // immediately returned. Otherwise, we start walking up from the directory of the current executable
 // until we are in a directory that has a subdirectory with the given name. Then we return the path

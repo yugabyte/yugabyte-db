@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, {Component} from 'react';
 import {BootstrapTable, TableHeaderColumn} from 'react-bootstrap-table';
@@ -60,16 +60,16 @@ export default class ReleaseList extends Component {
   };
 
   componentDidMount() {
-    this.props.getYugaByteReleases();
+    this.props.getYugabyteReleases();
   }
 
   refreshRelease = () => {
-    this.props.refreshYugaByteReleases();
-    this.props.getYugaByteReleases();
+    this.props.refreshYugabyteReleases();
+    this.props.getYugabyteReleases();
   };
 
   onModalSubmit = () => {
-    this.props.getYugaByteReleases();
+    this.props.getYugabyteReleases();
   };
 
   onSearchVersions = (term) => {

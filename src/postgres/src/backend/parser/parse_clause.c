@@ -3137,7 +3137,7 @@ resolve_unique_index_expr(ParseState *pstate, InferClause *infer,
 		if (!ielem->opclass)
 			pInfer->inferopclass = InvalidOid;
 		else
-			pInfer->inferopclass = get_opclass_oid(IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID,
+			pInfer->inferopclass = get_opclass_oid(IsYugabyteEnabled() ? LSM_AM_OID : BTREE_AM_OID,
 												   ielem->opclass, false);
 
 		result = lappend(result, pInfer);

@@ -117,7 +117,7 @@ preprocess_targetlist(PlannerInfo *root)
 	 * 10/94
 	 */
 	/*
-	 * For YugaByte relation, if a CMD_DELETE has returning clause, we select
+	 * For Yugabyte relation, if a CMD_DELETE has returning clause, we select
 	 * all columns from the table to evaluate the returning expression list.
 	 * TODO(neil) The optimizer should reduce the list to referenced columns.
 	 */
@@ -421,8 +421,8 @@ expand_targetlist(List *tlist, int command_type,
 					}
 					break;
 				case CMD_DELETE:
-					// This case is added only for DELETE from YugaByte table with RETURNING clause.
-					if (IsYugaByteEnabled())
+					// This case is added only for DELETE from Yugabyte table with RETURNING clause.
+					if (IsYugabyteEnabled())
 					{
 						if (att_tup->attisdropped) {
 						/* Insert NULL for dropped column */
@@ -436,7 +436,7 @@ expand_targetlist(List *tlist, int command_type,
 						}
 						else
 						{
-							// Query all attribute in the YugaByte relation.
+							// Query all attribute in the Yugabyte relation.
 							new_expr = (Node *) makeVar(result_relation,
 														attrno,
 														atttype,

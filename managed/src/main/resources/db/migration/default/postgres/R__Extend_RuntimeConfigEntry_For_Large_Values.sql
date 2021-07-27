@@ -1,3 +1,3 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 -- Moved to V93 migration

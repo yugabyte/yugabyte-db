@@ -126,13 +126,13 @@ usage(unsigned short int pager)
 	fprintf(output, _("\nConnection options:\n"));
 	/* Display default host */
 	env = getenv("PGHOST");
-	/* YugaByte use localhost instead of local socket */
+	/* Yugabyte use localhost instead of local socket */
 	fprintf(output, _("  -h, --host=HOSTNAME      database server host or socket directory (default: \"%s\")\n"),
 			env ? env : "localhost");
-	/* YugaByte end */
+	/* Yugabyte end */
 	/* Display default port */
 	env = getenv("PGPORT");
-	/* Use YugaByte default port */
+	/* Use Yugabyte default port */
 	fprintf(output, _("  -p, --port=PORT          database server port (default: \"%s\")\n"),
 			env ? env : DEF_YBPORT_STR);
 	/* Display default user */
@@ -145,7 +145,7 @@ usage(unsigned short int pager)
 
 	fprintf(output, _("\nFor more information, type \"\\?\" (for internal commands) or \"\\help\" (for SQL\n"
 					  "commands) from within ysqlsh, or consult the ysqlsh section in YugabyteDB docs.\n\n"));
-	fprintf(output, _("Report bugs on GitHub at https://github.com/YugaByte/yugabyte-db/issues.\n"));
+	fprintf(output, _("Report bugs on GitHub at https://github.com/yugabyte/yugabyte-db/issues.\n"));
 
 	ClosePager(output);
 }

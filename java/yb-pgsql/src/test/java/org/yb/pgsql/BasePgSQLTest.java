@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1306,7 +1306,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /**
    * Whether or not this select query requires filtering by Postgres (i.e. not all
-   * conditions can be pushed down to YugaByte).
+   * conditions can be pushed down to Yugabyte).
    */
   protected boolean doesNeedPgFiltering(Statement stmt, String query) throws SQLException {
     return doesQueryPlanContainsSubstring(stmt, query, "Filter:");

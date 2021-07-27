@@ -19,7 +19,7 @@ Here is a sample Prometheus configuration with required relabel configurations.
     evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
     # scrape_timeout is set to the global default (10s).
 
-  # YugaByte DB configuration to scrape Prometheus time-series metrics
+  # Yugabyte DB configuration to scrape Prometheus time-series metrics
   scrape_configs:
     - job_name: "yugabytedb-cluster-1"
       metrics_path: /prometheus-metrics

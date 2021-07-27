@@ -55,7 +55,7 @@ SELECT INTERVAL '10 years -11 month -12 days +13:14' AS "9 years...";
 CREATE TABLE INTERVAL_TBL (f1 interval PRIMARY KEY);
 ERROR:  PRIMARY KEY containing column of type 'INTERVAL' not yet supported
 -- Disallow interval in a primary key until we support it properly.
--- See https://github.com/YugaByte/yugabyte-db/issues/1397.
+-- See https://github.com/yugabyte/yugabyte-db/issues/1397.
 --
 -- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 1 minute');
 -- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 5 hour');

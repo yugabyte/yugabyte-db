@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 set -euo pipefail
 
 export DEVOPS_HOME="${BASH_SOURCE%/*}"/devops

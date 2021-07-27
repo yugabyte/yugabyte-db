@@ -1699,7 +1699,7 @@ ExecAgg(PlanState *pstate)
 		 *
 		 * Pushdown aggregates to DocDB if the plan state meets proper conditions.
 		 */
-		if (IsYugaByteEnabled())
+		if (IsYugabyteEnabled())
 		{
 			pstate->state->yb_exec_params.limit_use_default = true;
 			if (node->yb_pushdown_supported)

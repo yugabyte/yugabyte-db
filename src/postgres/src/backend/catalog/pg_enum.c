@@ -646,7 +646,7 @@ RenumberEnumType(Relation pg_enum, HeapTuple *existing, int nelems)
 {
 	int			i;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

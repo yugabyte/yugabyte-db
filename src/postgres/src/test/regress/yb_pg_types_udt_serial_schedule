@@ -2,7 +2,7 @@
 #
 ####################################################################################################
 # Postgres Testsuites: Porting from PostgreSQL original tests.
-# This suite includes all tests on user defined types that are enabled for YugaByte.
+# This suite includes all tests on user defined types that are enabled for Yugabyte.
 ####################################################################################################
 # Dependency for `yb_pg_rowtypes`
 test: yb_pg_int8

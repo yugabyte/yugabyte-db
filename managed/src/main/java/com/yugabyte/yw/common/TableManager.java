@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -179,7 +179,7 @@ public class TableManager extends DevopsBase {
         LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
         // TODO: Add support for TLS connections for bulk-loading.
-        // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
+        // Tracked by issue: https://github.com/yugabyte/yugabyte-db/issues/1864
       case BULK_IMPORT:
         commandArgs.add("--table");
         commandArgs.add(taskParams.getTableName());

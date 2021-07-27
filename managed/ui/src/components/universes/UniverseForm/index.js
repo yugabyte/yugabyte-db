@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 export { default as UniverseForm } from './UniverseForm';
 export { default as UniverseFormContainer } from './UniverseFormContainer';

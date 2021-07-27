@@ -218,7 +218,7 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Database-Host-IP-Address", "", 45,
 	offsetof(struct pg_conn, pghostaddr)},
 
-  /* Use YugaByte default port */
+  /* Use Yugabyte default port */
 	{"port", "PGPORT", DEF_YBPORT_STR, NULL,
 		"Database-Port", "", 6,
 	offsetof(struct pg_conn, pgport)},
@@ -1044,7 +1044,7 @@ connectOptions2(PGconn *conn)
 			if (ch->host)
 				free(ch->host);
 
-/* YugaByte use localhost instead of local socket */
+/* Yugabyte use localhost instead of local socket */
 #pragma push_macro("HAVE_UNIX_SOCKETS")
 #undef HAVE_UNIX_SOCKETS
 
@@ -1057,7 +1057,7 @@ connectOptions2(PGconn *conn)
 #endif
 
 #pragma pop_macro("HAVE_UNIX_SOCKETS")
-/* YugaByte end */
+/* Yugabyte end */
 
 			if (ch->host == NULL)
 				goto oom_error;
@@ -1115,7 +1115,7 @@ connectOptions2(PGconn *conn)
 	{
 		if (conn->pguser)
 			free(conn->pguser);
-		/* YugaByte default username to "postgres" */
+		/* Yugabyte default username to "postgres" */
 		conn->pguser = strdup("postgres");
 		if (!conn->pguser)
 		{
@@ -1549,7 +1549,7 @@ connectFailureMessage(PGconn *conn, int errorno)
 			displayed_host = conn->connhost[conn->whichhost].host;
 		displayed_port = conn->connhost[conn->whichhost].port;
 		if (displayed_port == NULL || displayed_port[0] == '\0')
-			/* Use YugaByte default port */
+			/* Use Yugabyte default port */
 			displayed_port = DEF_YBPORT_STR;
 
 		/*
@@ -2102,7 +2102,7 @@ keep_going:						/* We will come back to here until there is
 
 		/* Figure out the port number we're going to use. */
 		if (ch->port == NULL || ch->port[0] == '\0')
-			/* Use YugaByte default port */
+			/* Use Yugabyte default port */
 			thisport = DEF_YBPORT;
 		else
 		{
@@ -3288,7 +3288,7 @@ keep_going:						/* We will come back to here until there is
 							displayed_host = conn->connhost[conn->whichhost].host;
 						displayed_port = conn->connhost[conn->whichhost].port;
 						if (displayed_port == NULL || displayed_port[0] == '\0')
-							/* Use YugaByte default port */
+							/* Use Yugabyte default port */
 							displayed_port = DEF_YBPORT_STR;
 
 						appendPQExpBuffer(&conn->errorMessage,
@@ -3336,7 +3336,7 @@ keep_going:						/* We will come back to here until there is
 					displayed_host = conn->connhost[conn->whichhost].host;
 				displayed_port = conn->connhost[conn->whichhost].port;
 				if (displayed_port == NULL || displayed_port[0] == '\0')
-					/* Use YugaByte default port */
+					/* Use Yugabyte default port */
 					displayed_port = DEF_YBPORT_STR;
 				appendPQExpBuffer(&conn->errorMessage,
 								  libpq_gettext("test \"SHOW transaction_read_only\" failed "
@@ -6511,7 +6511,7 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 			hostname = DefaultHost;
 
 	if (port == NULL || port[0] == '\0')
-		/* Use YugaByte default port */
+		/* Use Yugabyte default port */
 		port = DEF_YBPORT_STR;
 
 	/* If password file cannot be opened, ignore it. */

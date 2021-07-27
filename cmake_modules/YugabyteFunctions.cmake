@@ -64,7 +64,7 @@ endfunction()
 function(ENFORCE_OUT_OF_SOURCE_BUILD)
   if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}")
     message(FATAL_ERROR
-      "YugaByte may not be built from the top-level source directory. Create a new "
+      "Yugabyte may not be built from the top-level source directory. Create a new "
       "directory and run cmake from there, passing the path to the top-level "
       "source directory as the last argument. "
       "To override this, rerun CMake with -DYB_ALLOW_IN_SOURCE_BUILD=0. "

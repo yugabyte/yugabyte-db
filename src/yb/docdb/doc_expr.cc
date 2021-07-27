@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/docdb/doc_expr.h"
@@ -487,7 +487,7 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
       UnpackUDTAndFrozen(type->values_type(), map->mutable_values(i));
     }
   } else if (type->main() == TUPLE) {
-    // https://github.com/YugaByte/yugabyte-db/issues/936
+    // https://github.com/yugabyte/yugabyte-db/issues/936
     LOG(FATAL) << "Tuple type not implemented yet";
   }
 }

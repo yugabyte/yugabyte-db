@@ -528,7 +528,7 @@ ptest3) REFERENCES pktable(ptest1, ptest2));
 CREATE TABLE PKTABLE (ptest1 int, ptest2 text, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
 
--- TODO: YugaByte does not yet support table inheritance.
+-- TODO: Yugabyte does not yet support table inheritance.
 --       Leaving the first failing statement uncommented so that this test
 --       will fail when the feature is implemented (the full test should
 --       be uncommented then).

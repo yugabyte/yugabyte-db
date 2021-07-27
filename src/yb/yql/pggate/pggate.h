@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -83,7 +83,7 @@ class PgApiImpl {
   CHECKED_STATUS InitSession(const PgEnv *pg_env, const string& database_name);
 
   // YB Memctx: Create, Destroy, and Reset must be "static" because a few contexts are created
-  //            before YugaByte environments including PgGate are created and initialized.
+  //            before Yugabyte environments including PgGate are created and initialized.
   // Create YB Memctx. Each memctx will be associated with a Postgres's MemoryContext.
   static PgMemctx *CreateMemctx();
   // Destroy YB Memctx.
@@ -535,7 +535,7 @@ class PgApiImpl {
 
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
-  // Mapping table of YugaByte and PostgreSQL datatypes.
+  // Mapping table of Yugabyte and PostgreSQL datatypes.
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;

@@ -142,7 +142,7 @@ typedef struct IndexScanDescData
 	/* parallel index scan information, in shared memory */
 	ParallelIndexScanDesc parallel_scan;
 
-	/* During execution, Postgres will push down hints to YugaByte for performance purpose.
+	/* During execution, Postgres will push down hints to Yugabyte for performance purpose.
 	 * (currently, only LIMIT values are being pushed down). All these execution information will
 	 * kept in "yb_exec_params".
 	 *
@@ -156,7 +156,7 @@ typedef struct IndexScanDescData
 	 *   IndexScan functions.
 	 *
 	 * - Postgres IndexScan function will call and pass "yb_exec_params" to PgGate to control the
-	 *   index-scan execution in YugaByte.
+	 *   index-scan execution in Yugabyte.
 	 */
 	YBCPgExecParameters *yb_exec_params;
 

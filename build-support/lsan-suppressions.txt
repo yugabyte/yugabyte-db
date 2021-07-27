@@ -21,7 +21,7 @@ leak:InitModule
 leak:__res_vinit
 
 # TODO: This PostgreSQL-specific whitelist should only be used for the postgres server, not for
-# YugaByte master/tserver.
+# Yugabyte master/tserver.
 
 # PostgreSQL leak: http://bit.ly/lsan_in_save_ps_display_args
 # In general, PostgreSQL has not yet been adapted to run correctly with LSAN

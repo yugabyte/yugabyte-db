@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';

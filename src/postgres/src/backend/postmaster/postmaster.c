@@ -943,7 +943,7 @@ PostmasterMain(int argc, char *argv[])
 				(errmsg_internal("-----------------------------------------")));
 	}
 
-	YBReportIfYugaByteEnabled();
+	YBReportIfYugabyteEnabled();
 #ifdef __APPLE__
 	if (YBIsEnabledInPostgresEnvVar()) {
 		/*
@@ -1002,7 +1002,7 @@ PostmasterMain(int argc, char *argv[])
 	 * a good idea to call it before any modules had chance to take the
 	 * background worker slots.
 	 *
-	 * Logical replication is not supported in YugaByte mode currently and the
+	 * Logical replication is not supported in Yugabyte mode currently and the
 	 * registration is disabled.
 	 */
 	if (!YBIsEnabledInPostgresEnvVar())
@@ -4375,7 +4375,7 @@ BackendRun(Port *port)
 	/* slightly hacky way to convert timestamptz into integers */
 	TimestampDifference(0, port->SessionStartTime, &secs, &usecs);
 #ifdef ADDRESS_SANITIZER
-	/* YugaByte fix for ASAN */
+	/* Yugabyte fix for ASAN */
 	srandom((unsigned int) (MyProcPid ^ ((int64_t) usecs << 12) ^ secs));
 #else
 	srandom((unsigned int) (MyProcPid ^ (usecs << 12) ^ secs));

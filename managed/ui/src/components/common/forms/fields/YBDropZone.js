@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Fragment, Component } from 'react';
 import Dropzone from 'react-dropzone';

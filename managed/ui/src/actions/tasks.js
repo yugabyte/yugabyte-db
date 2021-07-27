@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import axios from 'axios';
 import { getCustomerEndpoint } from './common';

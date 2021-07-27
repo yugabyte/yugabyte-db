@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 import {
   FETCH_TASK_PROGRESS,
   FETCH_TASK_PROGRESS_RESPONSE,

@@ -378,8 +378,8 @@ heap_create(const char *relname,
 									 relkind);
 
 	/*
-	 * No need to create local storage for YB Tables as YugaByte will handle it.
-	 * Temporary tables in YugaByte mode use local storage.
+	 * No need to create local storage for YB Tables as Yugabyte will handle it.
+	 * Temporary tables in Yugabyte mode use local storage.
 	 * TODO Consider hooking the YB-Create logic here instead of above.
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
@@ -1129,7 +1129,7 @@ heap_create_with_catalog(const char *relname,
 	 * and slow because secondary indexes are not available yet. So we will skip this
 	 * duplicate name check as it will error later anyway when the indexes are created.
 	 */
-	if (!IsYugaByteEnabled() || !IsBootstrapProcessingMode())
+	if (!IsYugabyteEnabled() || !IsBootstrapProcessingMode())
 	{
 		/*
 		 * This would fail later on anyway, if the relation already exists.  But
@@ -1762,7 +1762,7 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 		* Change the column name to something that isn't likely to conflict
 		*/
 
-		if (IsYugaByteEnabled())
+		if (IsYugabyteEnabled())
 		{
 			/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
 
@@ -2043,9 +2043,9 @@ heap_drop_with_catalog(Oid relid)
 
 	/*
 	 * Schedule unlinking of the relation's physical files at commit.
-	 * If YugaByte is enabled, there aren't any physical files to remove.
+	 * If Yugabyte is enabled, there aren't any physical files to remove.
 	 */
-	if (!IsYugaByteEnabled() &&
+	if (!IsYugabyteEnabled() &&
 		rel->rd_rel->relkind != RELKIND_VIEW &&
 		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
 		rel->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&

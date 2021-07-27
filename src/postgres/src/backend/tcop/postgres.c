@@ -746,7 +746,7 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 
 	if (pstate->p_target_relation &&
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
+		&& IsYugabyteEnabled())
 	{
 		SetTxnWithPGRel();
 	}
@@ -2679,7 +2679,7 @@ quickdie(SIGNAL_ARGS)
 			 errhint("In a moment you should be able to reconnect to the"
 					 " database and repeat your command.")));
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		YBOnPostgresBackendShutdown();
 	}
 
@@ -3713,7 +3713,7 @@ static void YBRefreshCache()
 
 static bool YBTableSchemaVersionMismatchError(ErrorData *edata, char **table_id)
 {
-	if (!IsYugaByteEnabled())
+	if (!IsYugabyteEnabled())
 		return false;
 
 	const char *table_cache_refresh_search_str = "schema version mismatch for table ";
@@ -3738,9 +3738,9 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	*need_retry = false;
 
 	/*
-	 * A retry is only required if the transaction is handled by YugaByte.
+	 * A retry is only required if the transaction is handled by Yugabyte.
 	 */
-	if (!IsYugaByteEnabled())
+	if (!IsYugabyteEnabled())
 		return;
 
 	char *table_to_refresh = NULL;
@@ -3966,7 +3966,7 @@ yb_is_restart_possible(const ErrorData* edata,
 					   int attempt,
 					   const YBQueryRestartData* restart_data)
 {
-	if (!IsYugaByteEnabled())
+	if (!IsYugabyteEnabled())
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, YB is not enabled");
@@ -4851,7 +4851,7 @@ PostgresMain(int argc, char *argv[],
 			}
 			else
 			{
-				if (IsYugaByteEnabled() && yb_need_cache_refresh)
+				if (IsYugabyteEnabled() && yb_need_cache_refresh)
 				{
 					YBRefreshCache();
 				}
@@ -4918,7 +4918,7 @@ PostgresMain(int argc, char *argv[],
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
 
-		if (IsYugaByteEnabled()) {
+		if (IsYugabyteEnabled()) {
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
 		}
@@ -5100,7 +5100,7 @@ PostgresMain(int argc, char *argv[],
 						 * yet. (i.e. if portal is named or has params).
 						 */
 						bool can_retry =
-						    IsYugaByteEnabled() &&
+						    IsYugabyteEnabled() &&
 						    old_portal &&
 						    portal_name[0] == '\0' &&
 						    !old_portal->portalParams &&

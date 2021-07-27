@@ -134,17 +134,17 @@ create foreign data wrapper useless;
 ERROR:  CREATE FOREIGN DATA WRAPPER not supported yet
 LINE 1: create foreign data wrapper useless;
         ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
 create server useless_server foreign data wrapper useless;
 ERROR:  CREATE SERVER not supported yet
 LINE 1: create server useless_server foreign data wrapper useless;
         ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
 create user mapping for regress_evt_user server useless_server;
 ERROR:  CREATE USER MAPPING not supported yet
 LINE 1: create user mapping for regress_evt_user server useless_serv...
         ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
 alter default privileges for role regress_evt_user
  revoke delete on tables from regress_evt_user;
 NOTICE:  test_event_trigger: ddl_command_end ALTER DEFAULT PRIVILEGES
@@ -267,19 +267,19 @@ DROP SCHEMA schema_one, schema_two CASCADE;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP SCHEMA schema_one, schema_two CASCADE;
                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
 DELETE FROM undroppable_objs WHERE object_identity = 'audit_tbls.schema_two_table_three';
 DROP SCHEMA schema_one, schema_two CASCADE;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP SCHEMA schema_one, schema_two CASCADE;
                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
 DELETE FROM undroppable_objs WHERE object_identity = 'schema_one.table_three';
 DROP SCHEMA schema_one, schema_two CASCADE;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP SCHEMA schema_one, schema_two CASCADE;
                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
 -- ignoring tests related to cascade
 -- SELECT * FROM dropped_objects WHERE schema IS NULL OR schema <> 'pg_toast';
 DROP OWNED BY regress_evt_user;
@@ -419,14 +419,14 @@ alter type rewritetype alter attribute a type text cascade;
 ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
 LINE 1: alter type rewritetype alter attribute a type text cascade;
                                ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 -- but this doesn't work
 create table rewritemetoo3 (a rewritetype);
 alter type rewritetype alter attribute a type varchar cascade;
 ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
 LINE 1: alter type rewritetype alter attribute a type varchar cascad...
                                ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 drop table rewriteme;
 drop event trigger no_rewrite_allowed;
 drop function test_evtrig_no_rewrite();

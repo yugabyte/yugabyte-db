@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { PureComponent, Fragment } from 'react';
 import { YBLoadingLinearIcon } from '../../indicators';

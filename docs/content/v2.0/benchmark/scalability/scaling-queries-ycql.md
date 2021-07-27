@@ -61,9 +61,9 @@ The workload was generated using a multi-threaded Cassandra key-value sample app
 
 YugabyteDB performs strongly consistent reads by default. For details, see [Read IO path (single shard)](../../../architecture/core-functions/read-path/). Below is the summary of the performance metrics observed during a 100% read workload:
 
-- **2.6& million read operations per second**, sum across the YugaByte nodes.
+- **2.6& million read operations per second**, sum across the Yugabyte nodes.
 - **0.2 millisecond average latency** per read on the server side.
-- **65% CPU usage**, averaged across the YugaByte nodes.
+- **65% CPU usage**, averaged across the Yugabyte nodes.
 
 #### 50-node cluster  read IOPS and latency across the nodes.
 
@@ -89,7 +89,7 @@ The graphs below are for twelve hours of the run. Note that this is a much longe
 
 #### 50-node cluster — write IOPS and latency across the nodes
 
-The two graphs below are the corresponding CPU and RAM usage for those twelve hours, and are the average across all the YugaByte nodes.
+The two graphs below are the corresponding CPU and RAM usage for those twelve hours, and are the average across all the Yugabyte nodes.
 
 ![Total CQL operations per second and CQL operation latency](/images/benchmark/scalability/total-cql-ops-per-sec-writes-ycql.png)
 

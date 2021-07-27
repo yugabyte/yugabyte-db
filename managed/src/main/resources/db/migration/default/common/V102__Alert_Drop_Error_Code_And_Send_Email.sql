@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 insert into alert_label (alert_uuid, name, value)
 (select a.uuid, 'definition_name', 'Alert Notification Failed' from alert a

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) Yugabyte, Inc.
  */
 
 import play.sbt.PlayRunHook

@@ -845,7 +845,7 @@ ERROR:  operand, lower bound, and upper bound cannot be NaN
 -- normal operation
 CREATE TABLE width_bucket_test (operand_num numeric, operand_f8 float8);
 COPY width_bucket_test (operand_num) FROM stdin;
--- TODO: Reenable when https://github.com/YugaByte/yugabyte-db/issues/848 gets fixed
+-- TODO: Reenable when https://github.com/yugabyte/yugabyte-db/issues/848 gets fixed
 --
 -- UPDATE width_bucket_test SET operand_f8 = operand_num::float8;
 --

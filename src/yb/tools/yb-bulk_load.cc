@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -186,7 +186,7 @@ void BulkLoadTask::Run() {
 
   // Flush the batch.
   CHECK_OK(db_fixture_->WriteToRocksDB(
-      doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
+      doc_write_batch, HybridTime::FromMicros(kYugabyteMicrosecondEpoch),
       /* decode_dockey */ false, /* increment_write_id */ false));
 
   if (FLAGS_flush_batch_for_tests) {
@@ -317,7 +317,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,
       CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch))}));
+      ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugabyteMicrosecondEpoch))}));
   return Status::OK();
 }
 

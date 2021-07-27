@@ -334,12 +334,12 @@ static bool IsEnvSet(const char* name)
 	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
 }
 
-static bool IsYugaByteGlobalClusterInitdb()
+static bool IsYugabyteGlobalClusterInitdb()
 {
 	return IsEnvSet("YB_ENABLED_IN_POSTGRES");
 }
 
-static bool IsYugaByteLocalNodeInitdb()
+static bool IsYugabyteLocalNodeInitdb()
 {
 	return IsEnvSet("YB_PG_LOCAL_NODE_INITDB");
 }
@@ -347,7 +347,7 @@ static bool IsYugaByteLocalNodeInitdb()
 /*
  * pclose() plus useful error reporting
  *
- * YugaByte-specific version recognizes a special status indicating that initdb
+ * Yugabyte-specific version recognizes a special status indicating that initdb
  * has already been run, or the cluster has been initialized from a sys catalog
  * snapshot.
  */
@@ -1032,7 +1032,7 @@ test_config_settings(void)
 #define MIN_BUFS_FOR_CONNS(nconns)	((nconns) * 10)
 
 	/*
-	 * For YugaByte we try larger number of connections (300) first.
+	 * For Yugabyte we try larger number of connections (300) first.
 	 * TODO: we should also consider lowering the shared buffers below
 	 */
 	static const int trial_conns[] = {
@@ -1334,7 +1334,7 @@ setup_config(void)
 	free(conflines);
 
 	/* Do not create pg_hba.conf in yugabyte */
-	if (!IsYugaByteGlobalClusterInitdb() && !IsYugaByteLocalNodeInitdb()) {
+	if (!IsYugabyteGlobalClusterInitdb() && !IsYugabyteLocalNodeInitdb()) {
 		/* pg_hba.conf */
 
 		conflines = readfile(hba_file);
@@ -1477,7 +1477,7 @@ bootstrap_template1(void)
    * Lines from BKI file are not actually used in initdb on local node.
    * No need to substitute anything
    */
-	if (!IsYugaByteLocalNodeInitdb())
+	if (!IsYugabyteLocalNodeInitdb())
   {
     /* Substitute for various symbols used in the BKI file */
 
@@ -1539,7 +1539,7 @@ bootstrap_template1(void)
 
   for (line = bki_lines; *line != NULL; line++)
   {
-    if (!IsYugaByteLocalNodeInitdb())
+    if (!IsYugabyteLocalNodeInitdb())
       PG_CMD_PUTS(*line);
     free(*line);
   }
@@ -1729,8 +1729,8 @@ setup_depend(FILE *cmdfd)
 
 	for (line = pg_depend_setup; *line != NULL; line++)
 	{
-		/* Skip VACUUM commands in YugaByte mode */
-		if (IsYugaByteGlobalClusterInitdb() && strncmp(*line, "VACUUM", 6) == 0)
+		/* Skip VACUUM commands in Yugabyte mode */
+		if (IsYugabyteGlobalClusterInitdb() && strncmp(*line, "VACUUM", 6) == 0)
 			continue;
 		PG_CMD_PUTS(*line);
 	}
@@ -1827,7 +1827,7 @@ setup_collation(FILE *cmdfd)
 	PG_CMD_PRINTF3("INSERT INTO pg_collation (collname, collnamespace, collowner, collprovider, collencoding, collcollate, collctype) VALUES ('ucs_basic', 'pg_catalog'::regnamespace, %u, '%c', %d, 'C', 'C');\n\n",
 				   BOOTSTRAP_SUPERUSERID, COLLPROVIDER_LIBC, PG_UTF8);
 
-	if (!IsYugaByteGlobalClusterInitdb() || YBIsCollationEnabled()) {
+	if (!IsYugabyteGlobalClusterInitdb() || YBIsCollationEnabled()) {
 		/* Now import all collations we can find in the operating system */
 		PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
 	}
@@ -2159,7 +2159,7 @@ make_template0(FILE *cmdfd)
 	 * 14/12/2018.
 	 * TODO revert this change when we do support it.
 	 */
-	if (IsYugaByteGlobalClusterInitdb())
+	if (IsYugabyteGlobalClusterInitdb())
 	{
 		PG_CMD_PUTS(template0_setup[0]);
 		PG_CMD_PUTS(template0_setup[2]);
@@ -2218,7 +2218,7 @@ make_system_platform(FILE *cmdfd) {
 	const char *const *line;
 	static const char *const system_platform_setup[] = {
 		"CREATE DATABASE system_platform;\n\n",
-		"COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';\n\n",
+		"COMMENT ON DATABASE system_platform IS 'system database for Yugabyte platform';\n\n",
 		NULL
 	};
 
@@ -2478,7 +2478,7 @@ setlocales(void)
 	/* This is because as of 06/15/2019 we don't support collation-aware string comparisons, */
 	/* but we still want to support storing UTF-8 strings. */
 	if (!locale &&
-		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb())) {
+		(IsYugabyteLocalNodeInitdb() || IsYugabyteGlobalClusterInitdb())) {
 		const char *kYBDefaultLocaleForSortOrder = "C";
 		const char *kYBDefaultLocaleForEncoding = "en_US.UTF-8";
 
@@ -2810,7 +2810,7 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
-  if (IsYugaByteGlobalClusterInitdb())
+  if (IsYugabyteGlobalClusterInitdb())
     set_input(&bki_file, "yb_postgres.bki");
   else
     set_input(&bki_file, "postgres.bki");
@@ -2823,7 +2823,7 @@ setup_data_file_paths(void)
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
-	if (IsYugaByteGlobalClusterInitdb())
+	if (IsYugabyteGlobalClusterInitdb())
 		set_input(&system_views_file, "yb_system_views.sql");
 	else
 		set_input(&system_views_file, "system_views.sql");
@@ -3178,7 +3178,7 @@ initialize_data_directory(void)
 	/* Bootstrap template1 */
 	bootstrap_template1();
 	
-	if (IsYugaByteLocalNodeInitdb())
+	if (IsYugabyteLocalNodeInitdb())
 		return;
 
 	/*
@@ -3212,12 +3212,12 @@ initialize_data_directory(void)
 	setup_sysviews(cmdfd);
 
 	/* Do not support copy in YB yet */
-	if (!IsYugaByteGlobalClusterInitdb())
+	if (!IsYugabyteGlobalClusterInitdb())
 		setup_description(cmdfd);
 
 	setup_collation(cmdfd);
 
-	if (!IsYugaByteGlobalClusterInitdb())
+	if (!IsYugabyteGlobalClusterInitdb())
 	{
 		setup_conversion(cmdfd);
 
@@ -3233,7 +3233,7 @@ initialize_data_directory(void)
 	/* Enable pg_stat_statements */
 	enable_pg_stat_statements(cmdfd);
 
-	if (!IsYugaByteGlobalClusterInitdb())
+	if (!IsYugabyteGlobalClusterInitdb())
 	{
 		/* Do not need to vacuum in YB */
 		vacuum_db(cmdfd);
@@ -3243,11 +3243,11 @@ initialize_data_directory(void)
 
 	make_postgres(cmdfd);
 
-	if (IsYugaByteGlobalClusterInitdb()) {
-		/* Create the yugabyte db and user (defaults for YugaByte/ysqlsh) */
+	if (IsYugabyteGlobalClusterInitdb()) {
+		/* Create the yugabyte db and user (defaults for Yugabyte/ysqlsh) */
 		make_yugabyte(cmdfd);
 
-		/* Create the system_platform database used by the YugaByte platform UI */
+		/* Create the system_platform database used by the Yugabyte platform UI */
 		make_system_platform(cmdfd);
 	}
 
@@ -3260,7 +3260,7 @@ initialize_data_directory(void)
 int
 main(int argc, char *argv[])
 {
-	if (IsYugaByteGlobalClusterInitdb() || IsYugaByteLocalNodeInitdb())
+	if (IsYugabyteGlobalClusterInitdb() || IsYugabyteLocalNodeInitdb())
 		YBSetInitDbModeEnvVar();
 
 	static struct option long_options[] = {
@@ -3574,14 +3574,14 @@ main(int argc, char *argv[])
 	else
 		printf(_("\nSync to disk skipped.\nThe data directory might become corrupt if the operating system crashes.\n"));
 
-	if (IsYugaByteLocalNodeInitdb())
+	if (IsYugabyteLocalNodeInitdb())
 		return 0;
 
-	if (authwarning != NULL && !IsYugaByteGlobalClusterInitdb())
+	if (authwarning != NULL && !IsYugabyteGlobalClusterInitdb())
 		fprintf(stderr, "%s", authwarning);
 
-	/* In YugaByte mode we only call this indirectly and manage starting the server automatically */
-	if (!IsYugaByteGlobalClusterInitdb())
+	/* In Yugabyte mode we only call this indirectly and manage starting the server automatically */
+	if (!IsYugabyteGlobalClusterInitdb())
 	{
 
 		/*

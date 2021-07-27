@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 export { default as ReadReplicaMarkerIcon } from './readreplicamarker.svg';
 export { default as RootMarkerIcon } from './rootmarker.svg';

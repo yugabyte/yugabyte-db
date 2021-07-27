@@ -659,5 +659,5 @@ under the following 3-clause BSD license:
 
 Note on thirdparty dependencies downloaded during the build process
 -------------------------------------------------------------------
-The YugaByte build process downloads many thirdparty dependencies automatically.
+The Yugabyte build process downloads many thirdparty dependencies automatically.
 Please refer to thirdparty/LICENSE.txt for relevant information.

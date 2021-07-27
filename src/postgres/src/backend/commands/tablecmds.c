@@ -11,9 +11,9 @@
  *	  src/backend/commands/tablecmds.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * Yugabyte development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -644,7 +644,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	if (tablespaceId == GLOBALTABLESPACE_OID)
 	{
-		if (IsYugaByteEnabled())
+		if (IsYugabyteEnabled())
 		{
 			if (!IsYsqlUpgrade)
 				ereport(ERROR,
@@ -750,7 +750,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	/* Identify user ID that will own the table */
 	if (!OidIsValid(ownerId))
-		ownerId = (IsYugaByteEnabled() && IsYsqlUpgrade && IsSystemNamespace(namespaceId))
+		ownerId = (IsYugabyteEnabled() && IsYsqlUpgrade && IsSystemNamespace(namespaceId))
 					? BOOTSTRAP_SUPERUSERID
 					: GetUserId();
 
@@ -920,7 +920,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	CommandCounterIncrement();
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		CheckIsYBSupportedRelationByKind(relkind);
 		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId, tablegroupId, tablespaceId);
@@ -1736,7 +1736,7 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		 */
 		if (IsYBRelation(rel))
 		{
-			// Call YugaByte API to truncate tables.
+			// Call Yugabyte API to truncate tables.
 			YBCTruncateTable(rel);
 		}
 		else if (rel->rd_createSubid == mySubid ||
@@ -3098,7 +3098,7 @@ renameatt(RenameStmt *stmt)
 						   0,	/* expected inhcount */
 						   stmt->behavior);
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		YBCRename(stmt, relid);
 	}
@@ -4251,8 +4251,8 @@ ATRewriteCatalogs(List **wqueue,
 		}
 	}
 
-	/* YugaByte doesn't support toast tables. */
-	if (IsYugaByteEnabled())
+	/* Yugabyte doesn't support toast tables. */
+	if (IsYugabyteEnabled())
 		return;
 
 	/* Check to see if a toast table must be added. */
@@ -5069,9 +5069,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 					case CONSTR_CHECK:
 						if (!ExecCheck(con->qualstate, econtext))
 						{
-							/* If YugaByte is enabled, the add constraint operation is not atomic.
+							/* If Yugabyte is enabled, the add constraint operation is not atomic.
 							 * So we must delete the relevant entries from the catalog tables. */
-							if (IsYugaByteEnabled())
+							if (IsYugabyteEnabled())
 							{
 								ATExecDropConstraint(oldrel, con->name, DROP_RESTRICT, true, false,
 													 false, lockmode);
@@ -8292,7 +8292,7 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("ALTER TABLE / ADD CONSTRAINT USING INDEX is not supported on partitioned tables")));
 
-	if (IsYugaByteEnabled() && stmt->primary)
+	if (IsYugabyteEnabled() && stmt->primary)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("ALTER TABLE / ADD CONSTRAINT PRIMARY KEY USING INDEX is not supported")));
@@ -10561,7 +10561,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 			heap_close(frel, NoLock);
 		}
 
-		if (IsYugaByteEnabled() &&
+		if (IsYugabyteEnabled() &&
 			contype == CONSTRAINT_PRIMARY)
 		{
 			ereport(ERROR,
@@ -15668,7 +15668,7 @@ ComputePartitionAttrs(Relation rel, List *partParams, AttrNumber *partattrs,
 		if (strategy == PARTITION_STRATEGY_HASH)
 			am_oid = HASH_AM_OID;
 		else
-			am_oid = IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID;
+			am_oid = IsYugabyteEnabled() ? LSM_AM_OID : BTREE_AM_OID;
 
 		if (!pelem->opclass)
 		{

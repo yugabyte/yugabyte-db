@@ -180,9 +180,9 @@ MemoryContextReset(MemoryContext context)
 
 	/*
 	 * Save a function call if no pallocs since startup or last reset.
-	 * NOTE: When "yb_memctx" is not null, ResetOnly() must be called to inform YugaByte code layer
+	 * NOTE: When "yb_memctx" is not null, ResetOnly() must be called to inform Yugabyte code layer
 	 * that resetting is happening. While the state variable "isReset" controls the objects in
-	 * Postgres, and the opaque object "yb_memctx" controls YugaByte objects.
+	 * Postgres, and the opaque object "yb_memctx" controls Yugabyte objects.
 	 */
   if (context->yb_memctx || !context->isReset)
 		MemoryContextResetOnly(context);
@@ -199,8 +199,8 @@ MemoryContextResetOnly(MemoryContext context)
 	AssertArg(MemoryContextIsValid(context));
 
 	/*
-	 * Reset YugaByte context also.
-	 * Currently reset YugaByte context does not destroy it.  Maybe we should?
+	 * Reset Yugabyte context also.
+	 * Currently reset Yugabyte context does not destroy it.  Maybe we should?
 	 */
 	if (context->yb_memctx) {
 		HandleYBStatus(YBCPgResetMemctx(context->yb_memctx));
@@ -296,7 +296,7 @@ MemoryContextDelete(MemoryContext context)
 	context->methods->delete_context(context);
 
 	/*
-	 * Destroy YugaByte memory context.
+	 * Destroy Yugabyte memory context.
 	 */
 	if (context->yb_memctx)
 		HandleYBStatus(YBCPgDestroyMemctx(context->yb_memctx));
@@ -816,7 +816,7 @@ MemoryContextCreate(MemoryContext node,
 	node->ident = NULL;
 	node->reset_cbs = NULL;
 
-	/* YugaByte memory context handler */
+	/* Yugabyte memory context handler */
 	node->yb_memctx = NULL;
 
 	/* OK to link node into context tree */
@@ -1275,7 +1275,7 @@ pchomp(const char *in)
 }
 
 /*
- * Get the YugaByte current memory context.
+ * Get the Yugabyte current memory context.
  */
 YBCPgMemctx GetCurrentYbMemctx() {
 	MemoryContext context = GetCurrentMemoryContext();

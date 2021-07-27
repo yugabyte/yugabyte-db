@@ -205,7 +205,7 @@ CREATE UNIQUE INDEX tbl_idx_unique ON tbl using lsm(c1, c2) INCLUDE (c3,c4);
 UPDATE tbl SET c1 = 100 WHERE c1 = 2;
 UPDATE tbl SET c1 = 1 WHERE c1 = 3;
 UPDATE tbl SET c2 = 2 WHERE c1 = 1;
--- Disabled due to issue https://github.com/YugaByte/yugabyte-db/issues/1448:
+-- Disabled due to issue https://github.com/yugabyte/yugabyte-db/issues/1448:
 -- UPDATE tbl SET c3 = 1;
 --
 DELETE FROM tbl WHERE c1 = 5 OR c3 = 12;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.metrics;
 
 import static play.mvc.Http.Status.BAD_REQUEST;

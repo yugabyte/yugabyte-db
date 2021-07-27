@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;

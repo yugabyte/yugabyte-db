@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -1290,7 +1290,7 @@ install_linuxbrew() {
   local linuxbrew_dir=$YB_LINUXBREW_LOCAL_ROOT/$linuxbrew_dirname
   local linuxbrew_archive="${linuxbrew_dir}.tar.gz"
   local linuxbrew_archive_checksum="${linuxbrew_archive}.sha256"
-  local url="https://github.com/YugaByte/brew-build/releases/download/$version/\
+  local url="https://github.com/Yugabyte/brew-build/releases/download/$version/\
 linuxbrew-$version.tar.gz"
   mkdir -p "$YB_LINUXBREW_LOCAL_ROOT"
   if [[ ! -f $linuxbrew_archive ]]; then
@@ -1716,7 +1716,7 @@ is_jenkins_phabricator_build() {
   return 1  # No, some other kind of Jenkins job.
 }
 
-# Check if we're using an NFS partition in YugaByte's build environment.
+# Check if we're using an NFS partition in Yugabyte's build environment.
 is_src_root_on_nfs() {
   if [[ $YB_SRC_ROOT =~ $YB_NFS_PATH_RE ]]; then
     return 0
@@ -1792,7 +1792,7 @@ configure_remote_compilation() {
           log "This is not GCP."
         fi
         if is_src_root_on_nfs; then
-          log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in YugaByte's distributed" \
+          log "YB_SRC_ROOT ($YB_SRC_ROOT) appears to be on NFS in Yugabyte's distributed" \
               "build setup."
         fi
       fi

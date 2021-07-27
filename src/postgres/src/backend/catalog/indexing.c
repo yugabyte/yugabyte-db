@@ -114,10 +114,10 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple, bool yb_shar
 	for (i = 0; i < numIndexes; i++)
 	{
 		/*
-		 * No need to update YugaByte primary key which is intrinic part of
+		 * No need to update Yugabyte primary key which is intrinic part of
 		 * the base table.
 		 */
-		if (IsYugaByteEnabled() && relationDescs[i]->rd_index->indisprimary)
+		if (IsYugabyteEnabled() && relationDescs[i]->rd_index->indisprimary)
 			continue;
 
 		IndexInfo  *indexInfo;
@@ -205,10 +205,10 @@ CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
 	for (i = 0; i < numIndexes; i++)
 	{
 		/*
-		 * No need to update YugaByte primary key which is intrinic part of
+		 * No need to update Yugabyte primary key which is intrinic part of
 		 * the base table.
 		 */
-		if (IsYugaByteEnabled() && relationDescs[i]->rd_index->indisprimary)
+		if (IsYugabyteEnabled() && relationDescs[i]->rd_index->indisprimary)
 			continue;
 
 		IndexInfo  *indexInfo;
@@ -284,7 +284,7 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 	CatalogIndexState indstate;
 	Oid			oid;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		if (yb_shared_insert)
 		{
@@ -343,7 +343,7 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 {
 	Oid			oid;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		if (yb_shared_insert)
 		{
@@ -398,7 +398,7 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 	indstate = CatalogOpenIndexes(heapRel);
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		HeapTuple	oldtup = NULL;
 		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
@@ -444,7 +444,7 @@ void
 CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 						   CatalogIndexState indstate)
 {
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		HeapTuple	oldtup = NULL;
 		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
@@ -494,7 +494,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 void
 CatalogTupleDelete(Relation heapRel, HeapTuple tup)
 {
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		YBCDeleteSysCatalogTuple(heapRel, tup);
 

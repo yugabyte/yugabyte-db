@@ -1,4 +1,4 @@
---  Copyright (c) YugaByte, Inc.
+--  Copyright (c) Yugabyte, Inc.
 
 ALTER TABLE price_component
     RENAME TO price_component_old;

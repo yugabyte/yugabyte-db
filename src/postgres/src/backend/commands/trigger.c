@@ -3908,14 +3908,14 @@ GetCurrentFDWTuplestore(AfterTriggerShared evtshared)
 
 	Assert(afterTriggers.query_depth > -1);
 	AfterTriggersQueryData* trigger_data = &afterTriggers.query_stack[afterTriggers.query_depth];
-	const bool is_deferred = IsYugaByteEnabled() && afterTriggerCheckState(evtshared);
+	const bool is_deferred = IsYugabyteEnabled() && afterTriggerCheckState(evtshared);
 	ret = is_deferred ? trigger_data->ybc_txn_fdw_tuplestore : trigger_data->fdw_tuplestore;
 	if (ret == NULL)
 	{
 		/*
 		 * Make the tuplestore valid until end of subtransaction.  We really
 		 * only need it until AfterTriggerEndQuery().
-		 * In YugaByte mode deferred trigger will access tuplestore
+		 * In Yugabyte mode deferred trigger will access tuplestore
 		 * at the end of subtransaction (after AfterTriggerEndQuery).
 		 */
 		MemoryContext oldcxt = MemoryContextSwitchTo(CurTransactionContext);
@@ -4562,7 +4562,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 					finfo = rInfo->ri_TrigFunctions;
 					instr = rInfo->ri_TrigInstrument;
 					/*
-					 * Need to create a tuple slot for both YugaByte tables and
+					 * Need to create a tuple slot for both Yugabyte tables and
 					 * foreign tables
 					 */
 					if (IsYBBackedRelation(rel) ||
@@ -5097,7 +5097,7 @@ AfterTriggerEndXact(bool isCommit)
 	/* No more afterTriggers manipulation until next transaction starts. */
 	afterTriggers.query_depth = -1;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		/* Close all transaction level tuplestores. */
 		ListCell *lc;
@@ -5979,7 +5979,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 	}
 
 	/*
-	 * In YugaByte mode we (re)use the FDW trigger flags (since we also use the
+	 * In Yugabyte mode we (re)use the FDW trigger flags (since we also use the
 	 * FDW tuplestore).
 	 */
 	if (!((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger))
@@ -6038,7 +6038,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		}
 
 		/*
-		 * In YugaByte mode we also use the tuplestore to store/pass tuples
+		 * In Yugabyte mode we also use the tuplestore to store/pass tuples
 		 * within a query execution.
 		 */
 		if ((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
@@ -6086,12 +6086,12 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		 */
 		new_shared.ybc_txn_fdw_tuplestore = NULL;
 		/*
-		 * In YugaByte mode we also use the tuplestore to store/pass tuples
+		 * In Yugabyte mode we also use the tuplestore to store/pass tuples
 		 * within a query execution.
 		 */
 		if ((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
 		{
-			if (IsYugaByteEnabled() && afterTriggerCheckState(&new_shared))
+			if (IsYugabyteEnabled() && afterTriggerCheckState(&new_shared))
 			{
 				/* deferred trigger case */
 				if (!ybc_txn_fdw_tuplestore)
