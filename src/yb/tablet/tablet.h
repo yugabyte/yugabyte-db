@@ -180,12 +180,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Performs backfill for the key range beginning from the row immediately after
   // <backfill_from>, until either it reaches the end of the tablet
   //    or the current time is past deadline.
+  // *<number_of_rows_processed> will be set to the number of rows backfilled.
   // <backfilled_until> will be set to the first row that was not backfilled, so that the
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
-  //
-  // TODO(#5326): For now YSQL does not support chunking, so backfill will always run to the
-  // end of the tablet and set backfilled_until as the empty string.
   CHECKED_STATUS BackfillIndexesForYsql(
       const std::vector<IndexInfo>& indexes,
       const std::string& backfill_from,
@@ -194,6 +192,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
+      size_t* number_of_rows_processed,
       std::string* backfilled_until);
 
   CHECKED_STATUS VerifyIndexTableConsistencyForCQL(
@@ -246,17 +245,18 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Performs backfill for the key range beginning from the row <backfill_from>,
   // until either it reaches the end of the tablet
   //    or the current time is past deadline.
-  // <failed_indexes> will be updated with the collection of index-ids for which any errors
-  //    were encountered.
+  // *<number_of_rows_processed> will be set to the number of rows backfilled.
   // <backfilled_until> will be set to the first row that was not backfilled, so that the
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
+  // <failed_indexes> will be updated with the collection of index-ids for which any errors
+  //    were encountered.
   CHECKED_STATUS BackfillIndexes(
       const std::vector<IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
-      int* number_of_rows_processed,
+      size_t* number_of_rows_processed,
       std::string* backfilled_until,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -265,16 +265,17 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes);
 
   Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill();
 
   CHECKED_STATUS FlushWriteIndexBatchIfRequired(
-      bool force_flush,
       const HybridTime write_time,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes);
+  CHECKED_STATUS FlushWriteIndexBatch(
+      const HybridTime write_time,
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
   template <typename SomeYBqlOp>
