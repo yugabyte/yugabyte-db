@@ -1,16 +1,16 @@
-name: pg13-test
+name: pg14-test
 on: [push]
 
 jobs:
   build:
-    name: pg13-test
+    name: pg14-test
     runs-on: ubuntu-latest
     steps:
       - name: Clone postgres repository
         uses: actions/checkout@v2
         with:
           repository: 'postgres/postgres'
-          ref: 'REL_13_STABLE'
+          ref: 'REL_14_STABLE'
 
       - name: Clone pg_stat_monitor repository
         uses: actions/checkout@v2
