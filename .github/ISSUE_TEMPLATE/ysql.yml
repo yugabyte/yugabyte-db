@@ -1,5 +1,5 @@
 name: Core-YSQL
-description: Choose this template to create a YSQL issue.
+description: Create a YSQL issue.
 title: "[YSQL] Title"
 labels: "area/ysql"
 body:
@@ -12,3 +12,4 @@ body:
       **Include steps to reproduce the issue.**
   validations:
     required: true
+    

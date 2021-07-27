@@ -1,5 +1,5 @@
 name: Platform
-description: Choose this template to create a Platform issue.
+description: Create a Platform issue.
 title: "[Platform] Title"
 labels: "area/platform"
 body:
@@ -12,3 +12,4 @@ body:
       **Include the steps to reproduce the issue.**
   validations:
     required: true
+    

@@ -1,5 +1,5 @@
 name: Docs
-description: Choose this template to create a documentation issue.
+description: Create a documentation issue.
 title: "[Docs] Title"
 labels: "area/documentation"
 body:
@@ -12,5 +12,3 @@ body:
   validations:
     required: true 
     
-   
-        

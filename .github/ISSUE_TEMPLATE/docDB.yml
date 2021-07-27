@@ -1,6 +1,6 @@
 name: Core-DocDB
-description: Choose this template to create a DocDB issue.
-title: "[docDB] Title"
+description: Create a DocDB issue.
+title: "[DocDB] Title"
 labels: "area/docdb"
 body:
 - type: textarea
@@ -11,4 +11,5 @@ body:
       **Provide a detailed description of the issue you want to report with the DocDB document store.**
       **Include the steps to reproduce the issue.**
   validations:
-    required: true 
+    required: true
+    

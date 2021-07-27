@@ -1,5 +1,5 @@
 name: Core-YCQL
-description: Choose this template to create a YCQL issue.
+description: Create a YCQL issue.
 title: "[YCQL] Title"
 labels: "area/ycql"
 body:
@@ -9,6 +9,7 @@ body:
     label: Description
     placeholder: |
       **Provide a detailed description of the issue you want to report related to YCQL.**
-      **Include relevant steps to reproduce the issue.**
+      **Include steps to reproduce the issue.**
   validations:
     required: true 
+    
