@@ -181,6 +181,15 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     faststring *result_buffer,
                                     HybridTime *restart_read_ht);
 
+  Result<size_t> ExecuteSample(const common::YQLStorageIf& ql_storage,
+                               CoarseTimePoint deadline,
+                               const ReadHybridTime& read_time,
+                               bool is_explicit_request_read_time,
+                               const Schema& schema,
+                               faststring *result_buffer,
+                               HybridTime *restart_read_ht,
+                               bool *has_paging_state);
+
   CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row,
                                    faststring *result_buffer);
 

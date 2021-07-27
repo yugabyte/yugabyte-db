@@ -21,6 +21,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
 
+#include "yb/yql/pggate/pg_sample.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -1065,6 +1066,50 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   return down_cast<PgDelete*>(handle)->Exec();
+}
+
+Status PgApiImpl::NewSample(const PgObjectId& table_id, const int targrows, PgStatement **handle) {
+  *handle = nullptr;
+  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id);
+  RETURN_NOT_OK(sample->Prepare());
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(sample), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->InitRandomState(rstate_w, rand_state));
+  return Status::OK();
+}
+
+Status PgApiImpl::SampleNextBlock(PgStatement *handle, bool *has_more) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->SampleNextBlock(has_more));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecSample(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->Exec(nullptr));
+  return Status::OK();
+}
+
+Status PgApiImpl::GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->GetEstimatedRowCount(liverows, deadrows));
+  return Status::OK();
 }
 
 Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {

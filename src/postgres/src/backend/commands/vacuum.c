@@ -180,7 +180,14 @@ vacuum(int options, List *relations, VacuumParams *params,
 	{
 		ereport(WARNING,
 				(errmsg("VACUUM will be ignored")));
-		return;
+		if (options & VACOPT_ANALYZE)
+		{
+			options &= ~VACOPT_VACUUM;
+		}
+		else
+		{
+			return;
+		}
 	}
 
 	Assert(params != NULL);

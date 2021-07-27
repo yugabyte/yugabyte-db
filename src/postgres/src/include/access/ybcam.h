@@ -28,9 +28,11 @@
 #include "skey.h"
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/itup.h"
 #include "nodes/relation.h"
 #include "utils/catcache.h"
 #include "utils/resowner.h"
+#include "utils/sampling.h"
 #include "utils/snapshot.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -178,5 +180,25 @@ extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
  * Fetch a single tuple by the ybctid.
  */
 extern HeapTuple YBCFetchTuple(Relation relation, Datum ybctid);
+
+/*
+ * ANALYZE support: sampling of table data
+ */
+typedef struct YbSampleData
+{
+	/* The handle for the internal YB Sample statement. */
+	YBCPgStatement handle;
+
+	Relation	relation;
+	int			targrows;	/* # of rows to collect */
+	double		liverows;	/* # live rows seen */
+	double		deadrows;	/* # dead rows seen */
+} YbSampleData;
+
+typedef struct YbSampleData *YbSample;
+
+YbSample ybBeginSample(Relation rel, int targrows);
+bool ybSampleNextBlock(YbSample ybSample);
+int ybFetchSample(YbSample ybSample, HeapTuple *rows);
 
 #endif							/* YBCAM_H */

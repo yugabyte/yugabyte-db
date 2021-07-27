@@ -24,6 +24,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/gutil/integral_types.h"
+#include "utils/sampling.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -136,6 +138,21 @@ YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *dat
  * 'result_datum_array' will be allocated in this function itself, pre-allocation is not needed.
  */
 YbgStatus YbgSplitArrayDatum(uint64_t datum, int type, uint64_t **result_datum_array, int *nelems);
+
+//-----------------------------------------------------------------------------
+// Relation sampling
+//-----------------------------------------------------------------------------
+
+/*
+ * Select a random value R uniformly distributed in (0 - 1)
+ */
+YbgStatus YbgSamplerRandomFract(SamplerRandomState randstate, double *value);
+
+/*
+ * Calculate next number of rows to skip based on current number of scanned rows
+ * and requested sample size.
+ */
+YbgStatus YbgReservoirGetNextS(ReservoirState rs, double t, int n, double *s);
 
 #ifdef __cplusplus
 }
