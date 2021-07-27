@@ -774,9 +774,10 @@ public class NodeManager extends DevopsBase {
             if (config.getBoolean("yb.cloud.enabled")) {
               // If low mem instance, configure small boot disk size.
               List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2."); 
-              String instanceTypePrefix = taskParam.instanceType.split(".")[0] + ".";
+              String instanceTypePrefix = taskParam.instanceType.split("\\.")[0] + ".";
               if (lowMemInstanceTypePrefixes.contains(instanceTypePrefix)) {
                 String lowMemBootDiskSizeGB = "8";
+                LOG.info("Detected low memory instance type. Setting up nodes using low boot disk size.");
                 commandArgs.add("--boot_disk_size_gb");
                 commandArgs.add(lowMemBootDiskSizeGB);
               }
