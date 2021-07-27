@@ -85,7 +85,11 @@ struct MiniClusterOptions {
   int num_drives = 1;
 
   Env* master_env = Env::Default();
-  Env* ts_env = Env::Default();
+
+  // Custom Env and rocksdb::Env to be used by MiniTabletServer,
+  // otherwise MiniTabletServer will use own Env and rocksdb::Env.
+  Env* ts_env = nullptr;
+  rocksdb::Env* ts_rocksdb_env = nullptr;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
