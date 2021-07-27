@@ -113,6 +113,3 @@ submodules/
 
 # Local Netlify folder
 .netlify/
-
-# HTML link checker temp files
-.htmltest/
