@@ -111,6 +111,33 @@ Status PgDocResult::ProcessSystemColumns() {
   return Status::OK();
 }
 
+Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
+  // Process block sampling result returned from DocDB.
+  // Results come as (index, ybctid) tuples where index is the position in the reservoir of
+  // predetermined size. DocDB returns ybctids with sequential indexes first, starting from 0 and
+  // until reservoir is full. Then it returns ybctids with random indexes, so they replace previous
+  // ybctids.
+  for (int i = 0; i < row_count_; i++) {
+    // Read index column
+    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
+    SCHECK(!header.is_null(), InternalError, "Reservoir index cannot be NULL");
+    int32_t index;
+    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &index);
+    row_iterator_.remove_prefix(read_size);
+    // Read ybctid column
+    header = PgDocData::ReadDataHeader(&row_iterator_);
+    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
+    int64_t data_size;
+    read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
+    row_iterator_.remove_prefix(read_size);
+
+    // Copy ybctid data to the reservoir
+    reservoir[index].assign(reinterpret_cast<const char *>(row_iterator_.data()), data_size);
+    row_iterator_.remove_prefix(data_size);
+  }
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session,
@@ -350,7 +377,11 @@ Status PgDocReadOp::CreateRequests() {
   // All information from the SQL request has been collected and setup. This code populate
   // Protobuf requests before sending them to DocDB. For performance reasons, requests are
   // constructed differently for different statement.
-  if (template_op_->request().is_aggregate()) {
+  if (template_op_->request().has_sampling_state()) {
+    VLOG(1) << __PRETTY_FUNCTION__ << ": Preparing sampling requests ";
+    return PopulateSamplingOps();
+
+  } else if (template_op_->request().is_aggregate()) {
     // Optimization for COUNT() operator.
     // - SELECT count(*) FROM sql_table;
     // - Multiple requests are created to run sequential COUNT() in parallel.
@@ -607,6 +638,59 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   return Status::OK();
 }
 
+Status PgDocReadOp::PopulateSamplingOps() {
+  // Create one PgsqlOp per partition
+  RETURN_NOT_OK(ClonePgsqlOps(table_desc_->GetPartitionCount()));
+  // Partitions are sampled sequentially, one at a time
+  parallelism_level_ = 1;
+  // Assign partitions to operators.
+  const auto& partition_keys = table_desc_->GetPartitions();
+  SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
+            "Number of partitions and number of partition keys are not the same");
+
+  // Bind requests to partitions
+  for (int partition = 0; partition < partition_keys.size(); partition++) {
+    // Construct a new YBPgsqlReadOp.
+    pgsql_ops_[partition]->set_active(true);
+
+    // Use partition index to setup the protobuf to identify the partition that this request
+    // is for. Batcher will use this information to send the request to correct tablet server, and
+    // server uses this information to operate on correct tablet.
+    // - Range partition uses range partition key to identify partition.
+    // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
+    string upper_bound;
+    if (partition < partition_keys.size() - 1) {
+      upper_bound = partition_keys[partition + 1];
+    }
+    RETURN_NOT_OK(table_desc_->SetScanBoundary(GetReadOp(partition)->mutable_request(),
+                                               partition_keys[partition],
+                                               true /* lower_bound_is_inclusive */,
+                                               upper_bound,
+                                               false /* upper_bound_is_inclusive */));
+  }
+  active_op_count_ = partition_keys.size();
+  VLOG(1) << "Number of partitions to sample: " << active_op_count_;
+  // If we have big enough sample after processing some partitions we skip the rest.
+  // By shuffling partitions we randomly select the partition(s) to sample.
+  std::random_shuffle(pgsql_ops_.begin(), pgsql_ops_.end());
+  request_population_completed_ = true;
+
+  return Status::OK();
+}
+
+Status PgDocReadOp::GetEstimatedRowCount(double *liverows, double *deadrows) {
+  if (liverows != nullptr) {
+    // Return estimated number of live tuples
+    VLOG(1) << "Returning liverows " << sample_rows_;
+    *liverows = sample_rows_;
+  }
+  if (deadrows != nullptr) {
+    // TODO count dead tuples while sampling
+    *deadrows = 0;
+  }
+  return Status::OK();
+}
+
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.
 Status PgDocReadOp::SetScanPartitionBoundary() {
   // Boundary to scan from a given key to the end of its associated tablet.
@@ -687,6 +771,34 @@ Status PgDocReadOp::ProcessResponsePagingState() {
       FormulateRequestForRollingUpgrade(read_op->mutable_request());
     }
 
+    if (res.has_sampling_state()) {
+      VLOG(1) << "Received sampling state:"
+              << " samplerows: " << res.mutable_sampling_state()->samplerows()
+              << " rowstoskip: " << res.mutable_sampling_state()->rowstoskip()
+              << " rstate_w: " << res.mutable_sampling_state()->rstate_w()
+              << " rand_state: " << res.mutable_sampling_state()->rand_state();
+      if (has_more_arg) {
+        // Copy sampling state from the response to the request, to properly continue to sample
+        // the next block.
+        PgsqlReadRequestPB *req = read_op->mutable_request();
+        *req->mutable_sampling_state() = std::move(*res.mutable_sampling_state());
+      } else {
+        // Partition sampling is completed.
+        // If samplerows is greater than or equal to targrows the sampling is complete. There are
+        // enough rows selected to calculate stats and we can estimate total number of rows in the
+        // table by extrapolating samplerows to the partitions that have not been scanned.
+        // If samplerows is less than targrows next partition needs to be sampled. Next pgdoc_op
+        // already has sampling state copied from the template_op_, only couple fields need to be
+        // updated: numrows and samplerows. The targrows never changes, and in reservoir population
+        // phase (before samplerows reaches targrows) 1. numrows and samplerows are always equal;
+        // and 2. random numbers never generated, so random state remains the same.
+        // That essentially means the only thing we need to collect from the partition's final
+        // sampling state is the samplerows. We use that number to either estimate liverows, or to
+        // update numrows and samplerows in next partition's sampling state.
+        sample_rows_ = res.mutable_sampling_state()->samplerows();
+      }
+    }
+
     if (has_more_arg) {
       has_more_data = true;
     } else {
@@ -702,6 +814,28 @@ Status PgDocReadOp::ProcessResponsePagingState() {
     // There should be no active op left in queue.
     active_op_count_ = 0;
     end_of_data_ = request_population_completed_;
+  }
+
+  if (active_op_count_ > 0 && template_op_->request().has_sampling_state()) {
+    PgsqlReadRequestPB *req = GetReadOp(0)->mutable_request();
+    if (!req->has_paging_state()) {
+      // Current sampling op without paging state means that previous one was completed and moved
+      // outside.
+      auto sampling_state = req->mutable_sampling_state();
+      if (sample_rows_ < sampling_state->targrows()) {
+        // More sample rows are needed, update sampling state and let next partition be scanned
+        VLOG(1) << "Continue sampling next partition from " << sample_rows_;
+        sampling_state->set_numrows(static_cast<int32>(sample_rows_));
+        sampling_state->set_samplerows(sample_rows_);
+      } else {
+        // Have enough of sample rows, estimate total table rows assuming they are evenly
+        // distributed between partitions
+        int completed_ops = pgsql_ops_.size() - active_op_count_;
+        sample_rows_ = floor((sample_rows_ / completed_ops) * pgsql_ops_.size() + 0.5);
+        VLOG(1) << "Done sampling, prorated rowcount is " << sample_rows_;
+        end_of_data_ = true;
+      }
+    }
   }
 
   return Status::OK();

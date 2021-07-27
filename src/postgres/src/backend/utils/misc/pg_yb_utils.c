@@ -1197,6 +1197,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			*is_breaking_catalog_change = false;
 			return true;
 
+		case T_VacuumStmt:
+			/* Vacuum with analyze updates relation and attribute statistics */
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
+
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;

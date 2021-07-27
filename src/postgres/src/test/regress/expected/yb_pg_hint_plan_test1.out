@@ -9,60 +9,40 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
--- TODO size estimates
--- For postgres table t1 is larger than t2. Hence, hash join takes t1 as the inner table.
--- However, in YB we do not have accurate size estimates and hence, t2 is the inner table.
--- Having accurate size estimate in YB will fix this automatically.
--- Postgres's output
---            QUERY PLAN
--- --------------------------------
---  Hash Join
---    Hash Cond: (t2.val = t1.val)
---    ->  Seq Scan on t2
---    ->  Hash
---          ->  Seq Scan on t1
--- (5 rows)
---
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
            QUERY PLAN
----------------------------------
- Merge Join
-   Merge Cond: (t1.val = t2.val)
-   ->  Sort
-         Sort Key: t1.val
+--------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t1.val)
+   ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t1
-   ->  Sort
-         Sort Key: t2.val
-         ->  Seq Scan on t2
-(8 rows)
+(5 rows)
 
 SET pg_hint_plan.debug_print TO on;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
            QUERY PLAN
----------------------------------
- Merge Join
-   Merge Cond: (t1.val = t2.val)
-   ->  Sort
-         Sort Key: t1.val
+--------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t1.val)
+   ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t1
-   ->  Sort
-         Sort Key: t2.val
-         ->  Seq Scan on t2
-(8 rows)
+(5 rows)
 
 -- pg_hint_plan when enabled recognizes Test as an unknown keyword
 /*+ Test (t1 t2) */
@@ -72,9 +52,9 @@ DETAIL:  Unrecognized hint keyword "Test".
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 SET pg_hint_plan.enable_hint TO off;
@@ -83,9 +63,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 SET pg_hint_plan.enable_hint TO on;
@@ -96,9 +76,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 -- pg_hint_plan comment formatting wrong
@@ -107,9 +87,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+Set(enable_indexscan off) /* nest comment */ */
@@ -120,9 +100,9 @@ DETAIL:  Nested block comments are not supported.
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+Set(enable_indexscan off)*/
@@ -279,9 +259,9 @@ Set(work_mem 1M)
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+Set(work_mem "1MB")*/
@@ -296,9 +276,9 @@ error hint:
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+Set(work_mem TO "1MB")*/
@@ -315,9 +295,9 @@ Set(work_mem TO 1MB)
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+SeqScan() */ SELECT 1;
@@ -351,9 +331,9 @@ SeqScan(t1 t2)
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+SeqScan(t1)*/
@@ -365,13 +345,14 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN
---------------------------------------
- Nested Loop
+          QUERY PLAN
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(4 rows)
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
 
 /*+SeqScan(t1)IndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -437,13 +418,14 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN
---------------------------------------
- Nested Loop
+          QUERY PLAN
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(4 rows)
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
 
 /*+NoBitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
@@ -529,9 +511,9 @@ error hint:
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+NoMergeJoin(t1 t2)*/
@@ -546,9 +528,9 @@ error hint:
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 /*+MergeJoin(t1 t3)*/
@@ -563,13 +545,13 @@ error hint:
            QUERY PLAN
 ---------------------------------
  Merge Join
-   Merge Cond: (t1.val = t3.val)
-   ->  Sort
-         Sort Key: t1.val
-         ->  Seq Scan on t1
+   Merge Cond: (t3.val = t1.val)
    ->  Sort
          Sort Key: t3.val
          ->  Seq Scan on t3
+   ->  Sort
+         Sort Key: t1.val
+         ->  Seq Scan on t1
 (8 rows)
 
 /*+NestLoop(t1 t3)*/
@@ -598,17 +580,13 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN
----------------------------------
- Merge Join
-   Merge Cond: (t1.val = t3.val)
-   ->  Sort
-         Sort Key: t1.val
-         ->  Seq Scan on t1
-   ->  Sort
-         Sort Key: t3.val
-         ->  Seq Scan on t3
-(8 rows)
+             QUERY PLAN
+-------------------------------------
+ Nested Loop
+   ->  Seq Scan on t3
+   ->  Index Scan using t1_val on t1
+         Index Cond: (val = t3.val)
+(4 rows)
 
 /*+MergeJoin(t4 t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -622,19 +600,19 @@ error hint:
                        QUERY PLAN
 --------------------------------------------------------
  Merge Join
-   Merge Cond: (t1.id = t4.id)
+   Merge Cond: (t1.id = t3.id)
    ->  Sort
          Sort Key: t1.id
          ->  Nested Loop
                ->  Nested Loop
-                     ->  Seq Scan on t1
-                     ->  Index Scan using t2_pkey on t2
-                           Index Cond: (id = t1.id)
-               ->  Index Scan using t3_pkey on t3
+                     ->  Seq Scan on t4
+                     ->  Index Scan using t1_pkey on t1
+                           Index Cond: (id = t4.id)
+               ->  Index Scan using t2_pkey on t2
                      Index Cond: (id = t1.id)
    ->  Sort
-         Sort Key: t4.id
-         ->  Seq Scan on t4
+         Sort Key: t3.id
+         ->  Seq Scan on t3
 (14 rows)
 
 -- YB_COMMENT
@@ -666,19 +644,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Hash Join
-   Hash Cond: (t1.id = t4.id)
-   ->  Nested Loop
+   Hash Cond: (t3.id = t1.id)
+   ->  Seq Scan on t3
+   ->  Hash
          ->  Nested Loop
-               ->  Seq Scan on t1
+               ->  Nested Loop
+                     ->  Seq Scan on t4
+                     ->  Index Scan using t1_pkey on t1
+                           Index Cond: (id = t4.id)
                ->  Index Scan using t2_pkey on t2
                      Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
-               Index Cond: (id = t1.id)
-   ->  Hash
-         ->  Seq Scan on t4
 (11 rows)
 
 /*+NestLoop(t2 t3 t4 t1) IndexScan(t3)*/
@@ -694,16 +672,17 @@ error hint:
                     QUERY PLAN
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t1.id = t3.id)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Seq Scan on t1
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
+               ->  Seq Scan on t4
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: (id = t4.id)
+         ->  Index Scan using t2_pkey on t2
                Index Cond: (id = t1.id)
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t1.id)
-(10 rows)
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t2.id)
+(11 rows)
 
 /*+NoNestLoop(t4 t1 t3 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -714,19 +693,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Hash Join
-   Hash Cond: (t1.id = t4.id)
-   ->  Nested Loop
+   Hash Cond: (t3.id = t1.id)
+   ->  Seq Scan on t3
+   ->  Hash
          ->  Nested Loop
-               ->  Seq Scan on t1
+               ->  Nested Loop
+                     ->  Seq Scan on t4
+                     ->  Index Scan using t1_pkey on t1
+                           Index Cond: (id = t4.id)
                ->  Index Scan using t2_pkey on t2
                      Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
-               Index Cond: (id = t1.id)
-   ->  Hash
-         ->  Seq Scan on t4
 (11 rows)
 
 /*+Leading( */
@@ -736,16 +715,17 @@ DETAIL:  Closing parenthesis is necessary.
                     QUERY PLAN
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t1.id = t3.id)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Seq Scan on t1
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
+               ->  Seq Scan on t4
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: (id = t4.id)
+         ->  Index Scan using t2_pkey on t2
                Index Cond: (id = t1.id)
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t1.id)
-(10 rows)
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t2.id)
+(11 rows)
 
 /*+Leading( )*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -761,16 +741,17 @@ Leading()
                     QUERY PLAN
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t1.id = t3.id)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Seq Scan on t1
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
+               ->  Seq Scan on t4
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: (id = t4.id)
+         ->  Index Scan using t2_pkey on t2
                Index Cond: (id = t1.id)
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t1.id)
-(10 rows)
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t2.id)
+(11 rows)
 
 /*+Leading( t3 )*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -786,16 +767,17 @@ Leading(t3)
                     QUERY PLAN
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t1.id = t3.id)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Seq Scan on t1
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
+               ->  Seq Scan on t4
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: (id = t4.id)
+         ->  Index Scan using t2_pkey on t2
                Index Cond: (id = t1.id)
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t1.id)
-(10 rows)
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t2.id)
+(11 rows)
 
 /*+Leading( t3 t4 )*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -833,19 +815,20 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Nested Loop
    ->  Nested Loop
-         ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t3.id = t4.id)
                ->  Seq Scan on t3
-               ->  Index Scan using t4_pkey on t4
-                     Index Cond: (id = t3.id)
+               ->  Hash
+                     ->  Seq Scan on t4
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t3.id)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
-(10 rows)
+(11 rows)
 
 /*+Leading(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -856,19 +839,20 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Nested Loop
    ->  Nested Loop
-         ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t3.id = t4.id)
                ->  Seq Scan on t3
-               ->  Index Scan using t4_pkey on t4
-                     Index Cond: (id = t3.id)
+               ->  Hash
+                     ->  Seq Scan on t4
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t3.id)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
-(10 rows)
+(11 rows)
 
 /*+Leading(t3 t4 t1 t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -884,16 +868,17 @@ Leading(t3 t4 t1 t2 t1)
                     QUERY PLAN
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t1.id = t3.id)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Seq Scan on t1
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
+               ->  Seq Scan on t4
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: (id = t4.id)
+         ->  Index Scan using t2_pkey on t2
                Index Cond: (id = t1.id)
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t1.id)
-(10 rows)
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t2.id)
+(11 rows)
 
 /*+Leading(t3 t4 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -909,16 +894,17 @@ Leading(t3 t4 t4)
                     QUERY PLAN
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t1.id = t3.id)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Seq Scan on t1
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-         ->  Index Scan using t3_pkey on t3
+               ->  Seq Scan on t4
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: (id = t4.id)
+         ->  Index Scan using t2_pkey on t2
                Index Cond: (id = t1.id)
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t1.id)
-(10 rows)
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t2.id)
+(11 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
                   QUERY PLAN
@@ -1374,16 +1360,16 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
----------------------------------------------------
- Hash Join
-   Hash Cond: ("""t1 )   ".id = "t       2 """.id)
-   ->  Nested Loop
+                   QUERY PLAN
+-------------------------------------------------
+ Nested Loop
+   ->  Hash Join
+         Hash Cond: ("""t1 )     ".id = "T3".id)
          ->  Seq Scan on t1 """t1 )      "
-         ->  Index Scan using t3_pkey on t3 "T3"
-               Index Cond: (id = """t1 ) ".id)
-   ->  Hash
-         ->  Seq Scan on t2 "t   2 """
+         ->  Hash
+               ->  Seq Scan on t3 "T3"
+   ->  Index Scan using t2_pkey on t2 "t 2 """
+         Index Cond: (id = """t1 )       ".id)
 (8 rows)
 
 -- duplicate hint test
@@ -1458,48 +1444,48 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_3
+   ->  Index Scan using t2_pkey on t2 t2_3
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_3
+         ->  Index Scan using t2_pkey on t2 t2_1
                Index Cond: (id = $8)
          ->  Nested Loop
                ->  Index Scan using t1_pkey on t1 t1_3
                      Index Cond: (id = $8)
                ->  Nested Loop
-                     ->  Index Scan using t3_pkey on t3 t3_1
+                     ->  Index Scan using t3_pkey on t3 t3_3
                            Index Cond: (id = $8)
                      ->  Nested Loop
-                           ->  Index Scan using t2_pkey on t2 t2_1
+                           ->  Index Scan using t3_pkey on t3 t3_1
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_1
-                                       Index Cond: (id = $8)
                                  ->  CTE Scan on c1_1
                                        Filter: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_1
+                                       Index Cond: (id = $8)
 (47 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)*/
@@ -1532,48 +1518,48 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_3
+   ->  Index Scan using t2_pkey on t2 t2_3
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_3
+         ->  Index Scan using t2_pkey on t2 t2_1
                Index Cond: (id = $8)
          ->  Nested Loop
                ->  Index Scan using t1_pkey on t1 t1_3
                      Index Cond: (id = $8)
                ->  Nested Loop
-                     ->  Index Scan using t3_pkey on t3 t3_1
+                     ->  Index Scan using t3_pkey on t3 t3_3
                            Index Cond: (id = $8)
                      ->  Nested Loop
-                           ->  Index Scan using t2_pkey on t2 t2_1
+                           ->  Index Scan using t3_pkey on t3 t3_1
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_1
-                                       Index Cond: (id = $8)
                                  ->  CTE Scan on c1_1
                                        Filter: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_1
+                                       Index Cond: (id = $8)
 (47 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
@@ -1607,48 +1593,48 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_3
+   ->  Index Scan using t2_pkey on t2 t2_3
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_3
+         ->  Index Scan using t2_pkey on t2 t2_1
                Index Cond: (id = $8)
          ->  Nested Loop
                ->  Index Scan using t1_pkey on t1 t1_3
                      Index Cond: (id = $8)
                ->  Nested Loop
-                     ->  Index Scan using t3_pkey on t3 t3_1
+                     ->  Index Scan using t3_pkey on t3 t3_3
                            Index Cond: (id = $8)
                      ->  Nested Loop
-                           ->  Index Scan using t2_pkey on t2 t2_1
+                           ->  Index Scan using t3_pkey on t3 t3_1
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_1
-                                       Index Cond: (id = $8)
                                  ->  CTE Scan on c1_1
                                        Filter: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_1
+                                       Index Cond: (id = $8)
 (47 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
@@ -1682,48 +1668,48 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_3
+   ->  Index Scan using t2_pkey on t2 t2_3
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_3
+         ->  Index Scan using t2_pkey on t2 t2_1
                Index Cond: (id = $8)
          ->  Nested Loop
                ->  Index Scan using t1_pkey on t1 t1_3
                      Index Cond: (id = $8)
                ->  Nested Loop
-                     ->  Index Scan using t3_pkey on t3 t3_1
+                     ->  Index Scan using t3_pkey on t3 t3_3
                            Index Cond: (id = $8)
                      ->  Nested Loop
-                           ->  Index Scan using t2_pkey on t2 t2_1
+                           ->  Index Scan using t3_pkey on t3 t3_1
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_1
-                                       Index Cond: (id = $8)
                                  ->  CTE Scan on c1_1
                                        Filter: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_1
+                                       Index Cond: (id = $8)
 (47 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(t3_5 t2_5 t1_5)Leading(t3_2 t2_2 t1_2)Leading(t3_4 t2_4 t1_4)Leading(c1_1 t3_3 t2_3 t1_3 t3_1 t2_1 t1_1)*/
@@ -1760,27 +1746,27 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t2 t2_5
-                       ->  Index Scan using t3_pkey on t3 t3_5
-                             Index Cond: (id = t2_5.id)
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                             Index Cond: (id = t3_5.id)
                  ->  Index Scan using t1_pkey on t1 t1_5
                        Index Cond: (id = t2_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t2 t2_2
-                       ->  Index Scan using t3_pkey on t3 t3_2
-                             Index Cond: (id = t2_2.id)
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                             Index Cond: (id = t3_2.id)
                  ->  Index Scan using t1_pkey on t1 t1_2
                        Index Cond: (id = t2_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t2 t2_4
-                       ->  Index Scan using t3_pkey on t3 t3_4
-                             Index Cond: (id = t2_4.id)
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                             Index Cond: (id = t3_4.id)
                  ->  Index Scan using t1_pkey on t1 t1_4
                        Index Cond: (id = t2_4.id)
    ->  Index Scan using t1_pkey on t1 t1_1
@@ -1823,47 +1809,47 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_1
+   ->  Index Scan using t2_pkey on t2 t2_1
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_1
+         ->  Index Scan using t1_pkey on t1 t1_1
                Index Cond: (id = $8)
          ->  Nested Loop
-               ->  Index Scan using t1_pkey on t1 t1_1
+               ->  Index Scan using t3_pkey on t3 t3_1
                      Index Cond: (id = $8)
                ->  Nested Loop
                      ->  CTE Scan on c1_1
                            Filter: (id = $8)
                      ->  Nested Loop
-                           ->  Index Scan using t3_pkey on t3 t3_3
+                           ->  Index Scan using t2_pkey on t2 t2_3
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_3
+                                 ->  Index Scan using t3_pkey on t3 t3_3
                                        Index Cond: (id = $8)
-                                 ->  Index Scan using t2_pkey on t2 t2_3
+                                 ->  Index Scan using t1_pkey on t1 t1_3
                                        Index Cond: (id = $8)
 (47 rows)
 
@@ -1897,36 +1883,36 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_1
+   ->  Index Scan using t2_pkey on t2 t2_1
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_1
+         ->  Index Scan using t1_pkey on t1 t1_1
                Index Cond: (id = $8)
          ->  Nested Loop
-               ->  Index Scan using t1_pkey on t1 t1_1
+               ->  Index Scan using t3_pkey on t3 t3_1
                      Index Cond: (id = $8)
                ->  Nested Loop
                      ->  CTE Scan on c1_1
@@ -1935,9 +1921,9 @@ error hint:
                            ->  Index Scan using t3_pkey on t3 t3_3
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_3
-                                       Index Cond: (id = $8)
                                  ->  Index Scan using t2_pkey on t2 t2_3
+                                       Index Cond: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_3
                                        Index Cond: (id = $8)
 (47 rows)
 
@@ -1972,36 +1958,36 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_1
+   ->  Index Scan using t2_pkey on t2 t2_1
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_1
+         ->  Index Scan using t1_pkey on t1 t1_1
                Index Cond: (id = $8)
          ->  Nested Loop
-               ->  Index Scan using t1_pkey on t1 t1_1
+               ->  Index Scan using t3_pkey on t3 t3_1
                      Index Cond: (id = $8)
                ->  Nested Loop
                      ->  CTE Scan on c1_1
@@ -2010,9 +1996,9 @@ error hint:
                            ->  Index Scan using t3_pkey on t3 t3_3
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_3
-                                       Index Cond: (id = $8)
                                  ->  Index Scan using t2_pkey on t2 t2_3
+                                       Index Cond: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_3
                                        Index Cond: (id = $8)
 (47 rows)
 
@@ -2047,36 +2033,36 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = t1_5.id)
-                 ->  Index Scan using t3_pkey on t3 t3_5
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t3_5.id)
+                 ->  Index Scan using t2_pkey on t2 t2_5
                        Index Cond: (id = t1_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                 ->  Index Scan using t3_pkey on t3 t3_2
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t3_2.id)
+                 ->  Index Scan using t2_pkey on t2 t2_2
                        Index Cond: (id = t1_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = t1_4.id)
-                 ->  Index Scan using t3_pkey on t3 t3_4
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t3_4.id)
+                 ->  Index Scan using t2_pkey on t2 t2_4
                        Index Cond: (id = t1_4.id)
-   ->  Index Scan using t3_pkey on t3 t3_1
+   ->  Index Scan using t2_pkey on t2 t2_1
          Index Cond: (id = $8)
    ->  Nested Loop
-         ->  Index Scan using t2_pkey on t2 t2_1
+         ->  Index Scan using t1_pkey on t1 t1_1
                Index Cond: (id = $8)
          ->  Nested Loop
-               ->  Index Scan using t1_pkey on t1 t1_1
+               ->  Index Scan using t3_pkey on t3 t3_1
                      Index Cond: (id = $8)
                ->  Nested Loop
                      ->  CTE Scan on c1_1
@@ -2085,9 +2071,9 @@ error hint:
                            ->  Index Scan using t3_pkey on t3 t3_3
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_3
-                                       Index Cond: (id = $8)
                                  ->  Index Scan using t2_pkey on t2 t2_3
+                                       Index Cond: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_3
                                        Index Cond: (id = $8)
 (47 rows)
 
@@ -2125,27 +2111,27 @@ error hint:
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t2 t2_5
-                       ->  Index Scan using t3_pkey on t3 t3_5
-                             Index Cond: (id = t2_5.id)
+                       ->  Seq Scan on t3 t3_5
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                             Index Cond: (id = t3_5.id)
                  ->  Index Scan using t1_pkey on t1 t1_5
                        Index Cond: (id = t2_5.id)
    InitPlan 2 (returns $5)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t2 t2_2
-                       ->  Index Scan using t3_pkey on t3 t3_2
-                             Index Cond: (id = t2_2.id)
+                       ->  Seq Scan on t3 t3_2
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                             Index Cond: (id = t3_2.id)
                  ->  Index Scan using t1_pkey on t1 t1_2
                        Index Cond: (id = t2_2.id)
    InitPlan 3 (returns $8)
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       ->  Seq Scan on t2 t2_4
-                       ->  Index Scan using t3_pkey on t3 t3_4
-                             Index Cond: (id = t2_4.id)
+                       ->  Seq Scan on t3 t3_4
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                             Index Cond: (id = t3_4.id)
                  ->  Index Scan using t1_pkey on t1 t1_4
                        Index Cond: (id = t2_4.id)
    ->  Index Scan using t1_pkey on t1 t1_1
@@ -2163,21 +2149,21 @@ error hint:
                            ->  Index Scan using t3_pkey on t3 t3_3
                                  Index Cond: (id = $8)
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_3
-                                       Index Cond: (id = $8)
                                  ->  Index Scan using t2_pkey on t2 t2_3
+                                       Index Cond: (id = $8)
+                                 ->  Index Scan using t1_pkey on t1 t1_3
                                        Index Cond: (id = $8)
 (47 rows)
 
 -- ambigous error
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
-                   QUERY PLAN
--------------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Nested Loop
    ->  Nested Loop
-         ->  Seq Scan on t1
-         ->  Index Scan using t1_pkey on t1 t1_1
-               Index Cond: (id = t1.id)
+         ->  Seq Scan on t1 t1_1
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: (id = t1_1.id)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (7 rows)
@@ -2193,13 +2179,13 @@ duplication hint:
 error hint:
 NestLoop(t1 t2)
 
-                   QUERY PLAN
--------------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Nested Loop
    ->  Nested Loop
-         ->  Seq Scan on t1
-         ->  Index Scan using t1_pkey on t1 t1_1
-               Index Cond: (id = t1.id)
+         ->  Seq Scan on t1 t1_1
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: (id = t1_1.id)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (7 rows)
@@ -2215,27 +2201,27 @@ duplication hint:
 error hint:
 Leading(t1 t2 t1)
 
-                   QUERY PLAN
--------------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Nested Loop
    ->  Nested Loop
-         ->  Seq Scan on t1
-         ->  Index Scan using t1_pkey on t1 t1_1
-               Index Cond: (id = t1.id)
+         ->  Seq Scan on t1 t1_1
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: (id = t1_1.id)
    ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (7 rows)
 
 -- identifier length test
 EXPLAIN (COSTS false) SELECT * FROM t1 "123456789012345678901234567890123456789012345678901234567890123" JOIN t2 ON ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id) JOIN t3 ON (t2.id = t3.id);
-                                              QUERY PLAN
--------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
  Nested Loop
    ->  Nested Loop
-         ->  Seq Scan on t1 "123456789012345678901234567890123456789012345678901234567890123"
-         ->  Index Scan using t2_pkey on t2
-               Index Cond: (id = "123456789012345678901234567890123456789012345678901234567890123".id)
-   ->  Index Scan using t3_pkey on t3
+         ->  Seq Scan on t3
+         ->  Index Scan using t1_pkey on t1 "123456789012345678901234567890123456789012345678901234567890123"
+               Index Cond: (id = t3.id)
+   ->  Index Scan using t2_pkey on t2
          Index Cond: (id = "123456789012345678901234567890123456789012345678901234567890123".id)
 (7 rows)
 
@@ -2259,7 +2245,8 @@ Set(123456789012345678901234567890123456789012345678901234567890123 1)
 
                                              QUERY PLAN
 ----------------------------------------------------------------------------------------------------
- Nested Loop
+ Merge Join
+   Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
    ->  Merge Join
          Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id)
          ->  Sort
@@ -2268,9 +2255,10 @@ Set(123456789012345678901234567890123456789012345678901234567890123 1)
          ->  Sort
                Sort Key: t2.id
                ->  Seq Scan on t2
-   ->  Index Scan using t3_pkey on t3
-         Index Cond: (id = "123456789012345678901234567890123456789012345678901234567890123".id)
-(11 rows)
+   ->  Sort
+         Sort Key: t3.id
+         ->  Seq Scan on t3
+(13 rows)
 
 /*+
 Leading(1234567890123456789012345678901234567890123456789012345678901234 t2 t3)
@@ -2300,7 +2288,8 @@ Set(123456789012345678901234567890123456789012345678901234567890123 1)
 
                                              QUERY PLAN
 ----------------------------------------------------------------------------------------------------
- Nested Loop
+ Merge Join
+   Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
    ->  Merge Join
          Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id)
          ->  Sort
@@ -2309,9 +2298,10 @@ Set(123456789012345678901234567890123456789012345678901234567890123 1)
          ->  Sort
                Sort Key: t2.id
                ->  Seq Scan on t2
-   ->  Index Scan using t3_pkey on t3
-         Index Cond: (id = "123456789012345678901234567890123456789012345678901234567890123".id)
-(11 rows)
+   ->  Sort
+         Sort Key: t3.id
+         ->  Seq Scan on t3
+(13 rows)
 
 SET "123456789012345678901234567890123456789012345678901234567890123" TO 1;
 ERROR:  unrecognized configuration parameter "123456789012345678901234567890123456789012345678901234567890123"
@@ -2336,9 +2326,9 @@ Set(seq_page_cost on)
               QUERY PLAN
 --------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
 (4 rows)
 
 -- debug log of candidate index to use IndexScan
@@ -2431,20 +2421,17 @@ error hint:
 
 -- outer inner
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
          ->  Seq Scan on t3
-(11 rows)
+(8 rows)
 
 /*+Leading((t1))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2457,20 +2444,17 @@ duplication hint:
 error hint:
 Leading((t1))
 
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
          ->  Seq Scan on t3
-(11 rows)
+(8 rows)
 
 /*+Leading((t1 t2))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2481,18 +2465,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN
---------------------------------------------
+             QUERY PLAN
+------------------------------------
  Nested Loop
    Join Filter: (t2.val = t3.val)
-   ->  Nested Loop
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
                Filter: (id < 10)
-         ->  Index Scan using t2_pkey on t2
-               Index Cond: (id = t1.id)
+         ->  Hash
+               ->  Seq Scan on t2
    ->  Materialize
          ->  Seq Scan on t3
-(9 rows)
+(10 rows)
 
 /*+Leading((t1 t2 t3))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2505,20 +2490,17 @@ duplication hint:
 error hint:
 Leading((t1 t2 t3))
 
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
          ->  Seq Scan on t3
-(11 rows)
+(8 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.id < 10;
                     QUERY PLAN
@@ -2538,30 +2520,28 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN
---------------------------------------
- Nested Loop
+          QUERY PLAN
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
          Filter: (id < 10)
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(5 rows)
+   ->  Hash
+         ->  Seq Scan on t2
+(6 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
          ->  Seq Scan on t3
-(11 rows)
+(8 rows)
 
 /*+Leading(((t1 t2) t3))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2572,40 +2552,36 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
+             QUERY PLAN
+------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < 10)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(12 rows)
+(10 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t1.val = t3.val)
-   ->  Sort
-         Sort Key: t1.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
-         ->  Nested Loop
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (t3.id = t4.id)
                ->  Seq Scan on t3
-               ->  Index Scan using t4_pkey on t4
-                     Index Cond: (id = t3.id)
-(14 rows)
+               ->  Hash
+                     ->  Seq Scan on t4
+(12 rows)
 
 /*+Leading((((t1 t2) t3) t4))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
@@ -2616,41 +2592,36 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN
---------------------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Hash Join
    Hash Cond: (t3.id = t4.id)
-   ->  Merge Join
-         Merge Cond: (t1.val = t3.val)
-         ->  Sort
-               Sort Key: t1.val
-               ->  Nested Loop
-                     ->  Seq Scan on t1
-                           Filter: (id < 10)
-                     ->  Index Scan using t2_pkey on t2
-                           Index Cond: (id = t1.id)
-         ->  Sort
-               Sort Key: t3.val
+   ->  Hash Join
+         Hash Cond: (t1.val = t3.val)
+         ->  Hash Join
+               Hash Cond: (t1.id = t2.id)
+               ->  Seq Scan on t1
+                     Filter: (id < 10)
+               ->  Hash
+                     ->  Seq Scan on t2
+         ->  Hash
                ->  Seq Scan on t3
    ->  Hash
          ->  Seq Scan on t4
-(16 rows)
+(14 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
          ->  Seq Scan on t3
-(11 rows)
+(8 rows)
 
 /*+Leading(((t1 t2) t3))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2661,21 +2632,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
+             QUERY PLAN
+------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < 10)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(12 rows)
+(10 rows)
 
 /*+Leading((t1 (t2 t3)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2687,40 +2656,35 @@ duplication hint:
 error hint:
 
                  QUERY PLAN
----------------------------------------------
+--------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
          Filter: (id < 10)
    ->  Hash
-         ->  Merge Join
-               Merge Cond: (t2.val = t3.val)
-               ->  Sort
-                     Sort Key: t2.val
-                     ->  Seq Scan on t2
-               ->  Sort
-                     Sort Key: t3.val
+         ->  Hash Join
+               Hash Cond: (t2.val = t3.val)
+               ->  Seq Scan on t2
+               ->  Hash
                      ->  Seq Scan on t3
-(13 rows)
+(10 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t1.val = t3.val)
-   ->  Sort
-         Sort Key: t1.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
-         ->  Nested Loop
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (t3.id = t4.id)
                ->  Seq Scan on t3
-               ->  Index Scan using t4_pkey on t4
-                     Index Cond: (id = t3.id)
-(14 rows)
+               ->  Hash
+                     ->  Seq Scan on t4
+(12 rows)
 
 /*+Leading(((t1 t2) (t3 t4)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
@@ -2731,30 +2695,29 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
- Merge Join
-   Merge Cond: (t1.val = t3.val)
-   ->  Sort
-         Sort Key: t1.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
-         ->  Nested Loop
+                QUERY PLAN
+------------------------------------------
+ Hash Join
+   Hash Cond: (t1.val = t3.val)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < 10)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (t3.id = t4.id)
                ->  Seq Scan on t3
-               ->  Index Scan using t4_pkey on t4
-                     Index Cond: (id = t3.id)
-(15 rows)
+               ->  Hash
+                     ->  Seq Scan on t4
+(14 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < ( SELECT t1_2.id FROM t1 t1_2, t2 t2_2 WHERE t1_2.id = t2_2.id AND t2_2.val > 100 ORDER BY t1_2.id LIMIT 1);
                           QUERY PLAN
 ---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
    InitPlan 1 (returns $1)
      ->  Limit
            ->  Sort
@@ -2764,16 +2727,13 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = 
                              Filter: (val > 100)
                        ->  Index Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < $1))
-   ->  Sort
-         Sort Key: t3.val
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < $1))
+   ->  Hash
          ->  Seq Scan on t3
-(20 rows)
+(17 rows)
 
 /*+Leading(((t1 t2) t3)) Leading(((t3 t1) t2))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.val = t3.val AND t1.id < ( SELECT t1_2.id FROM t1 t1_2, t2 t2_2 WHERE t1_2.id = t2_2.id AND t2_2.val > 100 ORDER BY t1_2.id LIMIT 1);
@@ -2800,18 +2760,15 @@ error hint:
                              Filter: (val > 100)
                        ->  Index Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
-   ->  Merge Join
-         Merge Cond: (t3.val = t1.val)
-         ->  Sort
-               Sort Key: t3.val
-               ->  Seq Scan on t3
-         ->  Sort
-               Sort Key: t1.val
+   ->  Hash Join
+         Hash Cond: (t3.val = t1.val)
+         ->  Seq Scan on t3
+         ->  Hash
                ->  Seq Scan on t1
                      Filter: (id < $1)
    ->  Hash
          ->  Seq Scan on t2
-(22 rows)
+(19 rows)
 
 /*+Leading(((t1 t2) t3)) Leading((t1_2 t2_2))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < ( SELECT t1_2.id FROM t1 t1_2, t2 t2_2 WHERE t1_2.id = t2_2.id AND t2_2.val > 100 ORDER BY t1_2.id LIMIT 1);
@@ -2823,30 +2780,29 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN
----------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   InitPlan 1 (returns $1)
+                      QUERY PLAN
+-------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   InitPlan 1 (returns $0)
      ->  Limit
            ->  Sort
                  Sort Key: t1_2.id
-                 ->  Nested Loop
+                 ->  Hash Join
+                       Hash Cond: (t1_2.id = t2_2.id)
                        ->  Seq Scan on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = t1_2.id)
-                             Filter: (val > 100)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < $1)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
+                       ->  Hash
+                             ->  Seq Scan on t2 t2_2
+                                   Filter: (val > 100)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < $0)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(21 rows)
+(20 rows)
 
 /*+Leading(((((t1 t2) t3) t1_2) t2_2))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < ( SELECT t1_2.id FROM t1 t1_2, t2 t2_2 WHERE t1_2.id = t2_2.id AND t2_2.val > 100 ORDER BY t1_2.id LIMIT 1);
@@ -2859,8 +2815,8 @@ error hint:
 
                           QUERY PLAN
 ---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
    InitPlan 1 (returns $1)
      ->  Limit
            ->  Sort
@@ -2870,16 +2826,13 @@ error hint:
                              Filter: (val > 100)
                        ->  Index Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < $1))
-   ->  Sort
-         Sort Key: t3.val
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < $1))
+   ->  Hash
          ->  Seq Scan on t3
-(20 rows)
+(17 rows)
 
 -- Specified outer/inner leading hint and join method hint at the same time
 /*+Leading(((t1 t2) t3))*/
@@ -2891,21 +2844,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
+             QUERY PLAN
+------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < 10)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(12 rows)
+(10 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2917,25 +2868,22 @@ not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN
----------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Merge Join
-               Merge Cond: (t1.id = t2.id)
-               ->  Sort
-                     Sort Key: t1.id
-                     ->  Seq Scan on t1
-                           Filter: (id < 10)
-               ->  Sort
-                     Sort Key: t2.id
-                     ->  Seq Scan on t2
-   ->  Sort
-         Sort Key: t3.val
+              QUERY PLAN
+---------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Merge Join
+         Merge Cond: (t1.id = t2.id)
+         ->  Sort
+               Sort Key: t1.id
+               ->  Seq Scan on t1
+                     Filter: (id < 10)
+         ->  Sort
+               Sort Key: t2.id
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(16 rows)
+(13 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2947,21 +2895,22 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Merge Join
    Merge Cond: (t2.val = t3.val)
    ->  Sort
          Sort Key: t2.val
-         ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t1.id = t2.id)
                ->  Seq Scan on t1
                      Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
+               ->  Hash
+                     ->  Seq Scan on t2
    ->  Sort
          Sort Key: t3.val
          ->  Seq Scan on t3
-(12 rows)
+(13 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -2973,40 +2922,36 @@ MergeJoin(t1 t3)
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
+             QUERY PLAN
+------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < 10)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(12 rows)
+(10 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t1.val = t3.val)
-   ->  Sort
-         Sort Key: t1.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
-         ->  Nested Loop
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (t3.id = t4.id)
                ->  Seq Scan on t3
-               ->  Index Scan using t4_pkey on t4
-                     Index Cond: (id = t3.id)
-(14 rows)
+               ->  Hash
+                     ->  Seq Scan on t4
+(12 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
@@ -3018,24 +2963,23 @@ MergeJoin(t3 t4)
 duplication hint:
 error hint:
 
-                       QUERY PLAN
---------------------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Nested Loop
-   ->  Merge Join
-         Merge Cond: (t1.val = t3.val)
-         ->  Sort
-               Sort Key: t1.val
-               ->  Nested Loop
-                     ->  Seq Scan on t1
-                           Filter: (id < 10)
-                     ->  Index Scan using t2_pkey on t2
-                           Index Cond: (id = t1.id)
-         ->  Sort
-               Sort Key: t3.val
+   Join Filter: (t3.id = t4.id)
+   ->  Hash Join
+         Hash Cond: (t1.val = t3.val)
+         ->  Hash Join
+               Hash Cond: (t1.id = t2.id)
+               ->  Seq Scan on t1
+                     Filter: (id < 10)
+               ->  Hash
+                     ->  Seq Scan on t2
+         ->  Hash
                ->  Seq Scan on t3
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t3.id)
-(15 rows)
+   ->  Materialize
+         ->  Seq Scan on t4
+(14 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t2 t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
@@ -3047,28 +2991,26 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN
---------------------------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Merge Join
    Merge Cond: (t3.id = t4.id)
    ->  Sort
          Sort Key: t3.id
-         ->  Merge Join
-               Merge Cond: (t1.val = t3.val)
-               ->  Sort
-                     Sort Key: t1.val
-                     ->  Nested Loop
-                           ->  Seq Scan on t1
-                                 Filter: (id < 10)
-                           ->  Index Scan using t2_pkey on t2
-                                 Index Cond: (id = t1.id)
-               ->  Sort
-                     Sort Key: t3.val
+         ->  Hash Join
+               Hash Cond: (t1.val = t3.val)
+               ->  Hash Join
+                     Hash Cond: (t1.id = t2.id)
+                     ->  Seq Scan on t1
+                           Filter: (id < 10)
+                     ->  Hash
+                           ->  Seq Scan on t2
+               ->  Hash
                      ->  Seq Scan on t3
    ->  Sort
          Sort Key: t4.id
          ->  Seq Scan on t4
-(19 rows)
+(17 rows)
 
 /*+ Leading ( ( t1 ( t2 t3 ) ) ) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -3080,21 +3022,18 @@ duplication hint:
 error hint:
 
                  QUERY PLAN
----------------------------------------------
+--------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
          Filter: (id < 10)
    ->  Hash
-         ->  Merge Join
-               Merge Cond: (t2.val = t3.val)
-               ->  Sort
-                     Sort Key: t2.val
-                     ->  Seq Scan on t2
-               ->  Sort
-                     Sort Key: t3.val
+         ->  Hash Join
+               Hash Cond: (t2.val = t3.val)
+               ->  Seq Scan on t2
+               ->  Hash
                      ->  Seq Scan on t3
-(13 rows)
+(10 rows)
 
 /*+Leading((t1(t2 t3)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -3106,21 +3045,18 @@ duplication hint:
 error hint:
 
                  QUERY PLAN
----------------------------------------------
+--------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
          Filter: (id < 10)
    ->  Hash
-         ->  Merge Join
-               Merge Cond: (t2.val = t3.val)
-               ->  Sort
-                     Sort Key: t2.val
-                     ->  Seq Scan on t2
-               ->  Sort
-                     Sort Key: t3.val
+         ->  Hash Join
+               Hash Cond: (t2.val = t3.val)
+               ->  Seq Scan on t2
+               ->  Hash
                      ->  Seq Scan on t3
-(13 rows)
+(10 rows)
 
 /*+Leading(("t1(t2" "t3)"))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -3131,20 +3067,17 @@ Leading(("t1(t2" "t3)"))
 duplication hint:
 error hint:
 
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
          ->  Seq Scan on t3
-(11 rows)
+(8 rows)
 
 /*+ Leading ( ( ( t1 t2 ) t3 ) ) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -3155,21 +3088,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
+             QUERY PLAN
+------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < 10)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(12 rows)
+(10 rows)
 
 /*+Leading(((t1 t2)t3))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -3180,21 +3111,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN
---------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t1
-                     Filter: (id < 10)
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
-   ->  Sort
-         Sort Key: t3.val
+             QUERY PLAN
+------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
+         ->  Seq Scan on t1
+               Filter: (id < 10)
+         ->  Hash
+               ->  Seq Scan on t2
+   ->  Hash
          ->  Seq Scan on t3
-(12 rows)
+(10 rows)
 
 /*+Leading(("(t1" "t2)t3"))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
@@ -3205,20 +3134,17 @@ Leading(("(t1" "t2)t3"))
 duplication hint:
 error hint:
 
-                          QUERY PLAN
---------------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.val = t3.val)
-   ->  Sort
-         Sort Key: t2.val
-         ->  Nested Loop
-               ->  Seq Scan on t2
-               ->  Index Scan using t1_pkey on t1
-                     Index Cond: ((id = t2.id) AND (id < 10))
-   ->  Sort
-         Sort Key: t3.val
+                       QUERY PLAN
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t3.val)
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id = t2.id) AND (id < 10))
+   ->  Hash
          ->  Seq Scan on t3
-(11 rows)
+(8 rows)
 
 /*+Leading((t1(t2(t3(t4 t5)))))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -3264,10 +3190,13 @@ error hint:
    Hash Cond: (t5.id = t1.id)
    ->  Seq Scan on t5
    ->  Hash
-         ->  Hash Join
-               Hash Cond: (t4.id = t1.id)
-               ->  Seq Scan on t4
-               ->  Hash
+         ->  Merge Join
+               Merge Cond: (t4.id = t1.id)
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+               ->  Sort
+                     Sort Key: t1.id
                      ->  Hash Join
                            Hash Cond: (t3.id = t1.id)
                            ->  Seq Scan on t3
@@ -3276,7 +3205,7 @@ error hint:
                                        ->  Seq Scan on t2
                                        ->  Index Scan using t1_pkey on t1
                                              Index Cond: (id = t2.id)
-(16 rows)
+(19 rows)
 
 /*+Leading(((((t1 t2)t3)t4)t5))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -3287,22 +3216,25 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN
---------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Nested Loop
    ->  Nested Loop
+         Join Filter: (t1.id = t4.id)
          ->  Nested Loop
-               ->  Nested Loop
+               Join Filter: (t1.id = t3.id)
+               ->  Hash Join
+                     Hash Cond: (t1.id = t2.id)
                      ->  Seq Scan on t1
-                     ->  Index Scan using t2_pkey on t2
-                           Index Cond: (id = t1.id)
+                     ->  Hash
+                           ->  Seq Scan on t2
                ->  Index Scan using t3_pkey on t3
-                     Index Cond: (id = t1.id)
+                     Index Cond: (id = t2.id)
          ->  Index Scan using t4_pkey on t4
-               Index Cond: (id = t1.id)
+               Index Cond: (id = t2.id)
    ->  Index Scan using t5_pkey on t5
          Index Cond: (id = t1.id)
-(13 rows)
+(16 rows)
 
 /*+Leading(((((t5 t4)t3)t2)t1))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -3313,22 +3245,25 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN
---------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Nested Loop
    ->  Nested Loop
+         Join Filter: (t3.id = t2.id)
          ->  Nested Loop
-               ->  Nested Loop
+               Join Filter: (t4.id = t3.id)
+               ->  Hash Join
+                     Hash Cond: (t5.id = t4.id)
                      ->  Seq Scan on t5
-                     ->  Index Scan using t4_pkey on t4
-                           Index Cond: (id = t5.id)
+                     ->  Hash
+                           ->  Seq Scan on t4
                ->  Index Scan using t3_pkey on t3
-                     Index Cond: (id = t4.id)
+                     Index Cond: (id = t5.id)
          ->  Index Scan using t2_pkey on t2
-               Index Cond: (id = t3.id)
+               Index Cond: (id = t5.id)
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id = t2.id)
-(13 rows)
+(16 rows)
 
 /*+Leading(((t1 t2)(t3(t4 t5))))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -3343,10 +3278,11 @@ error hint:
 --------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t3.id)
-   ->  Nested Loop
+   ->  Hash Join
+         Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-         ->  Index Scan using t2_pkey on t2
-               Index Cond: (id = t1.id)
+         ->  Hash
+               ->  Seq Scan on t2
    ->  Hash
          ->  Hash Join
                Hash Cond: (t3.id = t4.id)
@@ -3356,7 +3292,7 @@ error hint:
                            ->  Seq Scan on t4
                            ->  Index Scan using t5_pkey on t5
                                  Index Cond: (id = t4.id)
-(15 rows)
+(16 rows)
 
 /*+Leading(((t5 t4)(t3(t2 t1))))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -3369,13 +3305,14 @@ error hint:
 
                           QUERY PLAN
 --------------------------------------------------------------
- Hash Join
-   Hash Cond: (t4.id = t1.id)
-   ->  Nested Loop
+ Nested Loop
+   Join Filter: (t4.id = t1.id)
+   ->  Hash Join
+         Hash Cond: (t5.id = t4.id)
          ->  Seq Scan on t5
-         ->  Index Scan using t4_pkey on t4
-               Index Cond: (id = t5.id)
-   ->  Hash
+         ->  Hash
+               ->  Seq Scan on t4
+   ->  Materialize
          ->  Hash Join
                Hash Cond: (t3.id = t1.id)
                ->  Seq Scan on t3
@@ -3384,7 +3321,7 @@ error hint:
                            ->  Seq Scan on t2
                            ->  Index Scan using t1_pkey on t1
                                  Index Cond: (id = t2.id)
-(15 rows)
+(16 rows)
 
 /*+Leading((((t1 t2)t3)(t4 t5)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -3397,21 +3334,23 @@ error hint:
 
                     QUERY PLAN
 --------------------------------------------------
- Hash Join
-   Hash Cond: (t1.id = t4.id)
+ Nested Loop
+   Join Filter: (t4.id = t1.id)
    ->  Nested Loop
-         ->  Nested Loop
+         Join Filter: (t1.id = t3.id)
+         ->  Hash Join
+               Hash Cond: (t1.id = t2.id)
                ->  Seq Scan on t1
-               ->  Index Scan using t2_pkey on t2
-                     Index Cond: (id = t1.id)
+               ->  Hash
+                     ->  Seq Scan on t2
          ->  Index Scan using t3_pkey on t3
-               Index Cond: (id = t1.id)
-   ->  Hash
+               Index Cond: (id = t2.id)
+   ->  Materialize
          ->  Nested Loop
                ->  Seq Scan on t4
                ->  Index Scan using t5_pkey on t5
                      Index Cond: (id = t4.id)
-(14 rows)
+(16 rows)
 
 /*+Leading((((t5 t4)t3)(t2 t1)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -3427,18 +3366,20 @@ error hint:
  Hash Join
    Hash Cond: (t3.id = t1.id)
    ->  Nested Loop
-         ->  Nested Loop
+         Join Filter: (t4.id = t3.id)
+         ->  Hash Join
+               Hash Cond: (t5.id = t4.id)
                ->  Seq Scan on t5
-               ->  Index Scan using t4_pkey on t4
-                     Index Cond: (id = t5.id)
+               ->  Hash
+                     ->  Seq Scan on t4
          ->  Index Scan using t3_pkey on t3
-               Index Cond: (id = t4.id)
+               Index Cond: (id = t5.id)
    ->  Hash
          ->  Nested Loop
                ->  Seq Scan on t2
                ->  Index Scan using t1_pkey on t1
                      Index Cond: (id = t2.id)
-(14 rows)
+(16 rows)
 
 -- YB_COMMENT
 -- Inheritance not supporte by Yugabyte
@@ -4271,6 +4212,8 @@ error hint:
 /*+ SeqScan(t1) MergeJoin(t1 t2) Leading(t1 t2) Rows(t1 t2 +10) Parallel(t1 8 hard) Set(random_page_cost 2.0)*/
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
 DEBUG:  adjusted rows 1000 to 1010
+DEBUG:  null exec_params
+DEBUG:  null exec_params
 DEBUG:  pg_hint_plan:
 used hint:
 SeqScan(t1)
@@ -4286,6 +4229,7 @@ error hint:
               QUERY PLAN
 --------------------------------------
  Nested Loop
+   Join Filter: (t1.id = t3.id)
    ->  Merge Join
          Merge Cond: (t1.id = t2.id)
          ->  Sort
@@ -4295,5 +4239,5 @@ error hint:
                Sort Key: t2.id
                ->  Seq Scan on t2
    ->  Index Scan using t3_pkey on t3
-         Index Cond: (id = t1.id)
-(11 rows)
+         Index Cond: (id = t2.id)
+(12 rows)

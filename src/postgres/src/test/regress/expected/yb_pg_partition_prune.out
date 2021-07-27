@@ -2007,7 +2007,6 @@ insert into lprt_a select 0 from generate_series(1,100);
 -- and insert some values that we should find.
 insert into lprt_a values(1),(1);
 analyze lprt_a;
-WARNING:  analyzing non-temporary tables will be ignored
 create index ab_a2_b1_a_idx on ab_a2_b1 (a);
 create index ab_a2_b2_a_idx on ab_a2_b2 (a);
 create index ab_a2_b3_a_idx on ab_a2_b3 (a);

@@ -153,6 +153,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   std::unique_ptr<YBPgsqlReadOp> NewPgsqlRead();
   std::unique_ptr<YBPgsqlReadOp> NewPgsqlSelect();
+  std::unique_ptr<YBPgsqlReadOp> NewPgsqlSample();
 
  private:
   friend class YBClient;

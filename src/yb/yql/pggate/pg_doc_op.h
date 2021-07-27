@@ -55,6 +55,10 @@ class PgDocResult {
   // Currently, we only have ybctids, but there could be more.
   CHECKED_STATUS ProcessSystemColumns();
 
+  // Update the reservoir with ybctids from this batch.
+  // The update is expected to be sparse, so ybctids come as index/value pairs.
+  CHECKED_STATUS ProcessSparseSystemColumns(std::string *reservoir);
+
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
   const vector<Slice>& ybctids() const {
@@ -385,6 +389,9 @@ class PgDocReadOp : public PgDocOp {
 
   CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params) override;
 
+  // Row sampler collects number of live and dead rows it sees.
+  CHECKED_STATUS GetEstimatedRowCount(double *liverows, double *deadrows);
+
  private:
   // Create protobuf requests using template_op_.
   CHECKED_STATUS CreateRequests() override;
@@ -411,6 +418,9 @@ class PgDocReadOp : public PgDocOp {
   // - Optimization for statement:
   //     Create parallel request for SELECT COUNT().
   CHECKED_STATUS PopulateParallelSelectCountOps();
+
+  // Create one sampling operator per partition and arrange their execution in random order
+  CHECKED_STATUS PopulateSamplingOps();
 
   // Set partition boundaries to a given partition.
   CHECKED_STATUS SetScanPartitionBoundary();
@@ -450,6 +460,11 @@ class PgDocReadOp : public PgDocOp {
 
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   std::shared_ptr<client::YBPgsqlReadOp> template_op_;
+
+  // While sampling is in progress, number of scanned row is accumulated in this variable.
+  // After completion the value is extrapolated to account for not scanned partitions and estimate
+  // total number of rows in the table.
+  double sample_rows_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to keep track of which permutation should
   // be used to construct the next read_op.

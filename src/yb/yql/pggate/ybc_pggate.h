@@ -358,6 +358,19 @@ YBCStatus YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 void YBCPgDropBufferedOperations();
 
+YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
+                         const YBCPgOid table_oid,
+                         const int targrows,
+                         YBCPgStatement *handle);
+
+YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state);
+
+YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more);
+
+YBCStatus YBCPgExecSample(YBCPgStatement handle);
+
+YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
+
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
                          YBCPgOid table_oid,

@@ -745,7 +745,6 @@ NOTICE:  AUDIT: SESSION,23,1,DDL,CREATE INDEX,INDEX,public.test_pkey,"CREATE TAB
 --
 -- Check that analyze is logged
 ANALYZE test;
-WARNING:  analyzing non-temporary tables will be ignored
 NOTICE:  AUDIT: SESSION,24,1,MISC,ANALYZE,,,ANALYZE test;,<none>
 --
 -- Grants to public should not cause object logging (session logging will

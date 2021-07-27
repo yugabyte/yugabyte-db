@@ -5330,22 +5330,18 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the
 INSERT INTO transition_table_level1 (level1_no)
   SELECT generate_series(1,200);
 ANALYZE transition_table_level1;
-WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_level2 (level2_no, parent_no)
   SELECT level2_no, level2_no / 50 + 1 AS parent_no
     FROM generate_series(1,9999) level2_no;
 ANALYZE transition_table_level2;
-WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_status (level, node_no, status)
   SELECT 1, level1_no, 0 FROM transition_table_level1;
 INSERT INTO transition_table_status (level, node_no, status)
   SELECT 2, level2_no, 0 FROM transition_table_level2;
 ANALYZE transition_table_status;
-WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_level1(level1_no)
   SELECT generate_series(201,1000);
 ANALYZE transition_table_level1;
-WARNING:  analyzing non-temporary tables will be ignored
 CHECKPOINT;
 WARNING:  CHECKPOINT will be ignored
 -- behave reasonably if someone tries to modify a transition table

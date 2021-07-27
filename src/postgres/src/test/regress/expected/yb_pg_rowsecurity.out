@@ -3128,7 +3128,6 @@ COMMIT;
 SET row_security TO ON;
 SET SESSION AUTHORIZATION regress_rls_alice;
 ANALYZE current_check;
-WARNING:  analyzing non-temporary tables will be ignored
 -- Stats visible
 SELECT row_security_active('current_check');
  row_security_active
@@ -3139,9 +3138,13 @@ SELECT row_security_active('current_check');
 SELECT attname, most_common_vals FROM pg_stats
   WHERE tablename = 'current_check'
   ORDER BY 1;
- attname | most_common_vals
----------+------------------
-(0 rows)
+  attname  | most_common_vals
+-----------+-------------------
+ currentid |
+ k         |
+ payload   |
+ rlsuser   | {regress_rls_bob}
+(4 rows)
 
 SET SESSION AUTHORIZATION regress_rls_bob;
 -- Stats not visible

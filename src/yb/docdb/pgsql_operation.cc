@@ -28,6 +28,7 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
@@ -662,6 +663,10 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
     fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
         ql_storage, deadline, read_time, schema,
         request_.unknown_ybctid_allowed(), result_buffer, restart_read_ht));
+  } else if (request_.has_sampling_state()) {
+    fetched_rows = VERIFY_RESULT(ExecuteSample(
+        ql_storage, deadline, read_time, is_explicit_request_read_time, schema,
+        result_buffer, restart_read_ht, &has_paging_state));
   } else {
     fetched_rows = VERIFY_RESULT(ExecuteScalar(
         ql_storage, deadline, read_time, is_explicit_request_read_time, schema, index_schema,
@@ -670,6 +675,121 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
 
   VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
   *restart_read_ht = table_iter_->RestartReadHt();
+  return fetched_rows;
+}
+
+Result<size_t> PgsqlReadOperation::ExecuteSample(const common::YQLStorageIf& ql_storage,
+                                                 CoarseTimePoint deadline,
+                                                 const ReadHybridTime& read_time,
+                                                 bool is_explicit_request_read_time,
+                                                 const Schema& schema,
+                                                 faststring *result_buffer,
+                                                 HybridTime *restart_read_ht,
+                                                 bool *has_paging_state) {
+  *has_paging_state = false;
+  size_t scanned_rows = 0;
+  PgsqlSamplingStatePB sampling_state = request_.sampling_state();
+  // Requested total number of rows to collect
+  int targrows = sampling_state.targrows();
+  // Number of rows collected so far
+  int numrows = sampling_state.numrows();
+  // Total number of rows scanned
+  double samplerows = sampling_state.samplerows();
+  // Current number of rows to skip before collecting next one for sample
+  double rowstoskip = sampling_state.rowstoskip();
+  // Variables for the random numbers generator
+  ReservoirStateData rstate;
+  rstate.W = sampling_state.rstate_w();
+  Uint64ToSamplerRandomState(rstate.randstate, sampling_state.rand_state());
+  // Buffer to hold selected row ids from the current page
+  std::unique_ptr<QLValuePB[]> reservoir = std::make_unique<QLValuePB[]>(targrows);
+  // Number of rows to scan for the current page.
+  // Too low row count limit is inefficient since we have to allocate and initialize a reservoir
+  // capable to hold potentially large (targrows) number of tuples. The row count has to be at least
+  // targrows for a chance to fill up the reservoir. Actually, the algorithm selects targrows only
+  // for very first page of the table, then it starts to skip tuples, the further it goes, the more
+  // it skips. For a large enough table it eventually starts to select less than targrows per page,
+  // regardless of the row_count_limit.
+  // Anyways, double targrows seems like reasonable minimum for the row_count_limit.
+  size_t row_count_limit = 2 * targrows;
+  if (request_.has_limit() && request_.limit() > row_count_limit) {
+    row_count_limit = request_.limit();
+  }
+  // Request is not supposed to contain any column refs, we just need the liveness column.
+  Schema projection;
+  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+  // Request may carry paging state, CreateIterator takes care of positioning
+  table_iter_ = VERIFY_RESULT(CreateIterator(
+      ql_storage, request_, projection, schema, txn_op_context_,
+      deadline, read_time, is_explicit_request_read_time));
+  bool scan_time_exceeded = false;
+  while (scanned_rows++ < row_count_limit &&
+         VERIFY_RESULT(table_iter_->HasNext()) &&
+         !scan_time_exceeded) {
+    if (numrows < targrows) {
+      // Select first targrows of the table. If first partition(s) have less than that, next
+      // partition starts to continue populating it's reservoir starting from the numrows' position:
+      // the numrows, as well as other sampling state variables is returned and copied over to the
+      // next sampling request
+      Slice ybctid = VERIFY_RESULT(table_iter_->GetTupleId());
+      reservoir[numrows++].set_binary_value(ybctid.data(), ybctid.size());
+    } else {
+      // At least targrows tuples have already been collected, now algorithm skips increasing number
+      // of row before taking next one into the reservoir
+      if (rowstoskip <= 0) {
+        // Take ybctid of the current row
+        Slice ybctid = VERIFY_RESULT(table_iter_->GetTupleId());
+        // Pick random tuple in the reservoir to replace
+        double rvalue;
+        int k;
+        YbgSamplerRandomFract(rstate.randstate, &rvalue);
+        k = static_cast<int>(targrows * rvalue);
+        // Overwrite previous value with new one
+        reservoir[k].set_binary_value(ybctid.data(), ybctid.size());
+        // Choose next number of rows to skip
+        YbgReservoirGetNextS(&rstate, samplerows, targrows, &rowstoskip);
+      } else {
+        rowstoskip -= 1;
+      }
+    }
+    // Taking tuple ID does not advance the table iterator. Move it now.
+    table_iter_->SkipRow();
+    // Periodically check if we are running out of time
+    if (scanned_rows % 1024 == 0) {
+      scan_time_exceeded = CoarseMonoClock::now() >= deadline;
+    }
+  }
+  // Count live rows we have scanned TODO how to count dead rows?
+  samplerows += (scanned_rows - 1);
+  // Return collected tuples from the reservoir.
+  // Tuples are returned as (index, ybctid) pairs, where index is in [0..targrows-1] range.
+  // As mentioned above, for large tables reservoirs become increasingly sparse from page to page.
+  // So we hope to save by sending variable number of index/ybctid pairs vs exactly targrows of
+  // nullable ybctids. It also helps in case of extremely small table or partition.
+  int fetched_rows = 0;
+  for (int i = 0; i < numrows; i++) {
+    QLValuePB index;
+    if (reservoir[i].has_binary_value()) {
+      index.set_int32_value(i);
+      RETURN_NOT_OK(pggate::WriteColumn(index, result_buffer));
+      RETURN_NOT_OK(pggate::WriteColumn(reservoir[i], result_buffer));
+      fetched_rows++;
+    }
+  }
+
+  // Return sampling state to continue with next page
+  PgsqlSamplingStatePB *new_sampling_state = response_.mutable_sampling_state();
+  new_sampling_state->set_numrows(numrows);
+  new_sampling_state->set_targrows(targrows);
+  new_sampling_state->set_samplerows(samplerows);
+  new_sampling_state->set_rowstoskip(rowstoskip);
+  new_sampling_state->set_rstate_w(rstate.W);
+  new_sampling_state->set_rand_state(SamplerRandomStateToUint64(rstate.randstate));
+
+  // Return paging state if scan has not been completed
+  RETURN_NOT_OK(SetPagingStateIfNecessary(table_iter_.get(), scanned_rows, row_count_limit,
+                                          scan_time_exceeded, &schema, read_time,
+                                          has_paging_state));
   return fetched_rows;
 }
 
