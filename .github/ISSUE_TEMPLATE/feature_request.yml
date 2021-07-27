@@ -8,7 +8,7 @@ body:
     label: Description
     placeholder: |
       **Is your feature request related to a problem or an enhancement? Please describe.**
+      
       **Provide a brief solution(if any) of what you want to happen.**
   validations:
     required: true
-    
