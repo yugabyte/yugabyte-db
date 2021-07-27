@@ -126,11 +126,11 @@ static bool pgss_ExecutorCheckPerms(List *rt, bool abort);
 #if PG_VERSION_NUM >= 130000
 static PlannedStmt * pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
-					ProcessUtilityContext context,
-					ParamListInfo params, QueryEnvironment *queryEnv,
-					DestReceiver *dest,
-					QueryCompletion *qc
-					);
+                                bool readOnlyTree,
+								ProcessUtilityContext context,
+								ParamListInfo params, QueryEnvironment *queryEnv,
+								DestReceiver *dest,
+								QueryCompletion *qc);
 #else
 static void BufferUsageAccumDiff(BufferUsage* bufusage, BufferUsage* pgBufferUsage, BufferUsage* bufusage_start);
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
@@ -742,15 +742,18 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 }
 #endif
 
+
 /*
  * ProcessUtility hook
  */
 #if PG_VERSION_NUM >= 130000
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+                                bool readOnlyTree,
 								ProcessUtilityContext context,
 								ParamListInfo params, QueryEnvironment *queryEnv,
 								DestReceiver *dest,
 								QueryCompletion *qc)
+
 #else
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                 ProcessUtilityContext context, ParamListInfo params,
@@ -792,26 +795,30 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		INSTR_TIME_SET_CURRENT(start);
 		PG_TRY();
 		{
+#if PG_VERSION_NUM >= 130000
+			if (prev_ProcessUtility)
+				prev_ProcessUtility(pstmt, queryString,
+                                    readOnlyTree,
+									context, params, queryEnv,
+									dest,
+									qc);
+			else
+				standard_ProcessUtility(pstmt, queryString,
+                                        readOnlyTree,
+										context, params, queryEnv,
+										dest,
+                                        qc);
+#else
 			if (prev_ProcessUtility)
 				prev_ProcessUtility(pstmt, queryString,
 									context, params, queryEnv,
-									dest
-#if PG_VERSION_NUM >= 130000
-									,qc
-#else
-									,completionTag
-#endif
-									);
+									dest,
+									completionTag);
 			else
 				standard_ProcessUtility(pstmt, queryString,
 										context, params, queryEnv,
-										dest
-#if PG_VERSION_NUM >= 130000
-									,qc
-#else
-									,completionTag
+										dest);
 #endif
-									);
 		}
 		PG_CATCH();
         {
@@ -848,25 +855,29 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	}
 	else
 	{
+#if PG_VERSION_NUM >= 130000
+			if (prev_ProcessUtility)
+				prev_ProcessUtility(pstmt, queryString,
+                                    readOnlyTree,
+                                    context, params, queryEnv,
+									dest,
+									qc);
+            standard_ProcessUtility(pstmt, queryString,
+                                        readOnlyTree,
+										context, params, queryEnv,
+										dest,
+                                        qc);
+#else
 			if (prev_ProcessUtility)
 				prev_ProcessUtility(pstmt, queryString,
 									context, params, queryEnv,
-									dest
-#if PG_VERSION_NUM >= 130000
-									,qc
-#else
-									,completionTag
-#endif
-									);
-				standard_ProcessUtility(pstmt, queryString,
+									dest,
+									completionTag);
+			standard_ProcessUtility(pstmt, queryString,
 										context, params, queryEnv,
-										dest
-#if PG_VERSION_NUM >= 130000
-									,qc
-#else
-									,completionTag
+										dest,
+                                        completionTag);
 #endif
-									);
 	}
 }
 
