@@ -146,7 +146,7 @@ class DocKey {
     return !cotable_id_.IsNil();
   }
 
-  const PgTableOid pgtable_id() const {
+  PgTableOid pgtable_id() const {
     return pgtable_id_;
   }
 

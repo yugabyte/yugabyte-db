@@ -685,6 +685,15 @@ set(YB_TEST_LINK_LIBS ${YB_MIN_TEST_LIBS})
 # Subdirectories
 ############################################################
 
+# TODO(dmitry): Add YB_CMAKE_CXX_EXTRA_FLAGS to CMAKE_CXX_FLAGS when all source code will be
+#               compatible with with these flags #9279
+# Note: YB_CMAKE_CXX_EXTRA_FLAGS almost equals to flags in ./src/yb/rocksdb/CMakeLists.txt
+#       Exceptions are:
+#         * No -Wsign-compare because for now YB uses -Wno-sign-compare explicitly
+#         * No -Wno-unused-variable and -Wno-missing-field-initializers because there are no
+#           such warnings in the YB code
+set(YB_CMAKE_CXX_EXTRA_FLAGS "-Wextra -Wshadow -Woverloaded-virtual -Wno-unused-parameter")
+
 # For any C code, use the same flags as for C++.
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 

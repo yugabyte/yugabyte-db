@@ -183,7 +183,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   std::string ToString() const;
 
-  const IsolationLevel isolation() const;
+  IsolationLevel isolation() const;
 
   // Releases this transaction object returning its metadata.
   // So this transaction could be used by some other application instance.

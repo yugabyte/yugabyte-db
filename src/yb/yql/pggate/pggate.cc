@@ -134,7 +134,7 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
       }
     }
   } while (!rowsets.empty());
-  return std::move(result);
+  return result;
 }
 
 } // namespace
@@ -266,7 +266,7 @@ Status PgApiImpl::InvalidateCache() {
   return Status::OK();
 }
 
-const bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
+bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
   return FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry;
 }
 

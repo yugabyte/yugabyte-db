@@ -127,7 +127,7 @@ const IndexInfo& YBTable::index_info() const {
   return kEmptyIndexInfo;
 }
 
-const bool YBTable::colocated() const {
+bool YBTable::colocated() const {
   return info_.colocated;
 }
 

@@ -167,7 +167,7 @@ class QLType {
   //------------------------------------------------------------------------------------------------
   // Access functions.
 
-  const DataType main() const {
+  DataType main() const {
     return id_;
   }
 
@@ -255,7 +255,7 @@ class QLType {
   }
 
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  const int GetUDTypeFieldIdxByName(const std::string &field_name) const {
+  int GetUDTypeFieldIdxByName(const std::string &field_name) const {
     const std::vector<string>& field_names = udtype_field_names();
     int i = 0;
     while (i != field_names.size()) {
@@ -413,7 +413,7 @@ class QLType {
       return other.IsUserDefined() && udtype_id() == other.udtype_id();
     }
     if (id_ == other.id_ && params_.size() == other.params_.size()) {
-      for (int i = 0; i < params_.size(); i++) {
+      for (size_t i = 0; i < params_.size(); i++) {
         if (*params_[i] == *other.params_[i]) {
           continue;
         }
@@ -564,7 +564,7 @@ class QLType {
         if (lhs_type->params().size() != rhs_type->params().size()) {
           return false;
         }
-        for (int i = 0; i < lhs_type->params().size(); i++) {
+        for (size_t i = 0; i < lhs_type->params().size(); i++) {
           if (!IsImplicitlyConvertible(lhs_type->params().at(i), rhs_type->params().at(i))) {
             return false;
           }

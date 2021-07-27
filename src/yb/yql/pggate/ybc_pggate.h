@@ -58,7 +58,7 @@ YBCStatus YBCPgInvalidateCache();
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
-const bool YBCGetDisableTransparentCacheRefreshRetry();
+bool YBCGetDisableTransparentCacheRefreshRetry();
 
 // Set catalog_version to the local tserver's catalog version stored in shared memory.  Return error
 // if the shared memory has not been initialized (e.g. in initdb).

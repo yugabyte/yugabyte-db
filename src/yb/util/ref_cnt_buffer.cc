@@ -43,8 +43,8 @@ RefCntBuffer::RefCntBuffer(const char* data, size_t size) {
   new (&counter_reference()) CounterType(1);
 }
 
-RefCntBuffer::RefCntBuffer(const faststring& string)
-    : RefCntBuffer(string.data(), string.size()) {
+RefCntBuffer::RefCntBuffer(const faststring& str)
+    : RefCntBuffer(str.data(), str.size()) {
 }
 
 RefCntBuffer::~RefCntBuffer() {

@@ -78,7 +78,7 @@ class YBTabletServerPlacementInfo : public YBTabletServer {
     return zone_;
   }
 
-  const bool isPrimary() const {
+  bool isPrimary() const {
     return is_primary_;
   }
 

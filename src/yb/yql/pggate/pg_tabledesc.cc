@@ -155,15 +155,15 @@ const client::YBTableName& PgTableDesc::table_name() const {
   return table_->name();
 }
 
-const size_t PgTableDesc::num_hash_key_columns() const {
+size_t PgTableDesc::num_hash_key_columns() const {
   return table_->schema().num_hash_key_columns();
 }
 
-const size_t PgTableDesc::num_key_columns() const {
+size_t PgTableDesc::num_key_columns() const {
   return table_->schema().num_key_columns();
 }
 
-const size_t PgTableDesc::num_columns() const {
+size_t PgTableDesc::num_columns() const {
   return table_->schema().num_columns();
 }
 

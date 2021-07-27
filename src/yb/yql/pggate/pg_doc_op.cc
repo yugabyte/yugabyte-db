@@ -301,7 +301,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
     }
   }
 
-  return std::move(result);
+  return result;
 }
 
 void PgDocOp::SetReadTime() {
@@ -335,7 +335,7 @@ Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
 
   // Process paging state and check status.
   RETURN_NOT_OK(ProcessResponsePagingState());
-  return std::move(result);
+  return result;
 }
 
 Status PgDocReadOp::CreateRequests() {
@@ -806,7 +806,7 @@ Result<std::list<PgDocResult>> PgDocWriteOp::ProcessResponseImpl() {
   // End execution and return result.
   end_of_data_ = true;
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
-  return std::move(result);
+  return result;
 }
 
 Status PgDocWriteOp::CreateRequests() {

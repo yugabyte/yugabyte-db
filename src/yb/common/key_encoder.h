@@ -456,7 +456,7 @@ class KeyEncoder {
 template <typename Buffer>
 extern const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo);
 
-extern const bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
+extern bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
 } // namespace yb
 
