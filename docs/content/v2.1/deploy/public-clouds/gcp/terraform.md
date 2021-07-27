@@ -78,7 +78,7 @@ Common commands:
 
 ```
   module "yugabyte-db-cluster" {
-  source = "github.com/Yugabyte/terraform-gcp-yugabyte.git"
+  source = "github.com/yugabyte/terraform-gcp-yugabyte.git"
 
   # The name of the cluster to be created.
   cluster_name = "test-cluster"

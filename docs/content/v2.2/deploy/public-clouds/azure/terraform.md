@@ -81,7 +81,7 @@ Create a Terraform configuration file named `yugabyte-db-config.tf` and add the 
 ```sh
 module "yugabyte-db-cluster" {
   # The source module used for creating clusters on Azure.
-  source = "github.com/Yugabyte/terraform-azure-yugabyte"
+  source = "github.com/yugabyte/terraform-azure-yugabyte"
 
   # The name of the cluster to be created, change as per need.
   cluster_name = "test-cluster"

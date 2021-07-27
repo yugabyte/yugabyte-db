@@ -37,7 +37,7 @@ provider "azurerm" {
 
 module "yugabyte-db-cluster" {
   # The source module used for creating AWS clusters.
-  source = "github.com/Yugabyte/terraform-azure-yugabyte"
+  source = "github.com/yugabyte/terraform-azure-yugabyte"
 
   # The name of the cluster to be created, change as per need.
   cluster_name = "test-cluster"
