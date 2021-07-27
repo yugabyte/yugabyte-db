@@ -557,7 +557,7 @@ class PostgresBuilder(YbBuildToolBase):
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
             "git_commit_sha1=%s" % git_hash,
-            "git_diff_sha256=%s" % hashlib.sha256(git_diff),
+            "git_diff_sha256=%s" % hashlib.sha256(git_diff).hexdigest(),
             ])
 
         if include_env_vars:
