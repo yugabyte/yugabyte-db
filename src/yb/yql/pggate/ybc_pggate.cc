@@ -614,6 +614,30 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
+YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
+                         const YBCPgOid table_oid,
+                         const int targrows,
+                         YBCPgStatement *handle) {
+  const PgObjectId table_id(database_oid, table_oid);
+  return ToYBCStatus(pgapi->NewSample(table_id, targrows, handle));
+}
+
+YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state) {
+  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state));
+}
+
+YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
+  return ToYBCStatus(pgapi->SampleNextBlock(handle, has_more));
+}
+
+YBCStatus YBCPgExecSample(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecSample(handle));
+}
+
+YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows) {
+  return ToYBCStatus(pgapi->GetEstimatedRowCount(handle, liverows, deadrows));
+}
+
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
