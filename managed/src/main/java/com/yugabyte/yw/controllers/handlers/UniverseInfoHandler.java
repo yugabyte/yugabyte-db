@@ -155,10 +155,13 @@ public class UniverseInfoHandler {
     return resultNode;
   }
 
-  public JsonNode getSlowQueries(Universe universe) {
+  public JsonNode getSlowQueries(Universe universe, String username, String password) {
     JsonNode resultNode;
     try {
-      resultNode = queryHelper.slowQueries(universe);
+      resultNode = queryHelper.slowQueries(universe, username, password);
+    } catch (IllegalArgumentException e) {
+      log.error(e.getMessage(), e);
+      throw new YWServiceException(BAD_REQUEST, e.getMessage());
     } catch (NullPointerException e) {
       log.error("Universe does not have a private IP or DNS", e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");

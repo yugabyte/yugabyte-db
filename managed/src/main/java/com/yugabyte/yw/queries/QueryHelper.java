@@ -45,11 +45,12 @@ public class QueryHelper {
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
 
   public JsonNode liveQueries(Universe universe) {
-    return query(universe, false);
+    return query(universe, false, null, null);
   }
 
-  public JsonNode slowQueries(Universe universe) {
-    return query(universe, true);
+  public JsonNode slowQueries(Universe universe, String username, String password)
+      throws IllegalArgumentException {
+    return query(universe, true, username, password);
   }
 
   public JsonNode resetQueries(Universe universe) {
@@ -59,7 +60,9 @@ public class QueryHelper {
     return ysqlQueryExecutor.executeQuery(universe, ysqlQuery);
   }
 
-  public JsonNode query(Universe universe, boolean fetchSlowQueries) {
+  public JsonNode query(
+      Universe universe, boolean fetchSlowQueries, String username, String password)
+      throws IllegalArgumentException {
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
     Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
     ObjectNode responseJson = Json.newObject();
@@ -79,7 +82,8 @@ public class QueryHelper {
 
         if (fetchSlowQueries) {
           callable =
-              new SlowQueryExecutor(ip, node.ysqlServerRpcPort, universe, SLOW_QUERY_STATS_SQL);
+              new SlowQueryExecutor(
+                  ip, node.ysqlServerRpcPort, universe, SLOW_QUERY_STATS_SQL, username, password);
           Future<JsonNode> future = threadPool.submit(callable);
           futures.add(future);
         } else {
@@ -102,6 +106,12 @@ public class QueryHelper {
       for (Future<JsonNode> future : futures) {
         JsonNode response = future.get();
         if (response.has("error")) {
+          String errorMessage = response.get("error").toString();
+          // If Login Credentials are incorrect we receive
+          // {"error":"FATAL: password authentication failed for user \"<username in header>\""}
+          if (errorMessage.startsWith("\"FATAL: password authentication failed")) {
+            throw new IllegalArgumentException("Incorrect Username or Password");
+          }
           String type = response.get("type").asText();
           if (type == "ysql") {
             ysqlJson.put("errorCount", ysqlJson.get("errorCount").asInt() + 1);

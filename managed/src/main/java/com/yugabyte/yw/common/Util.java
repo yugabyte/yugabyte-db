@@ -30,6 +30,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -432,5 +433,16 @@ public class Util {
 
   public static void removeProcess(UUID uuid) {
     processMap.remove(uuid);
+  }
+
+  // It can be inferred that Platform only supports Base64 encryption
+  // for Slow Query Credentials for now
+  public static String decodeBase64(String input) {
+    byte[] decodedBytes = Base64.getDecoder().decode(input);
+    return new String(decodedBytes);
+  }
+
+  public static String encodeBase64(String input) {
+    return Base64.getEncoder().encodeToString(input.getBytes());
   }
 }

@@ -35,15 +35,25 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
   private int port;
   private String query;
   private Universe universe;
+  private String username;
+  private String password;
 
   private final String DEFAULT_DB_USER = "yugabyte";
   private final String DEFAULT_DB_PASSWORD = "yugabyte";
 
-  public SlowQueryExecutor(String hostName, int port, Universe universe, String query) {
+  public SlowQueryExecutor(
+      String hostName,
+      int port,
+      Universe universe,
+      String query,
+      String username,
+      String password) {
     this.hostName = hostName;
     this.port = port;
     this.universe = universe;
     this.query = query;
+    this.username = username == null ? DEFAULT_DB_USER : username;
+    this.password = password == null ? DEFAULT_DB_PASSWORD : password;
     this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
   }
 
@@ -71,8 +81,8 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     ObjectNode response = Json.newObject();
     String connectString = String.format("jdbc:postgresql://%s:%d/%s", hostName, port, "postgres");
     Properties connInfo = new Properties();
-    connInfo.put("user", DEFAULT_DB_USER);
-    connInfo.put("password", DEFAULT_DB_PASSWORD);
+    connInfo.put("user", this.username);
+    connInfo.put("password", this.password);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {

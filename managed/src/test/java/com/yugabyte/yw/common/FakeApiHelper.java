@@ -13,6 +13,7 @@ import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -44,6 +45,15 @@ public class FakeApiHelper {
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url).header("X-AUTH-TOKEN", authToken);
+    return route(request);
+  }
+
+  public static Result doRequestWithCustomHeaders(
+      String method, String url, Map<String, String> headers) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url);
+    for (Map.Entry<String, String> headerEntry : headers.entrySet()) {
+      request.header(headerEntry.getKey(), headerEntry.getValue());
+    }
     return route(request);
   }
 
