@@ -369,8 +369,10 @@ export function closeUniverseDialog() {
 
 export function rollingUpgrade(values, universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
+  const taskEndPoint = values.taskType.toLowerCase();
+  delete values.taskType;
   const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade`,
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade/${taskEndPoint}`,
     values
   );
   return {
