@@ -1077,27 +1077,32 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
 
 
 def _wait_for_disk_modifications(ec2_client, vol_ids):
-    num_vols_completed = 0
+    # This function returns as soon as the volume state is optimizing, not completed.
     num_vols_to_modify = len(vol_ids)
-    # It should retry for a 6 hour limit
-    retry_num = int((6 * 3600) / AbstractCloud.SSH_WAIT_SECONDS) + 1
-    # Loop till the progress is at 100 or the limit is reached
-    while retry_num != 0:
+    # It should retry for a 1 hour time limit.
+    retry_num = int((1 * 3600) / AbstractCloud.SSH_WAIT_SECONDS) + 1
+    # Loop till all volumes are modified or the limit is reached.
+    while retry_num > 0:
+        num_vols_modified = 0
         response = ec2_client.describe_volumes_modifications(VolumeIds=vol_ids)
         # The response format can be found here:
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_volumes_modifications
-        for entry in response['VolumesModifications']:
-            if entry['Progress'] == 100:
-                if entry['ModificationState'] != 'completed':
-                    raise YBOpsRuntimeError(("Disk {} could not be modified.").format(
-                        entry['VolumeId']))
-                else:
-                    num_vols_completed += 1
+        for entry in response["VolumesModifications"]:
+            if entry["ModificationState"] == "failed":
+                raise YBOpsRuntimeError(("Mofication of disk {} failed.").format(
+                    entry['VolumeId']))
+
+            if entry["ModificationState"] == "optimizing" or \
+                    entry["ModificationState"] == "completed":
+                # Modifying completed.
+                num_vols_modified += 1
+
         # This means all volumes have completed modification.
-        if num_vols_completed == num_vols_to_modify:
+        if num_vols_modified == num_vols_to_modify:
             break
+
         time.sleep(AbstractCloud.SSH_WAIT_SECONDS)
         retry_num -= 1
 
-    if retry_num == 0:
+    if retry_num <= 0:
         raise YBOpsRuntimeError("wait_for_disk_modifications failed. Retry limit reached.")
