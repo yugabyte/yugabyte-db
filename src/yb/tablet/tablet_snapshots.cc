@@ -238,11 +238,6 @@ Status TabletSnapshots::RestoreCheckpoint(
   // op_pause has to stay in scope until the end of the function.
   auto op_pauses = VERIFY_RESULT(StartShutdownRocksDBs(DisableFlushOnShutdown(destroy)));
 
-  // Check if tablet is in shutdown mode.
-  if (tablet().IsShutdownRequested()) {
-    return STATUS(IllegalState, "Tablet was shut down");
-  }
-
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
 
   const string db_dir = regular_db().GetName();

@@ -282,7 +282,6 @@ using yb::docdb::InitMarkerBehavior;
 namespace yb {
 namespace tablet {
 
-using yb::MaintenanceManager;
 using consensus::MaximumOpId;
 using log::LogAnchorRegistry;
 using strings::Substitute;
