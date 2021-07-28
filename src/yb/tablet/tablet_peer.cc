@@ -649,7 +649,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
     }
   }
   if (!status.ok()) {
-    operation->Aborted(status);
+    operation->Aborted(status, /* was_pending= */ false);
   }
 }
 
@@ -1119,18 +1119,18 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
 
   DCHECK(maintenance_ops_.empty());
 
-  std::unique_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
+  auto log_gc = std::make_unique<LogGCOp>(this);
   maint_mgr->RegisterOp(log_gc.get());
-  maintenance_ops_.push_back(log_gc.release());
+  maintenance_ops_.push_back(std::move(log_gc));
   LOG_WITH_PREFIX(INFO) << "Registered log gc";
 }
 
 void TabletPeer::UnregisterMaintenanceOps() {
   DCHECK(state_change_lock_.is_locked());
-  for (MaintenanceOp* op : maintenance_ops_) {
+  for (auto& op : maintenance_ops_) {
     op->Unregister();
   }
-  STLDeleteElements(&maintenance_ops_);
+  maintenance_ops_.clear();
 }
 
 TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {

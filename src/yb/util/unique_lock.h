@@ -60,6 +60,11 @@ void WaitOnConditionVariable(
   cond_var->wait(lock->internal_unique_lock(), f);
 }
 
+template <class Mutex>
+std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>* lock) {
+  return lock->internal_unique_lock();
+}
+
 #else
 
 // ------------------------------------------------------------------------------------------------
@@ -80,6 +85,11 @@ template<typename Mutex, typename Functor>
 void WaitOnConditionVariable(
     std::condition_variable* cond_var, UniqueLock<Mutex>* lock, Functor f) {
   cond_var->wait(*lock, f);
+}
+
+template <class Mutex>
+std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>* lock) {
+  return *lock;
 }
 
 #endif

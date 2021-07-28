@@ -279,7 +279,7 @@ void OperationDriver::HandleFailure(const Status& status) {
     {
       VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
           "replication success: " << status;
-      operation_->Aborted(status);
+      operation_->Aborted(status, op_id_copy_.load().valid());
       operation_tracker_->Release(this, nullptr /* applied_op_ids */);
       return;
     }
