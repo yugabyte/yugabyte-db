@@ -1,6 +1,6 @@
 ## TPC-C Load Phase
 
-Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node c5d.4xlarge cluster, loader threads value of 48 was the most optimal.
+Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node c5d.4xlarge cluster, loader threads value of 48 was optimal.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
