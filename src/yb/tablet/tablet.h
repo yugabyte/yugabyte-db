@@ -103,10 +103,6 @@ namespace server {
 class Clock;
 }
 
-class MaintenanceManager;
-class MaintenanceOp;
-class MaintenanceOpStats;
-
 namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
