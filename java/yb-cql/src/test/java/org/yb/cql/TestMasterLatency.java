@@ -18,9 +18,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestMasterLatency extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestMasterLatency.class);
 
@@ -35,7 +35,7 @@ public class TestMasterLatency extends BaseCQLTest {
   }
 
   @Test
-  public void testCreateDropTableTimeout() throws Exception {
+  public void testSlowCreateDropTable() throws Exception {
     LOG.info("Start test: " + getCurrentTestMethodName());
 
     // Create test table.
@@ -43,7 +43,25 @@ public class TestMasterLatency extends BaseCQLTest {
                     "with transactions = {'enabled' : true};");
     // Drop test table.
     session.execute("drop table test_table;");
+  }
 
-    LOG.info("End test: " + getCurrentTestMethodName());
+  @Test
+  public void testSlowCreateDropIndex() throws Exception {
+    LOG.info("Start test: " + getCurrentTestMethodName());
+
+    // Create test table.
+    session.execute("create table test_drop (h1 int primary key, " +
+                    "c1 int, c2 int, c3 int, c4 int, c5 int) " +
+                    "with transactions = {'enabled' : true};");
+
+    // Create test indexes.
+    session.execute("create index i1 on test_drop (c1);");
+    session.execute("create index i2 on test_drop (c2);");
+    session.execute("create index i3 on test_drop (c3);");
+    session.execute("create index i4 on test_drop (c4);");
+    session.execute("create index i5 on test_drop (c5);");
+
+    // Drop test table.
+    session.execute("drop table test_drop;");
   }
 }
