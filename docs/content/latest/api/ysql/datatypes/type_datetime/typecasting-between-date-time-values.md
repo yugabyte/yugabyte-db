@@ -1,18 +1,20 @@
 ---
 title: Typecasting between values of different date-time datatypes [YSQL]
 headerTitle: Typecasting between values of different date-time datatypes
-linkTitle: typecasting between date-time datatypes
+linkTitle: Typecasting between date-time datatypes
 description: Describes how to typecast date-time values of different date-time datatypes. [YSQL]
 menu:
   latest:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
-    weight: 50
+    weight: 70
 isTocNested: true
 showAsideToc: true
 ---
 
-Each of the two axes of the [Summary table](#summary-table) below lists the five _date-time_ data types shown in [the table](../../type_datetime#table-of-five) at the end of the overall "Date and time data types" section along with the _text_ data type—so there are _thirty-six_ cells. The cells on the diagonal represent the typecast from _some_type_ to the same type—and so they are tautologically uninteresting. This leaves _thirty_ cells and therefore _thirty_ rules to understand. See the section [Code to fill out the thirty interesting table cells](#code-to-fill-out-the-thirty-interesting-table-cells). This shows that _ten_ of the remaining typecasts are simply unsupported. The attempts cause the _42846_ error. This maps in PL/pgSQL code to the _cannot_coerce_ exception. You get one of these messages:
+See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ datatype. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.
+
+The cells on the diagonal represent the typecast from _some_type_ to the same type—and so they are tautologically uninteresting. This leaves _thirty_ cells and therefore _thirty_ rules to understand. See the section [Code to fill out the thirty interesting table cells](#code-to-fill-out-the-thirty-interesting-table-cells). This shows that _ten_ of the remaining typecasts are simply unsupported. The attempts cause the _42846_ error. This maps in PL/pgSQL code to the _cannot_coerce_ exception. You get one of these messages:
 
 ```output
 cannot cast type date to time without time zone
@@ -61,7 +63,7 @@ You can see the correctness of these critical facts from the summary table. The 
 The account on this page demonstrates that the decomposition rules for _data_type_x_ to _timestamptz_ and _timestamptz_ to _data_type_x_ hold; it demonstrates the outcomes for the typecasts between plain _timestamp_ values and _timestamptz_ values; and it shows that they are the same as when you use the _at time zone_ operator.
 
 {{< tip title="The semantics for the mutual conversions between 'plain timestamp' and 'timestamptz' is defined elsewhere." >}}
-The outcomes depend mandatorily on specifying the value of the _UTC offset_. There's more than one way to specify this. See the section [Four ways to specify the _UTC offset_](../timezones/ways-to-spec-offset/). The actual conversion semantics is explained in the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
+The outcomes depend mandatorily on specifying the value of the _UTC offset_. There's more than one way to specify this. See the section [Four ways to specify the _UTC offset_](../timezones/ways-to-spec-offset/). The actual conversion semantics is explained in the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
 {{< /tip >}}
 
 The outcomes of the typecasts between _date-time_ values and _text_ values, corresponding to all the cells in the bottom row and the right-most column, depend on the current setting of the _DateStyle_ or _IntervalStyle_ session parameters. This is explained in the section [Typecasting between date-time values and text values](../typecasting-between-date-time-and-text/).
@@ -333,7 +335,7 @@ select (
   )::text;
 ```
 
-The result is _true_. See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+The result is _true_. See the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### plain _timestamp_ to _text_
 
@@ -455,7 +457,7 @@ select
 
 The result is _true_.
 
-Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### _timestamptz_ to _text_
 
@@ -594,7 +596,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _time_ value.
 
-The rule here is trivial. But to see it as such you have to understand what the section [How does YSQL represent an interval value?](../date-time-data-types-semantics/type-interval/interval-representation/) explains. The reason is that the values of the _mm_ and _dd_ fields of the internal _[mm, dd, ss]_ tuple are simply ignored by the _interval_ to _time_ typecast. You can confirm that like this:
+The rule here is trivial. But to see it as such you have to understand what the section [How does YSQL represent an _interval_ value?](../date-time-data-types-semantics/type-interval/interval-representation/) explains. The reason is that the values of the _mm_ and _dd_ fields of the internal _[mm, dd, ss]_ tuple are simply ignored by the _interval_ to _time_ typecast. You can confirm that like this:
 
 ```plpgsql
 select ('7 years 5 months 13 days 10:17:00'::interval)::time;
@@ -644,7 +646,6 @@ See the section [Typecasting between date-time values and text values](../typeca
 All of the _text_ to _date_, _text_ to _time_, _text_ to plain _timestamp_, _text_ to _timestamptz_, and _text_ to _interval_ typecasts can be demonstrated with a single query:
 
 ```plpgsql
-\t on
 \x on
 select
   '2021-06-01'                    ::date        as "date value",
@@ -653,7 +654,6 @@ select
   '2021-06-02 03:13:19.123456+03' ::timestamptz as "timestamptz value value",
   '10 hours 17 minutes'           ::interval    as "interval value value";
 \x off
-\t off
 ```
 
 This is the result:
@@ -703,7 +703,7 @@ The result is _true_.
 
 #### _text_ to _timestamptz_
 
-As you'd expect, the _text_ to _timestamptz_ typecast needs some special discussion. A _UTC offset_ value is logically required. But you can elide this within the text literal and leave it to be defined using the rule that maps the current timezone to a _UTC offset_ value. The rules that determine the outcomes of the examples below are underpinned by the semantics of the [sensitivity of the conversion between _timestamptz_ and plain _timestamp_ values to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
+As you'd expect, the _text_ to _timestamptz_ typecast needs some special discussion. A _UTC offset_ value is logically required. But you can elide this within the text literal and leave it to be defined using the rule that maps the current timezone to a _UTC offset_ value. The rules that determine the outcomes of the examples below are underpinned by the semantics of the [sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
 
 
 Think of it like this:

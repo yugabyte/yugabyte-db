@@ -1,13 +1,13 @@
 ---
 title: Typecasting between date-time values and text values [YSQL]
 headerTitle: Typecasting between date-time values and text values
-linkTitle: typecasting between date-time and text-values
+LINKTITLE: Typecasting between date-time and text-values
 description: Describes how to typecast date-time values to text values, and vice-versa. [YSQL]
 menu:
   latest:
     identifier: typecasting-between-date-time-and-text
     parent: api-ysql-datatypes-datetime
-    weight: 30
+    weight: 50
 isTocNested: true
 showAsideToc: true
 ---
@@ -485,7 +485,7 @@ The results are consistent with the fact that the _IntervalStyle_ setting has no
 {{< tip title="Never rely on typecasting from 'interval' values to 'text' values unless you set 'IntervalStyle' explicitly." >}}
 Yugabyte recommends that application code should convert between _text_ values and _interval_ values using explicit conversion functions.
 
-The _make_interval()_ built-in function creates an _interval_ value using explicitly specified values in the units that you prefer—like _years_, _days_, _hours_, or _weeks_. Yugabyte recommends always using this approach and never using the _::interval_ typecast. This advice rests on ideas developed in the section [Interval arithmetic](../date-time-data-types-semantics/type-interval/interval-arithmetic/). The recommended approach is formalized in the section [Defining and using custom domain types to specialize the native _interval_ functionality](../date-time-data-types-semantics/type-interval/custom-interval-domains/).
+The _make_interval()_ built-in function creates an _interval_ value using explicitly specified values in the units that you prefer—like _years_, _days_, _hours_, or _weeks_. Yugabyte recommends always using this approach and never using the _::interval_ typecast. This advice rests on ideas developed in the section [Interval arithmetic](../date-time-data-types-semantics/type-interval/interval-arithmetic/). The recommended approach is formalized in the section [Custom domain types for specializing the native _interval_ functionality](../date-time-data-types-semantics/type-interval/custom-interval-domains/).
 
 The _extract_ SQL functionality lets you assign values like the _years_ or _days_ components of an _interval_ value to dedicated destinations. This approach is used in the definition of [function interval_mm_dd_ss (interval) returns interval_mm_dd_ss_t](../date-time-data-types-semantics/type-interval/interval-utilities/#function-interval-mm-dd-ss-interval-returns-interval-mm-dd-ss-t), described in the [User-defined _interval_ utility functions](../date-time-data-types-semantics/type-interval/interval-utilities/) section.
 

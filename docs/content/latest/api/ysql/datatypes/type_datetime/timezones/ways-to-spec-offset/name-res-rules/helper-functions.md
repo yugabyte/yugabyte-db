@@ -1,7 +1,7 @@
 ---
 title: Helper functions for rules 2, 3, and 4 for specifying the UTC offset [YSQL]
 headerTitle: Helper functions for rules 2, 3, and 4 for specifying the UTC offset
-linkTitle: helper functions
+linkTitle: Helper functions
 description: Code to create helper functions for substantiating rules 2, 3, and 4 for specifying the UTC offset. [YSQL]
 menu:
   latest:

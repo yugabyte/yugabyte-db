@@ -1,13 +1,13 @@
 ---
 title: Date-time data types—conceptual background [YSQL]
 headerTitle: Conceptual background
-linkTitle: conceptual background
+linkTitle: Conceptual background
 description: Conceptual background for the date, time, timestamp, and interval data types. [YSQL]
 menu:
   latest:
     identifier: conceptual-background
     parent: api-ysql-datatypes-datetime
-    weight: 10
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---
@@ -88,7 +88,7 @@ People around the world prefer a convention that says that noon occurs at 12:00 
 
 - Look at the table shown in [Real timezones that observe Daylight Savings Time](../timezones/extended-timezone-names/canonical-real-country-with-dst/). (_Real_ means that these canonically-named timezones, unlike _UTC_, are associated with specified geographic regions.) It lists 114 timezones.
 
-- Now look at the table shown in [Real timezones that do not observe Daylight Savings Time](../timezones/extended-timezone-names/canonical-real-country-no-dst/). It lists 68 timezones.
+- Now look at the table shown in [Real timezones that don't observe Daylight Savings Time](../timezones/extended-timezone-names/canonical-real-country-no-dst/). It lists 68 timezones.
 
 A _real_ timezone, according to a purist definition of this term of art, denotes a region, or maybe a set of regions, where, _by an agreed convention_, all correctly set wall-clocks show the same date and time. These days, the notion of a correctly set wall-clock is immediately understood as what a smartphone shows when the option is selected to set the date and the time automatically. Your smartphone knows where it is and, from this, it knows what timezone it's in. It has access to the _UTC_ time (the absolute date-and-time). And it has access to various facts that characterize its present timezone—in particular, the _current_ offset in hours and minutes from _UTC_. (The qualifier _current_ is important because, in general, the offset from _UTC_ depends on the date according to whether or not the timezone observes Daylight Savings Time.)
 
@@ -228,7 +228,7 @@ This is the result. (The blank lines were added manually to improve the readabil
  Pacific/Honolulu     -10:31 05:28:34 Sun 18-Nov       -10:31 09:28:34 Sun 18-Nov       -10:00 10:00:00 Sat 18-Nov
 ```
 
-You can see that, just as the Wikipedia article said, a conventional adjustment was edicted for clocks in the United States during the interval from 16:00 _UTC_ through 20:00 _UTC_ on Sunday 18-Nov-1883. During that interval (in fact, successively from region to region) everybody "gained" a little time—just as, now, people "gain" one hour on the "fall back" day when Daylight Savings Time ends. For example, people in the _America/Los_Angeles_ zone gained seven minutes and two seconds. Moreover, the offset between these regions and Greenwich UK was adjusted by a small compensating amount at the same transition moment to make it an integral multiple of one hour.
+You can see that, just as the Wikipedia article said, a conventional adjustment was edicted for clocks in the United States during the period from 16:00 _UTC_ through 20:00 _UTC_ on Sunday 18-Nov-1883. During that period (in fact, successively from region to region) everybody "gained" a little time—just as, now, people "gain" one hour on the "fall back" day when Daylight Savings Time ends. For example, people in the _America/Los_Angeles_ zone gained seven minutes and two seconds. Moreover, the offset between these regions and Greenwich UK was adjusted by a small compensating amount at the same transition moment to make it an integral multiple of one hour.
 
 Notice that the time in London was always right—by definition! Meanwhile, other cities in Europe made their corresponding conventional adjustments at later dates. 
 
@@ -332,7 +332,7 @@ with v as (
       -- some moment between these two timestamptz values.
       extract(epoch from '1883-11-19 08:00:00 America/Los_Angeles'::timestamptz) - 
       extract(epoch from '1883-11-18 08:00:00 America/Los_Angeles'::timestamptz)
-    )::numeric as delta
+    ) as delta
   )
 select
   make_interval(secs=>delta)::text as "delta (hh:mi:ss)"

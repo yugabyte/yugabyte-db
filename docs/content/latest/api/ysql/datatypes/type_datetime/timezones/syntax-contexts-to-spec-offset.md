@@ -1,7 +1,7 @@
 ---
 title: Three syntax contexts that use the specification of a UTC offset [YSQL]
 headerTitle: Three syntax contexts that use the specification of a UTC offset  
-linkTitle: syntax contexts for offset
+linkTitle: Syntax contexts for offset
 description: Explains the three syntax contexts that use the specification of a UTC offset. [YSQL]
 menu:
   latest:

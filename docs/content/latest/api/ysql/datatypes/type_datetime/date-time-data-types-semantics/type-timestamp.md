@@ -1,7 +1,7 @@
 ---
 title: The plain timestamp and timestamptz data types [YSQL]
 headerTitle: The plain timestamp and timestamptz data types
-linkTitle: plain timestamp and timestamptz
+linkTitle: Plain timestamp and timestamptz
 description: The semantics of the plain timestamp and timestamptz data types. [YSQL]
 menu:
   latest:
@@ -15,8 +15,6 @@ showAsideToc: true
 {{< tip title="Understanding this section depends on understanding the 'Timezones' section." >}}
 To understand the _timestamptz_ data type, and converting its values to/from plain _timestamp_ values, you need to understand what the [Timezones and _UTC offsets_](../../timezones/) section explains.
 {{< /tip >}}
-
-**Note:** Because of their brevity, the aliases _timestamp_ and _timestamptz_ will be preferred in the [Date and time data types](../../../type_datetime/) main section to the respective verbose forms _timestamp without time zone_ and _timestamp with time zone_.
 
 The plain _timestamp_ data type and the _timestamptz_ data type are cousins. But there are critical differences:
 

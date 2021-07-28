@@ -1,7 +1,7 @@
 ---
 title: Sensitivity of conversion between timestamptz and plain timestamp to the UTC offset [YSQL]
-headerTitle: The sensitivity of the conversion between timestamptz and plain timestamp to the UTC offset
-linkTitle: timestamptz to/from timestamp conversion
+headerTitle: Sensitivity of converting between timestamptz and plain timestamp to the UTC offset
+linkTitle: Timestamptz to/from timestamp conversion
 description: Explains the sensitivity of conversion between timestamptz and plain timestamp to the UTC offset. [YSQL]
 menu:
   latest:

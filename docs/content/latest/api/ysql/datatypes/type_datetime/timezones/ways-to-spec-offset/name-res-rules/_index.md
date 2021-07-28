@@ -1,7 +1,7 @@
 ---
 title: Rules for resolving a string string intended to identify a UTC offset [YSQL]
 headerTitle: Rules for resolving a string that's intended to identify a UTC offset
-linkTitle: name-resolution rules
+linkTitle: Name-resolution rules
 description: Explains the rules for resolving a string that's intended to identify a UTC offset. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
