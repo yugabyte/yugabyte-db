@@ -264,19 +264,17 @@ TEST_F(MaintenanceManagerTest, TestLogRetentionPrioritization) {
   manager_->RegisterOp(&op2);
   manager_->RegisterOp(&op3);
 
-  // We want to do the low IO op first since it clears up some log retention.
-  ASSERT_EQ(&op1, manager_->FindBestOp());
+  // We want to do the low IO op first since it clears up some log retention, i.e. - op1
+  // Then we find the op clears the most log retention and ram, i.e. - op3
+  for (auto* op : { &op1, &op3, &op2 }) {
+    {
+      std::lock_guard<std::mutex> lock(manager_->mutex_);
 
-  manager_->UnregisterOp(&op1);
+      ASSERT_EQ(op, manager_->FindBestOp());
+    }
 
-  // Low IO is taken care of, now we find the op clears the most log retention and ram.
-  ASSERT_EQ(&op3, manager_->FindBestOp());
-
-  manager_->UnregisterOp(&op3);
-
-  ASSERT_EQ(&op2, manager_->FindBestOp());
-
-  manager_->UnregisterOp(&op2);
+    manager_->UnregisterOp(op);
+  }
 }
 
 // Test adding operations and make sure that the history of recently completed operations
@@ -289,7 +287,7 @@ TEST_F(MaintenanceManagerTest, TestCompletedOpsHistory) {
     op.set_ram_anchored(100);
     manager_->RegisterOp(&op);
 
-    CHECK_EQ(true, op.WaitForStateWithTimeout(OP_FINISHED, 200));
+    ASSERT_TRUE(op.WaitForStateWithTimeout(OP_FINISHED, 200));
     manager_->UnregisterOp(&op);
 
     MaintenanceManagerStatusPB status_pb;
