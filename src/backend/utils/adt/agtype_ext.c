@@ -78,8 +78,17 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
     case AGTV_VERTEX:
     {
         uint32 object_ae = 0;
+
         padlen = ag_serialize_header(buffer, AGT_HEADER_VERTEX);
         convert_extended_object(buffer, &object_ae, scalar_val);
+
+        /*
+         * Make sure that the end of the buffer is padded to the next offset and
+         * add this padding to the length of the buffer used. This ensures that
+         * everything stays aligned and eliminates errors caused by compounded
+         * offsets in the deserialization routines.
+         */
+        object_ae += pad_buffer_to_int(buffer);
 
         *agtentry = AGTENTRY_IS_AGTYPE |
                     ((AGTENTRY_OFFLENMASK & (int)object_ae) + AGT_HEADER_SIZE);
@@ -89,8 +98,17 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
     case AGTV_EDGE:
     {
         uint32 object_ae = 0;
+
         padlen = ag_serialize_header(buffer, AGT_HEADER_EDGE);
         convert_extended_object(buffer, &object_ae, scalar_val);
+
+        /*
+         * Make sure that the end of the buffer is padded to the next offset and
+         * add this padding to the length of the buffer used. This ensures that
+         * everything stays aligned and eliminates errors caused by compounded
+         * offsets in the deserialization routines.
+         */
+        object_ae += pad_buffer_to_int(buffer);
 
         *agtentry = AGTENTRY_IS_AGTYPE |
                     ((AGTENTRY_OFFLENMASK & (int)object_ae) + AGT_HEADER_SIZE);
@@ -100,8 +118,17 @@ bool ag_serialize_extended_type(StringInfo buffer, agtentry *agtentry,
     case AGTV_PATH:
     {
         uint32 object_ae = 0;
+
         padlen = ag_serialize_header(buffer, AGT_HEADER_PATH);
         convert_extended_array(buffer, &object_ae, scalar_val);
+
+        /*
+         * Make sure that the end of the buffer is padded to the next offset and
+         * add this padding to the length of the buffer used. This ensures that
+         * everything stays aligned and eliminates errors caused by compounded
+         * offsets in the deserialization routines.
+         */
+        object_ae += pad_buffer_to_int(buffer);
 
         *agtentry = AGTENTRY_IS_AGTYPE |
                     ((AGTENTRY_OFFLENMASK & (int)object_ae) + AGT_HEADER_SIZE);
