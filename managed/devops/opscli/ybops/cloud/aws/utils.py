@@ -948,12 +948,25 @@ def create_instance(args):
         __create_tag("yb-server-type", args.type)
     ]
     custom_tags = args.instance_tags if args.instance_tags is not None else '{}'
+    user_tags = []
     for k, v in json.loads(custom_tags).items():
         instance_tags.append(__create_tag(k, v))
-    vars["TagSpecifications"] = [{
+        user_tags.append(__create_tag(k, v))
+    resources_to_tag = [
+        "network-interface", "volume"
+    ]
+    tag_dicts = []
+    tag_dicts.append({
         "ResourceType": "instance",
         "Tags": instance_tags
-    }]
+    })
+    for tagged_resource in resources_to_tag:
+        resources_tag_dict = {
+            "ResourceType": tagged_resource,
+            "Tags": user_tags
+        }
+        tag_dicts.append(resources_tag_dict)
+    vars["TagSpecifications"] = tag_dicts
     # TODO: user_data > templates/cloud_init.yml.j2, still needed?
     logging.info("[app] About to create AWS VM {}. ".format(args.search_pattern))
     instance_ids = client.create_instances(**vars)
