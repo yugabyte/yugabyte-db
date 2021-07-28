@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -30,6 +31,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -48,6 +50,9 @@ public class UniverseInfoController extends AuthenticatedController {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private HttpExecutionContext ec;
+
+  private static final String YSQL_USERNAME_HEADER = "ysql-username";
+  private static final String YSQL_PASSWORD_HEADER = "ysql-password";
 
   /**
    * API that checks the status of the the tservers and masters in the universe.
@@ -132,8 +137,13 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-
-    JsonNode resultNode = universeInfoHandler.getSlowQueries(universe);
+    Optional<String> optUsername = request().getHeaders().get(YSQL_USERNAME_HEADER);
+    Optional<String> optPassword = request().getHeaders().get(YSQL_PASSWORD_HEADER);
+    JsonNode resultNode =
+        universeInfoHandler.getSlowQueries(
+            universe,
+            optUsername.orElse(null),
+            optPassword.isPresent() ? Util.decodeBase64(optPassword.get()) : null);
     return Results.ok(resultNode);
   }
 
@@ -142,7 +152,6 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-
     return YWResults.withRawData(universeInfoHandler.resetSlowQueries(universe));
   }
 
