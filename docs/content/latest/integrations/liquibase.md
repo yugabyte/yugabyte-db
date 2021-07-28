@@ -27,3 +27,4 @@ Before you can start using Liquibase, ensure that you have the following install
 ## Configuring Kafka
 
 You configure Kafka Connect Sink as follows:
+
