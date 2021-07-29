@@ -732,10 +732,20 @@ public class HealthChecker {
     Provider mainProvider =
         Provider.get(UUID.fromString(details.getPrimaryCluster().userIntent.provider));
 
+    // Check if it should log the output of the command.
+    Boolean shouldLogOutput = false; // Default value.
+    if (runtimeConfigFactory.forUniverse(params.universe).hasPath("yb.health.logOutput")) {
+      shouldLogOutput =
+          runtimeConfigFactory.forUniverse(params.universe).getBoolean("yb.health.logOutput");
+    }
+
     // Call devops and process response.
     ShellResponse response =
         healthManager.runCommand(
-            mainProvider, new ArrayList<>(clusterMetadata.values()), potentialStartTime);
+            mainProvider,
+            new ArrayList<>(clusterMetadata.values()),
+            potentialStartTime,
+            shouldLogOutput);
 
     long durationMs = System.currentTimeMillis() - startMs;
     boolean sendMailAlways = (params.shouldSendStatusUpdate || lastCheckHadErrors);
