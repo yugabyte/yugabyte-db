@@ -66,16 +66,11 @@ N/A
 * [[7349](https://github.com/yugabyte/yugabyte-db/issues/7349)] [Platform] Support for multiple backup configs. (#7668)
 * [[8141](https://github.com/yugabyte/yugabyte-db/issues/8141)] [Platform] Disable backup button is moved to the universe action list. (#8788)
 * [[8144](https://github.com/yugabyte/yugabyte-db/issues/8144)] [Platform] Validate custom certs on the node
-* [[8211](https://github.com/yugabyte/yugabyte-db/issues/8211)] [Platform] Alerts configuration per a universe basis (notification channels)
-* [[8281](https://github.com/yugabyte/yugabyte-db/issues/8281)] [Platform] Change alert and alert definition to better match Prometheus data model
-* [[8282](https://github.com/yugabyte/yugabyte-db/issues/8282)] [Platform] Generate alert rules configuration files based on configured alert definitions
-* [[8283](https://github.com/yugabyte/yugabyte-db/issues/8283)] [Platform] Query alerts from prometheus
 * [[8313](https://github.com/yugabyte/yugabyte-db/issues/8313)] [Platform] Don't download all node logs at once
 * [[8324](https://github.com/yugabyte/yugabyte-db/issues/8324)] [Platform] Disabled the query monitoring under Quries tab. (#8576)
 * [[8406](https://github.com/yugabyte/yugabyte-db/issues/8406)] [Platform] Add deviceInfo validation on universe/read replica cluster create operations
 * [[8487](https://github.com/yugabyte/yugabyte-db/issues/8487)] [Platform] Add indices on customer_task and task_info to improve Tasks page performance
 * [[8662](https://github.com/yugabyte/yugabyte-db/issues/8662)] [Platform] Release pause universe and multiple provider feature
-* [[8758](https://github.com/yugabyte/yugabyte-db/issues/8758)] [Platform] RuntimeConfigController improvements
 * [[8767](https://github.com/yugabyte/yugabyte-db/issues/8767)] [Platform] Remove Beta tag from RedHat OpenShift provider config tab.
 * [[8775](https://github.com/yugabyte/yugabyte-db/issues/8775)] [Platform] [UI] Remove Beta tag from Platform HA
 * [[8789](https://github.com/yugabyte/yugabyte-db/issues/8789)] Add support for certificate chaining in platform/yb-client.
