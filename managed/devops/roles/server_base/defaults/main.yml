@@ -11,8 +11,7 @@ update_yum_cache: false
 yum_retry_count: 5
 nproc_override_file: /etc/security/limits.d/yb-nproc.conf
 
-linux_packages:
-  - rsync
+linux_packages: []
 
 azure_packages:
   - libselinux-python
