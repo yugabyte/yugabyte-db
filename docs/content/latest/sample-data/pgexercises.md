@@ -52,7 +52,7 @@ To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root direct
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 yugabyte=#
@@ -78,7 +78,7 @@ Connect to the `exercises` database.
 yugabyte=# \c exercises
 ```
 
-```
+```output
 You are now connected to database "exercises" as user "yugabyte".
 exercises=#
 ```
