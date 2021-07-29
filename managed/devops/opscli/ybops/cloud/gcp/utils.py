@@ -13,6 +13,7 @@ import requests
 import six
 import socket
 import time
+import json
 
 
 from googleapiclient import discovery
@@ -547,7 +548,9 @@ class GoogleCloudAdmin():
         return IMAGE_NAME_PREFIX + name.upper() + \
             (IMAGE_NAME_PREEMPTIBLE_SUFFIX if preemptible else "")
 
-    def create_disk(self, zone, body):
+    def create_disk(self, zone, instance_tags, body):
+        if instance_tags is not None:
+            body.update({"labels": json.loads(instance_tags)})
         operation = self.compute.disks().insert(project=self.project,
                                                 zone=zone,
                                                 body=body).execute()
@@ -711,7 +714,7 @@ class GoogleCloudAdmin():
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None,
-                        boot_script=None, auto_delete_boot_disk=True):
+                        boot_script=None, auto_delete_boot_disk=True, tags=None):
         # Name of the project that target VPC network belongs to.
         host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
 
@@ -784,6 +787,12 @@ class GoogleCloudAdmin():
             "type": volume_type,
             "initializeParams": initial_params
         }
+
+        if tags is not None:
+            tags_dict = json.loads(tags)
+            body.update({"labels": tags_dict})
+            initial_params.update({"labels": tags_dict})
+            boot_disk_init_params.update({"labels": tags_dict})
 
         for _ in range(num_volumes):
             body["disks"].append(disk_config)

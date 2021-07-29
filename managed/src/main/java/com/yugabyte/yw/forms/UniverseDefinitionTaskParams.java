@@ -216,7 +216,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      * Check if instance tags are same as the passed in cluster.
      *
      * @param cluster another cluster to check against.
-     * @return true if the tag maps are same for aws provider, false otherwise.
+     * @return true if the tag maps are same for aws provider, false otherwise. This is because
+     *     modify tags not implemented in devops for any cloud other than AWS.
      */
     public boolean areTagsSame(Cluster cluster) {
       if (cluster == null) {
@@ -232,7 +233,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
 
       // Check if Provider supports instance tags and the instance tags match.
-      if (!Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)
+      if (!Provider.InstanceTagsModificationEnabledProviders.contains(userIntent.providerType)
           || userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
         return true;
       }

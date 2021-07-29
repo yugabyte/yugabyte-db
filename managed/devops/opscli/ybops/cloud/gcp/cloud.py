@@ -64,13 +64,13 @@ class GcpCloud(AbstractCloud):
         self.get_admin().create_instance(args.zone, body)
 
     def create_disk(self, args, body):
-        self.get_admin().create_disk(args.zone, body)
+        self.get_admin().create_disk(args.zone, args.instance_tags, body)
 
     def clone_disk(self, args, volume_id, num_disks):
         output = []
 
         for x in range(num_disks):
-            res = self.get_admin().create_disk(args.zone, body={
+            res = self.get_admin().create_disk(args.zone, args.instance_tags, body={
                 "name": "{}-disk-{}".format(args.search_pattern, x),
                 "sizeGb": args.boot_disk_size_gb,
                 "sourceDisk": volume_id})
