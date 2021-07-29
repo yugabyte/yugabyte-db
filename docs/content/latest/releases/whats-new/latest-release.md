@@ -64,20 +64,15 @@ N/A
 * [[3452](https://github.com/yugabyte/yugabyte-db/issues/3452)] [Platform] Allow TLS Encryption to be enabled on existing universes
 * [[6857](https://github.com/yugabyte/yugabyte-db/issues/6857)] [Platform] Preflight checks for encryption-at-rest keys (#8737)
 * [[7349](https://github.com/yugabyte/yugabyte-db/issues/7349)] [Platform] Support for multiple backup configs. (#7668)
-* [[7732](https://github.com/yugabyte/yugabyte-db/issues/7732)] [Platform] [UI] remove beta tag from Azure provider tab
-* [[8108](https://github.com/yugabyte/yugabyte-db/issues/8108)] [Platform] Optimize playbook run time
 * [[8141](https://github.com/yugabyte/yugabyte-db/issues/8141)] [Platform] Disable backup button is moved to the universe action list. (#8788)
 * [[8144](https://github.com/yugabyte/yugabyte-db/issues/8144)] [Platform] Validate custom certs on the node
 * [[8211](https://github.com/yugabyte/yugabyte-db/issues/8211)] [Platform] Alerts configuration per a universe basis (notification channels)
-* [[7942](https://github.com/yugabyte/yugabyte-db/issues/7942)] [[8246](https://github.com/yugabyte/yugabyte-db/issues/8246)] EncryptionAtRest json aliases and UniverseController json request
 * [[8281](https://github.com/yugabyte/yugabyte-db/issues/8281)] [Platform] Change alert and alert definition to better match Prometheus data model
 * [[8282](https://github.com/yugabyte/yugabyte-db/issues/8282)] [Platform] Generate alert rules configuration files based on configured alert definitions
 * [[8283](https://github.com/yugabyte/yugabyte-db/issues/8283)] [Platform] Query alerts from prometheus
 * [[8313](https://github.com/yugabyte/yugabyte-db/issues/8313)] [Platform] Don't download all node logs at once
 * [[8324](https://github.com/yugabyte/yugabyte-db/issues/8324)] [Platform] Disabled the query monitoring under Quries tab. (#8576)
-* [[8380](https://github.com/yugabyte/yugabyte-db/issues/8380)] [Platform] modified replicated.yml to add support origin field
 * [[8406](https://github.com/yugabyte/yugabyte-db/issues/8406)] [Platform] Add deviceInfo validation on universe/read replica cluster create operations
-* [[8433](https://github.com/yugabyte/yugabyte-db/issues/8433)] [Platform] Python script to create/get and delete universe (#8523)
 * [[8487](https://github.com/yugabyte/yugabyte-db/issues/8487)] [Platform] Add indices on customer_task and task_info to improve Tasks page performance
 * [[8662](https://github.com/yugabyte/yugabyte-db/issues/8662)] [Platform] Release pause universe and multiple provider feature
 * [[8758](https://github.com/yugabyte/yugabyte-db/issues/8758)] [Platform] RuntimeConfigController improvements
@@ -88,27 +83,15 @@ N/A
 * [[8824](https://github.com/yugabyte/yugabyte-db/issues/8824)] [Platform] S3 backup preflight check while updating the backups. (#8926)
 * [[8883](https://github.com/yugabyte/yugabyte-db/issues/8883)] [Platform] Support smart instance type upgrade for AWS
 * [[8917](https://github.com/yugabyte/yugabyte-db/issues/8917)] [Platform] Add task to sync platform with cluster state
-* [[8990](https://github.com/yugabyte/yugabyte-db/issues/8990)] [Platform] UniverseController split
-* [[8990](https://github.com/yugabyte/yugabyte-db/issues/8990)] Split Universe controller
 * [[9054](https://github.com/yugabyte/yugabyte-db/issues/9054)] [Platform] To implement AlertReceivers group entity
 * [[9056](https://github.com/yugabyte/yugabyte-db/issues/9056)] [Platform] Alert definition groups implementation + APIs for groups and templates
-* [[9090](https://github.com/yugabyte/yugabyte-db/issues/9090)] Support gzipped responses in webserver
 * [[9120](https://github.com/yugabyte/yugabyte-db/issues/9120)] [Platform] Default alert route functionality
 * [[9197](https://github.com/yugabyte/yugabyte-db/issues/9197)] [platform] Adding SSL mode to YSQL client
 * [[9331](https://github.com/yugabyte/yugabyte-db/issues/9331)] [Platform] Allow editing "Configuration Name" for backup storage provider without security credentials
-* [[9365](https://github.com/yugabyte/yugabyte-db/issues/9365)] [Platform] Optimise CertificateInfo.getAll by populating universe details in batch rather than individually
-* [[7721](https://github.com/yugabyte/yugabyte-db/issues/7721)] [[8479](https://github.com/yugabyte/yugabyte-db/issues/8479)] [Platform] Platform logs - latest logs first & fixed height issue
-* [[8108](https://github.com/yugabyte/yugabyte-db/issues/8108)] [Platform] Use mitogen to speed up ansible
-* [[8434](https://github.com/yugabyte/yugabyte-db/issues/8434)] [Platform] Activate cert_node_filename flag to the node IP.
 * [[8631](https://github.com/yugabyte/yugabyte-db/issues/8631)] [Platform] Add ability to use different certificates for node to node and client to node connections.
 * [[8632](https://github.com/yugabyte/yugabyte-db/issues/8632)] [Platform] Add ability to take custom certificates in platform for client to server connections.
 * [[8921](https://github.com/yugabyte/yugabyte-db/issues/8921)] [Platform] ReadOnly and BackupAdmin roles to change their password
-* [Platform] [CLOUDGA-422] custom boot scripts
-* [Platform] [CLOUDGA-97] VM image upgrades
-* [[9103](https://github.com/yugabyte/yugabyte-db/issues/9103)] [Platform] Update "preflight_checks.sh" from ping to tcp check. (#9133)
-* [[8769](https://github.com/yugabyte/yugabyte-db/issues/8769)] [Platform] Create AsyncReplicationRelationship table
 * [Platform] Remove commons-collections4 and use guava instead (#8856)
-* [Platform] Use .equals for UUID comparison in toggleTls
 
 #### Core Database
 
@@ -234,7 +217,6 @@ N/A
 * [[6645](https://github.com/yugabyte/yugabyte-db/issues/6645)] [Platform] AZ rendering issue when API throws bad request in case of same instance type. (#8367)
 * [[7594](https://github.com/yugabyte/yugabyte-db/issues/7594)] [Platform] Assign universe UUID instead of backup UUID to target UUID while creating delete backup task. (#8529)
 * [[7859](https://github.com/yugabyte/yugabyte-db/issues/7859)] Fix '< 1 min' uptime shown intermittently
-* [[7877](https://github.com/yugabyte/yugabyte-db/issues/7877)] [[8460](https://github.com/yugabyte/yugabyte-db/issues/8460)] [[8514](https://github.com/yugabyte/yugabyte-db/issues/8514)] [Platform] More raw json usage cleanup
 * [[8029](https://github.com/yugabyte/yugabyte-db/issues/8029)] [Platform] Fix slow queries failing to fetch on client-to-node TLS encrypted universes
 * [[8322](https://github.com/yugabyte/yugabyte-db/issues/8322)] [Platform] No HA config exists is now logged as INFO
 * [[8345](https://github.com/yugabyte/yugabyte-db/issues/8345)] [Platform] Remove hard coded cert filepath
@@ -249,7 +231,6 @@ N/A
 * [[8503](https://github.com/yugabyte/yugabyte-db/issues/8503)] [Platform] Fix Add instance modal form to allow for adding instances in isolated region case.
 * [[8525](https://github.com/yugabyte/yugabyte-db/issues/8525)] [Platform] Audit migration failed on AWS portal
 * [[8539](https://github.com/yugabyte/yugabyte-db/issues/8539)] [Platform] [UI] remove toast about auth token expiration
-* [[8540](https://github.com/yugabyte/yugabyte-db/issues/8540)] [Platform] Fix the allowed actions logic
 * [[8541](https://github.com/yugabyte/yugabyte-db/issues/8541)] [Platform] Returns bad request as a response when trying to create a provider with an existing name
 * [[8697](https://github.com/yugabyte/yugabyte-db/issues/8697)] [Platform] Fix client certs not being included when adding custom CA cert.
 * [[8725](https://github.com/yugabyte/yugabyte-db/issues/8725)] Add uid to GetLoggedInUser error message
@@ -267,20 +248,13 @@ N/A
 * [[9080](https://github.com/yugabyte/yugabyte-db/issues/9080)] [Platform] Fix certificate value being used for client to server conns
 * [[9109](https://github.com/yugabyte/yugabyte-db/issues/9109)] Deduplicate hostnames in PickResolvedAddress
 * [[9113](https://github.com/yugabyte/yugabyte-db/issues/9113)] [[9114](https://github.com/yugabyte/yugabyte-db/issues/9114)] [Platform] Populate the task id field in the backup table
-* [[9162](https://github.com/yugabyte/yugabyte-db/issues/9162)] Fix stack overflow in filtering iterator
-* [[9165](https://github.com/yugabyte/yugabyte-db/issues/9165)] [Platform] Minor fixes to edit universe script
-* [[9190](https://github.com/yugabyte/yugabyte-db/issues/9190)] [Platform] - Create Backup Failing on 2.7 portal
 * [[9198](https://github.com/yugabyte/yugabyte-db/issues/9198)] [Platform] Alerts: Repeat notifications after previous failures + code cleanup
-* [[9205](https://github.com/yugabyte/yugabyte-db/issues/9205)] Fix health check parse failing on universe overview.
 * [[9209](https://github.com/yugabyte/yugabyte-db/issues/9209)] [Platform] Fix downloadNodeLogs and add Unit tests for universe
 * [[9209](https://github.com/yugabyte/yugabyte-db/issues/9209)] [Platform] Use current http execution context to do work so that we can use response object.
-* [[9260](https://github.com/yugabyte/yugabyte-db/issues/9260)] [Platform] Fix Health Check UI not rendering
 * [[9263](https://github.com/yugabyte/yugabyte-db/issues/9263)] [Platform] Node status shows as Unreachable, after restarting a node process
 * [[9292](https://github.com/yugabyte/yugabyte-db/issues/9292)] [Platform] Fix preflight check for backup configurations
 * [[9334](https://github.com/yugabyte/yugabyte-db/issues/9334)] [Platform] Fix provider creation in yugabundle by using correct version of python
-* [Platform] [CLOUDGA-422] fix formatting
 * [Platform] [UI] Fixed connect button for K8s-based universes. (#8404)
-* [Platform] Capture all failed ansible logs in stdout instead of just the first
 
 #### Core database
 
