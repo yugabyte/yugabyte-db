@@ -135,7 +135,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 
   *Example-*
 
-  For GKE lower then v1.17
+  For GKE lower than v1.17
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
