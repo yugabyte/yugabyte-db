@@ -241,8 +241,6 @@ N/A
 * [[8399](https://github.com/yugabyte/yugabyte-db/issues/8399)] [Platform] Fix read replica cluster addition failure
 * [[8400](https://github.com/yugabyte/yugabyte-db/issues/8400)] [Platform] when universe is in pending state (inprogress) upgrade on the card should also be disabled
 * [[8426](https://github.com/yugabyte/yugabyte-db/issues/8426)] [Platform] Alert spam for message "Clock Skew Alert Resolved"
-* [[8426](https://github.com/yugabyte/yugabyte-db/issues/8426)] [Platform] Alert spam for message "Clock Skew Alert Resolved"
-* [[8426](https://github.com/yugabyte/yugabyte-db/issues/8426)] [Platform] Alert spam for message "Clock Skew Alert Resolved"
 * [[8460](https://github.com/yugabyte/yugabyte-db/issues/8460)] [Platform] Add proxy request timeout
 * [[8461](https://github.com/yugabyte/yugabyte-db/issues/8461)] [Platform] Added fix for redirecting user to intended url. (#8520)
 * [[8462](https://github.com/yugabyte/yugabyte-db/issues/8462)] [Platform] Added preflight check to check if there is adequate disk space before installation
