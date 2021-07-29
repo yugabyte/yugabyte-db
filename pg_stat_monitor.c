@@ -152,6 +152,7 @@ static pgssQueryEntry *pgss_store_query_info(uint64 bucketid,
 					  uint64 dbid,
 					  uint64 userid,
 					  uint64 ip,
+					  uint64 appid,
 					  const char *query,
 					  uint64 query_len,
 					  pgssStoreKind kind);
@@ -210,6 +211,9 @@ pgss_store_query(uint64 queryid,
 #if PG_VERSION_NUM < 140000
 static uint64 get_query_id(JumbleState *jstate, Query *query);
 #endif
+
+/* Daniel J. Bernstein's hash algorithm: see http://www.cse.yorku.ca/~oz/hash.html */
+static uint64 djb2_hash(unsigned char *str, size_t len);
 /*
  * Module load callback
  */
@@ -1172,7 +1176,8 @@ pgss_get_entry(uint64 bucket_id,
 			   uint64 dbid,
 			   uint64 queryid,
 			   uint64 ip,
-			   uint64 planid)
+			   uint64 planid,
+			   uint64 appid)
 {
 	pgssEntry       *entry;
 	pgssHashKey		key;
@@ -1185,6 +1190,7 @@ pgss_get_entry(uint64 bucket_id,
 	key.queryid = queryid;
 	key.ip = pg_get_client_addr();
 	key.planid = planid;
+	key.appid = appid;
 
 	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
 	if(!entry)
@@ -1338,12 +1344,15 @@ pgss_store(uint64 queryid,
 {
 	pgssEntry		*entry;
 	pgssSharedState *pgss = pgsm_get_ss();
+	char			application_name[APPLICATIONNAME_LEN];
+	int    			application_name_len = pg_get_application_name(application_name);
 	bool 			reset = false;
 	uint64 			bucketid;
 	uint64 			userid = GetUserId();
 	uint64 			dbid = MyDatabaseId;
 	uint64 			ip = pg_get_client_addr();
 	uint64			planid = plan_info ? plan_info->planid: 0;
+	uint64			appid = djb2_hash((unsigned char *)application_name, application_name_len);
 	char            *comments;
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
@@ -1372,7 +1381,7 @@ pgss_store(uint64 queryid,
 		case PGSS_PLAN:
 		{
 			pgssQueryEntry *query_entry;
-			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, query, strlen(query), kind);
+			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, appid, query, strlen(query), kind);
 			if (query_entry == NULL)
 				elog(DEBUG1, "pg_stat_monitor: out of memory");
 			break;
@@ -1382,13 +1391,13 @@ pgss_store(uint64 queryid,
 		case PGSS_FINISHED:
 		{
 			pgssQueryEntry *query_entry;
-			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, query, strlen(query), kind);
+			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, appid, query, strlen(query), kind);
 			if (query_entry == NULL)
 			{
 				elog(DEBUG1, "pg_stat_monitor: out of memory");
 				break;
 			}
-			entry = pgss_get_entry(bucketid, userid, dbid, queryid, ip, planid);
+			entry = pgss_get_entry(bucketid, userid, dbid, queryid, ip, planid, appid);
 			if (entry == NULL)
 			{
 				elog(DEBUG1, "pg_stat_monitor: out of memory");
@@ -1535,6 +1544,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64		  userid = entry->key.userid;
 		uint64        ip = entry->key.ip;
 		uint64        planid = entry->key.planid;
+		uint64        appid = entry->key.appid;
 		unsigned char *buf = pgss_qbuf[bucketid];
 		char 		  *query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
 #if PG_VERSION_NUM < 140000
@@ -1542,7 +1552,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 #else
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
 #endif
-		query_entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip);
+		query_entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip, appid);
 		if (query_entry == NULL)
 			continue;
 
@@ -2851,6 +2861,7 @@ pgss_store_query_info(uint64 bucketid,
 					  uint64 dbid,
 					  uint64 userid,
 					  uint64 ip,
+					  uint64 appid,
 					  const char *query,
 					  uint64 query_len,
 					  pgssStoreKind kind)
@@ -2865,11 +2876,11 @@ pgss_store_query_info(uint64 bucketid,
 	/* Already have query in the shared buffer, there
 	 * is no need to add that again.
 	 */
-	entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip);
+	entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip, appid);
 	if (entry)
 		return entry;
 
-	entry = hash_create_query_entry(bucketid, queryid, dbid, userid, ip);
+	entry = hash_create_query_entry(bucketid, queryid, dbid, userid, ip, appid);
 	if (!entry)
 		return NULL;
 	entry->state = kind;
@@ -3226,3 +3237,13 @@ get_query_id(JumbleState *jstate, Query *query)
 	return queryid;
 }
 #endif
+
+static uint64 djb2_hash(unsigned char *str, size_t len)
+{
+	uint64 hash = 5381LLU;
+
+    while (len--)
+        hash = ((hash << 5) + hash) ^ *str++; // hash(i - 1) * 33 ^ str[i]
+
+    return hash;
+}

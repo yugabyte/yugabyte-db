@@ -178,6 +178,7 @@ typedef struct pgssQueryHashKey
 	uint64		userid;			/* user OID */
 	uint64		dbid;			/* database OID */
 	uint64		ip;				/* client ip address */
+	uint64		appid;			/* hash of application name */
 } pgssQueryHashKey;
 
 typedef struct pgssQueryEntry
@@ -201,6 +202,7 @@ typedef struct pgssHashKey
 	uint64		dbid;			/* database OID */
 	uint64		ip;				/* client ip address */
 	uint64		planid;			/* plan identifier */
+	uint64		appid;			/* hash of application name */
 } pgssHashKey;
 
 typedef struct QueryInfo
@@ -388,8 +390,8 @@ Size hash_memsize(void);
 
 int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt);
 uint64 read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query);
-pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip);
-pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip);
+pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
+pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 void pgss_startup(void);
 void set_qbuf(int i, unsigned char *);
 

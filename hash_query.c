@@ -268,7 +268,7 @@ hash_entry_reset()
 
 /* Caller must accuire lock */
 pgssQueryEntry*
-hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip)
+hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid)
 {
     pgssQueryHashKey    key;
 	pgssQueryEntry      *entry;
@@ -279,6 +279,7 @@ hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 us
 	key.dbid = dbid;
 	key.userid = userid;
 	key.ip = ip;
+	key.appid = appid;
 
 	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_ENTER, &found);
 	return entry;
@@ -286,7 +287,7 @@ hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 us
 
 /* Caller must accuire lock */
 pgssQueryEntry*
-hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip)
+hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid)
 {
     pgssQueryHashKey    key;
 	pgssQueryEntry      *entry;
@@ -297,6 +298,7 @@ hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 user
 	key.dbid = dbid;
 	key.userid = userid;
 	key.ip = ip;
+	key.appid = appid;
 
     /* Lookup the hash table entry with shared lock. */
 	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_FIND, &found);
