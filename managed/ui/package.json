@@ -88,7 +88,7 @@
     "react-dom": "16.13.1",
     "react-dropzone": "3.13.4",
     "react-fa": "4.2.0",
-    "react-hook-form": "6.8.4",
+    "react-hook-form": "6.15.8",
     "react-intl": "2.9.0",
     "react-leaflet": "1.9.1",
     "react-measure": "1.4.7",
