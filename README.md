@@ -4,13 +4,14 @@
 ![pg14-test](https://github.com/percona/pg_stat_monitor/workflows/pg14-test/badge.svg)
 
 ## What is pg_stat_monitor?
-The **pg_stat_monitor** is a **PostgreSQL Query Performance Monitoring** tool, based on PostgreSQL's contrib module ``pg_stat_statements``. PostgreSQL’s pg_stat_statements provides the basic statistics, which is sometimes not enough. The major shortcoming in pg_stat_statements is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. 
+
+The **pg_stat_monitor** is a **Query Performance Monitoring** tool for [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL. **pg_stat_monitor** is based on PostgreSQL's contrib module ``pg_stat_statements``. pg_stat_statements provides the basic statistics, which is sometimes not enough. The major shortcoming in pg_stat_statements is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. 
 
 **pg_stat_monitor** is developed on the basis of pg_stat_statements as its more advanced replacement. It provides all the features of pg_stat_statements plus its own feature set.  
 
 ### How pg_stat_monitor works?
 
-pg_stat_monitor accumulates the information in the form of buckets. All the aggregated information is bucket based. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). When a bucket time elapses, pg_stat_monitor resets all the statistics and switches to the next bucket. After the last bucket elapses, pg_stat_monitor goes back to the first bucket. All the data on the first bucket will vanish; therefore, users must read the buckets before that to not lose the data.
+``pg_stat_monitor`` accumulates the information in the form of buckets. All the aggregated information is bucket based. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). When a bucket time elapses, ``pg_stat_monitor`` resets all the statistics and switches to the next bucket. After the last bucket elapses, ``pg_stat_monitor`` goes back to the first bucket. All the data on the first bucket is cleared out with new writes; therefore, to not lose the data, users must read the buckets before that.
 
 ## Documentation
 1. [Supported PostgreSQL Versions](#supported-postgresql-versions)
@@ -23,21 +24,26 @@ pg_stat_monitor accumulates the information in the form of buckets. All the aggr
 9. [Copyright Notice](#copyright-notice)
 
 ## Supported PostgreSQL Versions
-The ``pg_stat_monitor`` should work on the latest version of PostgreSQL but is only tested with these PostgreSQL versions:
+The ``pg_stat_monitor`` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL but is only tested with these versions:
 
-| Distribution            |  Version       | Supported          |
-| ------------------------|----------------|--------------------|
-| PostgreSQL              | Version < 11   | :x:                |
-| PostgreSQL              | Version 11     | :heavy_check_mark: |
-| PostgreSQL              | Version 12     | :heavy_check_mark: |
-| PostgreSQL              | Version 13     | :heavy_check_mark: |
-| Percona Distribution    | Version < 11   | :x:                |
-| Percona Distribution    | Version 11     | :heavy_check_mark: |
-| Percona Distribution    | Version 12     | :heavy_check_mark: |
-| Percona Distribution    | Version 13     | :heavy_check_mark: |
+| Distribution                        | Version | Supported          |
+| ------------------------------------|---------|--------------------|
+| PostgreSQL                          |  < 11   | :x:                |
+| PostgreSQL                          |  11     | :heavy_check_mark: |
+| PostgreSQL                          |  12     | :heavy_check_mark: |
+| PostgreSQL                          |  13     | :heavy_check_mark: |
+| Percona Distribution for PostgreSQL |  < 11   | :x:                |
+| [Percona Distribution for PostgreSQL](https://www.percona.com/downloads/percona-postgresql-11/)               |  11     | :heavy_check_mark: |
+| [Percona Distribution for PostgreSQL](https://www.percona.com/downloads/percona-postgresql-12/)               |  12     | :heavy_check_mark: |
+| [Percona Distribution for PostgreSQL](https://www.percona.com/downloads/percona-postgresql-13/)               |  13     | :heavy_check_mark: |
 
 ## Installation
-``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. Refer to [Percona Documentation](https://www.percona.com/doc/postgresql/LATEST/installing.html) for installation instructions. 
+
+You can install ``pg_stat_monitor`` from [Percona repositories](#installing-from-percona-repositories) and from [source code](#installing-from-source-code).
+
+### Installing from Percona repositories
+
+``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. To install ``pg_stat_monitor``, follow [the installation instructions](https://www.percona.com/doc/postgresql/LATEST/installing.html). 
 
 ### Installing from PGXN
 
@@ -52,7 +58,7 @@ pgxn install pg_stat_monitor
 
 ### Installing from source code
 
-You can download the source code of the latest release of ``pg_stat_monitor``  from [this GitHub page](https://github.com/Percona/pg_stat_monitor/releases) or using git:
+You can download the source code of the latest release of ``pg_stat_monitor``  from [the releases page on GitHub](https://github.com/Percona/pg_stat_monitor/releases) or using git:
 ```sh
 git clone git://github.com/Percona/pg_stat_monitor.git
 ```
@@ -65,7 +71,7 @@ make USE_PGXS=1 install
 ```
 
 ## Setup
-``pg_stat_monitor`` cannot be enabled in your running PostgreSQL instance. ``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restarting the PostgreSQL instance.
+``pg_stat_monitor`` cannot be enabled in your running ``postgresql`` instance. ``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restarting the ``postgresql`` instance.
 
 You can set the  ``pg_stat_monitor`` extension in the ``postgresql.conf`` file.
 
@@ -77,7 +83,7 @@ shared_preload_libraries = 'pg_stat_monitor' # (change requires restart)
 #session_preload_libraries = ''
 ```
 
-Or you can set it from `psql` terminal using the ``alter system`` command.
+Or you can set it from `psql` terminal using the ``ALTER SYSTEM`` command.
 
 ```sql
 ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
@@ -130,17 +136,17 @@ To learn more about ``pg_stat_monitor`` configuration and usage, see [User Guide
 
 ## Submitting Bug Reports
 
-If you found a bug in ``pg_stat_monitor``, please submit the report to the [Jira issue tracker](https://jira.percona.com/projects/PG/issues)
+If you found a bug in ``pg_stat_monitor``, please submit the report to the [Jira issue tracker](https://jira.percona.com/projects/PG/issues).
 
 Start by searching the open tickets for a similar report. If you find that someone else has already reported your issue, then you can upvote that report to increase its visibility.
 
 If there is no existing report, submit your report following these steps:
 
-Sign in to [Jira issue tracker](https://jira.percona.com/projects/PG/issues). You will need to create an account if you do not have one.
+1. Sign in to [Jira issue tracker](https://jira.percona.com/projects/PG/issues). You will need to create an account if you do not have one.
 
-In the *Summary*, *Description*, *Steps To Reproduce*, *Affects Version* fields describe the problem you have detected. 
+2. In the *Summary*, *Description*, *Steps To Reproduce*, *Affects Version* fields describe the problem you have detected. 
 
-As a general rule of thumb, try to create bug reports that are:
+3. As a general rule of thumb, try to create bug reports that are:
 
 - Reproducible: describe the steps to reproduce the problem.
 
@@ -151,8 +157,8 @@ As a general rule of thumb, try to create bug reports that are:
 
 ## Copyright Notice
 
-Portions Copyright © 2018-2020, Percona LLC and/or its affiliates
+Portions Copyright © 2018-2021, Percona LLC and/or its affiliates
 
-Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
 
 Portions Copyright (c) 1994, The Regents of the University of California
