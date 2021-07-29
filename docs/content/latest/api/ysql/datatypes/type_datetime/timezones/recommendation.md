@@ -1,8 +1,8 @@
 ---
-title: Recommended practice for specifying the UTC offset [YSQL]
-headerTitle: Recommended practice for specifying the UTC offset
-linkTitle: Recommended practice
-description: Recommends a practice to for specifying the offset from the UTC Time Standard safely. [YSQL]
+title: Recommended practise for specifying the UTC offset [YSQL]
+headerTitle: Recommended practise for specifying the UTC offset
+linkTitle: Recommended practise
+description: Recommends a practise to for specifying the offset from the UTC Time Standard safely. [YSQL]
 menu:
   latest:
     identifier: recommendation
@@ -163,7 +163,7 @@ end;
 $body$;
 ```
 
-Should you be concerned about the performance of this check, you can rely on the fact that the limits for acceptable _interval_ values that it discovers on every invocation can simply be declared as _constants_ in the functions source code. The safest way to do this is to write a generator procedure to create [or replace] the _assert_acceptable_timezone_interval()_ procedure and to document the practice that requires that this generator be run whenever the YugabyteDB version (or the PostgreSQL version) is created or changed. (Your practice rule would need to be stated more carefully if you allow changes to the configuration files that determine the contents that the _pg_timezone_names_ view and the _pg_timezone_abbrevs_ view expose.)
+Should you be concerned about the performance of this check, you can rely on the fact that the limits for acceptable _interval_ values that it discovers on every invocation can simply be declared as _constants_ in the functions source code. The safest way to do this is to write a generator procedure to create [or replace] the _assert_acceptable_timezone_interval()_ procedure and to document the practise that requires that this generator be run whenever the YugabyteDB version (or the PostgreSQL version) is created or changed. (Your practise rule would need to be stated more carefully if you allow changes to the configuration files that determine the contents that the _pg_timezone_names_ view and the _pg_timezone_abbrevs_ view expose.)
 
 ## The set_timezone() procedure overloads
 
