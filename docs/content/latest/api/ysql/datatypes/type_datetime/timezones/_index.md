@@ -51,4 +51,4 @@ The _extended_timezone_names_ view joins the _tz&nbsp;database_ data to the _pg_
 
 - [Three syntax contexts that use the specification of a _UTC offset_](./syntax-contexts-to-spec-offset/)
 
-- [Recommended practice for specifying the _UTC offset_](./recommendation/)
+- [Recommended practise for specifying the _UTC offset_](./recommendation/)

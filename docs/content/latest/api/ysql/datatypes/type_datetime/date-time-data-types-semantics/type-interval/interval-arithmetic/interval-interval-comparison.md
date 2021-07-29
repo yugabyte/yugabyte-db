@@ -92,7 +92,7 @@ select
 
 It finishes silently, showing that the _assert_ holds, and produces this result:
 
-```
+```output
    e1    |   e2    
 ---------+---------
  i1 = i2 | i1 = i2

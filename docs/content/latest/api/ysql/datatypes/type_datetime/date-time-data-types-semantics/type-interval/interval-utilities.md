@@ -165,8 +165,8 @@ with
 select
   to_char(orig,      '9999.999999999999999')  as orig,
   to_char(recovered, '9999.999999999999999')  as recovered,
-  (recovered =  orig)::text              as native_equals,
-  (recovered ~= orig)::text              as approx_equals
+  (recovered =  orig)::text                   as native_equals,
+  (recovered ~= orig)::text                   as approx_equals
 from c3;
 ```
 

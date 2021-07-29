@@ -564,12 +564,29 @@ Here is the best practical approach to producing a coherent report:
 - Program your own stopwatch explicitly when you do systematic timing tests.
 - Program a function (and especially a table function) from which you can `SELECT` to produce output from a PL/pgSQL execution.
 
-The explicitly programmed stopwatch needs to implement a memo for noting the wall-clock time when it's started. While a (temporary) table would work, this would bring an installation-time nuisance cost and a Heisenberg effect. It's better, therefore, to use this device to start the stopwatch:
+The explicitly programmed stopwatch needs to read the wall-clock time. Here's how to do it:
+
+```plpgsql
+select extract(epoch from clock_timestamp());
+```
+
+This returns the number of seconds, as a _double precision_ value, since the start of the so-called epoch—_00:00_ on _1-Jan-1970_. Tautologically, _extract(epoch...)_ from this moment returns zero:
+
+```plpgsql
+select (
+    extract(epoch from '1970-01-01 00:00:00 UTC'::timestamptz) =
+    0::double precision
+  )::text;
+```
+
+The result is _true_. Notice that though the _clock_timestamp()_ built-in function returns a _timestamptz_ value, the value that _extract(epoch from timestamptz_value)_ returns is unaffected by the session's _timezone_ setting. This is explained in the section [The plain timestamp and timestamptz data types](../../../../datatypes/type_datetime/date-time-data-types-semantics/type-timestamp/).
+
+The stopwatch also needs to use a memo for noting the wall-clock time when it's started. While a (temporary) table would work, this would bring an installation-time nuisance cost and a Heisenberg effect. It's better, therefore, to implement the memo as a user-defined run-time parameter:
 
 ```plpgsql
 do $body$
 begin
-  execute 'set stopwatch.start_time to '''||clock_timestamp()::text||'''';
+  execute 'set stopwatch.start_time to '''||extract(epoch from clock_timestamp())::text||'''';
 end;
 $body$;
 ```
@@ -581,70 +598,154 @@ It's up to you to adopt a naming convention so that no other components of your 
 Then, later, you can read the stopwatch like this:
 
 ```plpgsql
-select (clock_timestamp() - current_setting('stopwatch.start_time')::timestamptz)::interval;
+select to_char(
+  (
+    extract(epoch from clock_timestamp()) -
+    current_setting('stopwatch.start_time')::double precision
+  ),
+  '9999.999')
+  as "elapsed seconds";
 ```
 
-**Note:** Try `select pg_typeof(clock_timestamp())`. The result is `timestamp with time zone`. The overload of the subtraction operator for a pair of `timestamptz	` values takes proper account of the time zone of each value. In other words, it returns the right result even if the session time zone is changed between  when the stopwatch is started and when it is read.
-
-Of course, it's best to encapsulate starting and reading the stopwatch. The bulk of the code formats the elapsed time for best human readability by taking account of the magnitude of the value—just as the output from `\timing off` is formatted.
+Of course, it's best to encapsulate starting and reading the stopwatch. The bulk of the code formats the elapsed time for best human readability by taking account of the magnitude of the value—just as the output after setting `\timing on` is formatted.
 
 ##### `cr-stopwatch.sql`
 
 ```plpgsql
 drop procedure if exists start_stopwatch() cascade;
-drop function if exists stopwatch_reading() cascade;
 
 create procedure start_stopwatch()
-language plpgsql
+  language plpgsql
 as $body$
 declare
-  -- Make a memo of the current wall-clock time.
-  start_time constant text not null := clock_timestamp()::text;
+  -- Make a memo of the current wall-clock time as (real) seconds
+  -- since midnight on 1-Jan-1970.
+  start_time constant text not null := extract(epoch from clock_timestamp())::text;
 begin
   execute 'set stopwatch.start_time to '''||start_time||'''';
 end;
 $body$;
 
-create function stopwatch_reading()
+drop function if exists fmt(numeric, text) cascade;
+drop function if exists fmt(int, text) cascade;
+
+create function fmt(n in numeric, template in text)
   returns text
-  -- It's critical to use "volatile". Else wrong results.
+  stable
+language plpgsql
+as $body$
+begin
+  return ltrim(to_char(n, template));
+end;
+$body$;
+
+create function fmt(i in int, template in text)
+  returns text
+  stable
+language plpgsql
+as $body$
+begin
+  return ltrim(to_char(i, template));
+end;
+$body$;
+
+drop function if exists duration_as_text(numeric) cascade;
+
+create function duration_as_text(t in numeric)
+  returns text
+  stable
+language plpgsql
+as $body$
+declare
+  ms_pr_sec         constant numeric not null := 1000.0;
+  secs_pr_min       constant numeric not null := 60.0;
+  mins_pr_hour      constant numeric not null := 60.0;
+  secs_pr_hour      constant numeric not null := mins_pr_hour*secs_pr_min;
+  secs_pr_day       constant numeric not null := 24.0*secs_pr_hour;
+
+  confidence_limit  constant numeric not null := 0.02;
+  ms_limit          constant numeric not null := 5.0;
+  cs_limit          constant numeric not null := 10.0;
+
+  result                     text    not null := '';
+begin
+  case
+    when t < confidence_limit then
+      result := 'less than ~20 ms';
+
+    when t >= confidence_limit and t < ms_limit then
+      result := fmt(t*ms_pr_sec, '9999')||' ms';
+
+    when t >= ms_limit and t < cs_limit then
+      result := fmt(t, '90.99')||' ss';
+
+    when t >= cs_limit and t < secs_pr_min then
+      result := fmt(t, '99.9')||' ss';
+
+    when t >= secs_pr_min and t < secs_pr_hour then
+      declare
+        ss   constant numeric not null := round(t);
+        mins constant int     not null := trunc(ss/secs_pr_min);
+        secs constant int     not null := ss - mins*secs_pr_min;
+      begin
+        result := fmt(mins, '09')||':'||fmt(secs, '09')||' mi:ss';
+      end;
+
+    when t >= secs_pr_hour and t < secs_pr_day then
+      declare
+        mi    constant numeric not null := round(t/secs_pr_min);
+        hours constant int     not null := trunc(mi/mins_pr_hour);
+        mins  constant int     not null := round(mi - hours*mins_pr_hour);
+      begin
+        result := fmt(hours, '09')||':'||fmt(mins,  '09')||' hh:mi';
+      end;
+
+    when t >= secs_pr_day then
+      declare
+        days  constant int     not null := trunc(t/secs_pr_day);
+        mi    constant numeric not null := (t - days*secs_pr_day)/secs_pr_min;
+        hours constant int     not null := trunc(mi/mins_pr_hour);
+        mins  constant int     not null := round(mi - hours*mins_pr_hour);
+      begin
+        result := fmt(days,  '99')||' days '||
+                  fmt(hours, '09')||':'||fmt(mins,  '09')||' hh:mi';
+      end;
+  end case;
+  return result;
+end;
+$body$;
+
+drop function if exists stopwatch_reading_as_dp() cascade;
+
+create function stopwatch_reading_as_dp()
+  returns double precision
+  -- It's critical to use "volatile" because "clock_timestamp()" is volatile.
+  -- "volatile" is the default. Spelled out here for self-doc.
   volatile
 language plpgsql
 as $body$
 declare
-  -- Read the starting wall-clock time from the memo.
-  start_time constant timestamptz not null := current_setting('stopwatch.start_time');
-
-  -- Read the current wall-clock time.
-  curr_time constant timestamptz not null := clock_timestamp();
-  diff constant interval not null := curr_time - start_time;
-
-  hours    constant numeric := extract(hours   from diff);
-  minutes  constant numeric := extract(minutes from diff);
-  seconds  constant numeric := extract(seconds from diff);
+  start_time  constant double precision not null := current_setting('stopwatch.start_time');
+  curr_time   constant double precision not null := extract(epoch from clock_timestamp());
+  diff        constant double precision not null := curr_time - start_time;
 begin
-  return
-    case
-      when seconds < 0.020
-        and minutes < 1
-        and hours < 1                               then 'less than ~20 ms.'
+  return diff;
+end;
+$body$;
 
-      when seconds between 0.020 and 2.0
-        and minutes < 1
-        and hours < 1                               then ltrim(to_char(round(seconds*1000), '999999'))||' ms.'
+drop function if exists stopwatch_reading() cascade;
 
-      when seconds between 2.0 and  59.999
-        and minutes < 1
-        and hours < 1                               then ltrim(to_char(seconds, '99.9'))||' sec.'
-
-      when minutes between 1 and 59
-        and hours < 1                               then ltrim(to_char(minutes, '99'))||':'||
-                                                         ltrim(to_char(seconds, '09'))||' min.'
-
-      else                                               ltrim(to_char(hours,   '09'))||':'||
-                                                         ltrim(to_char(minutes, '09'))||':'||
-                                                         ltrim(to_char(seconds, '09'))||' hours'
-    end;
+create function stopwatch_reading()
+  returns text
+  -- It's critical to use "volatile" because "stopwatch_reading()" is volatile.
+  -- "volatile" is the default. Spelled out here for self-doc.
+  volatile
+language plpgsql
+as $body$
+declare
+  t constant text not null := duration_as_text(stopwatch_reading_as_dp()::numeric);
+begin
+  return t;
 end;
 $body$;
 ```
@@ -652,24 +753,16 @@ $body$;
 Test the stopwatch like this:
 
 ```plpgsl
-set session time zone 'US/Eastern';
-show timezone;
-
 call start_stopwatch();
-select pg_sleep(1.234);
-set session time zone 'US/Pacific';
-select stopwatch_reading();
-
-show timezone;
+select pg_sleep(17.5);
+select 'reading after pg_sleep(17.5): '||stopwatch_reading();
 ```
 
 Here is a typical result:
 
 ```
- stopwatch_reading 
--------------------
- 1241 ms.
+reading after pg_sleep(17.5): 17.5 ss
 ```
 
-The reported value inevitably suffers from a small client-server round trip delay and from noise. But this is unimportant for readings of a few seconds or longer.
+The reported value inevitably suffers from a small client-server round trip delay. But, as this result shows, this is unimportant for readings of a few seconds or longer. More significantly, timings are always subject to a stochastic variability—especially in a distributed SQL database like YugabyteDB.
 

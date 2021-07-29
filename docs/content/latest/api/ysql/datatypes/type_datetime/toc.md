@@ -40,7 +40,7 @@ This section explains: the purpose and significance of the _set timezone_ SQL st
     - **[Rule 4](../timezones/ways-to-spec-offset/name-res-rules/rule-4/)** — It's is resolved first in _pg_timezone_abbrevs.abbrev_ and, only if this fails, then in _pg_timezone_names.name_. This applies only in those syntax contexts where _pg_timezone_abbrevs.abbrev_ is a candidate for the resolution—so not for _set timezone_, which looks only in _pg_timezone_names.name_.
     - **[Helper functions](../timezones/ways-to-spec-offset/name-res-rules/helper-functions/)**
 - **[Three syntax contexts that use the specification of a UTC offset](../timezones/syntax-contexts-to-spec-offset/)**
-- **[Recommended practice for specifying the UTC offset](../timezones/recommendation/)**
+- **[Recommended practise for specifying the UTC offset](../timezones/recommendation/)**
 
 ## [Typecasting between date-time values and text values](../typecasting-between-date-time-and-text/)
 
