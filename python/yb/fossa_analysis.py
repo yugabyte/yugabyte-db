@@ -91,7 +91,7 @@ def main():
     modules = fossa_yml_data['analyze']['modules']
     # fossa v2.6.1 does not pick up project name from config file version 2 format.
     # TODO: update to config file version 3
-    fossa_cmd_line.extend(["--project", fossa_yml_data['cli']['project']])
+    project_option = ["--project", fossa_yml_data['cli']['project']]
 
     thirdparty_dir = get_thirdparty_dir()
     fossa_modules_path = os.path.join(thirdparty_dir, 'fossa_modules.yml')
@@ -142,7 +142,16 @@ def main():
     elapsed_time_sec = time.time() - start_time_sec
     logging.info("Generated the effective FOSSA configuration file in %.1f sec", elapsed_time_sec)
     logging.info(f"Running command: {shlex_join(fossa_cmd_line)})")
-    subprocess.check_call(fossa_cmd_line)
+    subprocess.check_call(fossa_cmd_line + project_option)
+
+    # Platform project
+    fossa_yml_plat_path = os.path.join(YB_SRC_ROOT, '.fossa-platform.yml')
+    fossa_yml_plat_data = load_yaml_file(fossa_yml_plat_path)
+    project_plat_option = ["--project", fossa_yml_plat_data['cli']['project']]
+
+    write_yaml_file(fossa_yml_plat_data, effective_fossa_yml_path)
+
+    subprocess.check_call(fossa_cmd_line + project_plat_option)
 
 
 if __name__ == '__main__':
