@@ -2,33 +2,35 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.*;
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.databind.JsonNode;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-
+import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @Entity
+@ApiModel(description = "Scheduled backup")
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
@@ -46,12 +48,15 @@ public class Schedule extends Model {
 
   private static final int MAX_FAIL_COUNT = 3;
 
-  @Id public UUID scheduleUUID;
+  @Id
+  @ApiModelProperty(value = "Schedule UUID", accessMode = READ_ONLY)
+  public UUID scheduleUUID;
 
   public UUID getScheduleUUID() {
     return scheduleUUID;
   }
 
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   @Column(nullable = false)
   private UUID customerUUID;
 
@@ -59,6 +64,7 @@ public class Schedule extends Model {
     return customerUUID;
   }
 
+  @ApiModelProperty(value = "Number of failed schedule", accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
@@ -66,6 +72,7 @@ public class Schedule extends Model {
     return failureCount;
   }
 
+  @ApiModelProperty(value = "Frequency of the schedule", accessMode = READ_WRITE)
   @Column(nullable = false)
   private long frequency;
 
@@ -73,6 +80,7 @@ public class Schedule extends Model {
     return frequency;
   }
 
+  @ApiModelProperty(value = "Schedule task params", accessMode = READ_WRITE)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
@@ -81,6 +89,7 @@ public class Schedule extends Model {
     return taskParams;
   }
 
+  @ApiModelProperty(value = "Type of the task to be schedules", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
@@ -89,6 +98,7 @@ public class Schedule extends Model {
     return taskType;
   }
 
+  @ApiModelProperty(value = "Status of the task", accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private State status = State.Active;
@@ -97,7 +107,9 @@ public class Schedule extends Model {
     return status;
   }
 
-  @Column private String cronExpression;
+  @Column
+  @ApiModelProperty(value = "Cron expression for schedule")
+  private String cronExpression;
 
   public String getCronExpression() {
     return cronExpression;

@@ -2,14 +2,20 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.annotations.VisibleForTesting;
+import com.google.inject.Singleton;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.Map.Entry;
-
 import javax.inject.Inject;
 import javax.mail.Authenticator;
 import javax.mail.Message;
@@ -23,20 +29,9 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
-
-import com.typesafe.config.Config;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.annotations.VisibleForTesting;
-import com.google.inject.Singleton;
-import com.yugabyte.yw.common.alerts.SmtpData;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-
 import play.libs.Json;
 
 @Singleton
@@ -265,7 +260,7 @@ public class EmailHelper {
    * @param separators
    * @return
    */
-  public static Collection<String> splitEmails(String emails, String separators) {
+  public static List<String> splitEmails(String emails, String separators) {
     List<String> result = new ArrayList<>();
     int startPosition = 0;
     int currPosition = 0;

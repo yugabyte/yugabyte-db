@@ -9,15 +9,22 @@
  */
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.controllers.TokenAuthenticator.API_TOKEN_HEADER;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.Users;
-import io.swagger.annotations.*;
+import io.swagger.annotations.ApiKeyAuthDefinition;
+import io.swagger.annotations.Contact;
+import io.swagger.annotations.ExternalDocs;
+import io.swagger.annotations.Info;
+import io.swagger.annotations.License;
+import io.swagger.annotations.SecurityDefinition;
+import io.swagger.annotations.SwaggerDefinition;
 import play.mvc.Controller;
 import play.mvc.Http;
-
-import static com.yugabyte.yw.controllers.TokenAuthenticator.API_TOKEN_HEADER;
 
 /**
  * This class contains dependencies, which can be used by most of the Platform controllers. An
@@ -55,6 +62,9 @@ public abstract class AbstractPlatformController extends Controller {
       "https://github.com/yugabyte/yugabyte-db/blob/master/licenses/"
           + "POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt";
   protected static final String API_KEY_AUTH = "apiKeyAuth";
+
+  @Inject protected ValidatingFormFactory formFactory;
+
   @Inject private AuditService auditService;
 
   protected AuditService auditService() {

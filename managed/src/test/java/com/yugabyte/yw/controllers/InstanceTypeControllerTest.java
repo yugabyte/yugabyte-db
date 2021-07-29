@@ -2,6 +2,29 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.core.IsNull.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -12,31 +35,27 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Users;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.core.IsNull.notNullValue;
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.OK;
-import static play.test.Helpers.contentAsString;
-import static org.junit.Assert.assertThrows;
-import static play.test.Helpers.*;
 
 public class InstanceTypeControllerTest extends FakeDBApplication {
   Customer customer;
@@ -138,11 +157,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testListInstanceTypeWithInvalidProviderUUID() {
     UUID randomUUID = UUID.randomUUID();
-    Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST))
-            .getResult();
+    Result result = assertYWSE(() -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -291,10 +306,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.set("idKey", idKey);
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST))
-            .getResult();
+        assertYWSE(() -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -303,11 +315,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testCreateInstanceTypeWithInvalidParams() {
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST))
-            .getResult();
+        assertYWSE(
+            () -> doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST));
     assertErrorNodeValue(Json.parse(contentAsString(result)), "idKey", "This field is required");
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "memSizeGB", "This field is required");
@@ -395,10 +404,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testGetInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(
+            () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance Type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
@@ -409,10 +416,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(() -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -434,11 +438,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testDeleteInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(
+            () -> doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance Type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
@@ -449,10 +450,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST))
-            .getResult();
+        assertYWSE(() -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);

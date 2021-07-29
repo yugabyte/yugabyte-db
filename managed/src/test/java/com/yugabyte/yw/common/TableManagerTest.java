@@ -2,12 +2,34 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
+import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -15,15 +37,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
-
-import java.util.*;
-
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
-import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
-import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TableManagerTest extends FakeDBApplication {
@@ -311,13 +324,14 @@ public class TableManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   private void testCreateBackupKubernetesHelper() {
     Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG", "foo");
     testProvider.setConfig(config);
+    testProvider.save();
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -327,7 +341,7 @@ public class TableManagerTest extends FakeDBApplication {
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     expectedEnvVars.put("KUBECONFIG", "foo");
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -359,7 +373,7 @@ public class TableManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -373,7 +387,7 @@ public class TableManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -388,7 +402,7 @@ public class TableManagerTest extends FakeDBApplication {
     for (BackupTableParams params : backupTableParams.backupList) {
       tableManager.createBackup(params);
       List<String> expectedCommand = getExpectedBackupTableCommand(params, "nfs");
-      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
     }
   }
 
@@ -404,7 +418,7 @@ public class TableManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -419,7 +433,7 @@ public class TableManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -434,7 +448,7 @@ public class TableManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -449,7 +463,7 @@ public class TableManagerTest extends FakeDBApplication {
     for (BackupTableParams params : backupTableParams.backupList) {
       tableManager.createBackup(params);
       List<String> expectedCommand = getExpectedBackupTableCommand(params, "nfs");
-      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
     }
   }
 
@@ -471,7 +485,7 @@ public class TableManagerTest extends FakeDBApplication {
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test

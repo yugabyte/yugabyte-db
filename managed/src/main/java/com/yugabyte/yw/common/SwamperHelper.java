@@ -10,14 +10,31 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.writeFile;
+import static com.yugabyte.yw.common.Util.writeJsonFile;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.PatternFilenameFilter;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -26,19 +43,6 @@ import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.libs.Json;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.Util.writeFile;
-import static com.yugabyte.yw.common.Util.writeJsonFile;
 
 @Singleton
 public class SwamperHelper {
@@ -236,22 +240,42 @@ public class SwamperHelper {
     return null;
   }
 
-  public void writeAlertDefinition(AlertDefinition definition) {
+  public void writeAlertDefinition(AlertDefinitionGroup group, AlertDefinition definition) {
     String swamperFile = getSwamperRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
     }
 
-    String template;
-    try (InputStream templateStream = environment.resourceAsStream("alert/alert_definition.yml")) {
-      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    String fileContent;
+    try (InputStream templateStream =
+        environment.resourceAsStream("alert/alert_definition_header.yml")) {
+      fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
     } catch (IOException e) {
-      throw new RuntimeException("Failed to read alert definition template", e);
+      throw new RuntimeException("Failed to read alert definition header template", e);
     }
 
-    AlertRuleTemplateSubstitutor substitutor = new AlertRuleTemplateSubstitutor(definition);
-    String ruleDefinition = substitutor.replace(template);
-    writeFile(swamperFile, ruleDefinition);
+    String template;
+    try (InputStream templateStream =
+        environment.resourceAsStream("alert/alert_definition_rule.yml")) {
+      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition rule template", e);
+    }
+
+    fileContent +=
+        group
+            .getThresholds()
+            .keySet()
+            .stream()
+            .map(
+                severity -> {
+                  AlertRuleTemplateSubstitutor substitutor =
+                      new AlertRuleTemplateSubstitutor(group, definition, severity);
+                  return substitutor.replace(template);
+                })
+            .collect(Collectors.joining());
+
+    writeFile(swamperFile, fileContent);
   }
 
   public void removeAlertDefinition(UUID definitionUUID) {

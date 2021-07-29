@@ -51,7 +51,7 @@ Status BulkLoadDocDBUtil::InitRocksDBDir() {
 }
 
 Status BulkLoadDocDBUtil::InitRocksDBOptions() {
-  RETURN_NOT_OK(InitCommonRocksDBOptions());
+  RETURN_NOT_OK(InitCommonRocksDBOptionsForBulkLoad());
   regular_db_options_.max_write_buffer_number = num_memtables_;
   regular_db_options_.write_buffer_size = memtable_size_;
   regular_db_options_.allow_concurrent_memtable_write = true;

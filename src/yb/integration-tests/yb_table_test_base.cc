@@ -94,10 +94,13 @@ bool YBTableTestBase::enable_ysql() {
   return kDefaultEnableYSQL;
 }
 
-YBTableTestBase::YBTableTestBase() : ts_env_(new EnvWrapper(Env::Default())) {
+YBTableTestBase::YBTableTestBase() {
 }
 
 void YBTableTestBase::BeforeCreateTable() {
+}
+
+void YBTableTestBase::BeforeStartCluster() {
 }
 
 void YBTableTestBase::SetUp() {
@@ -120,11 +123,13 @@ void YBTableTestBase::SetUp() {
         .num_tablet_servers = num_tablet_servers(),
         .num_drives = num_drives(),
         .master_env = env_.get(),
-        .ts_env = ts_env_.get()
+        .ts_env = ts_env_.get(),
+        .ts_rocksdb_env = ts_rocksdb_env_.get()
     };
     SetAtomicFlag(enable_ysql(), &FLAGS_enable_ysql);
 
     mini_cluster_.reset(new MiniCluster(opts));
+    BeforeStartCluster();
     mini_cluster_status = mini_cluster_->Start();
   }
   if (!mini_cluster_status.ok()) {

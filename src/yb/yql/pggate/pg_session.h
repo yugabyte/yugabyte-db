@@ -26,8 +26,6 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/master.pb.h"
-
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
@@ -213,8 +211,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
 
-  Result<master::AnalyzeTableResponsePB> AnalyzeTable(const PgObjectId& table_id);
-
   // Start operation buffering. Buffering must not be in progress.
   CHECKED_STATUS StartOperationsBuffering();
   // Flush all pending buffered operation and stop further buffering.
@@ -266,6 +262,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     }
     return runner.Flush();
   }
+
+  // Smart driver functions.
+  // -------------
+  CHECKED_STATUS ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -338,6 +338,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void SetTimeout(int timeout_ms);
 
   CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
+
+  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
  private:
   using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;

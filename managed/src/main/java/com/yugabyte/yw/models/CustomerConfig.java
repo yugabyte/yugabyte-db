@@ -2,32 +2,40 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
-import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.JsonIgnore;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import java.util.*;
-
-import com.yugabyte.yw.common.Util;
-import static play.mvc.Http.Status.*;
-
 @Entity
+@ApiModel(value = "Customer Config", description = "Customers Configuration")
 public class CustomerConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfig.class);
   public static final String ALERTS_PREFERENCES = "preferences";
@@ -63,24 +71,34 @@ public class CustomerConfig extends Model {
     }
   }
 
-  @Id public UUID configUUID;
+  @Id
+  @ApiModelProperty(value = "Config UUID", accessMode = READ_ONLY)
+  public UUID configUUID;
 
   @Column(length = 100, nullable = true)
+  @ApiModelProperty(value = "Config name", example = "backup20-01-2021")
   public String configName;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   @Column(length = 25, nullable = false)
+  @ApiModelProperty(value = "Config type", example = "STORAGE")
   public ConfigType type;
 
   @Column(length = 100, nullable = false)
+  @ApiModelProperty(value = "Name", example = "S3")
   public String name;
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @JsonIgnore
+  @ApiModelProperty(
+      value = "Configuration data",
+      required = true,
+      example = "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}")
   public JsonNode data;
 
   public static final Finder<UUID, CustomerConfig> find =
@@ -105,6 +123,7 @@ public class CustomerConfig extends Model {
   }
 
   // Returns if there is an in use reference to the object.
+  @ApiModelProperty(value = "True if there is an in use reference to the object")
   public boolean getInUse() {
     if (this.type == ConfigType.STORAGE) {
       // Check if a backup or schedule currently has a reference.
@@ -114,6 +133,7 @@ public class CustomerConfig extends Model {
     return false;
   }
 
+  @ApiModelProperty(value = "Universe details", example = "{\"name\": \"jd-aws-21-6-21-test4\"}")
   public ArrayNode getUniverseDetails() {
     Set<Universe> universes = new HashSet<>();
     if (this.type == ConfigType.STORAGE) {
@@ -122,12 +142,20 @@ public class CustomerConfig extends Model {
     return Util.getUniverseDetails(universes);
   }
 
+  @Deprecated
   @Override
   public boolean delete() {
     if (!this.getInUse()) {
       return super.delete();
     }
     return false;
+  }
+
+  public void deleteOrThrow() {
+    if (!delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
+    }
   }
 
   public static CustomerConfig createWithFormData(UUID customerUUID, JsonNode formData) {

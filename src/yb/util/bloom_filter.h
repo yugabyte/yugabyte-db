@@ -32,7 +32,6 @@
 #ifndef YB_UTIL_BLOOM_FILTER_H
 #define YB_UTIL_BLOOM_FILTER_H
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/bitmap.h"
@@ -165,10 +164,8 @@ class BloomFilterBuilder {
   size_t count() const { return n_inserted_; }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(BloomFilterBuilder);
-
   size_t n_bits_;
-  gscoped_array<uint8_t> bitmap_;
+  std::unique_ptr<uint8_t[]> bitmap_;
 
   // The number of hash functions to compute.
   size_t n_hashes_;
@@ -178,8 +175,9 @@ class BloomFilterBuilder {
 
   // The number of elements inserted so far since the last Reset.
   size_t n_inserted_;
-};
 
+  DISALLOW_COPY_AND_ASSIGN(BloomFilterBuilder);
+};
 
 // Wrapper around a byte array for reading it as a bloom filter.
 class BloomFilter {
@@ -260,4 +258,4 @@ inline bool BloomFilter::MayContainKey(const BloomKeyProbe &probe) const {
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_BLOOM_FILTER_H

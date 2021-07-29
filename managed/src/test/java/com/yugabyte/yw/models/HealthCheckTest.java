@@ -2,19 +2,18 @@
 
 package com.yugabyte.yw.models;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.HealthCheck;
-
 import org.junit.Before;
 import org.junit.Test;
-
-import com.yugabyte.yw.common.FakeDBApplication;
 
 public class HealthCheckTest extends FakeDBApplication {
   private Customer defaultCustomer;
@@ -91,12 +90,10 @@ public class HealthCheckTest extends FakeDBApplication {
     HealthCheck noDetails = addCheck(universeUUID);
     assertFalse(noDetails.hasError());
 
-    HealthCheck trueError =
-        addCheck(universeUUID, "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": true}");
+    HealthCheck trueError = addCheck(universeUUID, "{\"" + "has_error" + "\": true}");
     assertTrue(trueError.hasError());
 
-    HealthCheck falseError =
-        addCheck(universeUUID, "{\"" + HealthCheck.FIELD_HAS_ERROR + "\": false}");
+    HealthCheck falseError = addCheck(universeUUID, "{\"" + "has_error" + "\": false}");
     assertFalse(falseError.hasError());
   }
 

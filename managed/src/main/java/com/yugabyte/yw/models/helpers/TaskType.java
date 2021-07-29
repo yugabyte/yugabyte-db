@@ -46,11 +46,32 @@ public enum TaskType {
 
   ImportIntoTable("ImportIntoTable"),
 
+  // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
+
+  RestartUniverse("upgrade.RestartUniverse"),
+
+  SoftwareUpgrade("upgrade.SoftwareUpgrade"),
+
+  SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
+
+  GFlagsUpgrade("upgrade.GFlagsUpgrade"),
+
+  GFlagsKubernetesUpgrade("upgrade.GFlagsKubernetesUpgrade"),
+
+  CertsRotate("upgrade.CertsRotate"),
+
+  TlsToggle("upgrade.TlsToggle"),
+
+  VMImageUpgrade("upgrade.VMImageUpgrade"),
 
   CreateRootVolumes("subtasks.CreateRootVolumes"),
 
   ReplaceRootVolume("subtasks.ReplaceRootVolume"),
+
+  ChangeInstanceType("subtasks.ChangeInstanceType"),
+
+  PersistResizeNode("subtasks.PersistResizeNode"),
 
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
@@ -80,6 +101,8 @@ public enum TaskType {
   UpdateDiskSize("UpdateDiskSize"),
 
   StartMasterOnNode("StartMasterOnNode"),
+
+  SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
@@ -194,7 +217,11 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
-  UniverseSetTlsParams("subtasks.UniverseSetTlsParams");
+  UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
+
+  AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
+
+  ResetUniverseVersion("subtasks.ResetUniverseVersion");
 
   private String relativeClassPath;
 

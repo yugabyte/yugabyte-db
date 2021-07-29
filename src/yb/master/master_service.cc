@@ -359,7 +359,6 @@ BOOST_PP_SEQ_FOR_EACH(
     MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK, CatalogManager,
     (CreateTable)
     (IsCreateTableDone)
-    (AnalyzeTable)
     (TruncateTable)
     (IsTruncateTableDone)
     (BackfillIndex)
@@ -468,6 +467,29 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
     entry->set_alive(desc->IsLive());
     desc->GetMetrics(entry->mutable_metrics());
+  }
+  rpc.RespondSuccess();
+}
+
+void MasterServiceImpl::ListLiveTabletServers(const ListLiveTabletServersRequestPB* req,
+                                              ListLiveTabletServersResponsePB* resp,
+                                              RpcContext rpc) {
+  SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+    return;
+  }
+  string placement_uuid = server_->catalog_manager()->placement_uuid();
+
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  server_->ts_manager()->GetAllLiveDescriptors(&descs);
+
+  for (const std::shared_ptr<TSDescriptor>& desc : descs) {
+    ListLiveTabletServersResponsePB::Entry* entry = resp->add_servers();
+    auto ts_info = *desc->GetTSInformationPB();
+    *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
+    *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
+    bool isPrimary = server_->ts_manager()->IsTsInCluster(desc, placement_uuid);
+    entry->set_isfromreadreplica(!isPrimary);
   }
   rpc.RespondSuccess();
 }
@@ -677,6 +699,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (AlterUniverseReplication)
     (SetUniverseReplicationEnabled)
     (GetUniverseReplication)
+    (IsSetupUniverseReplicationDone)
     (ChangeEncryptionInfo)
     (IsEncryptionEnabled));
 

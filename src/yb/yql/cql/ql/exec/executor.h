@@ -432,7 +432,9 @@ class Executor : public QLExprExecutor {
     // Add a write operation. Returns true if it does not depend on another operation in the batch.
     // Returns false if it does and is not added. In that case, the operation needs to be deferred
     // until the dependent operation has been applied.
-    bool Add(const client::YBqlWriteOpPtr& op);
+    bool Add(const client::YBqlWriteOpPtr& op,
+             const TnodeContext* tnode_context,
+             ExecContext* exec_context);
 
     // Clear the batch.
     void Clear();

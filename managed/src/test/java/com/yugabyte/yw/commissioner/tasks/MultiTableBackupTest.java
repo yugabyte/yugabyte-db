@@ -2,6 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
@@ -10,22 +18,24 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common.TableType;
-import org.yb.client.*;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.YBClient;
 import org.yb.master.Master;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
-
-import java.util.*;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class MultiTableBackupTest extends CommissionerBaseTest {
@@ -48,6 +58,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
+    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     List<TableInfo> tableInfoList = new ArrayList<TableInfo>();

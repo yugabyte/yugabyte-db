@@ -95,6 +95,7 @@ class YBOperation {
   virtual ~YBOperation();
 
   std::shared_ptr<const YBTable> table() const { return table_; }
+  std::shared_ptr<YBTable> mutable_table() const { return table_; }
 
   void ResetTable(std::shared_ptr<YBTable> new_table);
 
@@ -139,11 +140,6 @@ class YBOperation {
 
   // Mark table this op is designated for as having stale partitions.
   void MarkTablePartitionListAsStale();
-
-  // Refreshes partitions of the table this op is designated of in case partitions have been marked
-  // as stale.
-  // Returns whether table partitions have been refreshed.
-  Result<bool> MaybeRefreshTablePartitionList();
 
   // If partition_list_version is set YBSession guarantees that this operation instance won't
   // be applied to the tablet with a different table partition_list_version (meaning serving
@@ -383,7 +379,7 @@ class YBqlReadOp : public YBqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 
@@ -539,7 +535,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 

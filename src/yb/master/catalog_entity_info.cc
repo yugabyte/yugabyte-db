@@ -295,6 +295,10 @@ bool TableInfo::is_running() const {
   return LockForRead()->is_running();
 }
 
+bool TableInfo::is_deleted() const {
+  return LockForRead()->is_deleted();
+}
+
 string TableInfo::ToString() const {
   return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
@@ -464,13 +468,13 @@ bool TableInfo::IsCreateInProgress() const {
 }
 
 Status TableInfo::SetIsBackfilling() {
+  const auto table_lock = LockForRead();
   std::lock_guard<decltype(lock_)> l(lock_);
   if (is_backfilling_) {
     return STATUS(AlreadyPresent, "Backfill already in progress", id(),
                   MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
   }
 
-  const auto table_lock = LockForRead();
   for (const auto& tablet_it : tablet_map_) {
     const auto& tablet = tablet_it.second;
     if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
@@ -648,7 +652,8 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated();
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
+         l->namespace_id() != kPgSequencesDataNamespaceId;
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {

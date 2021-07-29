@@ -198,7 +198,7 @@ class BootstrapTest : public LogTestBase {
   Status RunBootstrapOnTestTablet(const RaftGroupMetadataPtr& meta,
                                   TabletPtr* tablet,
                                   ConsensusBootstrapInfo* boot_info) {
-    gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
+    std::unique_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
     scoped_refptr<LogAnchorRegistry> log_anchor_registry(new LogAnchorRegistry());
     // Now attempt to recover the log
     TabletOptions tablet_options;
@@ -256,7 +256,7 @@ class BootstrapTest : public LogTestBase {
 
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
-    auto iter = tablet->NewRowIterator(schema_, /* transaction_id */ boost::none);
+    auto iter = tablet->NewRowIterator(schema_);
     ASSERT_OK(iter);
     ASSERT_OK(IterateToStringList(iter->get(), results));
     for (const string& result : *results) {

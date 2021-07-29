@@ -1827,9 +1827,10 @@ setup_collation(FILE *cmdfd)
 	PG_CMD_PRINTF3("INSERT INTO pg_collation (collname, collnamespace, collowner, collprovider, collencoding, collcollate, collctype) VALUES ('ucs_basic', 'pg_catalog'::regnamespace, %u, '%c', %d, 'C', 'C');\n\n",
 				   BOOTSTRAP_SUPERUSERID, COLLPROVIDER_LIBC, PG_UTF8);
 
-	/* Now import all collations we can find in the operating system */
-	if (!IsYugaByteGlobalClusterInitdb())
+	if (!IsYugaByteGlobalClusterInitdb() || YBIsCollationEnabled()) {
+		/* Now import all collations we can find in the operating system */
 		PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
+	}
 }
 
 /*
@@ -2476,7 +2477,8 @@ setlocales(void)
 	/* Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale in YB mode. */
 	/* This is because as of 06/15/2019 we don't support collation-aware string comparisons, */
 	/* but we still want to support storing UTF-8 strings. */
-	if (!locale && (IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb())) {
+	if (!locale &&
+		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb())) {
 		const char *kYBDefaultLocaleForSortOrder = "C";
 		const char *kYBDefaultLocaleForEncoding = "en_US.UTF-8";
 
@@ -3583,8 +3585,8 @@ main(int argc, char *argv[])
 	{
 
 		/*
-     * Build up a shell command to tell the user how to start the server
-     */
+		 * Build up a shell command to tell the user how to start the server
+		 */
 		start_db_cmd = createPQExpBuffer();
 
 		/* Get directory specification used to start initdb ... */

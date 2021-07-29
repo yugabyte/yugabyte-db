@@ -10,23 +10,33 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.isNodeRemovable;
+import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
+import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
+
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.util.Set;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
-import static com.yugabyte.yw.common.PlacementInfoUtil.*;
-
+@Slf4j
 public class DeleteNode extends NodeTaskBase {
+  @Inject
+  protected DeleteNode(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   @Override
   public void run() {
     try {
-      LOG.info("Running {}", getName());
+      log.info("Running {}", getName());
       // Create the update lambda.
       Universe.UniverseUpdater updater =
           new Universe.UniverseUpdater() {
@@ -56,7 +66,7 @@ public class DeleteNode extends NodeTaskBase {
                     NodeInstance node = NodeInstance.getByName(taskParams().nodeName);
                     node.clearNodeDetails();
                   } catch (Exception ex) {
-                    LOG.warn(
+                    log.warn(
                         "On-prem node {} in universe {} doesn't have a linked instance. "
                             + "Deletion is skipped.",
                         taskParams().nodeName,
@@ -72,7 +82,7 @@ public class DeleteNode extends NodeTaskBase {
       saveUniverseDetails(updater);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      LOG.warn(msg, e.getMessage());
+      log.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

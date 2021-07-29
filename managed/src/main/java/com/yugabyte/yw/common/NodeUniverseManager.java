@@ -8,9 +8,10 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import javax.xml.soap.Node;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.UUID;
 
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
@@ -27,12 +28,12 @@ public class NodeUniverseManager extends DevopsBase {
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(DOWNLOAD_LOGS_SSH_SCRIPT);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     if (getNodeDeploymentMode(node, universe).equals(Common.CloudType.kubernetes)) {
 
       // Get namespace.  First determine isMultiAz.
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
       Provider provider = Provider.get(providerUUID);
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       String namespace =
@@ -45,9 +46,11 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--namespace");
       commandArgs.add(namespace);
     } else if (!getNodeDeploymentMode(node, universe).equals(Common.CloudType.unknown)) {
+      AccessKey accessKey =
+          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       commandArgs.add("ssh");
       commandArgs.add("--port");
-      commandArgs.add("54422");
+      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
       commandArgs.add("--ip");
       commandArgs.add(node.cloudInfo.private_ip);
       commandArgs.add("--key");

@@ -2,6 +2,19 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -15,6 +28,11 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,15 +42,6 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class StartNodeInUniverseTest extends CommissionerBaseTest {
@@ -50,8 +59,10 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     mockClient = mock(YBClient.class);
+    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
     } catch (Exception e) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -97,6 +108,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -106,6 +118,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -113,13 +126,16 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.UpdateNodeProcess,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          // The following four tasks comes from "MasterInfoUpdateTask" and must be done
+          // after tserver is added
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers,
@@ -131,12 +147,13 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -196,7 +213,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -224,7 +241,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));

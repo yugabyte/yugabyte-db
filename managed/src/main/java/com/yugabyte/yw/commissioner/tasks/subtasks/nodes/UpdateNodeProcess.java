@@ -10,14 +10,24 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.nodes;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class UpdateNodeProcess extends NodeTaskBase {
+
+  @Inject
+  protected UpdateNodeProcess(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   // Parameters for updateProcess type
   public static class Params extends NodeTaskParams {
@@ -32,7 +42,7 @@ public class UpdateNodeProcess extends NodeTaskBase {
   @Override
   public void run() {
     try {
-      LOG.info("Running {}", getName());
+      log.info("Running {}", getName());
       /**
        * Current node process is either started or stopped This lambda updates the universe
        * definition task param with the same. For instance if the node is stopped, the isMaster and
@@ -60,7 +70,7 @@ public class UpdateNodeProcess extends NodeTaskBase {
       saveUniverseDetails(updater);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      LOG.warn(msg, e.getMessage());
+      log.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

@@ -217,15 +217,15 @@ class ConsensusQueueTest : public YBTest {
   }
 
  protected:
-  gscoped_ptr<TestRaftConsensusQueueIface> consensus_;
+  std::unique_ptr<TestRaftConsensusQueueIface> consensus_;
   const Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<log::Log> log_;
   std::unique_ptr<ThreadPool> raft_pool_;
-  gscoped_ptr<PeerMessageQueue> queue_;
+  std::unique_ptr<PeerMessageQueue> queue_;
   scoped_refptr<log::LogAnchorRegistry> registry_;
   scoped_refptr<server::Clock> clock_;
 };

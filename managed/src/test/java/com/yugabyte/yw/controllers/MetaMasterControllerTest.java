@@ -5,9 +5,16 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntentSingleAZ;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -15,28 +22,28 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
-
-import play.libs.Json;
-import play.mvc.Result;
-
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import org.junit.Before;
+import org.junit.Test;
+import play.libs.Json;
+import play.mvc.Result;
 
 public class MetaMasterControllerTest extends FakeDBApplication {
 
@@ -325,19 +332,17 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testServerGetWithInvalidUniverse(boolean isYql) {
     String universeUUID = "11111111-2222-3333-4444-555555555555";
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    route(
-                        app,
-                        fakeRequest(
-                            "GET",
-                            "/api/customers/"
-                                + defaultCustomer.uuid
-                                + "/universes/"
-                                + universeUUID
-                                + (isYql ? "/yqlservers" : "/redisservers"))))
-            .getResult();
+        assertYWSE(
+            () ->
+                route(
+                    app,
+                    fakeRequest(
+                        "GET",
+                        "/api/customers/"
+                            + defaultCustomer.uuid
+                            + "/universes/"
+                            + universeUUID
+                            + (isYql ? "/yqlservers" : "/redisservers"))));
     assertRestResult(result, false, BAD_REQUEST);
     assertAuditEntry(0, defaultCustomer.uuid);
   }

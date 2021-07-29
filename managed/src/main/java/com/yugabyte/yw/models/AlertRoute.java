@@ -2,25 +2,37 @@
 
 package com.yugabyte.yw.models;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
-
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-
-import com.yugabyte.yw.common.YWServiceException;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.FetchType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
+import javax.persistence.ManyToMany;
+import lombok.AccessLevel;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.experimental.Accessors;
 import play.data.validation.Constraints;
 
+@Data
+@Accessors(chain = true)
+@EqualsAndHashCode(callSuper = false, doNotUseGetters = true)
 @Entity
 public class AlertRoute extends Model {
 
@@ -29,118 +41,68 @@ public class AlertRoute extends Model {
   @Column(nullable = false, unique = true)
   private UUID uuid;
 
-  @ManyToOne(optional = false)
-  @JoinColumn(name = "definition_uuid")
-  private UUID definitionUUID;
+  @Constraints.Required
+  @Column(nullable = false)
+  private UUID customerUUID;
 
-  @ManyToOne(optional = false)
-  @JoinColumn(name = "receiver_uuid")
-  private UUID receiverUUID;
+  @Constraints.Required
+  @Column(columnDefinition = "Text", length = 255, nullable = false)
+  private String name;
+
+  @ToString.Exclude
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  @ManyToMany(fetch = FetchType.LAZY)
+  @JoinTable(
+      name = "alert_route_group",
+      joinColumns = {
+        @JoinColumn(
+            name = "route_uuid",
+            referencedColumnName = "uuid",
+            nullable = false,
+            updatable = false)
+      },
+      inverseJoinColumns = {
+        @JoinColumn(
+            name = "receiver_uuid",
+            referencedColumnName = "uuid",
+            nullable = false,
+            updatable = false)
+      })
+  private Set<AlertReceiver> receivers;
+
+  @Constraints.Required
+  @Column(nullable = false)
+  private boolean defaultRoute = false;
 
   private static final Finder<UUID, AlertRoute> find =
       new Finder<UUID, AlertRoute>(AlertRoute.class) {};
 
-  /**
-   * Creates AlertRoute between the alert definition and the alert receiver. Fails if the receiver
-   * or the definition are not found, or if the definition customer UUID doesn't match the passed
-   * customer UUID.
-   *
-   * @param customerUUID
-   * @param definitionUUID
-   * @param receiverUUID
-   * @return
-   */
-  public static AlertRoute create(UUID customerUUID, UUID definitionUUID, UUID receiverUUID) {
-    AlertRoute route = new AlertRoute();
-    route.uuid = UUID.randomUUID();
-    route.definitionUUID = definitionUUID;
-    route.receiverUUID = receiverUUID;
-    route.save();
-    return route;
+  @JsonProperty
+  public List<UUID> getReceivers() {
+    return receivers.stream().map(AlertReceiver::getUuid).collect(Collectors.toList());
   }
 
-  public UUID getUuid() {
-    return uuid;
+  @JsonIgnore
+  public List<AlertReceiver> getReceiversList() {
+    return new ArrayList<>(receivers);
   }
 
-  public void setUUID(UUID uuid) {
-    this.uuid = uuid;
+  public AlertRoute setReceiversList(@NonNull List<AlertReceiver> receivers) {
+    this.receivers = new HashSet<>(receivers);
+    return this;
   }
 
-  public UUID getDefinitionUUID() {
-    return definitionUUID;
+  public AlertRoute generateUUID() {
+    this.uuid = UUID.randomUUID();
+    return this;
   }
 
-  public void setDefinitionUUID(UUID definitionUUID) {
-    this.definitionUUID = definitionUUID;
+  public static AlertRoute get(UUID customerUUID, UUID routeUUID) {
+    return createQuery().idEq(routeUUID).eq("customer_uuid", customerUUID).findOne();
   }
 
-  public UUID getReceiverUUID() {
-    return receiverUUID;
-  }
-
-  public void setReceiverUUID(UUID receiverUUID) {
-    this.receiverUUID = receiverUUID;
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(definitionUUID, receiverUUID, uuid);
-  }
-
-  @Override
-  public boolean equals(Object obj) {
-    if (this == obj) {
-      return true;
-    }
-    if (!(obj instanceof AlertRoute)) {
-      return false;
-    }
-    AlertRoute other = (AlertRoute) obj;
-    return Objects.equals(definitionUUID, other.definitionUUID)
-        && Objects.equals(receiverUUID, other.receiverUUID)
-        && Objects.equals(uuid, other.uuid);
-  }
-
-  @Override
-  public String toString() {
-    return "AlertRoute [uuid="
-        + uuid
-        + ", definitionUUID="
-        + definitionUUID
-        + ", receiverUUID="
-        + receiverUUID
-        + "]";
-  }
-
-  public static AlertRoute get(UUID routeUUID) {
-    return find.query().where().idEq(routeUUID).findOne();
-  }
-
-  public static AlertRoute getOrBadRequest(UUID routeUUID) {
-    AlertRoute alertRoute = get(routeUUID);
-    if (alertRoute == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Route UUID: " + routeUUID);
-    }
-    return alertRoute;
-  }
-
-  public static List<AlertRoute> listByDefinition(UUID definitionUUID) {
-    return find.query().where().eq("definition_uuid", definitionUUID).findList();
-  }
-
-  public static List<AlertRoute> listByReceiver(UUID receiverUUID) {
-    return find.query().where().eq("receiver_uuid", receiverUUID).findList();
-  }
-
-  public static List<AlertRoute> listByCustomer(UUID customerUUID) {
-    Finder<UUID, AlertDefinition> definitionsFinder =
-        new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
-    List<AlertDefinition> definitions =
-        definitionsFinder.query().where().eq("customer_uuid", customerUUID).findList();
-    List<AlertRoute> routes = new ArrayList<>();
-    definitions.forEach(
-        definition -> routes.addAll(AlertRoute.listByDefinition(definition.getUuid())));
-    return routes;
+  public static ExpressionList<AlertRoute> createQuery() {
+    return find.query().where();
   }
 }

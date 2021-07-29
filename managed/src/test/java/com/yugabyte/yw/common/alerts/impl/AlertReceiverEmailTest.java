@@ -2,12 +2,15 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -18,22 +21,27 @@ import com.yugabyte.yw.common.alerts.YWNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
-
-import static org.junit.Assert.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-
 import java.util.Collections;
-
+import java.util.List;
 import javax.mail.MessagingException;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class AlertReceiverEmailTest extends FakeDBApplication {
+
+  private static final List<String> DEFAULT_EMAILS = Collections.singletonList("test@test.com");
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   private Customer defaultCustomer;
 
@@ -46,40 +54,79 @@ public class AlertReceiverEmailTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
   }
 
-  private AlertReceiver createFilledReceiver() {
+  private AlertReceiver createReceiver(
+      boolean defaultRecipients,
+      boolean initRecipientsInConfig,
+      boolean defaultSmtpSettings,
+      boolean initSmtpInConfig) {
+    when(emailHelper.getDestinations(defaultCustomer.getUuid()))
+        .thenReturn(initRecipientsInConfig ? DEFAULT_EMAILS : null);
+    when(emailHelper.getSmtpData(defaultCustomer.getUuid()))
+        .thenReturn(initSmtpInConfig ? new SmtpData() : null);
+
     AlertReceiver receiver = new AlertReceiver();
-    receiver.setTargetType(TargetType.Email);
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = new SmtpData();
+    params.defaultRecipients = defaultRecipients;
+    params.recipients = defaultRecipients ? null : DEFAULT_EMAILS;
+    params.defaultSmtpSettings = defaultSmtpSettings;
+    params.smtpData = defaultSmtpSettings ? null : new SmtpData();
     receiver.setParams(params);
     return receiver;
   }
 
   @Test
-  public void testSendNotification_HappyPath() throws MessagingException, YWNotificationException {
-    AlertReceiver receiver = createFilledReceiver();
-    AlertReceiverEmailParams params = ((AlertReceiverEmailParams) receiver.getParams());
+  @Parameters({
+    // @formatter:off
+    "false, false, false, false, false",
+    "true , true, false, false, false",
+    "true, false, false, false, true",
+    "false, false, true, true, false",
+    "false, false, true, false, true",
+    "true, true, true, true, false"
+    // @formatter:on
+  })
+  @TestCaseName(
+      "{method}(Default recipients:{0}, Default Smtp:{1}, "
+          + "Recipients in config:{2}, Smtp in config:{3})")
+  public void testSendNotification(
+      boolean defaultRecipients,
+      boolean initRecipientsInConfig,
+      boolean defaultSmtpSettings,
+      boolean initSmtpInConfig,
+      boolean exceptionExpected)
+      throws MessagingException, YWNotificationException {
 
-    Alert alert = Alert.create(defaultCustomer.uuid, "errCode", "", "");
-    are.sendNotification(defaultCustomer, alert, receiver);
-    verify(emailHelper, times(1))
+    AlertReceiver receiver =
+        createReceiver(
+            defaultRecipients, initRecipientsInConfig, defaultSmtpSettings, initSmtpInConfig);
+
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
+    if (exceptionExpected) {
+      assertThrows(
+          YWNotificationException.class,
+          () -> {
+            are.sendNotification(defaultCustomer, alert, receiver);
+          });
+    } else {
+      are.sendNotification(defaultCustomer, alert, receiver);
+    }
+    verify(emailHelper, exceptionExpected ? never() : times(1))
         .sendEmail(
             eq(defaultCustomer),
             anyString(),
-            eq(String.join(", ", params.recipients)),
-            eq(params.smtpData),
+            eq(String.join(", ", DEFAULT_EMAILS)),
+            any(SmtpData.class),
             any());
   }
 
   @Test
-  public void testSendNotification_SendFailed() throws MessagingException {
-    AlertReceiver receiver = createFilledReceiver();
+  public void testSendNotification_ReceiverWithoutDefaults_SendFailed() throws MessagingException {
+    AlertReceiver receiver = createReceiver(false, false, false, false);
     doThrow(new MessagingException("TestException"))
         .when(emailHelper)
         .sendEmail(any(), any(), any(), any(), any());
 
-    Alert alert = Alert.create(defaultCustomer.uuid, "errCode", "", "");
+    Alert alert = ModelFactory.createAlert(defaultCustomer);
     assertThrows(
         YWNotificationException.class,
         () -> {

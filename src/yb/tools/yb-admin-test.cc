@@ -373,7 +373,7 @@ TEST_F(AdminCliTest, InvalidMasterAddresses) {
   std::string error_string;
   ASSERT_NOK(Subprocess::Call(ToStringVector(
       GetAdminToolPath(), "-master_addresses", unreachable_host,
-      "-timeout_ms", "1000", "list_tables"), &error_string, true /*read_stderr*/));
+      "-timeout_ms", "1000", "list_tables"), &error_string, StdFdTypes{StdFdType::kErr}));
   ASSERT_STR_CONTAINS(error_string, "verify the addresses");
 }
 
@@ -398,19 +398,19 @@ TEST_F(AdminCliTest, CheckTableIdUsage) {
   args.resize(args_size);
   args.push_back("bad");
   std::string output;
-  ASSERT_NOK(Subprocess::Call(args, &output, /* read_stderr */ true));
+  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
   // Due to greedy algorithm all bad arguments are treated as table identifier.
   ASSERT_NE(output.find("Namespace 'bad' of type 'ycql' not found"), std::string::npos);
   // Check multiple tables when single one is expected.
   args.resize(args_size);
   args.push_back(table_id_arg);
-  ASSERT_NOK(Subprocess::Call(args, &output, /* read_stderr */ true));
+  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
   ASSERT_NE(output.find("Single table expected, 2 found"), std::string::npos);
   // Check wrong table id.
   args.resize(args_size - 1);
   const auto bad_table_id = table_id + "_bad";
   args.push_back(Format("tableid.$0", bad_table_id));
-  ASSERT_NOK(Subprocess::Call(args, &output, /* read_stderr */ true));
+  ASSERT_NOK(Subprocess::Call(args, &output, StdFdTypes{StdFdType::kErr}));
   ASSERT_NE(
       output.find(Format("Table with id '$0' not found", bad_table_id)), std::string::npos);
 }

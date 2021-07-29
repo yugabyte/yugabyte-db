@@ -10,24 +10,22 @@
 
 package com.yugabyte.yw.common.password;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
-import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.ValidationError;
-import play.mvc.Result;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.ValidationError;
 
 @Singleton
 public class PasswordPolicyService {
@@ -66,7 +64,7 @@ public class PasswordPolicyService {
             "special characters"));
   }
 
-  public Result checkPasswordPolicy(UUID customerUUID, String password) {
+  public void checkPasswordPolicy(UUID customerUUID, String password) {
     PasswordPolicyFormData configuredPolicy =
         PasswordPolicyFormData.fromCustomerConfig(
             CustomerConfig.getPasswordPolicyConfig(customerUUID));
@@ -84,7 +82,7 @@ public class PasswordPolicyService {
     }
 
     if (StringUtils.isEmpty(password)) {
-      return ApiResponse.error(BAD_REQUEST, "Password shouldn't be empty.");
+      throw new YWServiceException(BAD_REQUEST, "Password shouldn't be empty.");
     }
 
     List<ValidationError> errors =
@@ -94,17 +92,15 @@ public class PasswordPolicyService {
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
 
-    if (errors.isEmpty()) {
-      return null;
+    if (!errors.isEmpty()) {
+      String fullMessage =
+          errors
+              .stream()
+              .map(ValidationError::messages)
+              .flatMap(List::stream)
+              .collect(Collectors.joining("; "));
+
+      throw new YWServiceException(BAD_REQUEST, fullMessage);
     }
-
-    String fullMessage =
-        errors
-            .stream()
-            .map(ValidationError::messages)
-            .flatMap(List::stream)
-            .collect(Collectors.joining("; "));
-
-    return ApiResponse.error(BAD_REQUEST, fullMessage);
   }
 }

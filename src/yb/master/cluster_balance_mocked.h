@@ -25,6 +25,8 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     per_table_states_[""] = std::move(table_state);
 
     SetOptions(LIVE, "");
+
+    InitTablespaceManager();
   }
 
   // Overrides for base class functionality to bypass calling CatalogManager.
@@ -88,6 +90,10 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     state_ = table_state.get();
 
     per_table_states_[table_id] = std::move(table_state);
+  }
+
+  void InitTablespaceManager() override {
+    tablespace_manager_ = std::make_shared<YsqlTablespaceManager>(nullptr, nullptr);
   }
 
   void SetOptions(ReplicaType type, const string& placement_uuid) {

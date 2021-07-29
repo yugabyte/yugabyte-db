@@ -1,6 +1,23 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -10,7 +27,12 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -21,6 +43,18 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
@@ -28,18 +62,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Mockito.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseTest extends FakeDBApplication {
@@ -357,6 +379,16 @@ public class UniverseTest extends FakeDBApplication {
     assertTrue(regionsNode.isArray());
     assertEquals(3, regionsNode.size());
     assertNull(universeJson.get("dnsName"));
+
+    JsonNode targetAsyncReplicationRelationshipsNode =
+        universeJson.get("universeDetails").get("targetAsyncReplicationRelationships");
+    assertTrue(targetAsyncReplicationRelationshipsNode.isArray());
+    assertEquals(0, targetAsyncReplicationRelationshipsNode.size());
+
+    JsonNode sourceAsyncReplicationRelationshipsNode =
+        universeJson.get("universeDetails").get("sourceAsyncReplicationRelationships");
+    assertTrue(sourceAsyncReplicationRelationshipsNode.isArray());
+    assertEquals(0, sourceAsyncReplicationRelationshipsNode.size());
   }
 
   @Test
@@ -437,6 +469,70 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode masterGFlags = clusterJson.get("userIntent").get("masterGFlags");
     assertThat(masterGFlags, is(notNullValue()));
     assertEquals(0, masterGFlags.size());
+  }
+
+  @Test
+  public void testSourceUniverseToJsonWithAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+
+    AsyncReplicationRelationship.create(source, "sourceTableID", target, "targetTableID", false);
+
+    JsonNode sourceUniverseDetailsJson =
+        Json.toJson(new UniverseResp(source)).get("universeDetails");
+
+    JsonNode targetAsyncReplicationRelationshipsJson =
+        sourceUniverseDetailsJson.get("targetAsyncReplicationRelationships");
+    assertTrue(targetAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(0, targetAsyncReplicationRelationshipsJson.size());
+
+    JsonNode sourceAsyncReplicationRelationshipsJson =
+        sourceUniverseDetailsJson.get("sourceAsyncReplicationRelationships");
+    assertTrue(sourceAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(1, sourceAsyncReplicationRelationshipsJson.size());
+
+    JsonNode asyncReplicationRelationshipJson = sourceAsyncReplicationRelationshipsJson.get(0);
+    assertEquals(
+        source.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("sourceUniverseUUID").asText());
+    assertEquals("sourceTableID", asyncReplicationRelationshipJson.get("sourceTableID").asText());
+    assertEquals(
+        target.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("targetUniverseUUID").asText());
+    assertEquals("targetTableID", asyncReplicationRelationshipJson.get("targetTableID").asText());
+    assertFalse(asyncReplicationRelationshipJson.get("active").asBoolean());
+  }
+
+  @Test
+  public void testTargetUniverseToJsonWithAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+
+    AsyncReplicationRelationship.create(source, "sourceTableID", target, "targetTableID", false);
+
+    JsonNode targetUniverseDetailsJson =
+        Json.toJson(new UniverseResp(target)).get("universeDetails");
+
+    JsonNode sourceAsyncReplicationRelationshipsJson =
+        targetUniverseDetailsJson.get("sourceAsyncReplicationRelationships");
+    assertTrue(sourceAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(0, sourceAsyncReplicationRelationshipsJson.size());
+
+    JsonNode targetAsyncReplicationRelationshipsJson =
+        targetUniverseDetailsJson.get("targetAsyncReplicationRelationships");
+    assertTrue(targetAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(1, targetAsyncReplicationRelationshipsJson.size());
+
+    JsonNode asyncReplicationRelationshipJson = targetAsyncReplicationRelationshipsJson.get(0);
+    assertEquals(
+        target.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("targetUniverseUUID").asText());
+    assertEquals("targetTableID", asyncReplicationRelationshipJson.get("targetTableID").asText());
+    assertEquals(
+        source.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("sourceUniverseUUID").asText());
+    assertEquals("sourceTableID", asyncReplicationRelationshipJson.get("sourceTableID").asText());
+    assertFalse(asyncReplicationRelationshipJson.get("active").asBoolean());
   }
 
   @Test
@@ -738,5 +834,41 @@ public class UniverseTest extends FakeDBApplication {
     Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
     assertFalse(actions.contains(NodeActionType.REMOVE));
     assertFalse(actions.contains(NodeActionType.STOP));
+  }
+
+  private AsyncReplicationRelationship setupAsyncReplicationRelationship(
+      Universe source, Universe target) {
+    return AsyncReplicationRelationship.create(
+        source, "sourceTableID", target, "targetTableID", false);
+  }
+
+  @Test
+  public void testGetSourceAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+    AsyncReplicationRelationship relationship = setupAsyncReplicationRelationship(source, target);
+
+    source.refresh();
+
+    assertEquals(1, source.sourceAsyncReplicationRelationships.size());
+    assertEquals(
+        relationship, source.sourceAsyncReplicationRelationships.stream().findFirst().orElse(null));
+
+    assertTrue(source.targetAsyncReplicationRelationships.isEmpty());
+  }
+
+  @Test
+  public void testGetTargetAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+    AsyncReplicationRelationship relationship = setupAsyncReplicationRelationship(source, target);
+
+    target.refresh();
+
+    assertEquals(1, target.targetAsyncReplicationRelationships.size());
+    assertEquals(
+        relationship, target.targetAsyncReplicationRelationships.stream().findFirst().orElse(null));
+
+    assertTrue(target.sourceAsyncReplicationRelationships.isEmpty());
   }
 }

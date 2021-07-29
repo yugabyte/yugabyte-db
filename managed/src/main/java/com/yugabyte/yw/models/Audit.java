@@ -2,31 +2,39 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.validation.Constraints;
-import play.mvc.Http;
-
-import javax.persistence.*;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.SequenceGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
+@ApiModel(description = "Audit for audit logging of the requests and responses.")
 @Entity
 public class Audit extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Audit.class);
 
   // An auto incrementing, user-friendly id for the audit entry.
+  @ApiModelProperty(value = "Audit uuid", accessMode = READ_ONLY)
   @Id
   @SequenceGenerator(name = "audit_id_seq", sequenceName = "audit_id_seq", allocationSize = 1)
   @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "audit_id_seq")
@@ -36,6 +44,7 @@ public class Audit extends Model {
     return this.id;
   }
 
+  @ApiModelProperty(value = "User uuid", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false)
   private UUID userUUID;
@@ -44,6 +53,7 @@ public class Audit extends Model {
     return this.userUUID;
   }
 
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false)
   private UUID customerUUID;
@@ -59,6 +69,7 @@ public class Audit extends Model {
     return this.timestamp;
   }
 
+  @ApiModelProperty(value = "Audit uuid", accessMode = READ_ONLY)
   @Column(columnDefinition = "TEXT")
   @DbJson
   private JsonNode payload;
@@ -72,6 +83,10 @@ public class Audit extends Model {
     this.save();
   }
 
+  @ApiModelProperty(
+      value = "Api call",
+      example = "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
+      accessMode = READ_ONLY)
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   private String apiCall;
@@ -80,6 +95,7 @@ public class Audit extends Model {
     return this.apiCall;
   }
 
+  @ApiModelProperty(value = "API method", example = "GET", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
   private String apiMethod;
@@ -88,6 +104,7 @@ public class Audit extends Model {
     return this.apiMethod;
   }
 
+  @ApiModelProperty(value = "Task UUID", accessMode = READ_ONLY)
   @Column(unique = true)
   private UUID taskUUID;
 

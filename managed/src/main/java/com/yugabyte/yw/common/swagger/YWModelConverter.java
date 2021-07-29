@@ -1,5 +1,6 @@
 package com.yugabyte.yw.common.swagger;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Singleton;
 import io.swagger.converter.ModelConverter;
@@ -7,12 +8,12 @@ import io.swagger.converter.ModelConverterContext;
 import io.swagger.converter.ModelConverters;
 import io.swagger.models.Model;
 import io.swagger.models.properties.Property;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.Iterator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Singleton
 public class YWModelConverter implements ModelConverter {
@@ -36,16 +37,25 @@ public class YWModelConverter implements ModelConverter {
       ModelConverterContext context,
       Annotation[] annotations,
       Iterator<ModelConverter> chain) {
-    if (canSkip(type) || !chain.hasNext()) {
+    if (canSkip(type) || canSkip(annotations) || !chain.hasNext()) {
       LOG.debug("skipped {}", type.getTypeName());
       return null;
     }
+
     ModelConverter nextConverter = chain.next();
     if (nextConverter == this) {
       LOG.warn("{}{}", type.getTypeName(), annotations);
       throw new RuntimeException("Duplicate YWModelConverter added");
     }
     return nextConverter.resolveProperty(type, context, annotations, chain);
+  }
+
+  private boolean canSkip(Annotation[] annotations) {
+    if (annotations == null) {
+      return false;
+    }
+    return Arrays.stream(annotations)
+        .anyMatch(annotation -> annotation.annotationType().equals(JsonBackReference.class));
   }
 
   @Override

@@ -13,18 +13,18 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Provider;
-import play.libs.Json;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import play.libs.Json;
 
 public class KubernetesWaitForPod extends AbstractTaskBase {
   public enum CommandType {
@@ -42,7 +42,9 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private final KubernetesManager kubernetesManager;
 
   @Inject
-  public KubernetesWaitForPod(KubernetesManager kubernetesManager) {
+  protected KubernetesWaitForPod(
+      BaseTaskDependencies baseTaskDependencies, KubernetesManager kubernetesManager) {
+    super(baseTaskDependencies);
     this.kubernetesManager = kubernetesManager;
   }
 

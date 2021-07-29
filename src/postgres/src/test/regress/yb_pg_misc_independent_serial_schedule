@@ -14,9 +14,11 @@ test: yb_pg_case
 test: yb_pg_alter_generic
 test: yb_pg_alter_operator
 test: yb_pg_drop_operator
+test: yb_pg_dbsize
 test: yb_pg_prepare
 test: yb_sequence
 test: yb_pg_identity
+test: yb_pg_namespace
 
 # Features that are explicitly disabled and therefore should not work
 test: yb_disabled

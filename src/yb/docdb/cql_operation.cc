@@ -1102,13 +1102,31 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
       switch (GetValueState(existing_row, column_id)) {
         case ValueState::kNull: continue;
         case ValueState::kNotNull: return false;
-        case ValueState::kMissing:
-          // In case there exists a row with the same primary key, we definitely need to know if its
-          // columns have value NULL or not. Populate the column before executing this function.
-          RSTATUS_DCHECK(false, InternalError, "CQL proxy should mention all required columns in "
-            "QLWriteRequestPB's column_refs.");
+        case ValueState::kMissing: break;
       }
     }
+
+    #if DCHECK_IS_ON()
+    // If (for all non_pk cols new_row has value NULL/kMissing i.e., the UPDATE statement only sets
+    //     some/all cols to NULL)
+    // then (existing_row should have a value read from docdb for all non_pk
+    //       cols that are kMissing in new_row so that we can decide if the row is deleted or not).
+
+    bool skip_check = false;
+    for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
+        const ColumnId column_id = schema_->column_id(idx);
+        if (GetValueState(new_row, column_id) == ValueState::kNotNull) skip_check = true;
+    }
+
+    if (!skip_check) {
+        for (size_t idx = schema_->num_key_columns(); idx < schema_->num_columns(); idx++) {
+            const ColumnId column_id = schema_->column_id(idx);
+            if (GetValueState(new_row, column_id) == ValueState::kMissing) {
+              DCHECK(GetValueState(existing_row, column_id) != ValueState::kMissing);
+            }
+        }
+    }
+    #endif
 
     return true;
   }
@@ -1186,12 +1204,15 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         if (!index_pred_existing_row) {
           VLOG(3) << "Skip index entry delete of existing row for index_id=" << index->table_id() <<
             " since predicate not satisfied";
-          return Status::OK();
+          continue;
         }
       }
 
       QLWriteRequestPB* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
+      VLOG(3) << "Issue index entry delete of existing row for index_id=" << index->table_id() <<
+        " since predicate was satisfied earlier AND (isn't satisfied now (OR) the key has changed)";
+
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);

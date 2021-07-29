@@ -46,7 +46,18 @@ include(YugabyteFunctions)
 include(YugabyteTesting)
 
 ADD_CXX_FLAGS("-Werror")
-ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
+ADD_CXX_FLAGS("-fno-strict-aliasing -Wall -Wno-sign-compare -Wno-deprecated")
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  # Certain platforms such as ARM do not use signed chars by default
+  # which causes issues with certain bounds checks.
+  ADD_CXX_FLAGS("-fsigned-char")
+  # Turn off fp-contract on aarch64 to avoid multiply-add operation result difference.
+  ADD_CXX_FLAGS("-ffp-contract=off")
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+  ADD_CXX_FLAGS("-msse4.2")
+else()
+  message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 ADD_CXX_FLAGS("-Winvalid-pch")
 ADD_CXX_FLAGS("-pthread -DBOOST_BIND_NO_PLACEHOLDERS")
 ADD_LINKER_FLAGS("-pthread")
@@ -249,12 +260,19 @@ if(NOT INCLUDE_COMPILER_INFO_EARLY)
   include(CompilerInfo)
 endif()
 
-# Generate a Clang compile_commands.json "compilation database" file for use
-# with various development tools, such as Vim's YouCompleteMe plugin.
+# Generate a compile_commands.json "compilation database" file.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
-if ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1" OR
-    "$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
-  set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+if (CMAKE_EXPORT_COMPILE_COMMANDS)
+  message("CMAKE_EXPORT_COMPILE_COMMANDS is already enabled, will export compile_commands.json.")
+elseif ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1")
+  message("The YB_EXPORT_COMPILE_COMMANDS environment variable is set to 1, will export "
+          "compile_commands.json.")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+elseif ("$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
+  message("YB_RUN_AFFECTED_TESTS_ONLY is set to 1, will export compile_commands.json.")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+else()
+  message("CMake will not export the compilation database")
 endif()
 
 # -------------------------------------------------------------------------------------------------
@@ -280,7 +298,7 @@ DETECT_BREW()
 message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 
 # We can only use IS_CLANG after calling VALIDATE_COMPILER_TYPE.
-if (NOT APPLE)
+if (NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   # To enable 16-byte atomics support we should specify appropriate architecture.
   ADD_CXX_FLAGS("-march=ivybridge")
   ADD_CXX_FLAGS("-mcx16")
@@ -292,6 +310,7 @@ ADD_CXX_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
 ADD_CXX_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
 ADD_CXX_FLAGS("-DROCKSDB_LIB_IO_POSIX")
 ADD_CXX_FLAGS("-DSNAPPY")
+ADD_CXX_FLAGS("-DLZ4")
 ADD_CXX_FLAGS("-DZLIB")
 if ($ENV{YB_COMPILER_TYPE} STREQUAL "zapcc")
   ADD_CXX_FLAGS("-DYB_ZAPCC")
@@ -301,7 +320,7 @@ endif()
 # Compiler flags
 ############################################################
 
-if(NOT APPLE)
+if(NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   # The following flags are required to not assume the presence of too many CPU features so that the
   # code built can run on many platforms. For example, support building on c4.xlarge in AWS (dev
   # servers) and running on c3.xlarge (flash-based cluster machines). There are a couple more flags
@@ -395,11 +414,8 @@ ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 # For all builds:
 # For CMAKE_BUILD_TYPE=Debug
 #   -ggdb: Enable gdb debugging
-#   -O1: Enable minimum optimization
-#   -fno-omit-frame-pointer
-#       use frame pointers to allow simple stack frame walking for backtraces.
 # For CMAKE_BUILD_TYPE=FastDebug
-#   Same as DEBUG (TODO: remove fastdebug build type, use debug instead)
+#   Same as DEBUG, except with some optimizations on.
 # For CMAKE_BUILD_TYPE=Release
 #   -O3: Enable all compiler optimizations
 #   -g: Enable symbols for profiler tools (TODO: remove for shipping)
@@ -413,8 +429,8 @@ ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 #   2. Run the benchmarks (generates *.gcda profiling data).
 #   3. Build again with CMAKE_BUILD_TYPE_PROFILE_BUILD
 #     -fprofile-use: Compiler will use the profile outputs for optimizations
-set(CXX_FLAGS_DEBUG "-ggdb -O1 -fno-omit-frame-pointer")
-set(CXX_FLAGS_FASTDEBUG ${CXX_FLAGS_DEBUG})
+set(CXX_FLAGS_DEBUG "-ggdb")
+set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer")
 set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
 
 # Nullify CMake's predefined flags since we are handling different build types on our own.
@@ -488,7 +504,9 @@ if (IS_CLANG)
     ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
   endif()
 elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
-  ADD_CXX_FLAGS("-mno-abm -mno-movbe")
+  if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
+    ADD_CXX_FLAGS("-mno-abm -mno-movbe")
+  endif()
 else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
@@ -633,6 +651,7 @@ ADD_LINKER_FLAGS("-L${YB_PREFIX_COMMON}/lib")
 set(YB_THIRDPARTY_INSTALLED_DEPS_DIR
     "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}")
 set(CMAKE_PREFIX_PATH ${YB_THIRDPARTY_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
+ADD_LINKER_FLAGS("-L${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
 
 set(YB_THIRDPARTY_INSTALLED_DIR ${YB_PREFIX_COMMON})
 
@@ -665,6 +684,15 @@ set(YB_TEST_LINK_LIBS ${YB_MIN_TEST_LIBS})
 ############################################################
 # Subdirectories
 ############################################################
+
+# TODO(dmitry): Add YB_CMAKE_CXX_EXTRA_FLAGS to CMAKE_CXX_FLAGS when all source code will be
+#               compatible with with these flags #9279
+# Note: YB_CMAKE_CXX_EXTRA_FLAGS almost equals to flags in ./src/yb/rocksdb/CMakeLists.txt
+#       Exceptions are:
+#         * No -Wsign-compare because for now YB uses -Wno-sign-compare explicitly
+#         * No -Wno-unused-variable and -Wno-missing-field-initializers because there are no
+#           such warnings in the YB code
+set(YB_CMAKE_CXX_EXTRA_FLAGS "-Wextra -Wshadow -Woverloaded-virtual -Wno-unused-parameter")
 
 # For any C code, use the same flags as for C++.
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -702,7 +730,7 @@ if (USING_LINUXBREW)
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
 endif()
 
-message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
+message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")
 
 # Define full paths to libpq and libyb_pgbackend shared libraries. These libraries are built as part
 # of building PostgreSQL. We need to declare these as by-products of running the PostgreSQL build
@@ -763,8 +791,11 @@ math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "
         "included: ${YB_NUM_INCLUDED_TESTS}, "
         "excluded: ${YB_NUM_EXCLUDED_TESTS}")
-if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "0")
-  message(FATAL_ERROR "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests")
+if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "1")
+  message(
+    FATAL_ERROR
+    "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests"
+    " (one test would be OK because we always add create_initial_sys_catalog_snapshot).")
 endif()
 
 math(EXPR YB_NUM_EXCLUDED_EXECUTABLES "${YB_NUM_EXECUTABLES} - ${YB_NUM_INCLUDED_EXECUTABLES}")

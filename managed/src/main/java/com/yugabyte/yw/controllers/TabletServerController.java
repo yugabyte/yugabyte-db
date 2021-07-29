@@ -2,63 +2,31 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.UUID;
-
-import org.yb.client.ListTabletServersResponse;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
-import play.libs.Json;
 import play.mvc.Result;
 
+@Api(
+    value = "Tablet Server",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TabletServerController extends AuthenticatedController {
-  public static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
-  @Inject ApiHelper apiHelper;
-  private final YBClientService ybService;
+  private static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
+  private final ApiHelper apiHelper;
 
   @Inject
-  public TabletServerController(YBClientService service) {
-    this.ybService = service;
-  }
-
-  /**
-   * This API would query for all the tabletServers using YB Client and return a JSON with tablet
-   * server UUIDs
-   *
-   * @return Result tablet server uuids
-   */
-  public Result list() {
-    ObjectNode result = Json.newObject();
-    YBClient client = null;
-
-    try {
-      client = ybService.getClient(null);
-      ListTabletServersResponse response = client.listTabletServers();
-      result.put("count", response.getTabletServersCount());
-      ArrayNode tabletServers = result.putArray("servers");
-      response
-          .getTabletServersList()
-          .forEach(
-              tabletServer -> {
-                tabletServers.add(tabletServer.getHost());
-              });
-    } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Error: " + e.getMessage());
-    } finally {
-      ybService.closeClient(client, null);
-    }
-
-    return ok(result);
+  public TabletServerController(ApiHelper apiHelper) {
+    this.apiHelper = apiHelper;
   }
 
   /**
@@ -68,6 +36,7 @@ public class TabletServerController extends AuthenticatedController {
    * @param universeUUID UUID of the universe
    * @return Result tablet server information
    */
+  @ApiOperation(value = "List of tablet server", response = Object.class, responseContainer = "Map")
   public Result listTabletServers(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);
@@ -92,6 +61,6 @@ public class TabletServerController extends AuthenticatedController {
       LOG.error("Failed to get list of tablet servers in universe " + universeUUID, e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return ApiResponse.success(response);
+    return YWResults.withRawData(response);
   }
 }

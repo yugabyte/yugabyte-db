@@ -23,7 +23,7 @@
 #include "yb/util/format.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_int32(process_split_tablet_candidates_interval_msec, 2000,
+DEFINE_int32(process_split_tablet_candidates_interval_msec, 15000,
              "The tick interval time for processing accumulated tablet split candidates.");
 DEFINE_int32(max_queued_split_candidates, 5,
              "The max number of pending tablet split candidates we will hold onto. We potentially "
@@ -50,7 +50,7 @@ int32 GetCandidateQueueLimit() {
 } // namespace
 
 TabletSplitManager::TabletSplitManager(
-    const TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver):
+    TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver):
     filter_(filter),
     driver_(driver) {}
 
@@ -90,6 +90,7 @@ Status TabletSplitManager::ScheduleSplitIfNeeded(
   if (is_tablet_leader_drive_info
       && filter_->ValidateSplitCandidate(tablet_info).ok()
       && filter_->ShouldSplitValidCandidate(tablet_info, drive_info)) {
+    LOG(INFO) << "Adding tablet into split queue: " << tablet_id;
     candidates_.push_back(tablet_id);
   }
   return Status::OK();

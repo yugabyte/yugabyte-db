@@ -1,17 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models.helpers;
 
-import com.yugabyte.yw.common.ApiUtils;
-import org.junit.Before;
-import org.junit.Test;
-
-import java.util.HashSet;
-import java.util.Set;
-
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.AllOf.allOf;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+
+import com.yugabyte.yw.common.ApiUtils;
+import java.util.HashSet;
+import java.util.Set;
+import org.junit.Before;
+import org.junit.Test;
 
 public class NodeDetailsTest {
   private NodeDetails nd;
@@ -48,12 +49,13 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.ToggleTls);
     activeStates.add(NodeDetails.NodeState.Live);
     activeStates.add(NodeDetails.NodeState.Stopping);
+    activeStates.add(NodeDetails.NodeState.Resizing);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (activeStates.contains(state)) {
-        assertTrue(nd.isActive());
+        assertTrue("Node is inactive unexpectedly. State: " + state, nd.isActive());
       } else {
-        assertFalse(nd.isActive());
+        assertFalse("Node is active unexpectedly. State: " + state, nd.isActive());
       }
     }
   }

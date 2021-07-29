@@ -1,79 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.naming.TestCaseName;
-import org.apache.commons.lang3.StringUtils;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import play.libs.Json;
-
-import java.io.File;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.Predicate;
-
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.ToggleTls;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.ToggleTls;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -91,6 +27,72 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Predicate;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.StringUtils;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -115,6 +117,8 @@ public class NodeManagerTest extends FakeDBApplication {
   private final String fakeMountPath2 = "/fake/path/d1";
   private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
   private final String instanceTypeCode = "fake_instance_type";
+  private final String SERVER_CERT_PATH = "/tmp/cert.crt";
+  private final String SERVER_KEY_PATH = "/tmp/key.crt";
 
   private class TestData {
     public final Common.CloudType cloudType;
@@ -126,6 +130,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public String privateKey = "/path/to/private.key";
     public final List<String> baseCommand = new ArrayList<>();
     public final String replacementVolume = "test-volume";
+    public final String NewInstanceType = "test-c5.2xlarge";
 
     public TestData(
         Provider p, Common.CloudType cloud, PublicCloudConstants.StorageType storageType, int idx) {
@@ -226,6 +231,139 @@ public class NodeManagerTest extends FakeDBApplication {
     return accessKey;
   }
 
+  private List<String> getCertificatePaths(
+      AnsibleConfigureServers.Params configureParams, String yb_home_dir) {
+    ArrayList<String> expectedCommand = new ArrayList<String>();
+
+    if (configureParams.enableNodeToNodeEncrypt
+        || (configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt)) {
+      expectedCommand.add("--certs_node_dir");
+      expectedCommand.add(yb_home_dir + "/yugabyte-tls-config");
+
+      CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
+      if (rootCert == null) {
+        throw new RuntimeException("No valid rootCA found for " + configureParams.universeUUID);
+      }
+
+      String rootCertPath = null, serverCertPath = null, serverKeyPath = null, certsLocation = null;
+
+      switch (rootCert.certType) {
+        case SelfSigned:
+          {
+            rootCertPath = rootCert.certificate;
+            serverCertPath = "cert.crt";
+            serverKeyPath = "key.crt";
+            certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
+
+            if (configureParams.rootAndClientRootCASame
+                && configureParams.enableClientToNodeEncrypt) {
+              expectedCommand.add("--client_cert_path");
+              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add("--client_key_path");
+              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+            }
+            break;
+          }
+        case CustomCertHostPath:
+          {
+            CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+            rootCertPath = customCertInfo.rootCertPath;
+            serverCertPath = customCertInfo.nodeCertPath;
+            serverKeyPath = customCertInfo.nodeKeyPath;
+            certsLocation = NodeManager.CERT_LOCATION_NODE;
+            if (configureParams.rootAndClientRootCASame
+                && configureParams.enableClientToNodeEncrypt
+                && customCertInfo.clientCertPath != null
+                && !customCertInfo.clientCertPath.isEmpty()
+                && customCertInfo.clientKeyPath != null
+                && !customCertInfo.clientKeyPath.isEmpty()) {
+              expectedCommand.add("--client_cert_path");
+              expectedCommand.add(customCertInfo.clientCertPath);
+              expectedCommand.add("--client_key_path");
+              expectedCommand.add(customCertInfo.clientKeyPath);
+            }
+            break;
+          }
+        case CustomServerCert:
+          {
+            throw new RuntimeException("rootCA cannot be of type CustomServerCert.");
+          }
+      }
+
+      if (rootCertPath != null
+          && serverCertPath != null
+          && serverKeyPath != null
+          && certsLocation != null) {
+        expectedCommand.add("--root_cert_path");
+        expectedCommand.add(rootCertPath);
+        expectedCommand.add("--server_cert_path");
+        expectedCommand.add(serverCertPath);
+        expectedCommand.add("--server_key_path");
+        expectedCommand.add(serverKeyPath);
+        expectedCommand.add("--certs_location");
+        expectedCommand.add(certsLocation);
+      }
+    }
+    if (!configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt) {
+      expectedCommand.add("--certs_client_dir");
+      expectedCommand.add(yb_home_dir + "/yugabyte-client-tls-config");
+
+      CertificateInfo clientRootCert = CertificateInfo.get(configureParams.clientRootCA);
+      if (clientRootCert == null) {
+        throw new RuntimeException(
+            "No valid clientRootCA found for " + configureParams.universeUUID);
+      }
+
+      String rootCertPath = null, serverCertPath = null, serverKeyPath = null, certsLocation = null;
+
+      switch (clientRootCert.certType) {
+        case SelfSigned:
+          {
+            rootCertPath = clientRootCert.certificate;
+            serverCertPath = "cert.crt";
+            serverKeyPath = "%key.cert";
+            certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
+
+            break;
+          }
+        case CustomCertHostPath:
+          {
+            CertificateParams.CustomCertInfo customCertInfo = clientRootCert.getCustomCertInfo();
+            rootCertPath = customCertInfo.rootCertPath;
+            serverCertPath = customCertInfo.nodeCertPath;
+            serverKeyPath = customCertInfo.nodeKeyPath;
+            certsLocation = NodeManager.CERT_LOCATION_NODE;
+            break;
+          }
+        case CustomServerCert:
+          {
+            CertificateInfo.CustomServerCertInfo customServerCertInfo =
+                clientRootCert.getCustomServerCertInfo();
+            rootCertPath = clientRootCert.certificate;
+            serverCertPath = customServerCertInfo.serverCert;
+            serverKeyPath = customServerCertInfo.serverKey;
+            certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
+          }
+      }
+
+      if (rootCertPath != null
+          && serverCertPath != null
+          && serverKeyPath != null
+          && certsLocation != null) {
+        expectedCommand.add("--root_cert_path_client_to_server");
+        expectedCommand.add(rootCertPath);
+        expectedCommand.add("--server_cert_path_client_to_server");
+        expectedCommand.add(serverCertPath);
+        expectedCommand.add("--server_key_path_client_to_server");
+        expectedCommand.add(serverKeyPath);
+        expectedCommand.add("--certs_location_client_to_server");
+        expectedCommand.add(certsLocation);
+      }
+    }
+
+    return expectedCommand;
+  }
+
   private UUID createUniverseWithCert(TestData t, AnsibleConfigureServers.Params params)
       throws IOException, NoSuchAlgorithmException {
     Calendar cal = Calendar.getInstance();
@@ -249,16 +387,9 @@ public class NodeManagerTest extends FakeDBApplication {
               TestHelper.TMP_PATH + "/ca.crt",
               customCertInfo);
     } else {
-      cert =
-          CertificateInfo.create(
-              rootCAuuid,
-              t.provider.customerUUID,
-              params.nodePrefix,
-              today,
-              nextYear,
-              t.privateKey,
-              TestHelper.TMP_PATH + "/ca.crt",
-              CertificateInfo.Type.SelfSigned);
+      UUID certUUID =
+          CertificateHelper.createRootCA("foobar", t.provider.customerUUID, TestHelper.TMP_PATH);
+      cert = CertificateInfo.get(certUUID);
     }
 
     Universe u = createUniverse();
@@ -379,8 +510,8 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (configureParams.getProperty("taskSubType") != null) {
-          UpgradeUniverse.UpgradeTaskSubType taskSubType =
-              UpgradeUniverse.UpgradeTaskSubType.valueOf(
+          UpgradeTaskSubType taskSubType =
+              UpgradeTaskParams.UpgradeTaskSubType.valueOf(
                   configureParams.getProperty("taskSubType"));
           String processType = configureParams.getProperty("processType");
           expectedCommand.add("--yb_process_type");
@@ -442,14 +573,9 @@ public class NodeManagerTest extends FakeDBApplication {
               && configureParams.setTxnTableWaitCountFlag) {
             gflags.put("txn_table_wait_min_ts_count", Integer.toString(userIntent.numNodes));
           }
-          if (configureParams.enableNodeToNodeEncrypt
-              || configureParams.enableClientToNodeEncrypt) {
 
-            CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
-            if (configureParams.rootAndClientRootCASame && cert == null) {
-              throw new RuntimeException(
-                  "No valid rootCA found for " + configureParams.universeUUID);
-            }
+          if ((configureParams.enableNodeToNodeEncrypt
+              || configureParams.enableClientToNodeEncrypt)) {
             if (configureParams.enableNodeToNodeEncrypt) {
               gflags.put("use_node_to_node_encryption", "true");
             }
@@ -458,104 +584,20 @@ public class NodeManagerTest extends FakeDBApplication {
             }
             gflags.put(
                 "allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
+            String yb_home_dir = configureParams.getProvider().getYbHome();
+
             gflags.put("cert_node_filename", params.nodeName);
 
-            if (configureParams.rootAndClientRootCASame) {
-              gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
-              expectedCommand.add("--certs_node_dir");
-              expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
-
-              CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
-              if (rootCert == null) {
-                throw new RuntimeException(
-                    "No valid rootCA found for " + configureParams.universeUUID);
-              }
-
-              if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
-                expectedCommand.add("--rootCA_cert");
-                expectedCommand.add(rootCert.certificate);
-                expectedCommand.add("--rootCA_key");
-                expectedCommand.add(rootCert.privateKey);
-              } else {
-                CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
-                expectedCommand.add("--use_custom_certs");
-                expectedCommand.add("--root_cert_path");
-                expectedCommand.add(customCertInfo.rootCertPath);
-                expectedCommand.add("--node_cert_path");
-                expectedCommand.add(customCertInfo.nodeCertPath);
-                expectedCommand.add("--node_key_path");
-                expectedCommand.add(customCertInfo.nodeKeyPath);
-                if (customCertInfo.clientCertPath != null) {
-                  expectedCommand.add("--client_cert_path");
-                  expectedCommand.add(customCertInfo.clientCertPath);
-                  expectedCommand.add("--client_key_path");
-                  expectedCommand.add(customCertInfo.clientKeyPath);
-                }
-              }
-            } else {
-              if (configureParams.enableNodeToNodeEncrypt) {
-                gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
-                expectedCommand.add("--certs_node_dir");
-                expectedCommand.add("/home/yugabyte/yugabyte-tls-config");
-
-                CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
-                if (rootCert == null) {
-                  throw new RuntimeException(
-                      "No valid rootCA found for " + configureParams.universeUUID);
-                }
-
-                if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
-                  expectedCommand.add("--rootCA_cert");
-                  expectedCommand.add(rootCert.certificate);
-                  expectedCommand.add("--rootCA_key");
-                  expectedCommand.add(rootCert.privateKey);
-                } else {
-                  CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
-                  expectedCommand.add("--use_custom_certs");
-                  expectedCommand.add("--root_cert_path");
-                  expectedCommand.add(customCertInfo.rootCertPath);
-                  expectedCommand.add("--node_cert_path");
-                  expectedCommand.add(customCertInfo.nodeCertPath);
-                  expectedCommand.add("--node_key_path");
-                  expectedCommand.add(customCertInfo.nodeKeyPath);
-                }
-              }
-              if (configureParams.enableClientToNodeEncrypt) {
-                gflags.put("certs_for_client_dir", "/home/yugabyte/yugabyte-client-tls-config");
-                expectedCommand.add("--certs_client_dir");
-                expectedCommand.add("/home/yugabyte/yugabyte-client-tls-config");
-
-                CertificateInfo clientRootCert = CertificateInfo.get(configureParams.clientRootCA);
-                if (clientRootCert == null) {
-                  throw new RuntimeException(
-                      "No valid clientRootCA found for " + configureParams.universeUUID);
-                }
-
-                if (clientRootCert.certType == CertificateInfo.Type.SelfSigned) {
-                  expectedCommand.add("--clientRootCA_cert");
-                  expectedCommand.add(clientRootCert.certificate);
-                  expectedCommand.add("--clientRootCA_key");
-                  expectedCommand.add(clientRootCert.privateKey);
-                } else {
-                  CertificateParams.CustomCertInfo customCertInfo =
-                      clientRootCert.getCustomCertInfo();
-                  expectedCommand.add("--use_custom_client_certs");
-                  expectedCommand.add("--client_root_cert_path");
-                  expectedCommand.add(customCertInfo.rootCertPath);
-                  expectedCommand.add("--client_node_cert_path");
-                  expectedCommand.add(customCertInfo.nodeCertPath);
-                  expectedCommand.add("--client_node_key_path");
-                  expectedCommand.add(customCertInfo.nodeKeyPath);
-                }
-
-                expectedCommand.add("--client_cert");
-                expectedCommand.add(
-                    CertificateHelper.getClientCertFile(configureParams.clientRootCA));
-                expectedCommand.add("--client_key");
-                expectedCommand.add(
-                    CertificateHelper.getClientKeyFile(configureParams.clientRootCA));
-              }
+            if (configureParams.enableNodeToNodeEncrypt
+                || (configureParams.rootAndClientRootCASame
+                    && configureParams.enableClientToNodeEncrypt)) {
+              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
             }
+            if (!configureParams.rootAndClientRootCASame
+                && configureParams.enableClientToNodeEncrypt) {
+              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+            }
+            expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
           }
           expectedCommand.add("--extra_gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
@@ -595,65 +637,58 @@ public class NodeManagerTest extends FakeDBApplication {
           String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(configureParams.allowInsecure);
 
-          String certsNodeDir =
-              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome()
-                  + "/yugabyte-tls-config";
+          String yb_home_dir =
+              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
+          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
 
           String subType = configureParams.getProperty("taskSubType");
-          if (UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
-            CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
-
-            expectedCommand.add("--adding_certs");
-            expectedCommand.add("--certs_node_dir");
-            expectedCommand.add(certsNodeDir);
-
-            if (cert.certType == CertificateInfo.Type.SelfSigned) {
-              expectedCommand.add("--rootCA_cert");
-              expectedCommand.add(cert.certificate);
-              expectedCommand.add("--rootCA_key");
-              expectedCommand.add(cert.privateKey);
-              if (configureParams.enableClientToNodeEncrypt) {
-                expectedCommand.add("--client_cert");
-                expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
-                expectedCommand.add("--client_key");
-                expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
-              }
-            } else {
-              CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-              expectedCommand.add("--use_custom_certs");
-              expectedCommand.add("--root_cert_path");
-              expectedCommand.add(customCertInfo.rootCertPath);
-              expectedCommand.add("--node_cert_path");
-              expectedCommand.add(customCertInfo.nodeCertPath);
-              expectedCommand.add("--node_key_path");
-              expectedCommand.add(customCertInfo.nodeKeyPath);
-              if (customCertInfo.clientCertPath != null) {
-                expectedCommand.add("--client_cert_path");
-                expectedCommand.add(customCertInfo.clientCertPath);
-                expectedCommand.add("--client_key_path");
-                expectedCommand.add(customCertInfo.clientKeyPath);
-              }
+          if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+            if (configureParams.enableNodeToNodeEncrypt
+                || configureParams.enableClientToNodeEncrypt) {
+              expectedCommand.add("--adding_certs");
             }
-          } else if (UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
+            if (configureParams.enableNodeToNodeEncrypt
+                || (configureParams.rootAndClientRootCASame
+                    && configureParams.enableClientToNodeEncrypt)) {
+              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+            }
+            if (!configureParams.rootAndClientRootCASame
+                && configureParams.enableClientToNodeEncrypt) {
+              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+            }
+            expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
+              .equals(subType)) {
             gflags = new HashMap<>();
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
-              gflags.put("certs_dir", certsNodeDir);
+              if (CertificateHelper.isRootCARequired(configureParams)) {
+                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              }
+              if (CertificateHelper.isClientRootCARequired(configureParams)) {
+                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              }
             } else if (configureParams.nodeToNodeChange < 0) {
               gflags.put("allow_insecure_connections", "true");
             } else {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              gflags.put("certs_dir", certsNodeDir);
+              if (CertificateHelper.isRootCARequired(configureParams)) {
+                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              }
+              if (CertificateHelper.isClientRootCARequired(configureParams)) {
+                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              }
             }
 
             expectedCommand.add("--replace_gflags");
             expectedCommand.add("--gflags");
             expectedCommand.add(Json.stringify(Json.toJson(gflags)));
-          } else if (UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name()
+              .equals(subType)) {
             gflags = new HashMap<>();
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("allow_insecure_connections", allowInsecureString);
@@ -694,9 +729,14 @@ public class NodeManagerTest extends FakeDBApplication {
         }
         break;
       case Disk_Update:
-        InstanceActions.Params taskParam = (InstanceActions.Params) params;
+        InstanceActions.Params duTaskParams = (InstanceActions.Params) params;
         expectedCommand.add("--instance_type");
-        expectedCommand.add(taskParam.instanceType);
+        expectedCommand.add(duTaskParams.instanceType);
+        break;
+      case Change_Instance_Type:
+        ChangeInstanceType.Params citTaskParams = (ChangeInstanceType.Params) params;
+        expectedCommand.add("--instance_type");
+        expectedCommand.add(citTaskParams.instanceType);
         break;
     }
     if (params.deviceInfo != null) {
@@ -741,6 +781,26 @@ public class NodeManagerTest extends FakeDBApplication {
 
     expectedCommand.add(params.nodeName);
     return expectedCommand;
+  }
+
+  @Test
+  public void testChangeInstanceTypeCommand() {
+    for (TestData t : testData) {
+      ChangeInstanceType.Params params = new ChangeInstanceType.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      List<String> expectedCommand = t.baseCommand;
+      params.instanceType = t.NewInstanceType;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
   }
 
   private void runAndVerifyNodeCommand(
@@ -926,6 +986,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private void runAndTestProvisionWithAccessKeyAndSG(String sgId) {
     for (TestData t : testData) {
       t.region.setSecurityGroupId(sgId);
+      t.region.save();
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
@@ -1062,7 +1123,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), any());
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
   }
 
@@ -1158,26 +1219,6 @@ public class NodeManagerTest extends FakeDBApplication {
               "3333");
       expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
 
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
-    }
-  }
-
-  @Test
-  public void testConfigureNodeCommandInShellMode() {
-    for (TestData t : testData) {
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(
-          t,
-          params,
-          Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
-      params.isMasterInShellMode = false;
-      params.ybSoftwareVersion = "0.0.1";
-
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
@@ -1518,7 +1559,19 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+          .run(
+              captor.capture(),
+              eq(t.region.provider.getConfig()),
+              eq(
+                  String.format(
+                      "bin/ybcloud.sh %s --region %s instance configure %s",
+                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+      List<String> actualCommand = captor.getValue();
+      int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+      int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+      expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+      expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+      assertEquals(expectedCommand, actualCommand);
     }
   }
 
@@ -1541,7 +1594,19 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+          .run(
+              captor.capture(),
+              eq(t.region.provider.getConfig()),
+              eq(
+                  String.format(
+                      "bin/ybcloud.sh %s --region %s instance configure %s",
+                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+      List<String> actualCommand = captor.getValue();
+      int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+      int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+      expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+      expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+      assertEquals(expectedCommand, actualCommand);
     }
   }
 
@@ -1563,9 +1628,25 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+          .run(
+              captor.capture(),
+              eq(t.region.provider.getConfig()),
+              eq(
+                  String.format(
+                      "bin/ybcloud.sh %s --region %s instance configure %s",
+                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+      List<String> actualCommand = captor.getValue();
+      int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+      int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+      expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+      expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+      assertEquals(expectedCommand, actualCommand);
     }
   }
+
+  // /temp/root.crt
+
+  @Captor private ArgumentCaptor<List<String>> captor;
 
   @Test
   public void testEnableAllTLSNodeCommand() throws IOException, NoSuchAlgorithmException {
@@ -1586,7 +1667,19 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+          .run(
+              captor.capture(),
+              eq(t.region.provider.getConfig()),
+              eq(
+                  String.format(
+                      "bin/ybcloud.sh %s --region %s instance configure %s",
+                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+      List<String> actualCommand = captor.getValue();
+      int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+      int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+      expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+      expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+      assertEquals(expectedCommand, actualCommand);
     }
   }
 
@@ -1800,16 +1893,41 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDiskUpdate() {
+  public void testDiskUpdateCommand() {
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
-      UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
-      buildValidParams(t, params, universe);
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
+      params.deviceInfo = new DeviceInfo();
+      params.deviceInfo.numVolumes = 1;
+      params.deviceInfo.volumeSize = 500;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Disk_Update, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Disk_Update, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testConfigureNodeCommandInShellMode() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      params.isMasterInShellMode = false;
+      params.ybSoftwareVersion = "0.0.1";
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
@@ -1971,7 +2089,7 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
-      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.setProperty("taskSubType", UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name());
       params.enableNodeToNodeEncrypt = true;
       params.enableClientToNodeEncrypt = true;
       params.rootCA = UUID.randomUUID();
@@ -2010,21 +2128,30 @@ public class NodeManagerTest extends FakeDBApplication {
           Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
-      params.setProperty("taskSubType", UpgradeUniverse.UpgradeTaskSubType.CopyCerts.name());
+      params.setProperty("taskSubType", UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name());
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
 
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-        if (!enableNodeToNodeEncrypt && !enableClientToNodeEncrypt) {
-          fail();
-        }
         List<String> expectedCommand = data.baseCommand;
         expectedCommand.addAll(
             nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
         verify(shellProcessHandler, times(1))
-            .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+            .run(
+                captor.capture(),
+                eq(data.region.provider.getConfig()),
+                eq(
+                    String.format(
+                        "bin/ybcloud.sh %s --region %s instance configure %s",
+                        data.region.provider.name, data.region.code, data.node.getNodeName())));
+        List<String> actualCommand = captor.getValue();
+        int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+        int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+        expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+        expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+        assertEquals(expectedCommand, actualCommand);
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), containsString("No changes needed")));
       }
@@ -2051,7 +2178,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
       params.setProperty(
-          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round1GFlagsUpdate.name());
+          "taskSubType", UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name());
       params.nodeToNodeChange = nodeToNodeChange;
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -2083,7 +2210,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
       params.setProperty(
-          "taskSubType", UpgradeUniverse.UpgradeTaskSubType.Round2GFlagsUpdate.name());
+          "taskSubType", UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name());
       params.nodeToNodeChange = nodeToNodeChange;
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);

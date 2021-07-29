@@ -10,17 +10,21 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ShellResponse;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class AnsibleClusterServerCtl extends NodeTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AnsibleClusterServerCtl.class);
+  @Inject
+  protected AnsibleClusterServerCtl(
+      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   public static class Params extends NodeTaskParams {
     public String process;
@@ -57,7 +61,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
       if (!taskParams().isForceDelete) {
         throw e;
       } else {
-        LOG.debug("Ignoring error: {}", e.getMessage());
+        log.debug("Ignoring error: {}", e.getMessage());
       }
     }
 
@@ -65,7 +69,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
       try {
         Thread.sleep(taskParams().sleepAfterCmdMills);
       } catch (InterruptedException e) {
-        LOG.error("{} Thread Sleep failed: {}", getName(), e.getMessage());
+        log.error("{} Thread Sleep failed: {}", getName(), e.getMessage());
       }
     }
   }

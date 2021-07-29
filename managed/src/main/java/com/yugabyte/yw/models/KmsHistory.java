@@ -10,48 +10,60 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.validation.Constraints;
-import play.libs.Json;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
+import io.ebean.Ebean;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.SqlUpdate;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
+import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.Temporal;
+import javax.persistence.TemporalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
+import play.libs.Json;
 
 @Entity
 // @IdClass(KmsHistoryId.class)
+@ApiModel(description = "KMS History.")
 public class KmsHistory extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsHistory.class);
 
   public static final int SCHEMA_VERSION = 1;
 
-  @EmbeddedId public KmsHistoryId uuid;
+  @EmbeddedId
+  @ApiModelProperty(value = "KMS history UUID", accessMode = READ_ONLY)
+  public KmsHistoryId uuid;
 
   @Constraints.Required
   @Temporal(TemporalType.TIMESTAMP)
   @Column(nullable = false)
+  @ApiModelProperty(value = "Timestamp of KMS history", accessMode = READ_ONLY)
   public Date timestamp;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Version of KMS history", accessMode = READ_ONLY)
   public int version;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Config UUID", accessMode = READ_ONLY)
   public UUID configUuid;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "KMS is active or not", accessMode = READ_ONLY)
   public boolean active;
 
   public static final Finder<KmsHistoryId, KmsHistory> find =

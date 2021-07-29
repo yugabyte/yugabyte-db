@@ -680,15 +680,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ForeignKeySnapshot)) {
 // A test performing manual transaction control on system tables.
 // ------------------------------------------------------------------------------------------------
 
-class PgMiniTestManualSysTableTxn : public PgMiniTest {
+class PgMiniTestNoSleepBeforeRetry : public PgMiniTest {
   virtual void BeforePgProcessStart() {
-    // Enable manual transaction control for operations on system tables. Otherwise, they would
-    // execute non-transactionally.
     FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
   }
 };
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestManualSysTableTxn) {
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoSleepBeforeRetry) {
 
   // Resolving conflicts between transactions on a system table.
   //
@@ -783,7 +781,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestMan
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   const std::string kDatabaseName = "testdb";
   master::CatalogManager *catalog_manager =
-      cluster_->leader_mini_master()->master()->catalog_manager();
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
   scoped_refptr<master::TabletInfo> sys_tablet;
   std::array<int, 4> num_tables;
@@ -810,7 +808,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   ASSERT_OK(cluster_->RestartSync());
   {
     // Refresh stale local variables after RestartSync.
-    catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
     master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
@@ -828,7 +826,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
   master::CatalogManager *catalog_manager =
-      cluster_->leader_mini_master()->master()->catalog_manager();
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
@@ -844,7 +842,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
   // Refresh stale local variable after RestartSync.
-  catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+  catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
 }
 
@@ -855,7 +853,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   constexpr int kMaxNumSleeps = 20;
   int num_tables_before, num_tables_after;
   master::CatalogManager *catalog_manager =
-      cluster_->leader_mini_master()->master()->catalog_manager();
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
   scoped_refptr<master::TabletInfo> sys_tablet;
 
@@ -887,7 +885,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_OK(cluster_->RestartSync());
   {
     // Refresh stale local variables after RestartSync.
-    catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
     master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
     sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
   }
@@ -914,9 +912,9 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
   }
   // Failover to a new master.
   LOG(INFO) << "Failover to new Master";
-  auto old_master = cluster_->leader_mini_master();
-  cluster_->leader_mini_master()->Shutdown();
-  auto new_master = cluster_->leader_mini_master();
+  auto old_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  auto new_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   ASSERT_NE(nullptr, new_master);
   ASSERT_NE(old_master, new_master);
   // Wait for all the TabletServers to report in, so we can run CREATE TABLE with working replicas.
@@ -1397,6 +1395,46 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
   res = ASSERT_RESULT(conn1.FetchValue<int32_t>("SELECT b FROM t WHERE a = 2"));
   ASSERT_EQ(res, 1);
   ASSERT_OK(conn1.CommitTransaction());
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(InOperatorLock), PgMiniTestNoSleepBeforeRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r1 INT, r2 INT, PRIMARY KEY(h, r1 ASC, r2 ASC))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t VALUES (1, 11, 1),(1, 12, 1),(1, 13, 1),(2, 11, 2),(2, 12, 2),(2, 13, 2)"));
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  auto res = ASSERT_RESULT(conn.Fetch(
+      "SELECT * FROM t WHERE h = 1 AND r1 IN (11, 12) AND r2 = 1 FOR KEY SHARE"));
+
+  auto extra_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(extra_conn.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  res = ASSERT_RESULT(conn.Fetch(
+      "SELECT * FROM t WHERE h IN (1, 2) AND r1 = 11 FOR KEY SHARE"));
+
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 1"));
+  ASSERT_OK(extra_conn.Execute("ROLLBACK"));
+  ASSERT_OK(extra_conn.Execute("BEGIN"));
+  ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
+  ASSERT_OK(extra_conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("COMMIT;"));
+  const auto count = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(4, count);
 }
 
 } // namespace pgwrapper

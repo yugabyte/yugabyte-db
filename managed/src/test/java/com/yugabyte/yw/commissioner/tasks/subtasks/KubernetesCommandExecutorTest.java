@@ -2,15 +2,49 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -22,23 +56,8 @@ import org.pac4j.play.store.PlaySessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
-import static play.inject.Bindings.bind;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   KubernetesManager kubernetesManager;
@@ -63,17 +82,21 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  protected AlertConfigurationWriter mockAlertConfigurationWriter;
 
   @Override
   protected Application provideApplication() {
     kubernetesManager = mock(KubernetesManager.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     return new GuiceApplicationBuilder()
+        .disable(SwaggerModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
 
@@ -132,6 +155,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
     params.config = config;
@@ -149,6 +173,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
     params.providerUUID = defaultProvider.uuid;
     params.commandType = commandType;
     params.nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
@@ -332,6 +357,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     kubernetesCommandExecutor.run();
     assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -339,11 +365,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
@@ -374,6 +402,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -381,11 +410,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -414,6 +445,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -421,11 +453,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -455,6 +489,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -462,11 +497,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -500,6 +537,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -507,11 +545,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -545,6 +585,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -552,11 +593,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -590,6 +633,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     kubernetesCommandExecutor.taskParams().rootCA = defaultCert.uuid;
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -597,11 +641,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -624,6 +670,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -631,11 +678,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -674,11 +723,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: foo\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
     defaultProvider.setConfig(defaultAnnotations);
+    defaultProvider.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -686,11 +737,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -713,11 +766,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
     defaultRegion.setConfig(defaultAnnotations);
+    defaultRegion.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -725,11 +780,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -757,6 +814,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -764,11 +822,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -789,6 +849,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<String, String>();
     defaultAnnotations.put("OVERRIDES", "foo: bar");
     defaultProvider.setConfig(defaultAnnotations);
+    defaultProvider.save();
     defaultAnnotations.put("OVERRIDES", "bar: foo");
     defaultAZ.updateConfig(defaultAnnotations);
 
@@ -797,6 +858,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -804,11 +866,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -835,6 +899,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -842,11 +907,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -904,6 +971,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
     kubernetesCommandExecutor.run();
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -911,11 +979,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(defaultUniverse.getUniverseDetails().nodePrefix, expectedNodePrefix.getValue());
@@ -1166,6 +1236,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     kubernetesCommandExecutor.run();
     assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
 
+    ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<UUID> expectedProviderUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -1173,6 +1244,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
+            expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedProviderUUID.capture(),
             expectedNodePrefix.capture(),
@@ -1181,6 +1253,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     verify(kubernetesManager, times(1))
         .getServices(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
+    assertEquals(ybSoftwareVersion, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(hackPlacementUUID, defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     assertEquals(defaultProvider.uuid, expectedProviderUUID.getValue());

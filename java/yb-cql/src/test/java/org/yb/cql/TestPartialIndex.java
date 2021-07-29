@@ -21,6 +21,7 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
 
 import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.util.Pair;
 
 import static org.yb.AssertionWrappers.assertTrue;
 
@@ -40,18 +41,18 @@ class Write {
   public List<String> matchingCols;
   public List<List<String>> differingCols;
   public List<String> row;
-  public boolean shouldFail;
+  public String failureMsg;
 
   public Write(boolean predicate,
         int refWriteIndex,
         List<String> matchingCols,
         List<List<String>> differingCols,
-        boolean shouldFail) throws Exception {
+        String failureMsg) throws Exception {
     this.predicate = predicate;
     this.refWriteIndex = refWriteIndex;
     this.matchingCols = matchingCols;
     this.differingCols = differingCols;
-    this.shouldFail = shouldFail;
+    this.failureMsg = failureMsg;
   }
 
   public void setRow(List<String> row) {
@@ -68,7 +69,7 @@ public class TestPartialIndex extends BaseCQLTest {
   //   2. Add tests that delete only indexed/covered/predicate columns in
   //      testPartialIndexDeletesInternal() - high priority
   //   3. Test paging selects - high priority
-  //   4. Run tests in batch mode (OR) in a transaction block. - high priority (after Oleg's fixes)
+  //   4. Run tests in batch mode. - high priority (after Oleg's fixes)
   //   5. Add negative tests -
   //        i) Block all funcs for now in v1 - later block only mutable functions
   //        ii) Block predicates with data types other than INT (and friends), BOOL, TEXT
@@ -118,6 +119,13 @@ public class TestPartialIndex extends BaseCQLTest {
   private boolean same_i_diff_pk_both_pred_true_false_rows;
 
   @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("disable_index_backfill_for_non_txn_tables", "false");
+    return flagMap;
+  }
+
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("allow_index_table_read_write", "true");
@@ -129,7 +137,7 @@ public class TestPartialIndex extends BaseCQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 600;
+    return 480;
   }
 
   // Below three methods are taken from TestIndex.java. Inheriting test classes has its own issues,
@@ -413,6 +421,58 @@ public class TestPartialIndex extends BaseCQLTest {
     }
   }
 
+  List<Pair<String, String>> testPerformWritesInternal(List<Write> writes, List<List<String>> rows,
+      int combId) {
+    List<Pair<String, String>> stmts = new ArrayList<Pair<String, String>>();
+    for (int i = 0; i < rows.size(); i++) {
+      List<String> row = rows.get(i);
+      Write write = writes.get(i);
+      String stmt = "";
+      // If all non-pk non-static cols are NULL, then the UPDATE actually
+      // wouldn't result in an insert. In that case just use an INSERT.
+      boolean allNull = true;
+      for (int k = pkColCnt; k < colCnt; k++) {
+        if (!row.get(k).equalsIgnoreCase("null")) {
+          allNull = false;
+          break;
+        }
+      }
+
+      if (allNull || ((((byte) combId) >> i) & 1) == 1) {
+        // ith bit in combId: 1 => INSERT.
+        // Though combId is of type int (signed), it is okay to use it (we wouldn't use more than
+        // 2-3 LSBs for these tests).
+        stmt = String.format("INSERT INTO %s(%s) VALUES (%s)",
+                                    testTableName,
+                                    String.join(",", colNames),
+                                    String.join(",", row));
+      } else {
+        // ith bit in combId: 0 => UPDATE.
+        List<String> whereClauseElems = new ArrayList<String>();
+        for (int k = 0; k < pkColCnt; k++) {
+          whereClauseElems.add(colNames.get(k) + "=" + row.get(k));
+        }
+
+        List<String> setClauseElems = new ArrayList<String>();
+        for (int k = pkColCnt; k < colCnt; k++) {
+          setClauseElems.add(colNames.get(k) + "=" + row.get(k));
+        }
+
+        stmt = String.format("UPDATE %s SET %s WHERE %s",
+          testTableName,
+          String.join(", ", setClauseElems),
+          String.join(" and ", whereClauseElems));
+      }
+
+      stmts.add(new Pair<String, String>(stmt, write.failureMsg));
+
+      if (!write.failureMsg.isEmpty())
+        assert(i == writes.size() - 1); // Any test shouldn't have more writes after a failure.
+    }
+
+    return stmts;
+  }
+
   /*
    * Helper function to test scenarios of writes performed in sequence. The writes can be
    * done either via INSERT or UPDATE.
@@ -423,7 +483,8 @@ public class TestPartialIndex extends BaseCQLTest {
    *        with a reference row, groups of cols that have to differ with the
    *        ref row, if it should fail, and whether to use INSERT/UPDATE.
    */
-  void testPerformWrites(List<String> colsInIndex, List<Write> writes) {
+  void testPerformWrites(List<String> colsInIndex, boolean strongConsistency,
+                         List<Write> writes) {
     int numWrites = writes.size();
     int numCombinations = (int) Math.pow(2, numWrites);
 
@@ -431,61 +492,44 @@ public class TestPartialIndex extends BaseCQLTest {
       List<List<String>> rows = new ArrayList<List<String>>();
       assertTrue(getRowsForWrites(writes, rows, 0)); // Add enough rows so that the test works.
 
-      boolean skip_index_assertion = false;
-
       // Perform the write sequence for each combination.
-      for (int i = 0; i < rows.size(); i++) {
-        List<String> row = rows.get(i);
-        Write write = writes.get(i);
-        String stmt = "";
-        // If all non-pk non-static cols are NULL, then the UPDATE actually
-        // wouldn't result in an insert. In that case just use an INSERT.
-        boolean allNull = true;
-        for (int k = pkColCnt; k < colCnt; k++) {
-          if (!row.get(k).equalsIgnoreCase("null")) {
-            allNull = false;
-            break;
-          }
-        }
+      List<Pair<String, String>> stmts = testPerformWritesInternal(writes, rows, combId);
 
-        if (allNull || ((((byte) combId) >> i) & 1) == 1) {
-          // ith bit in combId: 1 => INSERT.
-          // Though combId is of type int (signed), it is okay to use it (we wouldn't use more than
-          // 2-3 LSBs for these tests).
-          stmt = String.format("INSERT INTO %s(%s) VALUES (%s)",
-                                      testTableName,
-                                      String.join(",", colNames),
-                                      String.join(",", row));
+      boolean skip_index_assertion = false;
+      for (int i=0; i < stmts.size(); i++) {
+        if (stmts.get(i).getSecond().isEmpty()) {
+          session.execute(stmts.get(i).getFirst());
         } else {
-          // ith bit in combId: 0 => UPDATE.
-          List<String> whereClauseElems = new ArrayList<String>();
-          for (int k = 0; k < pkColCnt; k++) {
-            whereClauseElems.add(colNames.get(k) + "=" + row.get(k));
-          }
-
-          List<String> setClauseElems = new ArrayList<String>();
-          for (int k = pkColCnt; k < colCnt; k++) {
-            setClauseElems.add(colNames.get(k) + "=" + row.get(k));
-          }
-
-          stmt = String.format("UPDATE %s SET %s WHERE %s",
-            testTableName,
-            String.join(", ", setClauseElems),
-            String.join(" and ", whereClauseElems));
-        }
-
-        if (write.shouldFail) {
-          runInvalidStmt(stmt);
-          assert(i == writes.size() - 1); // Any test shouldn't have more writes after a failure.
+          runInvalidStmt(stmts.get(i).getFirst(), stmts.get(i).getSecond());
           skip_index_assertion = true;
-          break;
-        } else {
-          session.execute(stmt);
         }
       }
 
       if (!skip_index_assertion)
         assertIndex(colsInIndex);
+
+      // Truncate the table.
+      session.execute(String.format("truncate table %s", testTableName));
+
+      if (strongConsistency) {
+        // Run in a txn
+        String failureMsg = "";
+        String txn = "start transaction; ";
+        for (int i=0; i < stmts.size(); i++) {
+          txn += stmts.get(i).getFirst() + "; ";
+          if (!stmts.get(i).getSecond().isEmpty()) {
+            failureMsg = stmts.get(i).getSecond();
+          }
+        }
+        txn += "commit;";
+        if (!failureMsg.isEmpty())
+          runInvalidStmt(txn, failureMsg);
+        else
+          session.execute(txn);
+
+        if (!skip_index_assertion)
+          assertIndex(colsInIndex);
+      }
 
       // Drop the index, truncate the table.
       resetTableAndIndex();
@@ -497,7 +541,7 @@ public class TestPartialIndex extends BaseCQLTest {
                                               boolean isUnique) throws Exception {
     String includeClause = "";
     if (coveringCols.size() > 0) {
-      includeClause = String.format("INCLUDE (%s)", coveringCols);
+      includeClause = String.format("INCLUDE (%s)", String.join(", ", coveringCols));
     }
 
     List<String> colsInIndex = new ArrayList<String>();
@@ -699,25 +743,27 @@ public class TestPartialIndex extends BaseCQLTest {
 
     // Case with pred=true.
     testPerformWrites(colsInIndex,
+      strongConsistency,
       Arrays.asList(
         new Write(
           true, /* predicate */
           -1, /* refWriteIndex */
           new ArrayList<String>(), /* matchingCols */
           new ArrayList<List<String>>(), /* differingColsList */
-          false /* shouldFail */)
+          "" /* failureMsg */)
       )
     );
 
     // Case with pred=false.
     testPerformWrites(colsInIndex,
+      strongConsistency,
       Arrays.asList(
         new Write(
           false, /* predicate */
           -1, /* refWriteIndex */
           new ArrayList<String>(), /* matchingCols */
           new ArrayList<List<String>>(), /* differingColsList */
-          false /* shouldFail */)
+          "" /* failureMsg */)
       )
     );
 
@@ -735,19 +781,20 @@ public class TestPartialIndex extends BaseCQLTest {
     // pred=true, Exists a row with same index col values and pred=true
     if (isUnique && this.same_i_diff_pk_multiple_pred_true_rows) {
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             0, /* refWriteIndex */
             indexedCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(getPk(colNames))), /* differingColsList */
-            true /* shouldFail */)
+            "Execution Error. Duplicate value disallowed by unique index idx" /* failureMsg */)
         )
       );
     }
@@ -755,19 +802,20 @@ public class TestPartialIndex extends BaseCQLTest {
     // pred=false, Exists a row with same index col values and pred=true
     if (isUnique && this.same_i_diff_pk_both_pred_true_false_rows) {
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             indexedCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(getPk(colNames))), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -794,19 +842,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(indexedCols);
       matchingCols.addAll(coveringCols);
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             false, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -821,19 +870,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(coveringCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             false, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(indexedCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -844,19 +894,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(indexedCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             false, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(coveringCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -868,19 +919,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(coveringCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             false, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -895,19 +947,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(coveringCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             false, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(indexedCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -918,19 +971,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(indexedCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             false, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(coveringCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -942,19 +996,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(coveringCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -969,19 +1024,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(coveringCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(indexedCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -992,19 +1048,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(indexedCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(coveringCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -1012,19 +1069,20 @@ public class TestPartialIndex extends BaseCQLTest {
     // pred=false (Same I && C cols), Same pk row exists with pred=true.
     if (this.same_pk_i_c_both_pred_true_false_rows) {
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             getPk(colNames), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -1039,19 +1097,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(coveringCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(indexedCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -1062,19 +1121,20 @@ public class TestPartialIndex extends BaseCQLTest {
       matchingCols.addAll(indexedCols);
 
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             matchingCols, /* matchingCols */
             Arrays.asList(new ArrayList<String>(coveringCols)), /* differingColsList */
-            false /* shouldFail */)
+            "" /* failureMsg */)
         )
       );
     }
@@ -1093,25 +1153,26 @@ public class TestPartialIndex extends BaseCQLTest {
     if (isUnique && this.same_i_diff_pk_multiple_pred_true_rows) { // For the second existing row
       // and new row
       testPerformWrites(colsInIndex,
+        strongConsistency,
         Arrays.asList(
           new Write(
             true, /* predicate */
             -1, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             false, /* predicate */
             0, /* refWriteIndex */
             new ArrayList<String>(), /* matchingCols */
             Arrays.asList(getPk(colNames)), /* differingColsList */
-            false /* shouldFail */),
+            "" /* failureMsg */),
           new Write(
             true, /* predicate */
             1, /* refWriteIndex */
             getPk(colNames), /* matchingCols */
             new ArrayList<List<String>>(), /* differingColsList */
-            true /* shouldFail */)
+            "Execution Error. Duplicate value disallowed by unique index idx" /* failureMsg */)
         )
       );
     }
@@ -1123,6 +1184,10 @@ public class TestPartialIndex extends BaseCQLTest {
    * Internal method to test access method selection policy.
    *
    * @param whereClause WHERE clause to test.
+   * @param whereClauseWithoutIndexes WHERE clause which gives the same rows but can be used with
+   *   the primary index. This is needed in cases where the where clause with partial index isn't
+   *   allowed with a normal primary index scan. E.g: the = and != operator aren't allowed on the
+   *   same column.
    * @param selectCols expressions to be selected in SELECT statement.
    * @param predicate1 predicate of 1st index.
    * @param indexedHashCols1 hash index cols of 1st index.
@@ -1139,12 +1204,12 @@ public class TestPartialIndex extends BaseCQLTest {
    * @param expectedFilterConditions filter conditions expected in query plan.
    * @param rowToInsert list of rows to insert before testing for SELECT statement.
    */
-  public void testPartialIndexSelectInternal(String whereClause, List<Object> bindValues,
-      List<String> selectCols, String predicate1, List<String> indexedHashCols1,
-      List<String> indexedRangeCols1, List<String> coveringCols1, boolean addExtraIndex,
-      String predicate2, List<String> indexedHashCols2, List<String> indexedRangeCols2,
-      List<String> coveringCols2, boolean strongConsistency, String expectedAccessMethod,
-      String expectedKeyConditions, String expectedFilterConditions,
+  public void testPartialIndexSelectInternal(String whereClause, String whereClauseWithoutIndexes,
+      List<Object> bindValues, List<String> selectCols, String predicate1,
+      List<String> indexedHashCols1, List<String> indexedRangeCols1, List<String> coveringCols1,
+      boolean addExtraIndex, String predicate2, List<String> indexedHashCols2,
+      List<String> indexedRangeCols2, List<String> coveringCols2, boolean strongConsistency,
+      String expectedAccessMethod, String expectedKeyConditions, String expectedFilterConditions,
       List<String> rowToInsert) throws Exception {
 
     // Inserting rows before index creation to test index backfill as well.
@@ -1188,6 +1253,8 @@ public class TestPartialIndex extends BaseCQLTest {
 
     String query = String.format("select %s from %s where %s",
       String.join(",", selectCols), testTableName, whereClause);
+    String queryWithoutIndexes = String.format("select %s from %s where %s",
+      String.join(",", selectCols), testTableName, whereClauseWithoutIndexes);
 
     while (true) {
       boolean all_indexes_have_read_perms = true;
@@ -1216,17 +1283,10 @@ public class TestPartialIndex extends BaseCQLTest {
     for (Object bind_value : bindValues) {
       flat_query = flat_query.replaceFirst("\\?", bind_value.toString());
     }
-    session.execute(flat_query);
-    session.execute(flat_query);
-    session.execute(flat_query);
 
-    Statement stmt;
-    if (whereClause.contains("?")) {
-      PreparedStatement selectPreparedStmt = session.prepare(query);
-      stmt = selectPreparedStmt.bind(bindValues.toArray());
-    } else {
-      stmt = new SimpleStatement(query);
-    }
+    session.execute(flat_query);
+    session.execute(flat_query);
+    session.execute(flat_query);
 
     assertTrue(doesQueryPlanContainSubstring(query, expectedAccessMethod));
 
@@ -1244,13 +1304,28 @@ public class TestPartialIndex extends BaseCQLTest {
       assertTrue(
         !doesQueryPlanContainSubstring(query, "Filter:"));
 
+    Statement stmt;
+    if (whereClause.contains("?")) {
+      PreparedStatement selectPreparedStmt = session.prepare(query);
+      stmt = selectPreparedStmt.bind(bindValues.toArray());
+    } else {
+      stmt = new SimpleStatement(query);
+    }
+
     Set<String> queryOutputWithIndexes = queryOutputToStringSet(stmt);
     session.execute("drop index idx");
     if (addExtraIndex)
       session.execute("drop index idx2");
 
     // Query output with expected access method should match that of the main table scan/lookup.
-    assertTrue(queryOutputToStringSet(stmt).equals(queryOutputWithIndexes));
+    String flat_query_without_indexes = queryWithoutIndexes;
+    for (Object bind_value : bindValues) {
+      flat_query_without_indexes =
+        flat_query_without_indexes.replaceFirst("\\?", bind_value.toString());
+    }
+    assertTrue(queryOutputWithIndexes.toString(),
+      queryOutputToStringSet(new SimpleStatement(flat_query_without_indexes)).equals(
+        queryOutputWithIndexes));
 
     resetTableAndIndex();
   }
@@ -1267,15 +1342,6 @@ public class TestPartialIndex extends BaseCQLTest {
     colCnt = 6;
     colNames = Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"); // pk cols first
 
-    this.predTrueRows = Arrays.asList(
-      Arrays.asList("1", "1", "1", "1", "NULL", "5"),
-      Arrays.asList("1", "1", "1", "2", "NULL", "6")
-    );
-    this.predFalseRows = Arrays.asList(
-      Arrays.asList("1", "1", "1", "1", "10", "7"),
-      Arrays.asList("1", "1", "1", "1", "11", "8"),
-      Arrays.asList("1", "1", "1", "2", "10", "9")
-    );
     this.alreadyInsertedTrueRows = new ArrayList<Integer>();
     this.alreadyInsertedFalseRows = new ArrayList<Integer>();
 
@@ -1295,6 +1361,9 @@ public class TestPartialIndex extends BaseCQLTest {
     //        - (non-full, full scan): Choose main table.
     //
     //    3. Test PREPAREd statement.
+    //    4. Test predicate of the form: v1 = ? and v1 != NULL. This is allowed if a partial
+    //       index that subsumes (v1 != NULL) exists and is chosen. Without the partial index
+    //       both = and != operators on the same column are not allowed.
 
     // 1. Main table scan: full scan
     // 2. Partial Index: WHERE clause doesn't imply Idx predicate && requires non-full scan && is
@@ -1302,6 +1371,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Main table is chosen]
     testPartialIndexSelectInternal(
       "v1 = 1 and r1 = 1", /* whereClause */
+      "v1 = 1 and r1 = 1", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v2 = NULL", /* predicate1 */
@@ -1318,13 +1388,14 @@ public class TestPartialIndex extends BaseCQLTest {
         testTableName), /* expectedAccessMethod */
       "", /* expectedKeyConditions */
       "Filter: (v1 = 1) AND (r1 = 1)" /* expectedFilterConditions */,
-      Arrays.asList("1, 1, 1, 1, 1, 1", "1, 1, 1, 1, 2, 1") /* rowsToInsert */);
+      Arrays.asList("1, 1, 1, 1, 1, 1", "2, 1, 1, 1, 2, 1") /* rowsToInsert */);
 
     // 1. Main table scan: full scan
     // 2. Partial Index: WHERE clause => Idx predicate && full scan
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1353,6 +1424,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "v1 = NULL and r1 = 1 and h1 = 1 and h2 = 1", /* whereClause */
+      "v1 = NULL and r1 = 1 and h1 = 1 and h2 = 1", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1380,6 +1452,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Main table is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and h2 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and h2 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1409,6 +1482,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = ? and v1 = NULL", /* whereClause */
+      "h1 = ? and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(Integer.valueOf(1)), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1428,6 +1502,36 @@ public class TestPartialIndex extends BaseCQLTest {
         "1, 1, 1, 1, NULL, 1", // pred=true row and where clause satisfied
         "2, 1, 1, 1, NULL, 1", // pred=true row but where clause not satisfied
         "2, 2, 1, 1, 1, 1" // pred=false
+      )
+    );
+
+    // Test = and != operator on the same column in a query.
+    //
+    // 1. Main table scan: full scan
+    // 2. Partial Index: WHERE clause => Idx predicate && full scan
+    // [Partial Index is chosen]
+    testPartialIndexSelectInternal(
+      "v1 = ? and v1 != NULL", /* whereClause */
+      "v1 = ?", /* whereClauseWithoutIndexes */ // Assuming that we don't bind with NULL
+      Arrays.asList(Integer.valueOf(1)), /* bindValues */
+      Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
+      "v1 != NULL", /* predicate1 */
+      Arrays.asList("v1", "r1"), /* indexedHashCols1 */
+      Arrays.asList(), /* indexedRangeCols1 */
+      Arrays.asList(), /* coveringCols1 */
+      false,  /* addExtraIndex */
+      "", /* predicate2 */
+      Arrays.asList(), /* indexedHashCols2 */
+      Arrays.asList(), /* indexedRangeCols2 */
+      Arrays.asList(), /* coveringCols2 */
+      true, /* strongConsistency */
+      String.format("Index Scan using %s.idx", DEFAULT_TEST_KEYSPACE), /* expectedAccessMethod */
+      "", /* expectedKeyConditions */
+      "Filter: (v1 = :v1)", /* expectedFilterConditions */
+      Arrays.asList( /* rowsToInsert */
+        "1, 1, 1, 1, 1, 1", // pred=true row and where clause satisfied
+        "2, 1, 1, 1, 2, 1", // pred=true row but where clause not satisfied
+        "2, 2, 1, 1, NULL, 1" // pred=false
       )
     );
 
@@ -1458,6 +1562,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Idx2 is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1486,6 +1591,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Idx2 is chosen]
     testPartialIndexSelectInternal(
       "r1 = 1 and v1 = NULL", /* whereClause */
+      "r1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1503,7 +1609,7 @@ public class TestPartialIndex extends BaseCQLTest {
       "", /* expectedFilterConditions */
       Arrays.asList( /* rowsToInsert */
         "1, 1, 1, 1, NULL, 1", // Idx2 pred=true row and where clause satisfied
-        "2, 1, 1, 1, NULL, 1" // Idx2 pred=false row
+        "1, 1, 1, 2, NULL, 1" // Idx2 pred=false row
       )
     );
 
@@ -1514,6 +1620,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Idx2 is chosen]
     testPartialIndexSelectInternal(
       "r2 = 2 and v1 = NULL", /* whereClause */
+      "r2 = 2 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "r2 = 2 and v1 = NULL", /* predicate1 */
@@ -1532,7 +1639,7 @@ public class TestPartialIndex extends BaseCQLTest {
       Arrays.asList( /* rowsToInsert */
         "1, 1, 1, 2, NULL, 1", // Idx2 pred=true row and where clause satisfied
         "2, 1, 1, 1, NULL, 1", // Idx2 pred=true row but where clause not satisfied
-        "3, 1, 1, 1, NULL, 1" // Idx2 pred=false row
+        "3, 1, 1, 1, 1, 1" // Idx2 pred=false row
       )
     );
   }
@@ -1564,7 +1671,8 @@ public class TestPartialIndex extends BaseCQLTest {
    *        selectivity policies using a single table and some predicates.
    *    3. Delete path (using DELETE/ all null UPDATE statement) - testPartialIndexDeletesInternal()
    */
-  public void testPartialIndex(boolean strongConsistency, boolean isUnique) throws Exception {
+  public void testPartialIndexPart1_1(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular INT column v1=NULL | Indexed cols: [v1] | Covering cols: []
     createTable(
       String.format("create table %s " +
@@ -1616,6 +1724,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL", /* predicate1 */
@@ -1646,9 +1755,10 @@ public class TestPartialIndex extends BaseCQLTest {
       isUnique);
 
     session.execute(String.format("drop table %s", testTableName));
+  }
 
-    // ---------------------------------------------------------------------------------------------
-
+  public void testPartialIndexPart1_2(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular INT column v1!=NULL | Indexed cols: [v1] | Covering cols: []
     createTable(
       String.format("create table %s " +
@@ -1700,6 +1810,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 != NULL", /* whereClause */
+      "h1 = 1 and v1 != NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 != NULL", /* predicate1 */
@@ -1730,9 +1841,10 @@ public class TestPartialIndex extends BaseCQLTest {
       isUnique);
 
     session.execute(String.format("drop table %s", testTableName));
+  }
 
-    // ---------------------------------------------------------------------------------------------
-
+  public void testPartialIndexPart1_3(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular INT column v1>5 | Indexed cols: [v1] | Covering cols: []
     createTable(
       String.format("create table %s " +
@@ -1785,6 +1897,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 > 5", /* whereClause */
+      "h1 = 1 and v1 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 > 5", /* predicate1 */
@@ -1807,10 +1920,18 @@ public class TestPartialIndex extends BaseCQLTest {
       )
     );
 
+    testPartialIndexDeletesInternal(
+      "v1 > 5", /* predicate */
+      Arrays.asList("v1"), /* indexedCols */
+      Arrays.asList(), /* coveringCols */
+      strongConsistency,
+      isUnique);
+
     session.execute(String.format("drop table %s", testTableName));
+  }
 
-    // ---------------------------------------------------------------------------------------------
-
+  public void testPartialIndexPart1_4(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular boolean column v1!=false | Indexed cols: [v1] | Covering cols: []
     createTable(
       String.format("create table %s " +
@@ -1863,6 +1984,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 != false", /* whereClause */
+      "h1 = 1 and v1 != false", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 != false", /* predicate1 */
@@ -1885,10 +2007,18 @@ public class TestPartialIndex extends BaseCQLTest {
       )
     );
 
+    testPartialIndexDeletesInternal(
+      "v1 != false", /* predicate */
+      Arrays.asList("v1"), /* indexedCols */
+      Arrays.asList(), /* coveringCols */
+      strongConsistency,
+      isUnique);
+
     session.execute(String.format("drop table %s", testTableName));
+  }
 
-    // ---------------------------------------------------------------------------------------------
-
+  public void testPartialIndexPart1_5(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: multi col =NULL case; v1=NULL and v2=NULL | Indexed cols: [v1, v2] |
     //    Covering cols: []
     createTable(
@@ -1911,7 +2041,7 @@ public class TestPartialIndex extends BaseCQLTest {
     this.same_pk_c_diff_i_multiple_pred_true_rows = false;
     this.same_pk_i_diff_c_multiple_pred_true_rows = false;
 
-    // // Flags for unique partial indexes.
+    // Flags for unique partial indexes.
     this.same_i_diff_pk_multiple_pred_true_rows = true;
     this.same_i_diff_pk_both_pred_true_false_rows = false;
 
@@ -1942,6 +2072,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = NULL and v2 = NULL", /* whereClause */
+      "h1 = 1 and v1 = NULL and v2 = NULL", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = NULL and v2 = NULL", /* predicate1 */
@@ -1965,10 +2096,18 @@ public class TestPartialIndex extends BaseCQLTest {
       )
     );
 
+    testPartialIndexDeletesInternal(
+      "v1 = NULL and v2 = NULL", /* predicate */
+      Arrays.asList("v1", "v2"), /* indexedCols */
+      Arrays.asList(), /* coveringCols */
+      strongConsistency,
+      isUnique);
+
     session.execute(String.format("drop table %s", testTableName));
+  }
 
-    // ---------------------------------------------------------------------------------------------
-
+  public void testPartialIndexPart1_6(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular text column v1='dummy' | Indexed cols: [v1] | Covering cols: []
     createTable(
       String.format("create table %s " +
@@ -2020,6 +2159,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 = 'dummy'", /* whereClause */
+      "h1 = 1 and v1 = 'dummy'", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v1 = 'dummy'", /* predicate1 */
@@ -2050,16 +2190,18 @@ public class TestPartialIndex extends BaseCQLTest {
       isUnique);
 
     session.execute(String.format("drop table %s", testTableName));
+  }
 
-    /*
-     * Part 2 -
-     * --------
-     * 1. Predicate involves some of indexed cols and none of covered cols. Already covered above.
-     * 2. Predicate involves none of indexed cols and some of covered cols.
-     * 3. Predicate involves some of indexed cols and some of covered cols.
-     * 4. Predicate involves none of indexed cols and none of indexed cols.
-     */
-
+  /*
+    * Part 2 -
+    * --------
+    * 1. Predicate involves some of indexed cols and none of covered cols. Already covered above.
+    * 2. Predicate involves none of indexed cols and some of covered cols.
+    * 3. Predicate involves some of indexed cols and some of covered cols.
+    * 4. Predicate involves none of indexed cols and none of indexed cols.
+    */
+  public void testPartialIndexPart2_2(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular INT column v2>5 | Indexed cols: [v1] | Covering cols: [v2]
     createTable(
       String.format("create table %s " +
@@ -2114,6 +2256,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v2 > 5", /* whereClause */
+      "h1 = 1 and v2 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2", "v3"), /* selectCols */
       "v2 > 5", /* predicate1 */
@@ -2136,8 +2279,18 @@ public class TestPartialIndex extends BaseCQLTest {
       )
     );
 
-    session.execute(String.format("drop table %s", testTableName));
+    testPartialIndexDeletesInternal(
+      "v2 > 5", /* predicate */
+      Arrays.asList("v1"), /* indexedCols */
+      Arrays.asList("v2"), /* coveringCols */
+      strongConsistency,
+      isUnique);
 
+    session.execute(String.format("drop table %s", testTableName));
+  }
+
+  public void testPartialIndexPart2_3(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular INT column v1>5 and v2>5 | Indexed cols: [v1] | Covering cols: [v2]
     createTable(
       String.format("create table %s " +
@@ -2193,6 +2346,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v1 > 5 and v2 > 5", /* whereClause */
+      "h1 = 1 and v1 > 5 and v2 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2", "v3"), /* selectCols */
       "v1 > 5 and v2 > 5", /* predicate1 */
@@ -2215,8 +2369,18 @@ public class TestPartialIndex extends BaseCQLTest {
       )
     );
 
-    session.execute(String.format("drop table %s", testTableName));
+    testPartialIndexDeletesInternal(
+      "v1 > 5 and v2 > 5", /* predicate */
+      Arrays.asList("v1"), /* indexedCols */
+      Arrays.asList("v2"), /* coveringCols */
+      strongConsistency,
+      isUnique);
 
+    session.execute(String.format("drop table %s", testTableName));
+  }
+
+  public void testPartialIndexPart2_4(boolean strongConsistency, boolean isUnique)
+      throws Exception {
     // Predicate: regular INT column v3>5 | Indexed cols: [v1] | Covering cols: [v2]
     createTable(
       String.format("create table %s " +
@@ -2271,6 +2435,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // [Partial Index is chosen]
     testPartialIndexSelectInternal(
       "h1 = 1 and v3 > 5", /* whereClause */
+      "h1 = 1 and v3 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2", "v3"), /* selectCols */
       "v3 > 5", /* predicate1 */
@@ -2297,6 +2462,7 @@ public class TestPartialIndex extends BaseCQLTest {
     // but still selectCols are such that the Index scan is covered i.e., an Index Only Scan.
     testPartialIndexSelectInternal(
       "h1 = 1 and v3 > 5", /* whereClause */
+      "h1 = 1 and v3 > 5", /* whereClauseWithoutIndexes */
       Arrays.asList(), /* bindValues */
       Arrays.asList("h1", "h2", "r1", "r2", "v1", "v2"), /* selectCols */
       "v3 > 5", /* predicate1 */
@@ -2320,32 +2486,123 @@ public class TestPartialIndex extends BaseCQLTest {
       )
     );
 
+    testPartialIndexDeletesInternal(
+      "v3 > 5", /* predicate */
+      Arrays.asList("v1"), /* indexedCols */
+      Arrays.asList("v2"), /* coveringCols */
+      strongConsistency,
+      isUnique);
+
     session.execute(String.format("drop table %s", testTableName));
-
-    // With UDT.
-    // With Frozen type.
   }
 
   @Test
-  public void testPartialIndex() throws Exception {
-    testPartialIndex(true /* strongConsistency */, false /* isUnique */);
+  public void testPartialIndexPart1_1() throws Exception {
+    testPartialIndexPart1_1(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart1_1(false /* strongConsistency */, false /* isUnique */);
   }
-
-  // TODO(Piyush): Weak indexes fail at some place. Debug and fix that.
-  // @Test
-  // public void testWeakPartialIndex() throws Exception {
-  //   testPartialIndex(false /* strongConsistency */, false /* isUnique */);
-  // }
 
   @Test
-  public void testUniquePartialIndex() throws Exception {
-    testPartialIndex(true /* strongConsistency */, true /* isUnique */);
+  public void testUniquePartialIndexPart1_1() throws Exception {
+    testPartialIndexPart1_1(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart1_1(false /* strongConsistency */, true /* isUnique */);
   }
 
-  // @Test
-  // public void testWeakUniquePartialIndex() throws Exception {
-  //   testPartialIndex(false /* strongConsistency */, true /* isUnique */);
-  // }
+  @Test
+  public void testPartialIndexPart1_2() throws Exception {
+    testPartialIndexPart1_2(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart1_2(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart1_2() throws Exception {
+    testPartialIndexPart1_2(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart1_2(false /* strongConsistency */, true /* isUnique */);
+  }
+
+  @Test
+  public void testPartialIndexPart1_3() throws Exception {
+    testPartialIndexPart1_3(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart1_3(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart1_3() throws Exception {
+    testPartialIndexPart1_3(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart1_3(false /* strongConsistency */, true /* isUnique */);
+  }
+
+  @Test
+  public void testPartialIndexPart1_4() throws Exception {
+    testPartialIndexPart1_4(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart1_4(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart1_4() throws Exception {
+    testPartialIndexPart1_4(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart1_4(false /* strongConsistency */, true /* isUnique */);
+  }
+
+  @Test
+  public void testPartialIndexPart1_5() throws Exception {
+    testPartialIndexPart1_5(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart1_5(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart1_5() throws Exception {
+    testPartialIndexPart1_5(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart1_5(false /* strongConsistency */, true /* isUnique */);
+  }
+
+  @Test
+  public void testPartialIndexPart1_6() throws Exception {
+    testPartialIndexPart1_6(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart1_6(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart1_6() throws Exception {
+    testPartialIndexPart1_6(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart1_6(false /* strongConsistency */, true /* isUnique */);
+  }
+
+  @Test
+  public void testPartialIndexPart2_2() throws Exception {
+    testPartialIndexPart2_2(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart2_2(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart2_2() throws Exception {
+    testPartialIndexPart2_2(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart2_2(false /* strongConsistency */, true /* isUnique */);
+  }
+
+  @Test
+  public void testPartialIndexPart2_3() throws Exception {
+    testPartialIndexPart2_3(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart2_3(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart2_3() throws Exception {
+    testPartialIndexPart2_3(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart2_3(false /* strongConsistency */, true /* isUnique */);
+  }
+
+  @Test
+  public void testPartialIndexPart2_4() throws Exception {
+    testPartialIndexPart2_4(true /* strongConsistency */, false /* isUnique */);
+    testPartialIndexPart2_4(false /* strongConsistency */, false /* isUnique */);
+  }
+
+  @Test
+  public void testUniquePartialIndexPart2_4() throws Exception {
+    testPartialIndexPart2_4(true /* strongConsistency */, true /* isUnique */);
+    testPartialIndexPart2_4(false /* strongConsistency */, true /* isUnique */);
+  }
 
   @Test
   public void testGuardrails() throws Exception {
@@ -2373,5 +2630,28 @@ public class TestPartialIndex extends BaseCQLTest {
       true /* strongConsistency */);
     runInvalidStmt(String.format("alter table %s drop v1", testTableName),
       "Can't drop column used in an index. Remove 'idx' index first and try again");
+  }
+
+  @Test
+  public void testMoreThanOneIndex() throws Exception {
+    // For github issue #9345
+    createTable(
+      String.format("create table test (k int primary key, v int)"), true /* strongConsistency */);
+    session.execute("create index idx on test(v) where v != NULL");
+    session.execute("create index idx2 on test(v) where v = NULL");
+    session.execute("insert into test (k, v) values (1, 1)");
+    assertQueryRowsUnordered("select * from test where v != NULL",
+                             "Row[1, 1]");
+    assertQueryRowsUnordered("select * from test where v = NULL");
+
+    session.execute("update test set v=NULL where k=1");
+    assertQueryRowsUnordered("select * from test where v != NULL");
+    assertQueryRowsUnordered("select * from test where v = NULL",
+                             "Row[1, NULL]");
+
+    session.execute("update test set v=1 where k=1");
+    assertQueryRowsUnordered("select * from test where v != NULL",
+                             "Row[1, 1]");
+    assertQueryRowsUnordered("select * from test where v = NULL");
   }
 }

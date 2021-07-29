@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static org.junit.Assert.assertEquals;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import junitparams.JUnitParamsRunner;
@@ -10,8 +12,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
-
-import static org.junit.Assert.assertEquals;
 
 @RunWith(JUnitParamsRunner.class)
 public class CustomerConfigValidatorTest {
@@ -38,6 +38,7 @@ public class CustomerConfigValidatorTest {
     "S3, BACKUP_LOCATION, ftp://s3.amazonaws.com, false",
     "S3, BACKUP_LOCATION,, false",
     "GCS, BACKUP_LOCATION, gs://itest-backup, true",
+    "GCS, BACKUP_LOCATION, gs://itest-backup/test, true",
     "GCS, BACKUP_LOCATION, gcp.test.com, true",
     "GCS, BACKUP_LOCATION, ftp://gcp.test.com, false",
     "GCS, BACKUP_LOCATION,, false",
@@ -67,6 +68,8 @@ public class CustomerConfigValidatorTest {
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com/test/itest, "
         + "AWS_HOST_BASE, s3.amazonaws.com, true",
+    // location - correct, aws_host_base - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com, true",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com/test/itest, "
         + "AWS_HOST_BASE, cloudstorage.onefs.dell.com, true",
@@ -111,6 +114,26 @@ public class CustomerConfigValidatorTest {
     data.put(CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
     ObjectNode result =
         customerConfigValidator.validateDataContent(createFormData("STORAGE", "S3", data));
+    assertEquals(1, result.size());
+    assertEquals(
+        expectedMessage,
+        result.get(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME).get(0).asText());
+  }
+
+  @Parameters({
+    // BACKUP_LOCATION - incorrect -> disallowed
+    "g://abc, {}, Invalid gsUriPath format: g://abc",
+    // Check empty GCP Credentials Json -> disallowed
+    "gs://test, {}, Invalid GCP Credential Json.",
+  })
+  @Test
+  public void testValidateDataContent_Storage_GCSPreflightCheckValidator(
+      String backupLocation, String crdentialsJson, String expectedMessage) {
+    ObjectNode data = Json.newObject();
+    data.put(CustomerConfigValidator.BACKUP_LOCATION_FIELDNAME, backupLocation);
+    data.put(CustomerConfigValidator.GCS_CREDENTIALS_JSON_FIELDNAME, crdentialsJson);
+    ObjectNode result =
+        customerConfigValidator.validateDataContent(createFormData("STORAGE", "GCS", data));
     assertEquals(1, result.size());
     assertEquals(
         expectedMessage,

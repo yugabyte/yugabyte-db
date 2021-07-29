@@ -33,6 +33,7 @@
 #define YB_UTIL_MALLOC_H
 
 #include <cstddef>
+#include <cstdlib>
 
 namespace yb {
 
@@ -45,6 +46,12 @@ size_t malloc_usable_size(const void* obj);
 // Wrapper for malloc() which checks the return pointer.
 // If the pointer is nullptr, assert with the requested size.
 char* malloc_with_check(size_t size);
+
+struct FreeDeleter {
+  inline void operator()(void* ptr) const {
+    free(ptr);
+  }
+};
 
 } // namespace yb
 

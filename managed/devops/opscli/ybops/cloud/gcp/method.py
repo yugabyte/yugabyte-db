@@ -10,7 +10,7 @@
 
 from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod,\
     AbstractMethod, DestroyInstancesMethod, AbstractAccessMethod, CreateRootVolumesMethod, \
-    ReplaceRootVolumeMethod
+    ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils import validated_key_file, format_rsa_key
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
@@ -70,7 +70,7 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
             server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
             ssh_keys, boot_script=args.boot_script,
-            auto_delete_boot_disk=args.auto_delete_boot_disk)
+            auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags)
 
 
 class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
@@ -104,7 +104,7 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
 
     def create_master_volume(self, args):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
-        res = self.cloud.get_admin().create_disk(args.zone, body={
+        res = self.cloud.get_admin().create_disk(args.zone, args.instance_tags, body={
             "name": name,
             "sizeGb": args.boot_disk_size_gb,
             "sourceImage": args.machine_image})
@@ -276,3 +276,15 @@ class GcpNetworkQueryMethod(GcpAbstractNetworkMethod):
             print(json.dumps(self.cloud.query_vpc(args)))
         except YBOpsRuntimeError as ye:
             print(json.dumps({"error": get_exception_message(ye)}))
+
+
+class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
+    def __init__(self, base_command):
+        super(GcpChangeInstanceTypeMethod, self).__init__(base_command)
+
+    def _change_instance_type(self, args, host_info):
+        self.cloud.change_instance_type(host_info, args.instance_type)
+
+    def _host_info(self, args, host_info):
+        args.private_ip = host_info["private_ip"]
+        return args

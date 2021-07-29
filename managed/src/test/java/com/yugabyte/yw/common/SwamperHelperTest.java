@@ -2,13 +2,34 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ModelFactory.createAlertDefinition;
+import static com.yugabyte.yw.common.ModelFactory.createAlertDefinitionGroup;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 import org.apache.commons.exec.OS;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -22,24 +43,6 @@ import play.Configuration;
 import play.Environment;
 import play.Mode;
 import play.libs.Json;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.ModelFactory.createAlertDefinition;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SwamperHelperTest extends FakeDBApplication {
@@ -146,9 +149,10 @@ public class SwamperHelperTest extends FakeDBApplication {
   public void testWriteAlertDefinition() throws IOException {
     when(appConfig.getString("yb.swamper.rulesPath")).thenReturn(SWAMPER_TMP_PATH);
     Universe universe = createUniverse(defaultCustomer.getCustomerId());
-    AlertDefinition definition = createAlertDefinition(defaultCustomer, universe);
+    AlertDefinitionGroup group = createAlertDefinitionGroup(defaultCustomer, universe);
+    AlertDefinition definition = createAlertDefinition(defaultCustomer, universe, group);
 
-    swamperHelper.writeAlertDefinition(definition);
+    swamperHelper.writeAlertDefinition(group, definition);
     BufferedReader br =
         new BufferedReader(new FileReader(generateRulesFileName(definition.getUuid().toString())));
 
@@ -158,6 +162,7 @@ public class SwamperHelperTest extends FakeDBApplication {
         IOUtils.toString(
             getClass().getClassLoader().getResourceAsStream("alert/test_alert_definition.yml"),
             StandardCharsets.UTF_8);
+    expectedContent = expectedContent.replace("<group_uuid>", group.getUuid().toString());
     expectedContent = expectedContent.replace("<definition_uuid>", definition.getUuid().toString());
     expectedContent =
         expectedContent.replace("<customer_uuid>", defaultCustomer.getUuid().toString());

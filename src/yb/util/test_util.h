@@ -39,12 +39,11 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/gutil/gscoped_ptr.h"
-
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -84,7 +83,7 @@ class YBTest : public ::testing::Test {
 
   uint16_t AllocateFreePort() { return port_picker_.AllocateFreePort(); }
 
-  gscoped_ptr<Env> env_;
+  std::unique_ptr<Env> env_;
   google::FlagSaver flag_saver_;  // Reset flags on every test.
   PortPicker port_picker_;
 
@@ -217,14 +216,6 @@ CHECKED_STATUS WaitFor(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-void AssertLoggedWaitFor(
-    const std::function<Result<bool>()>& condition,
-    MonoDelta timeout,
-    const string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
 CHECKED_STATUS LoggedWaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
@@ -242,6 +233,18 @@ inline std::string GetToolPath(const std::string& tool_name) {
 
 inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
+}
+
+// Run a yb-admin command and return the output.
+template <class... Args>
+Result<std::string> RunAdminToolCommand(const string& masterAddresses, Args&&... args) {
+  auto command = ToStringVector(
+      GetToolPath("yb-admin"), "-master_addresses", masterAddresses,
+      std::forward<Args>(args)...);
+  std::string result;
+  LOG(INFO) << "Run tool: " << AsString(command);
+  RETURN_NOT_OK(Subprocess::Call(command, &result));
+  return result;
 }
 
 int CalcNumTablets(int num_tablet_servers);

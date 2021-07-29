@@ -12,7 +12,7 @@
 //
 
 #include "yb/client/session.h"
-#include "yb/client/snapshot_test_base.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/transaction_error.h"
@@ -23,6 +23,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -48,13 +49,16 @@ namespace client {
 using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
     master::ImportSnapshotMetaResponsePB::TableMetaPB>;
 
-class BackupTxnTest : public SnapshotTestBase {
+class BackupTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     FLAGS_enable_history_cutoff_propagation = true;
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
     mini_cluster_opt_.num_masters = 3;
     TransactionTestBase::SetUp();
+    snapshot_util_ = std::make_unique<SnapshotTestUtil>();
+    snapshot_util_->SetProxy(&client_->proxy_cache());
+    snapshot_util_->SetCluster(cluster_.get());
   }
 
   void DoBeforeTearDown() override {
@@ -66,50 +70,9 @@ class BackupTxnTest : public SnapshotTestBase {
     TransactionTestBase::DoBeforeTearDown();
   }
 
-  Result<TxnSnapshotId> StartSnapshot() {
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    master::CreateSnapshotRequestPB req;
-    req.set_transaction_aware(true);
-    auto id = req.add_tables();
-    id->set_table_id(table_.table()->id());
-    master::CreateSnapshotResponsePB resp;
-    RETURN_NOT_OK(MakeBackupServiceProxy().CreateSnapshot(req, &resp, &controller));
-    return FullyDecodeTxnSnapshotId(resp.snapshot_id());
-  }
-
-  Result<TxnSnapshotId> CreateSnapshot() {
-    TxnSnapshotId snapshot_id = VERIFY_RESULT(StartSnapshot());
-    RETURN_NOT_OK(WaitSnapshotDone(snapshot_id));
-    return snapshot_id;
-  }
-
-  CHECKED_STATUS DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
-    master::DeleteSnapshotRequestPB req;
-    master::DeleteSnapshotResponsePB resp;
-
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-    req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-    RETURN_NOT_OK(MakeBackupServiceProxy().DeleteSnapshot(req, &resp, &controller));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    return Status::OK();
-  }
-
   CHECKED_STATUS WaitAllSnapshotsDeleted() {
-    RETURN_NOT_OK(WaitFor([this]() -> Result<bool> {
-      auto snapshots = VERIFY_RESULT(ListSnapshots());
-      SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
-      if (snapshots[0].entry().state(), SysSnapshotEntryPB::DELETED) {
-        return true;
-      }
-      SCHECK_EQ(snapshots[0].entry().state(), SysSnapshotEntryPB::DELETING, IllegalState,
-                "Wrong snapshot state");
-      return false;
-    }, kWaitTimeout * kTimeMultiplier, "Complete delete snapshot"));
-
+    RETURN_NOT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
+    // Check if deleted in DocDB.
     return WaitFor([this]() -> Result<bool> {
       auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
       for (const auto& peer : peers) {
@@ -128,30 +91,6 @@ class BackupTxnTest : public SnapshotTestBase {
     }, kWaitTimeout * kTimeMultiplier, "Delete on tablets");
   }
 
-  CHECKED_STATUS WaitAllSnapshotsCleaned() {
-    return WaitFor([this]() -> Result<bool> {
-      return VERIFY_RESULT(ListSnapshots()).empty();
-    }, kWaitTimeout * kTimeMultiplier, "Snapshot cleanup");
-  }
-
-  Result<ImportedSnapshotData> StartImportSnapshot(const master::SnapshotInfoPB& snapshot) {
-    master::ImportSnapshotMetaRequestPB req;
-    master::ImportSnapshotMetaResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(60s);
-
-    *req.mutable_snapshot() = snapshot;
-
-    RETURN_NOT_OK(MakeBackupServiceProxy().ImportSnapshotMeta(req, &resp, &controller));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-
-    LOG(INFO) << "Imported snapshot metadata: " << resp.DebugString();
-
-    return resp.tables_meta();
-  }
-
   Result<bool> IsSnapshotImportDone(const ImportedSnapshotData& data) {
     for (const auto& table : data) {
       RETURN_NOT_OK(client_->OpenTable(table.table_ids().new_id()));
@@ -161,6 +100,8 @@ class BackupTxnTest : public SnapshotTestBase {
   }
 
   void TestDeleteTable(bool restart_masters);
+
+  std::unique_ptr<SnapshotTestUtil> snapshot_util_;
 };
 
 TEST_F(BackupTxnTest, Simple) {
@@ -169,11 +110,11 @@ TEST_F(BackupTxnTest, Simple) {
       &FLAGS_max_clock_skew_usec);
   ASSERT_NO_FATALS(WriteData());
 
-  TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_util_->StartSnapshot(table_));
 
   bool has_pending = false;
   ASSERT_OK(WaitFor([this, &snapshot_id, &has_pending]() -> Result<bool> {
-    if (!VERIFY_RESULT(IsSnapshotDone(snapshot_id))) {
+    if (!VERIFY_RESULT(snapshot_util_->IsSnapshotDone(snapshot_id))) {
       has_pending = true;
       return false;
     }
@@ -182,12 +123,13 @@ TEST_F(BackupTxnTest, Simple) {
 
   ASSERT_TRUE(has_pending);
 
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
 
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
   ASSERT_NO_FATALS(VerifyData(1, WriteOpType::UPDATE));
 
-  ASSERT_OK(RestoreSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id));
 
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
@@ -197,10 +139,90 @@ TEST_F(BackupTxnTest, PointInTimeRestore) {
   auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
 
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
 
-  ASSERT_OK(RestoreSnapshot(snapshot_id, hybrid_time));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
+
+  ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
+}
+
+// This test writes a lot of update to the same key.
+// Then takes snapshot and restores it to time before the write.
+// So we test how filtering iterator works in case where a lot of record should be skipped.
+TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
+  constexpr int kNumWrites = RegularBuildVsSanitizers(100000, 100);
+  constexpr int kKey = 123;
+
+  std::vector<std::future<FlushStatus>> futures;
+  auto session = CreateSession();
+  ASSERT_OK(WriteRow(session, kKey, 0));
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  for (size_t r = 1; r <= kNumWrites; ++r) {
+    ASSERT_OK(WriteRow(session, kKey, r, WriteOpType::INSERT, client::Flush::kFalse));
+    futures.push_back(session->FlushFuture());
+  }
+
+  int good = 0;
+  for (auto& future : futures) {
+    if (future.get().status.ok()) {
+      ++good;
+    }
+  }
+
+  LOG(INFO) << "Total good: " << good;
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
+
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
+
+  auto value = ASSERT_RESULT(SelectRow(session, kKey));
+  ASSERT_EQ(value, 0);
+}
+
+// Restore to the time before current history cutoff.
+TEST_F(BackupTxnTest, PointInTimeRestoreBeforeHistoryCutoff) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
+
+  ASSERT_NO_FATALS(WriteData());
+  auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  ASSERT_OK(WaitFor([this, hybrid_time]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      // History cutoff is not moved for tablets w/o writes after current history cutoff.
+      // So just ignore such tablets.
+      if (peer->tablet()->mvcc_manager()->LastReplicatedHybridTime() < hybrid_time) {
+        continue;
+      }
+      // Check that history cutoff is after hybrid_time.
+      auto read_operation = tablet::ScopedReadOperation::Create(
+          peer->tablet(), tablet::RequireLease::kTrue, ReadHybridTime::SingleTime(hybrid_time));
+      if (read_operation.ok()) {
+        auto policy = peer->tablet()->RetentionPolicy();
+        LOG(INFO) << "Pending history cutoff, tablet: " << peer->tablet_id()
+                  << ", current: " << policy->GetRetentionDirective().history_cutoff
+                  << ", desired: " << hybrid_time;
+        return false;
+      }
+      if (!read_operation.status().IsSnapshotTooOld()) {
+        return read_operation.status();
+      }
+    }
+    return true;
+  }, kWaitTimeout, "History retention move past hybrid time"));
+
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
 
   ASSERT_NO_FATALS(VerifyData(/* num_transactions=*/ 1, WriteOpType::INSERT));
 }
@@ -212,12 +234,13 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "Create snapshot";
 
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
   LOG(INFO) << "First restart";
 
-  ASSERT_OK(cluster_->leader_mini_master()->Restart());
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
 
   LOG(INFO) << "Create namespace";
 
@@ -228,61 +251,66 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "Flush";
 
-  auto catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+  auto catalog_manager =
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   tablet::TabletPeerPtr tablet_peer;
   ASSERT_OK(catalog_manager->GetTabletPeer(master::kSysCatalogTabletId, &tablet_peer));
   ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "Second restart";
 
-  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
 
   LOG(INFO) << "Verify";
 
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
 }
 
 TEST_F(BackupTxnTest, Delete) {
   ASSERT_NO_FATALS(WriteData());
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
-  ASSERT_OK(DeleteSnapshot(snapshot_id));
-  ASSERT_OK(WaitAllSnapshotsDeleted());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
+  ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 
   SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
 
-  ASSERT_OK(WaitAllSnapshotsCleaned());
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsCleaned());
 }
 
 TEST_F(BackupTxnTest, CleanupAfterRestart) {
   SetAtomicFlag(300000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
 
   ASSERT_NO_FATALS(WriteData());
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
-  ASSERT_OK(DeleteSnapshot(snapshot_id));
-  ASSERT_OK(WaitAllSnapshotsDeleted());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
+  ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 
-  ASSERT_FALSE(ASSERT_RESULT(ListSnapshots()).empty());
+  ASSERT_FALSE(ASSERT_RESULT(snapshot_util_->ListSnapshots()).empty());
 
   SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
-  ASSERT_OK(cluster_->leader_mini_master()->Restart());
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
 
-  ASSERT_OK(WaitAllSnapshotsCleaned());
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsCleaned());
 }
 
 TEST_F(BackupTxnTest, ImportMeta) {
   ASSERT_NO_FATALS(WriteData());
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
+                                           table_.table()->GetPartitionCount()));
 
   ASSERT_OK(client_->DeleteTable(kTableName));
   ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
 
-  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots());
   ASSERT_EQ(snapshots.size(), 1);
 
-  auto import_data = ASSERT_RESULT(StartImportSnapshot(snapshots[0]));
+  auto import_data = ASSERT_RESULT(snapshot_util_->StartImportSnapshot(snapshots[0]));
 
   ASSERT_OK(WaitFor([this, import_data] {
     return IsSnapshotImportDone(import_data);
@@ -301,22 +329,23 @@ TEST_F(BackupTxnTest, Retry) {
 
   ShutdownAllTServers(cluster_.get());
 
-  TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_util_->StartSnapshot(table_));
 
   std::this_thread::sleep_for(FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms + 1s);
 
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING,
+                                           table_.table()->GetPartitionCount()));
 
   ASSERT_OK(StartAllTServers(cluster_.get()));
 
-  ASSERT_OK(WaitSnapshotDone(snapshot_id, 15s));
+  ASSERT_OK(snapshot_util_->WaitSnapshotDone(snapshot_id, 15s));
 
   ASSERT_NO_FATALS(VerifyData());
 
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
   ASSERT_NO_FATALS(VerifyData(WriteOpType::UPDATE));
 
-  ASSERT_OK(RestoreSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id));
 
   ASSERT_NO_FATALS(VerifyData());
 }
@@ -329,9 +358,10 @@ TEST_F(BackupTxnTest, Failure) {
 
   ShutdownAllTServers(cluster_.get());
 
-  TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_util_->StartSnapshot(table_));
 
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING,
+                                           table_.table()->GetPartitionCount()));
 
   ShutdownAllMasters(cluster_.get());
 
@@ -342,7 +372,7 @@ TEST_F(BackupTxnTest, Failure) {
 
   ASSERT_OK(StartAllMasters(cluster_.get()));
 
-  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 30s));
+  ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 30s));
 }
 
 TEST_F(BackupTxnTest, Restart) {
@@ -353,7 +383,7 @@ TEST_F(BackupTxnTest, Restart) {
   FLAGS_flush_rocksdb_on_shutdown = false;
 
   ASSERT_NO_FATALS(WriteData());
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
   ShutdownAllMasters(cluster_.get());
 
@@ -362,28 +392,28 @@ TEST_F(BackupTxnTest, Restart) {
 
   ASSERT_OK(StartAllMasters(cluster_.get()));
 
-  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
+  ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
 }
 
 TEST_F(BackupTxnTest, CompleteAndBounceMaster) {
   ASSERT_NO_FATALS(WriteData());
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
   std::this_thread::sleep_for(1s);
 
   ASSERT_OK(client_->DeleteTable(kTableName));
 
-  auto leader = cluster_->leader_mini_master();
+  auto leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   leader->Shutdown();
 
-  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
+  ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::COMPLETE, 1s));
 
   ASSERT_OK(leader->Start());
 }
 
 TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   ASSERT_NO_FATALS(WriteData());
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
   for (int i = 0; i != cluster_->num_masters(); ++i) {
     auto sys_catalog = cluster_->mini_master(i)->master()->catalog_manager()->sys_catalog();
@@ -391,7 +421,7 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   }
 
   ShutdownAllTServers(cluster_.get());
-  ASSERT_OK(DeleteSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
 
   FLAGS_flush_rocksdb_on_shutdown = false;
   ShutdownAllMasters(cluster_.get());
@@ -401,7 +431,7 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   ASSERT_OK(StartAllMasters(cluster_.get()));
   ASSERT_OK(StartAllTServers(cluster_.get()));
 
-  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::DELETED, 30s));
+  ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::DELETED, 30s));
 }
 
 // Workload writes same value across all keys in a txn, using sevaral txns in concurrently.
@@ -444,11 +474,11 @@ TEST_F(BackupTxnTest, Consistency) {
     std::this_thread::sleep_for(5ms);
   }
 
-  auto snapshot_id = ASSERT_RESULT(CreateSnapshot());
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
   thread_holder.Stop();
 
-  ASSERT_OK(RestoreSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id));
 
   auto session = CreateSession();
   int restored_value = -1;
@@ -472,11 +502,11 @@ void BackupTxnTest::TestDeleteTable(bool restart_masters) {
   ASSERT_NO_FATALS(WriteData());
 
   ShutdownAllTServers(cluster_.get());
-
-  TxnSnapshotId snapshot_id = ASSERT_RESULT(StartSnapshot());
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_util_->StartSnapshot(table_));
 
   std::this_thread::sleep_for(FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms + 1s);
-  ASSERT_OK(VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING));
+  ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::CREATING,
+                                           table_.table()->GetPartitionCount()));
 
   ASSERT_OK(client_->DeleteTable(kTableName, false));
 
@@ -491,7 +521,8 @@ void BackupTxnTest::TestDeleteTable(bool restart_masters) {
     ASSERT_OK(WaitUntilMasterHasLeader(cluster_.get(), 5s));
   }
 
-  ASSERT_OK(WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED, 5s * kTimeMultiplier));
+  ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, SysSnapshotEntryPB::FAILED,
+                                                5s * kTimeMultiplier));
 }
 
 TEST_F(BackupTxnTest, DeleteTable) {

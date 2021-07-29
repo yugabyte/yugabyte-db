@@ -10,6 +10,13 @@
 
 package com.yugabyte.yw.cloud;
 
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP2_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_THROUGHPUT;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
+
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -20,30 +27,49 @@ import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import static com.yugabyte.yw.cloud.PublicCloudConstants.*;
-
+@ApiModel(value = "UniverseResource", description = "Universe Resource")
 public class UniverseResourceDetails {
   public static final int MIB_IN_GIB = 1024;
   public static final String GP3_FREE_PIOPS_PARAM = "yb.aws.storage.gp3_free_piops";
   public static final String GP3_FREE_THROUGHPUT_PARAM = "yb.aws.storage.gp3_free_throughput";
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResourceDetails.class);
 
+  @ApiModelProperty(value = "Price per hour")
   public double pricePerHour = 0;
+
+  @ApiModelProperty(value = "EBS price per hour")
   public double ebsPricePerHour = 0;
+
+  @ApiModelProperty(value = "Numbers of cores")
   public double numCores = 0;
+
+  @ApiModelProperty(value = "Memory GB")
   public double memSizeGB = 0;
+
+  @ApiModelProperty(value = "Volume count")
   public int volumeCount = 0;
+
+  @ApiModelProperty(value = "Volume in GB")
   public int volumeSizeGB = 0;
+
+  @ApiModelProperty(value = "Numbers of node")
   public int numNodes = 0;
+
+  @ApiModelProperty(value = "gp3 free piops")
   public int gp3FreePiops;
+
+  @ApiModelProperty(value = "gp3 free throughput")
   public int gp3FreeThroughput;
+
+  @ApiModelProperty(value = "Azs")
   public HashSet<String> azList = new HashSet<>();
 
   public void addCostPerHour(double price) {
