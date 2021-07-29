@@ -205,7 +205,7 @@ Everything that explains these differing semantics, and the philosophy of why th
 The notions that the account of the _interval_ data type explains are interdependent. The ordering of the following subsections aims to introduce the notions with the minimum dependency on notions yet to be introduced. The account is split into the following main subsections:
 
 - [How does YSQL represent an _interval_ value?](./interval-representation/)
-- [_Unterval_ value limits](interval-limits)
+- [_Interval_ value limits](interval-limits)
 - [Declaring _intervals_](declaring-intervals)
 - [_Interval_ arithmetic](interval-arithmetic)
 - [Defining and using custom domain types to specialize the native _interval_ functionality](custom-interval-domains)
