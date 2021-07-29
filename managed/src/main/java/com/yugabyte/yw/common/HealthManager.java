@@ -42,7 +42,10 @@ public class HealthManager extends DevopsBase {
   }
 
   public ShellResponse runCommand(
-      Provider provider, List<ClusterInfo> clusters, Long potentialStartTimeMs) {
+      Provider provider,
+      List<ClusterInfo> clusters,
+      Long potentialStartTimeMs,
+      Boolean shouldLogOutput) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -68,7 +71,7 @@ public class HealthManager extends DevopsBase {
     HashMap<String, String> extraEnvVars =
         provider == null ? new HashMap<>() : new HashMap<>(provider.getConfig());
 
-    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
+    return shellProcessHandler.run(commandArgs, extraEnvVars, shouldLogOutput, description);
   }
 
   @Override
