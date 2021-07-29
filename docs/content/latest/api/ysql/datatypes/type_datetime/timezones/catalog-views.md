@@ -236,7 +236,7 @@ The column structure and naming of the _pg_timezone_names_ and _pg_timezone_abbr
 
 The following queries shed light on the information content of the _pg_timezone_names_ and _pg_timezone_abbrevs_ views. The section [Four ways to specify the _UTC offset_](../ways-to-spec-offset/) explains that either a _name_ value from _pg_timezone_names_ or an _abbrev_ value from _pg_timezone_abbrevs_ is legal as the argument of the _at time zone_ operator that can be used to decorate a plain _timestamp_ value or a _timestamptz_ value. The queries show that nothing prevents what you might think is the abbreviation for a timezone of interest specifying a different _utc_offset_ value in _pg_timezone_abbrevs_ than is specified for its _name_ value in _pg_timezone_names_. This brings a risk that you don't get the outcome that you intend. This is spelled out more carefully in the section [Rules for resolving a string that's intended to identify a _UTC offset_](../ways-to-spec-offset/name-res-rules/).
 
-The section [Recommended practice for specifying the _UTC offset_](../recommendation/) shows how to implement a discipline that avoids this risk.
+The section [Recommended practise for specifying the _UTC offset_](../recommendation/) shows how to implement a discipline that avoids this risk.
 
 ### Timezones whose name is the same as its abbreviation
 
