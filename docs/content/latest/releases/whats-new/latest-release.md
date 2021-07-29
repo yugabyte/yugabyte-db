@@ -70,6 +70,8 @@ N/A
 * [[8324](https://github.com/yugabyte/yugabyte-db/issues/8324)] [Platform] Disabled the query monitoring under Quries tab. (#8576)
 * [[8406](https://github.com/yugabyte/yugabyte-db/issues/8406)] [Platform] Add deviceInfo validation on universe/read replica cluster create operations
 * [[8487](https://github.com/yugabyte/yugabyte-db/issues/8487)] [Platform] Add indices on customer_task and task_info to improve Tasks page performance
+* [[8631](https://github.com/yugabyte/yugabyte-db/issues/8631)] [Platform] Add ability to use different certificates for node to node and client to node connections.
+* [[8632](https://github.com/yugabyte/yugabyte-db/issues/8632)] [Platform] Add ability to take custom certificates in platform for client to server connections.
 * [[8662](https://github.com/yugabyte/yugabyte-db/issues/8662)] [Platform] Release pause universe and multiple provider feature
 * [[8767](https://github.com/yugabyte/yugabyte-db/issues/8767)] [Platform] Remove Beta tag from RedHat OpenShift provider config tab.
 * [[8775](https://github.com/yugabyte/yugabyte-db/issues/8775)] [Platform] [UI] Remove Beta tag from Platform HA
@@ -78,14 +80,12 @@ N/A
 * [[8824](https://github.com/yugabyte/yugabyte-db/issues/8824)] [Platform] S3 backup preflight check while updating the backups. (#8926)
 * [[8883](https://github.com/yugabyte/yugabyte-db/issues/8883)] [Platform] Support smart instance type upgrade for AWS
 * [[8917](https://github.com/yugabyte/yugabyte-db/issues/8917)] [Platform] Add task to sync platform with cluster state
+* [[8921](https://github.com/yugabyte/yugabyte-db/issues/8921)] [Platform] ReadOnly and BackupAdmin roles to change their password
 * [[9054](https://github.com/yugabyte/yugabyte-db/issues/9054)] [Platform] To implement AlertReceivers group entity
 * [[9056](https://github.com/yugabyte/yugabyte-db/issues/9056)] [Platform] Alert definition groups implementation + APIs for groups and templates
 * [[9120](https://github.com/yugabyte/yugabyte-db/issues/9120)] [Platform] Default alert route functionality
 * [[9197](https://github.com/yugabyte/yugabyte-db/issues/9197)] [platform] Adding SSL mode to YSQL client
 * [[9331](https://github.com/yugabyte/yugabyte-db/issues/9331)] [Platform] Allow editing "Configuration Name" for backup storage provider without security credentials
-* [[8631](https://github.com/yugabyte/yugabyte-db/issues/8631)] [Platform] Add ability to use different certificates for node to node and client to node connections.
-* [[8632](https://github.com/yugabyte/yugabyte-db/issues/8632)] [Platform] Add ability to take custom certificates in platform for client to server connections.
-* [[8921](https://github.com/yugabyte/yugabyte-db/issues/8921)] [Platform] ReadOnly and BackupAdmin roles to change their password
 * [Platform] Remove commons-collections4 and use guava instead (#8856)
 
 #### Core Database
@@ -132,13 +132,11 @@ N/A
 * [[8330](https://github.com/yugabyte/yugabyte-db/issues/8330)] [YCQL] Provide capability to skip writing null jsonb attribute in UPDATE stmt
 * [[8347](https://github.com/yugabyte/yugabyte-db/issues/8347)] Wait until executor finish executing async calls on shutdown
 * [[8382](https://github.com/yugabyte/yugabyte-db/issues/8382)] [YSQL] Import Fix mishandling of resjunk columns in ON CONFLICT ... UPDATE tlists.
-* [[8390](https://github.com/yugabyte/yugabyte-db/issues/8390)] Fix NPE Handling for indexed_table_id
 * [[8392](https://github.com/yugabyte/yugabyte-db/issues/8392)] [YSQL] Use negative cache elements to avoid read catalog entries from master
 * [[8473](https://github.com/yugabyte/yugabyte-db/issues/8473)] [YBase] Log the requested memory size in the assertion for allocation failure
 * [[8485](https://github.com/yugabyte/yugabyte-db/issues/8485)] Convert OperationCompletionCallback into std::function
 * [[8485](https://github.com/yugabyte/yugabyte-db/issues/8485)] Simplify MVCCManager to allow aborting only last operation
 * [[8485](https://github.com/yugabyte/yugabyte-db/issues/8485)] Unify ConsensusRound callbacks
-* [[8496](https://github.com/yugabyte/yugabyte-db/issues/8496)] Downgrade gperftools to 2.7
 * [[8512](https://github.com/yugabyte/yugabyte-db/issues/8512)] [YCQL] Added CQL metric for USE statement and tests for Prepared INSERT.
 * [[8519](https://github.com/yugabyte/yugabyte-db/issues/8519)] [YSQL] Optimize FK check
 * [[8575](https://github.com/yugabyte/yugabyte-db/issues/8575)] [YSQL] Optimize row locking in case of using IN operator for single range key column
@@ -159,11 +157,14 @@ N/A
 * [[8805](https://github.com/yugabyte/yugabyte-db/issues/8805)] [YSQL] Import Fix incautious handling of possibly-miscoded strings in client code.
 * [[8806](https://github.com/yugabyte/yugabyte-db/issues/8806)] [YBase] Add global client gflag to specify number of tablets for a table
 * [[8817](https://github.com/yugabyte/yugabyte-db/issues/8817)] Add mechanism to report number of rows backfilled to master
+* [[8855](https://github.com/yugabyte/yugabyte-db/issues/8855)] Logging improvements for backup restore issue.
 * [[8867](https://github.com/yugabyte/yugabyte-db/issues/8867)] [YBase] Add endpoint for LB pretty display
 * [[8871](https://github.com/yugabyte/yugabyte-db/issues/8871)] [YBase] Pass timeout to the Session object in FlushIndexBatchIfRequired()
 * [[8872](https://github.com/yugabyte/yugabyte-db/issues/8872)] Merge Operation and OperationState
 * [[8873](https://github.com/yugabyte/yugabyte-db/issues/8873)] [YSQL] Import Work around portability issue with newer versions of mktime().
 * [[8878](https://github.com/yugabyte/yugabyte-db/issues/8878)] [YBase] Reduce scope of lock in CatalogManager::DumpState()
+* [[8892](https://github.com/yugabyte/yugabyte-db/issues/8892)] backups: Add timing summary to end of yb_backup
+* [[8894](https://github.com/yugabyte/yugabyte-db/issues/8894)] backups: Allow disabling of checksums in yb_backup
 * [[8905](https://github.com/yugabyte/yugabyte-db/issues/8905)] Replace gscoped_ptr with std::unique_ptr
 * [[8962](https://github.com/yugabyte/yugabyte-db/issues/8962)] [YSQL] Import Fix plancache refcount leak after error in ExecuteQuery.
 * [[8986](https://github.com/yugabyte/yugabyte-db/issues/8986)] [YSQL] Import Fix misbehavior of DROP OWNED BY with duplicate polroles entries.
@@ -172,6 +173,7 @@ N/A
 * [[9056](https://github.com/yugabyte/yugabyte-db/issues/9056)] Remove extension operations from migration code.
 * [[9063](https://github.com/yugabyte/yugabyte-db/issues/9063)] Support metrics filtering for /prometheus-metrics endpoint
 * [[9101](https://github.com/yugabyte/yugabyte-db/issues/9101)] [YSQL] Import backpatch "jit: Add support for LLVM 12."
+* [[9109](https://github.com/yugabyte/yugabyte-db/issues/9109)] Deduplicate hostnames in PickResolvedAddress
 * [[9128](https://github.com/yugabyte/yugabyte-db/issues/9128)] [DocDB] Converted MetaCache::DoLookupAllTablets excessive INFO logs to VLOGs
 * [[9146](https://github.com/yugabyte/yugabyte-db/issues/9146)] [YSQL] add "/HASH" to "ASC/DESC" errmsg
 * [[9154](https://github.com/yugabyte/yugabyte-db/issues/9154)] [[2519](https://github.com/yugabyte/yugabyte-db/issues/2519)] [[1973](https://github.com/yugabyte/yugabyte-db/issues/1973)] Initial changes for supporting the aarch64 architecture
@@ -179,6 +181,7 @@ N/A
 * [[9208](https://github.com/yugabyte/yugabyte-db/issues/9208)] [YSQL] Change function call information to be fixed length
 * [[9265](https://github.com/yugabyte/yugabyte-db/issues/9265)] [YBase] Return error if tablet is not removed by RemoveRunningTablet
 * [adhoc] [DocDB] Remove unused argument from Tablet::NewRowIterator
+* [backup] Added a check for 'num_tablets' in CatalogManager::ImportSnapshot.
 * [DocDB] Add Clang thread safety annotations to catalog_entity_info (#8186)
 * [SMARTDRIVER] [YSQL] Function to fetch database servers #7879
 * [YBase] Use SharedLock in GetNumRelevantReplicas
@@ -197,13 +200,9 @@ N/A
 * [[8419](https://github.com/yugabyte/yugabyte-db/issues/8419)] Consistent restore for transactional writes
 * [[8543](https://github.com/yugabyte/yugabyte-db/issues/8543)] PITR: Add test for need to increase table version on restore
 * [[8773](https://github.com/yugabyte/yugabyte-db/issues/8773)] PITR: Add DDL log
-* [[8855](https://github.com/yugabyte/yugabyte-db/issues/8855)] Logging improvements for backup restore issue.
-* [[8892](https://github.com/yugabyte/yugabyte-db/issues/8892)] backups: Add timing summary to end of yb_backup
-* [[8894](https://github.com/yugabyte/yugabyte-db/issues/8894)] backups: Allow disabling of checksums in yb_backup
 * [[9046](https://github.com/yugabyte/yugabyte-db/issues/9046)] PITR: Fix crash when using multiple masters
 * [[9157](https://github.com/yugabyte/yugabyte-db/issues/9157)] [DocDB] PITR: Fix operations filters data race
 * [[9171](https://github.com/yugabyte/yugabyte-db/issues/9171)] PITR: Fix restoring snapshot to time before history cutoff
-* [backup] Added a check for 'num_tablets' in CatalogManager::ImportSnapshot.
 
 ### Bug fixes
 
@@ -228,7 +227,6 @@ N/A
 * [[8539](https://github.com/yugabyte/yugabyte-db/issues/8539)] [Platform] [UI] remove toast about auth token expiration
 * [[8541](https://github.com/yugabyte/yugabyte-db/issues/8541)] [Platform] Returns bad request as a response when trying to create a provider with an existing name
 * [[8697](https://github.com/yugabyte/yugabyte-db/issues/8697)] [Platform] Fix client certs not being included when adding custom CA cert.
-* [[8725](https://github.com/yugabyte/yugabyte-db/issues/8725)] Add uid to GetLoggedInUser error message
 * [[8739](https://github.com/yugabyte/yugabyte-db/issues/8739)] [Platform] Cleanup raw Json from CloudProviderController
 * [[8739](https://github.com/yugabyte/yugabyte-db/issues/8739)] Cleanup CloudProviderController and Skip JsonBackrefs
 * [[8795](https://github.com/yugabyte/yugabyte-db/issues/8795)] [Platform] Retain placeholder text while editing the CA certificate fields. (#9051)
@@ -241,7 +239,6 @@ N/A
 * [[8875](https://github.com/yugabyte/yugabyte-db/issues/8875)] [Platform] On failure task runner updates task_info.details.errorString
 * [[8958](https://github.com/yugabyte/yugabyte-db/issues/8958)] [Platform] Fix incorrect sample app command.
 * [[9080](https://github.com/yugabyte/yugabyte-db/issues/9080)] [Platform] Fix certificate value being used for client to server conns
-* [[9109](https://github.com/yugabyte/yugabyte-db/issues/9109)] Deduplicate hostnames in PickResolvedAddress
 * [[9113](https://github.com/yugabyte/yugabyte-db/issues/9113)] [[9114](https://github.com/yugabyte/yugabyte-db/issues/9114)] [Platform] Populate the task id field in the backup table
 * [[9198](https://github.com/yugabyte/yugabyte-db/issues/9198)] [Platform] Alerts: Repeat notifications after previous failures + code cleanup
 * [[9209](https://github.com/yugabyte/yugabyte-db/issues/9209)] [Platform] Fix downloadNodeLogs and add Unit tests for universe
@@ -253,6 +250,7 @@ N/A
 
 #### Core database
 
+* [[8390](https://github.com/yugabyte/yugabyte-db/issues/8390)] Fix NPE Handling for indexed_table_id
 * [[8719](https://github.com/yugabyte/yugabyte-db/issues/8719)] [[8594](https://github.com/yugabyte/yugabyte-db/issues/8594)] [DocDB] Don't send TabletPathInfo for non data ready tablets
 * [[8721](https://github.com/yugabyte/yugabyte-db/issues/8721)] [YSQL] Skip iteration of bucket when YugaByte is enabled
 * [[8722](https://github.com/yugabyte/yugabyte-db/issues/8722)] [YSQL] Remove autogenerated files as a part of orafce source tree
@@ -348,6 +346,7 @@ N/A
 
 **Point-in-time recovery progress**
 
+* [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] [[7135](https://github.com/yugabyte/yugabyte-db/issues/7135)] PITR: Restore table schema
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] Add restore_snapshot_schedule to admin
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] Add yb-admin commands to create and list snapshot schedules
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] PITR: Cleanup not restored tables and tablets
@@ -357,7 +356,6 @@ N/A
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] PITR: Restore deleted table
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] PITR: Special history retention mechanism
 * [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] PITR: Take system catalog snapshot
-* [[7126](https://github.com/yugabyte/yugabyte-db/issues/7126)] [[7135](https://github.com/yugabyte/yugabyte-db/issues/7135)] PITR: Restore table schema
 * [[7137](https://github.com/yugabyte/yugabyte-db/issues/7137)] PITR: Provide ability to create snapshot schedule for YSQL database and YCQL keyspace
 
 **TLS-related**
@@ -368,13 +366,13 @@ N/A
 
 **UI improvements**
 
-* [docdb] Added a max_depth param to the mem-trackers view (#7903)
-* [[7620](https://github.com/yugabyte/yugabyte-db/issues/7620)] Refactor scoped leader shared lock instantiation
 * [[7199](https://github.com/yugabyte/yugabyte-db/issues/7199)] track and display heartbeat roundtrip time from each yb-tserver in yb-master UI (#7239)
-* [[7543](https://github.com/yugabyte/yugabyte-db/issues/7543)] docdb: Add uptime into master home UI
 * [[7484](https://github.com/yugabyte/yugabyte-db/issues/7484)] docdb - Sort the hosts of tablet replicas consistently in Admin UI
+* [[7543](https://github.com/yugabyte/yugabyte-db/issues/7543)] docdb: Add uptime into master home UI
 * [[7617](https://github.com/yugabyte/yugabyte-db/issues/7617)] docdb: Record and display disk usage by drive
+* [[7620](https://github.com/yugabyte/yugabyte-db/issues/7620)] Refactor scoped leader shared lock instantiation
 * [[7647](https://github.com/yugabyte/yugabyte-db/issues/7647)] docdb: Adds Num SST Files to TS tablets view
+* [docdb] Added a max_depth param to the mem-trackers view (#7903)
 
 **Performance improvements**
 
@@ -387,8 +385,8 @@ N/A
 * [[8002](https://github.com/yugabyte/yugabyte-db/issues/8002)] docdb: Increase thresholds for master long lock warnings
 * [[8015](https://github.com/yugabyte/yugabyte-db/issues/8015)] Remove tablets belonging to the same table by taking table lock once
 * [[8037](https://github.com/yugabyte/yugabyte-db/issues/8037)] docdb - Refactor memory management for tablets into a separate class
-* [[8071](https://github.com/yugabyte/yugabyte-db/issues/8071)] Lookup HostPort in blacklist for TSManager::IsTsBlacklisted
 * [[8061](https://github.com/yugabyte/yugabyte-db/issues/8061)] Iterate over copy of namespace_ids_map_ when listing namespaces
+* [[8071](https://github.com/yugabyte/yugabyte-db/issues/8071)] Lookup HostPort in blacklist for TSManager::IsTsBlacklisted
 * [[8133](https://github.com/yugabyte/yugabyte-db/issues/8133)] remove CatalogManager::CheckOnline()
 * [[8167](https://github.com/yugabyte/yugabyte-db/issues/8167)] Properly scope namespace read lock in CatalogManager::CreateTable()
 * [[8170](https://github.com/yugabyte/yugabyte-db/issues/8170)] ybase: Check dirty bit of tablet metadata before issuing removal
@@ -417,9 +415,9 @@ N/A
 
 **YCQL deferred index backfill**
 
-* [[8069](https://github.com/yugabyte/yugabyte-db/issues/8069)] YCQL: Basic support for deferred/batched index backfill
 * [[6290](https://github.com/yugabyte/yugabyte-db/issues/6290)] [[8069](https://github.com/yugabyte/yugabyte-db/issues/8069)] Pt 2 & 3: CQL Handle partial-failures in a batch of index backfills.
 * [[8069](https://github.com/yugabyte/yugabyte-db/issues/8069)] Add a yb-admin command to backfill tables with deferred indexes
+* [[8069](https://github.com/yugabyte/yugabyte-db/issues/8069)] YCQL: Basic support for deferred/batched index backfill
 
 **Other core database improvements**
 
@@ -551,11 +549,11 @@ N/A
 * [[7940](https://github.com/yugabyte/yugabyte-db/issues/7940)] docdb: Unregister BlockBasedTable memtrackers from parent on tablet deletion
 * [[7944](https://github.com/yugabyte/yugabyte-db/issues/7944)] ysql: deprecate flag ysql_wait_until_index_permissions_timeout_ms
 * [[7979](https://github.com/yugabyte/yugabyte-db/issues/7979)] ysql Import Fix handling of -d "connection string" in pg_dump/pg_restore.
-* [[8065](https://github.com/yugabyte/yugabyte-db/issues/8065)] docdb: Fix Sys Catalog Leader Affinity with Full Move
 * [[8006](https://github.com/yugabyte/yugabyte-db/issues/8006)] ysql: Import Fix out-of-bound memory access for interval -> char conversion
 * [[8024](https://github.com/yugabyte/yugabyte-db/issues/8024)] YSQL: Redundant read for create table with primary key
 * [[8030](https://github.com/yugabyte/yugabyte-db/issues/8030)] ysql: Import Redesign the caching done by get_cached_rowtype().
 * [[8047](https://github.com/yugabyte/yugabyte-db/issues/8047)] ysql: Import Fix some inappropriately-disallowed uses of ALTER ROLE/DATABASE SET.
+* [[8065](https://github.com/yugabyte/yugabyte-db/issues/8065)] docdb: Fix Sys Catalog Leader Affinity with Full Move
 * [[8079](https://github.com/yugabyte/yugabyte-db/issues/8079)] Ensure leadership before handling catalog version
 * [[8101](https://github.com/yugabyte/yugabyte-db/issues/8101)] YCQL: Fixed CQLServiceImpl::Shutdown
 * [[8102](https://github.com/yugabyte/yugabyte-db/issues/8102)] Traverse pgsql_ops_ once in PgDocOp::ProcessResponseResult()
@@ -566,7 +564,6 @@ N/A
 * [[8150](https://github.com/yugabyte/yugabyte-db/issues/8150)] [[8196](https://github.com/yugabyte/yugabyte-db/issues/8196)] Fix preceding op id in case of empty ops sent to the follower
 * [[8183](https://github.com/yugabyte/yugabyte-db/issues/8183)] ysql: Import Always call ExecShutdownNode() if appropriate.
 * [[8225](https://github.com/yugabyte/yugabyte-db/issues/8225)] YQL: Add missing makefile dependency
-* [[8496](https://github.com/yugabyte/yugabyte-db/issues/8496)] Downgrade gperftools to 2.7
 
 ### Known Issues
 
