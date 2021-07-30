@@ -38,7 +38,7 @@ This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted) c
 
 ## 1. Create universe
 
-Start a new three-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/concepts/docdb-sharding/sharding/) (also called tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down. <br />
+Start a new three-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/docdb-sharding/sharding/) (also called tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down. <br />
 
 Create the first node:
 
@@ -87,14 +87,14 @@ Run the `SqlInserts` workload app against the local universe using the following
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
-                                    --nodes 127.0.0.1:5433 \
-                                    --num_threads_write 1 \
-                                    --num_threads_read 4
+                                 --nodes 127.0.0.1:5433 \
+                                 --num_threads_write 1 \
+                                 --num_threads_read 4
 ```
 
 The workload application prints some statistics while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
 
-```
+```output
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ... 
 2018-05-10 09:10:24,539 [INFO|...] Read: 9110.92 ops/sec (0.44 ms/op), 863720 total ops  |  Write: 1034.06 ops/sec (0.97 ms/op), 102291 total ops  | ...
 ```

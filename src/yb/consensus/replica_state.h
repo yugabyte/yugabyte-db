@@ -347,9 +347,9 @@ class ReplicaState {
   void CancelPendingOperation(const OpId& id, bool should_exist);
 
   // Accessors for pending election op id. These must be called under a lock.
-  const OpIdPB& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
-  void SetPendingElectionOpIdUnlocked(const OpIdPB& opid) { pending_election_opid_ = opid; }
-  void ClearPendingElectionOpIdUnlocked() { pending_election_opid_.Clear(); }
+  const OpId& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
+  void SetPendingElectionOpIdUnlocked(const OpId& opid) { pending_election_opid_ = opid; }
+  void ClearPendingElectionOpIdUnlocked() { pending_election_opid_ = OpId(); }
 
   std::string ToString() const;
   std::string ToStringUnlocked() const;
@@ -497,7 +497,7 @@ class ReplicaState {
   OpId last_committed_op_id_;
 
   // If set, a leader election is pending upon the specific op id commitment to this peer's log.
-  OpIdPB pending_election_opid_;
+  OpId pending_election_opid_;
 
   State state_ = State::kInitialized;
 

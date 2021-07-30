@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The semantic rules for the conversion, in each direction, rest on a common-sense convention. Each conversion uses a value for the _UTC offset_. And this value is always known: _either_ because the _at time zone_ operator specifies it (either explicitly or implicitly via a timezone name); or from the session's current _TimeZone_ setting. This is explained in the section [Four ways to specify the UTC offset](../../ways-to-spec-offset/).
+The semantic rules for the conversion, in each direction, rest on a common-sense convention. Each conversion uses a value for the _UTC offset_. And this value is always known: _either_ because the _at time zone_ operator specifies it (either explicitly or implicitly via a timezone name); or from the session's current _TimeZone_ setting. This is explained in the section [Four ways to specify the _UTC offset_](../../ways-to-spec-offset/).
 
 - When a _timestamptz_ value is converted to a plain _timestamp_ value, the target is assigned to the date-and-time-of-day component of the source value, when this is expressed with respect to the inevitably known reigning _UTC offset_.
 - When a plain _timestamp_ value is converted to a _timestamptz_ value, the target is assigned by normalizing to _UTC_ according to the inevitably known reigning _UTC offset_.
@@ -42,71 +42,65 @@ The demonstration that follows is designed like this:
 
 - Two _constants_, one with data type plain _timestamp_ and one with data type _timestamptz_ are initialized so that the internal representations (as opposed to the metadata) are identical. Look:
 
-```output
-  ts_plain    constant timestamp   not null := make_timestamp  (yyyy, mm, dd, hh, mi, ss);
-  ts_with_tz  constant timestamptz not null := make_timestamptz(yyyy, mm, dd, hh, mi, ss, 'UTC');
-```
+    ```output
+    ts_plain    constant timestamp   not null := make_timestamp  (yyyy, mm, dd, hh, mi, ss);
+    ts_with_tz  constant timestamptz not null := make_timestamptz(yyyy, mm, dd, hh, mi, ss, 'UTC');
+    ```
 
 - Each uses the same _constant int_ values, _yyyy_, _mm_, _dd_, _hh_, _mi_, and _ss_, to define the identical _date-and-time_ part for each of the two moments. The fact that _UTC_ is used for the _timezone_ argument of the _make_timestamptz()_ invocation ensures the required identity of the internal representations of the two moments—actually, both as plain _timestamp_ values.
 - The _extract(epoch from ... )_ function is used to get the numbers of seconds, as _constant double precision_ values, from the start of the epoch for the two moment values. These two numbers of seconds are actually identical. But two distinct names (_ts_plain_epoch_ and _ts_with_tz_epoch_) are used for these to help the reader see the symmetry of the two tests—one in each direction.
 - A _constant_ array,  _timezones_, is initialized thus:
 
-```output
-  timezones constant text[] not null := array[
-                                               'Pacific/Pago_Pago',
-                                               'America/Porto_Velho',
-                                               'Atlantic/South_Georgia',
-                                               'UTC',
-                                               'Africa/Tripoli',
-                                               'Asia/Dubai',
-                                               'Pacific/Kiritimati'
-                                              ];
-```
+    ```output
+    timezones constant text[] not null := array[
+                                                  'Pacific/Pago_Pago',
+                                                  'America/Porto_Velho',
+                                                  'Atlantic/South_Georgia',
+                                                  'UTC',
+                                                  'Africa/Tripoli',
+                                                  'Asia/Dubai',
+                                                  'Pacific/Kiritimati'
+                                                ];
+    ```
 
 - A _foreach_ loop is run thus:
 
-```output
-  foreach z in array timezones loop
-```
+    ```output
+    foreach z in array timezones loop
+    ```
 
 - At each loop iteration:
   - The session's _TimeZone_ setting is set to the value that the iterand, _z_, specifies.
 
   - These assignments are made:
 
-```output
-    ts_with_tz_1       := ts_plain::timestamptz;
-    ts_with_tz_2       := ts_plain at time zone current_setting('timezone');
-    ts_with_tz_1_epoch := extract(epoch from ts_with_tz_1);
+      ```output
+      ts_with_tz_1       := ts_plain::timestamptz;
+      ts_with_tz_2       := ts_plain at time zone current_setting('timezone');
+      ts_with_tz_1_epoch := extract(epoch from ts_with_tz_1);
 
-    ts_plain_1         := ts_with_tz::timestamp;
-    ts_plain_2         := ts_with_tz at time zone current_setting('timezone');
-    ts_plain_1_epoch   := extract(epoch from ts_plain_1);
+      ts_plain_1         := ts_with_tz::timestamp;
+      ts_plain_2         := ts_with_tz at time zone current_setting('timezone');
+      ts_plain_1_epoch   := extract(epoch from ts_plain_1);
 
-    z_epoch            := extract(epoch from utc_offset(z));
-```
-
-- _(still for each loop iteration)_
+      z_epoch            := extract(epoch from utc_offset(z));
+      ```
 
   - These _assert_ statements are executed to show that the _::timestamp_  and _::timestamptz_ typecasts are identical to _at time zone current_setting('timezone')_:
 
-```output
-    assert (ts_with_tz_2 = ts_with_tz_1), 'Assert #1 failed.';
-    assert (ts_plain_2   = ts_plain_1  ), 'Assert #2 failed.';
-```
+      ```output
+      assert (ts_with_tz_2 = ts_with_tz_1), 'Assert #1 failed.';
+      assert (ts_plain_2   = ts_plain_1  ), 'Assert #2 failed.';
+      ```
 
-- _(still for each loop iteration)_
+  - These _assert_ statements are executed to show that the expected rules for the conversion of the internal representations hold, in both directions between plain _timestamp_ and _timestamptz_:
 
-  - These _assert_ statements are executed to show that the expected rules for the conversion of the internal representations hold, in both directions between plain timestamp and timestamptz .
+      ```output
+      assert ( ts_with_tz_1_epoch = (ts_plain_epoch   - z_epoch) ), 'Assert #3 failed.';
+      assert ( ts_plain_1_epoch   = (ts_with_tz_epoch + z_epoch) ), 'Assert #4 failed.';
+      ```
 
-```output
-    assert ( ts_with_tz_1_epoch = (ts_plain_epoch   - z_epoch) ), 'Assert #3 failed.';
-    assert ( ts_plain_1_epoch   = (ts_with_tz_epoch + z_epoch) ), 'Assert #4 failed.';
-```
-
-- _(still for each loop iteration)_
-
-  - According to the choice for _at_utc:_ _either_ the timezone is set to _UTC;_ _or_ it is simply left at what the loop iterand, _z_ set it to. Then these values are formatted as a _text_ line using the _to_char()_ built-in function: _ts_plain_, _ts_with_tz_1_, _ts_with_tz_, and _ts_plain_1_. The row is labeled with the value of the loop iterand, _z_.
+  - According to the choice for _at_utc:_ _either_ the timezone is set to _UTC;_ _or_ it is simply left at what the loop iterand, _z_, set it to. Then these values are formatted as a _text_ line using the _to_char()_ built-in function: _ts_plain_, _ts_with_tz_1_, _ts_with_tz_, and _ts_plain_1_. The row is labeled with the value of the loop iterand, _z_.
 
 - Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practice to do this for any settings that your programs need, temporarily, to change.) 
 
@@ -132,7 +126,7 @@ end;
 $body$;
 ```
 
-Now create a wrapper to return _utc_offset()_'s returned _interval_ value as _text_ in exactly the format that the literal for a _timestamptz_ value uses.
+Now create a wrapper to return the _utc_offset()_'s returned _interval_ value as _text_ in exactly the format that the literal for a _timestamptz_ value uses.
 
 ```plpgsql
 drop function if exists utc_offset_display(text) cascade;
@@ -155,7 +149,7 @@ end;
 $body$;
 ```
 
-Now create a two formatting functions:
+Now create two formatting functions:
 - one to format the results for maximum readability
 - and another to format the column headers.
 
@@ -437,3 +431,4 @@ You should aim to be comfortable with these three different ways to state the ru
 - _Third_ in terms of the _text_ display of the results using the timezones at which the conversions are done.
 
 Notice that the first way to state the rules is by far the most terse and precise—and therefore the most reliable. The other two ways are subject to the limitations of composing, and interpreting, tortuous natural language prose.
+

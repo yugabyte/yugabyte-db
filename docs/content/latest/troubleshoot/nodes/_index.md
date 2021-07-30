@@ -50,13 +50,13 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link glyphicon-floppy-disk" href="check-stats">
+    <a class="section-link glyphicon-floppy-disk" href="recover-disk">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="title">Disk failure</div>
       </div>
       <div class="body">
-        How to recover a YB-TServer from disk failure
+        How to recover a YB-TServer from disk failure.
       </div>
     </a>
   </div>

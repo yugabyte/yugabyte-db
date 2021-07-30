@@ -16,13 +16,12 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/ysql-authentication" class="nav-link active">
+    <a href="/latest/secure/authentication/host-based-authentication" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 </ul>
-
 
 YugabyteDB fine-grained authentication for YSQL manages access control for localhost, remote hosts, and clients. By default, authentication is restricted to localhost connections. Using fine-grained authentication, you can define rules for access to localhost and remote clients based on IP addresses, authentication methods, and use of TLS (aka SSL) certificates.
 

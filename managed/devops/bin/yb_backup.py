@@ -25,6 +25,7 @@ import json
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
+from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 
 import os
@@ -114,6 +115,39 @@ def quote_cmd_line_for_bash(cmd_line):
     if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
         raise BackupException("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
     return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
+
+
+class BackupTimer:
+    def __init__(self):
+        # Store the start time as phase 0.
+        self.logged_times = [time.time()]
+        self.phases = ["START"]
+        self.num_phases = 0
+
+    def log_new_phase(self, msg=""):
+        self.logged_times.append(time.time())
+        self.phases.append(msg)
+        # Print completed time of last stage.
+        if self.num_phases > 0:  # Don't print for phase 0 as that is just the start-up.
+            time_taken = self.logged_times[self.num_phases] - self.logged_times[self.num_phases - 1]
+            logging.info("Completed phase {}: {} [Time taken for phase: {}]".format(
+                    self.num_phases,
+                    self.phases[self.num_phases],
+                    str(timedelta(seconds=time_taken))))
+        self.num_phases += 1
+        logging.info("Starting phase {}: {}".format(self.num_phases, msg))
+
+    def print_summary(self):
+        log_str = "Summary of run:\n"
+        # Print info for each phase.
+        for i in range(1, self.num_phases + 1):
+            t = self.logged_times[i] - self.logged_times[i - 1]
+            log_str += "{} : PHASE {} : {}\n".format(str(timedelta(seconds=t)), i, self.phases[i])
+        # Also print info for total runtime.
+        log_str += "Total runtime: {}".format(
+                str(timedelta(seconds=time.time() - self.logged_times[0])))
+        # Add [app] for YW platform filter.
+        logging.info("[app] " + log_str)
 
 
 class SingleArgParallelCmd:
@@ -552,6 +586,7 @@ class YBBackup:
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
         self.k8s_namespace_to_cfg = {}
+        self.timer = BackupTimer()
         self.parse_arguments()
 
     def sleep_or_raise(self, num_retry, timeout, ex):
@@ -673,6 +708,10 @@ class YBBackup:
             help="Whether ysql authentication is required. If specified, will connect using local "
                  "UNIX socket as the host. Overrides --local_ysql_dump_binary to always "
                  "use remote binary.")
+        parser.add_argument(
+            '--disable_checksums', action='store_true',
+            help="Whether checksums will be created and checked. If specified, will skip using "
+                 "checksums.")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -1489,18 +1528,19 @@ class YBBackup:
         :param tserver_ip: tserver ip from which the data needs to be uploaded.
         :param snapshot_dir: The snapshot directory on the tserver from which we need to upload.
         """
-        logging.info('Creating check-sum for %s on tablet server %s' % (
-                     snapshot_dir, tserver_ip))
-        create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir)
-
         target_tablet_filepath = os.path.join(snapshot_filepath, 'tablet-%s' % (tablet_id))
-        target_checksum_filepath = checksum_path(target_tablet_filepath)
-        snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
-        logging.info('Uploading %s from tablet server %s to %s URL %s' % (
-                     snapshot_dir_checksum, tserver_ip, self.args.storage_type,
-                     target_checksum_filepath))
-        upload_checksum_cmd = self.storage.upload_file_cmd(
-            snapshot_dir_checksum, target_checksum_filepath)
+        if not self.args.disable_checksums:
+            logging.info('Creating check-sum for %s on tablet server %s' % (
+                         snapshot_dir, tserver_ip))
+            create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir)
+
+            target_checksum_filepath = checksum_path(target_tablet_filepath)
+            snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
+            logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                         snapshot_dir_checksum, tserver_ip, self.args.storage_type,
+                         target_checksum_filepath))
+            upload_checksum_cmd = self.storage.upload_file_cmd(
+                snapshot_dir_checksum, target_checksum_filepath)
 
         target_filepath = target_tablet_filepath + '/'
         logging.info('Uploading %s from tablet server %s to %s URL %s' % (
@@ -1508,10 +1548,11 @@ class YBBackup:
         upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, target_filepath)
 
         # Commands to be run on TSes over ssh for uploading the tablet backup.
-        # 1. Create check-sum file (via sha256sum tool).
-        parallel_commands.add_args(create_checksum_cmd, tserver_ip)
-        # 2. Upload check-sum file.
-        parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
+        if not self.args.disable_checksums:
+            # 1. Create check-sum file (via sha256sum tool).
+            parallel_commands.add_args(create_checksum_cmd, tserver_ip)
+            # 2. Upload check-sum file.
+            parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
         # 3. Upload tablet folder.
         parallel_commands.add_args(tuple(upload_tablet_cmd), tserver_ip)
 
@@ -1559,13 +1600,14 @@ class YBBackup:
         parallel_commands.add_args(tuple(mkdircmd), tserver_ip)
         # 3. Download tablet folder.
         parallel_commands.add_args(tuple(cmd), tserver_ip)
-        # 4. Download check-sum file.
-        parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
-        # 5. Create new check-sum file.
-        parallel_commands.add_args(create_checksum_cmd, tserver_ip)
-        # 6. Compare check-sum files.
-        parallel_commands.add_args(check_checksum_cmd, tserver_ip)
-        parallel_commands.use_last_fn_result_as_command_result()
+        if not self.args.disable_checksums:
+            # 4. Download check-sum file.
+            parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
+            # 5. Create new check-sum file.
+            parallel_commands.add_args(create_checksum_cmd, tserver_ip)
+            # 6. Compare check-sum files.
+            parallel_commands.add_args(check_checksum_cmd, tserver_ip)
+            parallel_commands.use_last_fn_result_as_command_result()
         # 7. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd), tserver_ip)
 
@@ -1695,13 +1737,14 @@ class YBBackup:
                 raise BackupException(
                     "Could not find metadata file at '{}'".format(src_path))
 
-            logging.info('Creating check-sum for %s' % (src_path))
-            self.run_program(
-                self.create_checksum_cmd(src_path, src_checksum_path))
+            if not self.args.disable_checksums:
+                logging.info('Creating check-sum for %s' % (src_path))
+                self.run_program(
+                    self.create_checksum_cmd(src_path, src_checksum_path))
 
-            logging.info('Uploading %s to %s' % (src_checksum_path, dest_checksum_path))
-            self.run_program(
-                self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path))
+                logging.info('Uploading %s to %s' % (src_checksum_path, dest_checksum_path))
+                self.run_program(
+                    self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path))
 
             logging.info('Uploading %s to %s' % (src_path, dest_path))
             self.run_program(
@@ -1709,17 +1752,19 @@ class YBBackup:
         else:
             server_ip = self.get_leader_master_ip()
 
-            logging.info('Creating check-sum for %s on tablet server %s' % (
-                         src_path, server_ip))
-            self.run_ssh_cmd(
-                self.create_checksum_cmd(src_path, src_checksum_path),
-                server_ip)
+            if not self.args.disable_checksums:
+                logging.info('Creating check-sum for %s on tablet server %s' % (
+                             src_path, server_ip))
+                self.run_ssh_cmd(
+                    self.create_checksum_cmd(src_path, src_checksum_path),
+                    server_ip)
 
-            logging.info('Uploading %s from tablet server %s to %s URL %s' % (
-                         src_checksum_path, server_ip, self.args.storage_type, dest_checksum_path))
-            self.run_ssh_cmd(
-                self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path),
-                server_ip)
+                logging.info('Uploading %s from tablet server %s to %s URL %s' % (
+                             src_checksum_path, server_ip,
+                             self.args.storage_type, dest_checksum_path))
+                self.run_ssh_cmd(
+                    self.storage.upload_file_cmd(src_checksum_path, dest_checksum_path),
+                    server_ip)
 
             logging.info('Uploading %s from tablet server %s to %s URL %s' % (
                          src_path, server_ip, self.args.storage_type, dest_path))
@@ -1873,8 +1918,11 @@ class YBBackup:
 
             snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
 
+        self.timer.log_new_phase("Create and upload snapshot metadata")
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
+        self.timer.log_new_phase("Find tablet leaders")
         tablet_leaders = self.find_tablet_leaders()
+        self.timer.log_new_phase("Upload snapshot directories")
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
             '[app] Backed up tables %s to %s successfully!' %
@@ -1888,37 +1936,39 @@ class YBBackup:
         Download the file from the external source to the local temporary folder.
         """
         if self.args.local_yb_admin_binary:
-            checksum_downloaded = checksum_path_downloaded(target_path)
-            self.run_program(
-                self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
+            if not self.args.disable_checksums:
+                checksum_downloaded = checksum_path_downloaded(target_path)
+                self.run_program(
+                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
             self.run_program(
                 self.storage.download_file_cmd(src_path, target_path))
 
-            self.run_program(
-                self.create_checksum_cmd(target_path, checksum_path(target_path)))
-
-            check_checksum_res = self.run_program(
-                compare_checksums_cmd(checksum_downloaded,
-                                      checksum_path(target_path))).strip()
+            if not self.args.disable_checksums:
+                self.run_program(
+                    self.create_checksum_cmd(target_path, checksum_path(target_path)))
+                check_checksum_res = self.run_program(
+                    compare_checksums_cmd(checksum_downloaded,
+                                          checksum_path(target_path))).strip()
         else:
             server_ip = self.get_leader_master_ip()
-            checksum_downloaded = checksum_path_downloaded(target_path)
-            self.run_ssh_cmd(
-                self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
-                server_ip)
+            if not self.args.disable_checksums:
+                checksum_downloaded = checksum_path_downloaded(target_path)
+                self.run_ssh_cmd(
+                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
+                    server_ip)
             self.run_ssh_cmd(
                 self.storage.download_file_cmd(src_path, target_path),
                 server_ip)
 
-            self.run_ssh_cmd(
-                self.create_checksum_cmd(target_path, checksum_path(target_path)),
-                server_ip)
+            if not self.args.disable_checksums:
+                self.run_ssh_cmd(
+                    self.create_checksum_cmd(target_path, checksum_path(target_path)),
+                    server_ip)
+                check_checksum_res = self.run_ssh_cmd(
+                    compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
+                    server_ip).strip()
 
-            check_checksum_res = self.run_ssh_cmd(
-                compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
-                server_ip).strip()
-
-        if check_checksum_res != 'correct':
+        if (not self.args.disable_checksums) and check_checksum_res != 'correct':
             raise BackupException('Check-sum for {} is {}'.format(
                 target_path, check_checksum_res))
 
@@ -2079,6 +2129,7 @@ class YBBackup:
                                       snapshot_id, table_ids):
         pool = ThreadPool(self.args.parallelism)
 
+        self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
         tserver_ips = list(tablets_by_tserver_to_download.keys())
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
@@ -2094,6 +2145,7 @@ class YBBackup:
             deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
+        self.timer.log_new_phase("Download data")
         parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
         self.prepare_cloud_ssh_cmds(
             parallel_downloads, tserver_to_tablet_to_snapshot_dirs, self.args.backup_location,
@@ -2103,10 +2155,11 @@ class YBBackup:
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
 
-        for k in results:
-            v = results[k].strip()
-            if v != 'correct':
-                raise BackupException('Check-sum for "{}" is {}'.format(k, v))
+        if not self.args.disable_checksums:
+            for k in results:
+                v = results[k].strip()
+                if v != 'correct':
+                    raise BackupException('Check-sum for "{}" is {}'.format(k, v))
 
         return tserver_to_deleted_tablets
 
@@ -2124,8 +2177,10 @@ class YBBackup:
 
         (metadata_file_path, dump_file_path) = self.download_metadata_file()
         if dump_file_path:
+            self.timer.log_new_phase("Create tables via YSQLDump")
             self.import_ysql_dump(dump_file_path)
 
+        self.timer.log_new_phase("Import snapshot")
         snapshot_metadata = self.import_snapshot(metadata_file_path)
         snapshot_id = snapshot_metadata['snapshot_id']['new']
         table_ids = list(snapshot_metadata['table'].keys())
@@ -2136,6 +2191,7 @@ class YBBackup:
             logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
             atexit.register(self.delete_created_snapshot, snapshot_id)
 
+        self.timer.log_new_phase("Generate list of tservers for every tablet")
         all_tablets_by_tserver = self.find_tablet_replicas(snapshot_metadata)
         tablets_by_tserver_to_download = all_tablets_by_tserver
 
@@ -2158,6 +2214,7 @@ class YBBackup:
                 deleted_tablets = tserver_to_deleted_tablets[tserver_ip]
                 all_tablets_by_tserver[tserver_ip] -= deleted_tablets
 
+            self.timer.log_new_phase("Regenerate list of tservers for every tablet")
             tablets_by_tserver_new = self.find_tablet_replicas(snapshot_metadata)
             # Calculate the new downloading list as a subtraction of sets:
             #     downloading_list = NEW_all_tablet_replicas - OLD_all_tablet_replicas
@@ -2171,6 +2228,7 @@ class YBBackup:
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
 
+        self.timer.log_new_phase("Restore the snapshot")
         output = self.run_yb_admin(['restore_snapshot', snapshot_id])
         # Transaction-aware snapshots use special restaration id with final state RESTORED,
         # while previous implementation uses snapshot id and it's state COMPLETE.
@@ -2257,6 +2315,8 @@ class YBBackup:
             print(json.dumps({"error": "Exception: {}".format(str(ex))}))
             traceback.print_exc()
             traceback.print_stack()
+        finally:
+            self.timer.print_summary()
 
 
 if __name__ == "__main__":

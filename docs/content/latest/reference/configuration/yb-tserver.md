@@ -706,7 +706,7 @@ Default: `false`
 
 ### Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
+To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
 ##### --cdc_rpc_timeout_ms
 

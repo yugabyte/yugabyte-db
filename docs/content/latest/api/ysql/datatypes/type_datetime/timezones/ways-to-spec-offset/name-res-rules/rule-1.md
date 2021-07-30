@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 {{< tip title="" >}}
-A string that's intended to identify a _UTC offset_ is resolved case-insensitively.
+A string that's intended to identify a _UTC offset_ is resolved case-insensitively. (This rule excludes, of course, selecting explicitly from one of the _pg_timezone_names_ or _pg_timezone_abbrevs catalog_ views).
 {{< /tip >}}
 
 The anonymous PL/pgSQL block below looks up the name _America/Costa_Rica_, spelled exactly with that mix of case, in _pg_timezone_names_ and returns its abbreviation. Because an ordinary query with a case-sensitive predicate is used, this confirms the canonical status of the spelling.
@@ -24,11 +24,11 @@ Another _assert_ statement confirms that the abbreviation is not found as a name
 
 Four different variants of the timezone name, each spelling it with a different mix of case, are defined.
 
- An _assert_ statement ("Assert #1") confirms that invoking _current_setting('TimeZone')_ returns the canonical spelling when the timezone is set using one of the case-variants of the timezone name.
+An _assert_ statement (_"Assert #1"_) confirms that invoking _current_setting('TimeZone')_ returns the canonical spelling when the timezone is set using one of the case-variants of the timezone name.
 
-Another three case-variants are used, each in a different syntax context, to produce a _timestamptz_ value. And _assert_ statements ("Assert #2" and "Assert #3") are used to confirm that the three differently-produced _timestamptz_ values are all the same.
+Another three case-variants are used, each in a different syntax context, to produce a _timestamptz_ value. And _assert_ statements (_"Assert #2"_ and _"Assert #3"_) are used to confirm that the three differently-produced _timestamptz_ values are all the same.
 
-Finally, the result of the _lower()_ built-in function on the abbreviation is used to construct a _timestamptz_ literal; and the _upper()_ result is used as the _at time zone_ argument. And _assert_ statements ("Assert #4" and "Assert #5") are used to confirm that these two _timestamptz_ values are the same as the first three.
+Finally, the result of the _lower()_ built-in function on the abbreviation is used to construct a _timestamptz_ literal; and the _upper()_ result is used as the _at time zone_ argument. And _assert_ statements (_"Assert #4"_ and _"Assert #5"_) are used to confirm that these two _timestamptz_ values are the same as the first three.
 
 Try the block like this:
 
@@ -91,5 +91,7 @@ end;
 $body$;
 ```
 
-The block finishes silently, confirming that in all syntax contexts that allow a timezone name to be used, the name resolution is case-insensitive.
+The block finishes silently.
+
+**This outcome supports the formulation of the rule that this page addresses.**
 

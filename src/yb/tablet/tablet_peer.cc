@@ -404,7 +404,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* operation_pause */ nullptr);
+  return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
 }
 
 const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
@@ -456,6 +456,11 @@ bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
 }
 
 void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
+  auto* strand = strand_.get();
+  if (strand) {
+    strand->Shutdown();
+  }
+
   preparing_operations_counter_.Shutdown();
 
   // TODO: KUDU-183: Keep track of the pending tasks and send an "abort" message.
@@ -481,6 +486,7 @@ void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   // Only mark the peer as SHUTDOWN when all other components have shut down.
   {
     std::lock_guard<simple_spinlock> lock(lock_);
+    strand_.reset();
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     consensus_.reset();
@@ -1252,13 +1258,19 @@ bool TabletPeer::CanBeDeleted() {
     return can_be_deleted_;
   }
 
-  const auto tablet_data_state = tablet()->metadata()->tablet_data_state();
+  const auto tablet = shared_tablet();
+  const auto consensus = shared_raft_consensus();
+  if (!tablet || !consensus) {
+    return false;
+  }
+
+  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
   if (tablet_data_state != TABLET_DATA_SPLIT_COMPLETED) {
     return false;
   }
 
-  const auto all_applied_op_id = consensus_->GetAllAppliedOpId();
-  const auto committed_op_id = consensus_->GetLastCommittedOpId();
+  const auto all_applied_op_id = consensus->GetAllAppliedOpId();
+  const auto committed_op_id = consensus->GetLastCommittedOpId();
   if (all_applied_op_id < committed_op_id) {
     return false;
   }

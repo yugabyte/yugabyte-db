@@ -8,7 +8,7 @@ aliases:
 menu:
   latest:
     parent: troubleshoot-nodes
-    weight: 844
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---

@@ -1,14 +1,22 @@
 groups:
   - name: yugaware
     rules:
-      - alert: alertDefinition
-        expr: query < 1
+      - alert: alertDefinitionGroup
+        expr: query > 1
         for: 15s
         labels:
+          group_uuid: <group_uuid>
+          group_type: UNIVERSE
           definition_uuid: <definition_uuid>
-          definition_name: alertDefinition
+          definition_name: alertDefinitionGroup
+          definition_active: true
           customer_uuid: <customer_uuid>
+          error_code: CUSTOMER_ALERT
+          severity: SEVERE
           universe_uuid: <universe_uuid>
           universe_name: Test Universe
+          target_uuid: <universe_uuid>
+          target_name: Test Universe
+          target_type: universe
         annotations:
-          summary: "{{ $labels.definition_name }} for {{ $labels.universe_name }} is firing."
+          summary: "alertDefinitionGroup Alert for Test Universe is firing"

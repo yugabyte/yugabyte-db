@@ -13,8 +13,12 @@ menu:
 
 The following table contains links to the release notes and downloads for earlier YugabyteDB releases.
 
+Note that, starting with 2.3, download links for all releases in a given release series (such as 2.5.x or 2.4.x ) are in the release notes, and not included in the table.
+
 | Release | Date | Binary | Docker Image Tag |
 | :------ | :--- | :----- | :--------------- |
+| [v2.5](./v2.5/) | Nov 12, 2020 and later | in release notes | in release notes |
+| [v2.4](./v2.4/) | Jan 22, 2021 and later | in release notes | in release notes |
 | [v2.2.7](./v2.2.0#v2-2-7-feb-19-2021) | Feb 19, 20201 | <a href="https://downloads.yugabyte.com/yugabyte-2.2.7.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.2.7.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.2.7.0-b5 |
 | [v2.2.6](./v2.2.0#v2-2-6-dec-28-2020) | Dec 28, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.2.6.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.2.6.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.2.6.0-b4 |
 | [v2.2.5](./v2.2.0#v2-2-5-dec-2-2020) | Dec 2, 2020 | <a href="https://downloads.yugabyte.com/yugabyte-2.2.5.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.2.5.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.2.5.0-b2 |

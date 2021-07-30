@@ -316,20 +316,13 @@ Status Batcher::DoAdd(shared_ptr<YBOperation> yb_op) {
   if (state() != BatcherState::kGatheringOps) {
     const auto error =
         STATUS_FORMAT(InternalError, "Adding op to batcher in a wrong state: $0", state_);
-    LOG(DFATAL) << error << "\n" << GetStackTrace();
+    LOG_WITH_PREFIX(DFATAL) << error << "\n" << GetStackTrace();
     return error;
   }
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.
   auto in_flight_op = std::make_shared<InFlightOp>(yb_op);
   RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
-
-  // TODO(tsplit): Consider implementing Batcher::AddInflightOp that returns void and use it for
-  // retries.
-  // TODO(tsplit): Consider doing refresh somewhere else, not inside Batcher::Add.
-  if (VERIFY_RESULT(yb_op->MaybeRefreshTablePartitionList())) {
-    client_->data_->meta_cache_->InvalidateTableCache(*yb_op->table());
-  }
 
   if (yb_op->table()->partition_schema().IsHashPartitioning()) {
     switch (yb_op->type()) {
@@ -373,14 +366,24 @@ Status Batcher::DoAdd(shared_ptr<YBOperation> yb_op) {
     TabletLookupFinished(std::move(in_flight_op), yb_op->tablet());
   } else {
     client_->data_->meta_cache_->LookupTabletByKey(
-        in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline_,
+        in_flight_op->yb_op->mutable_table(), in_flight_op->partition_key, deadline_,
         std::bind(&Batcher::TabletLookupFinished, BatcherPtr(this), in_flight_op, _1));
   }
   return Status::OK();
 }
 
+bool Batcher::Has(std::shared_ptr<YBOperation> yb_op) const {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  for (const InFlightOpPtr& fl_op : ops_) {
+    if (fl_op->yb_op == yb_op) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
-  LOG_IF(DFATAL, op->state != InFlightOpState::kLookingUpTablet)
+  LOG_IF_WITH_PREFIX(DFATAL, op->state != InFlightOpState::kLookingUpTablet)
       << "Adding in flight op in a wrong state: " << op->state;
 
   std::lock_guard<decltype(mutex_)> lock(mutex_);
@@ -486,9 +489,9 @@ void Batcher::TabletLookupFinished(
       }
     }
 
-    VLOG_WITH_PREFIX(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": "
-                        << lookup_result << ", outstanding lookups: " << outstanding_lookups_;
-
+    VLOG_WITH_PREFIX(lookup_result.ok() ? 3 : 2)
+        << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result
+        << ", outstanding lookups: " << outstanding_lookups_;
     if (lookup_result.ok()) {
       CHECK(*lookup_result);
 
@@ -860,7 +863,8 @@ CollectedErrors Batcher::GetAndClearPendingErrors() {
 
 std::string Batcher::LogPrefix() const {
   const void* self = this;
-  return Format("Batcher ($0): ", self);
+  return Format(
+      "Batcher ($0), session ($1): ", self, static_cast<void*>(weak_session_.lock().get()));
 }
 
 BatcherState Batcher::state() const {

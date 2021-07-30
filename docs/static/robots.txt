@@ -7,4 +7,5 @@ Disallow: /v1.3/
 Disallow: /v2.0/
 Disallow: /v2.1/
 Disallow: /v2.2/
+Disallow: /v2.4/
 Disallow: /stable/
