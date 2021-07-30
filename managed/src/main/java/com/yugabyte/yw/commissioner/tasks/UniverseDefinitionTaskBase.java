@@ -143,16 +143,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             universeDetails.universeUUID = taskParams().universeUUID;
             universeDetails.allowInsecure = taskParams().allowInsecure;
             universeDetails.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-            universeDetails.rootCA = null;
-            universeDetails.clientRootCA = null;
-            if (CertificateHelper.isRootCARequired(taskParams())) {
-              universeDetails.rootCA = taskParams().rootCA;
-            }
-            if (CertificateHelper.isClientRootCARequired(taskParams())) {
-              universeDetails.clientRootCA = taskParams().clientRootCA;
-            }
             Cluster cluster = taskParams().getPrimaryCluster();
             if (cluster != null) {
+              universeDetails.rootCA = null;
+              universeDetails.clientRootCA = null;
+              if (CertificateHelper.isRootCARequired(taskParams())) {
+                universeDetails.rootCA = taskParams().rootCA;
+              }
+              if (CertificateHelper.isClientRootCARequired(taskParams())) {
+                universeDetails.clientRootCA = taskParams().clientRootCA;
+              }
               universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
             } // else read only cluster edit mode.
           } else {
