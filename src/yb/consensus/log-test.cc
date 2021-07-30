@@ -1174,5 +1174,47 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
   ASSERT_EQ(kSequenceLength, repls.size());
 }
 
+TEST_F(LogTest, AllocateSegmentAndRollOver) {
+  constexpr auto kNumIters = 10;
+
+  // Big enough to not trigger automated rollover and test manual one.
+  options_.segment_size_bytes = 1_MB;
+
+  BuildLog();
+
+  ASSERT_EQ(log_->num_segments(), 1);
+  ASSERT_EQ(log_->active_segment_sequence_number(), 1);
+
+  for (auto i = 0; i < kNumIters; ++i) {
+    AppendReplicateBatchToLog(1, AppendSync::kTrue);
+    ASSERT_OK(log_->AllocateSegmentAndRollOver());
+  }
+
+  ASSERT_EQ(log_->num_segments(), kNumIters + 1);
+  ASSERT_EQ(log_->active_segment_sequence_number(), kNumIters + 1);
+
+  ASSERT_OK(log_->Close());
+}
+
+TEST_F(LogTest, ConcurrentAllocateSegmentAndRollOver) {
+  constexpr auto kNumBatches = 10;
+  constexpr auto kNumEntriesPerBatch = 10;
+
+  // Trigger rollover aggressively during normal append.
+  options_.segment_size_bytes = 1;
+
+  BuildLog();
+
+  for (auto i = 0; i < kNumBatches; ++i) {
+    AppendReplicateBatchToLog(kNumEntriesPerBatch, AppendSync::kFalse);
+    ASSERT_OK(log_->AllocateSegmentAndRollOver());
+  }
+
+  LOG(INFO) << "Log segments: " << log_->num_segments();
+  ASSERT_GE(log_->num_segments(), kNumBatches);
+
+  ASSERT_OK(log_->Close());
+}
+
 } // namespace log
 } // namespace yb
