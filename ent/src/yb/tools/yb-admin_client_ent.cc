@@ -1258,8 +1258,11 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     return StatusFromPB(resp.error().status());
   }
 
-  // Wait for the altered producer to be deleted (this happens once it is merged with the original).
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid + ".ALTER"));
+  if (!add_tables.empty()) {
+    // If we are adding tables, then wait for the altered producer to be deleted (this happens once
+    // it is merged with the original).
+    RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid + ".ALTER"));
+  }
 
   cout << "Replication altered successfully" << endl;
   return Status::OK();
