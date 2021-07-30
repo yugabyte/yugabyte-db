@@ -66,7 +66,8 @@ constexpr const auto kKeyColumn = "key";
 constexpr const auto kValueColumn = "value";
 
 void CreateTable(
-    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table);
+    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table,
+    const YBTableName& table_name = kTableName);
 
 void CreateIndex(
     Transactional transactional, int indexed_column_index, bool use_mangled_names,
