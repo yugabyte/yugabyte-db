@@ -1283,10 +1283,12 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackSubTransaction(SubTransactionId id) {
-  // TODO(savepoints) -- update client-side aborted subtransaction bitset
   // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
   // eventually send this metadata.
-  return Status::OK();
+  // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
+  // SubTransactionMetadata.
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RollbackSubTransaction(id);
 }
 
 }  // namespace pggate
