@@ -29,8 +29,20 @@ class RegisterForm extends Component {
   }
 
   submitRegister = (formValues) => {
-    const { registerCustomer } = this.props;
+    const config = {
+      type: 'PASSWORD_POLICY',
+      name: 'password policy',
+      data: {
+        minLength: 8,
+        minUppercase: 1,
+        minLowercase: 1,
+        minDigits: 1,
+        minSpecialCharacters: 1
+     }
+    }
+    const { registerCustomer, addCustomerConfig } = this.props;
     registerCustomer(formValues);
+    addCustomerConfig(config);
   };
 
   render() {

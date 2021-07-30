@@ -3,6 +3,8 @@
 import { connect } from 'react-redux';
 import { CustomerProfile } from '../profile';
 import {
+  addCustomerConfig,
+  addCustomerConfigResponse,
   updateProfile,
   updateProfileSuccess,
   updateProfileFailure,
@@ -49,6 +51,13 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(updatePasswordFailure(response.payload));
         } else {
           dispatch(updatePasswordSuccess(response.payload));
+        }
+      });
+    },
+    addCustomerConfig: (config) => {
+      dispatch(addCustomerConfig(config)).then((response) => {
+        if (!response.error) {
+          dispatch(addCustomerConfigResponse(response.payload));
         }
       });
     },

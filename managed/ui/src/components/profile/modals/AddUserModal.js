@@ -18,7 +18,19 @@ export class AddUserModal extends Component {
   submitForm = async (values) => {
     values.role = values.role.value;
     try {
+      const config = {
+        type: 'PASSWORD_POLICY',
+        name: 'password policy',
+        data: {
+          minLength: 8,
+          minUppercase: 1,
+          minLowercase: 1,
+          minDigits: 1,
+          minSpecialCharacters: 1
+       }
+      };
       await this.props.createUser(values);
+      await this.props.addCustomerConfig(config);
     } catch (error) {
       console.error('Failed to create user', error);
     } finally {

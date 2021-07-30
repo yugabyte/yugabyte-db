@@ -3,12 +3,21 @@
 import RegisterForm from './RegisterForm';
 import { register, registerResponse, 
   fetchPasswordPolicy, 
-  fetchPasswordPolicyResponse 
+  fetchPasswordPolicyResponse,
+  addCustomerConfig,
+  addCustomerConfigResponse
 } from '../../../../actions/customers';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
   return {
+    addCustomerConfig: (config) => {
+      dispatch(addCustomerConfig(config)).then((response) => {
+        if (!response.error) {
+          dispatch(addCustomerConfigResponse(response.payload));
+        }
+      });
+    },
     registerCustomer: (formVals) => {
       dispatch(register(formVals)).then((response) => {
         if (response.payload.status === 200) {
