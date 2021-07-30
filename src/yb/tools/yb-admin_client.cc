@@ -1768,6 +1768,16 @@ Status ClusterAdminClient::FlushSysCatalog(const int& timeout_secs) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::CompactSysCatalog(const int& timeout_secs) {
+  master::CompactSysCatalogRequestPB req;
+  const auto resp =
+      VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::CompactSysCatalog, master_proxy_.get(), req));
+  if (resp.has_error()) {
+    return STATUS(RemoteError, resp.error().DebugString());
+  }
+  return Status::OK();
+}
+
 Status ClusterAdminClient::GetUniverseConfig() {
   const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
   std::string output;

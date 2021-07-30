@@ -265,7 +265,12 @@ class CatalogManager :
   CHECKED_STATUS FlushSysCatalog(const FlushSysCatalogRequestPB* req,
                                  FlushSysCatalogResponsePB* resp,
                                  rpc::RpcContext* rpx);
-
+  
+  //Compact the system catalog
+  CHECKED_STATUS CompactSysCatalog(const CompactSysCatalogRequestPB* req,
+                                   CompactSysCatalogResponsePB* resp,
+                                   rpc::RpcContext* rpx);
+                                   
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
   // master automatically runs backfill according to the DocDB permissions.
   CHECKED_STATUS BackfillIndex(const BackfillIndexRequestPB* req,

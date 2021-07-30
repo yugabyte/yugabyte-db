@@ -1961,10 +1961,22 @@ message FlushTablesResponsePB {
 
   optional bytes flush_request_id = 2;
 }
+
 message FlushSysCatalogRequestPB{
 
 }
+
 message FlushSysCatalogResponsePB{
+  optional MasterErrorPB error = 1;
+
+  optional bytes flush_request_id = 2;
+}
+
+message CompactSysCatalogRequestPB{
+
+}
+
+message CompactSysCatalogResponsePB{
   optional MasterErrorPB error = 1;
 
   optional bytes flush_request_id = 2;
@@ -2220,7 +2232,11 @@ service MasterService {
       returns (AreLeadersOnPreferredOnlyResponsePB);
 
   rpc FlushSysCatalog(FlushSysCatalogRequestPB) returns (FlushSysCatalogResponsePB);
+
+  rpc CompactSysCatalog(CompactSysCatalogRequestPB) returns (CompactSysCatalogResponsePB);
+
   rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
+
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
 
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);

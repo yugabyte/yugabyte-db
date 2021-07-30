@@ -3984,6 +3984,13 @@ Status CatalogManager::FlushSysCatalog(
   return Status::OK();
 }
 
+Status CatalogManager::CompactSysCatalog(
+      const CompactSysCatalogRequestPB* req,
+      CompactSysCatalogResponsePB* resp,
+      rpc::RpcContext* rpc){
+  return Status::OK();
+}
+
 Status CatalogManager::LaunchBackfillIndexForTable(
     const LaunchBackfillIndexForTableRequestPB* req,
     LaunchBackfillIndexForTableResponsePB* resp,

@@ -398,6 +398,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (DeleteTablet)
     (DdlLog)
     (FlushSysCatalog)
+    (CompactSysCatalog)
 )
 
 
