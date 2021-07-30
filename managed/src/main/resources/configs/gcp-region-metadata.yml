@@ -28,6 +28,14 @@ us-west2:
   name: California
   latitude: 34.052235
   longitude: -118.243683
+us-west3:
+  name: Utah
+  latitude: 40.7608
+  longitude: -111.8910
+us-west4:
+  name: Nevada
+  latitude: 36.1699
+  longitude: -115.1398
 us-east1:
   name: South Carolina
   latitude: 33.1637261
