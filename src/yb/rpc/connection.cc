@@ -286,22 +286,24 @@ void Connection::ParseReceived() {
   stream_->ParseReceived();
 }
 
-Result<ProcessDataResult> Connection::ProcessReceived(
-    const IoVecs& data, ReadBufferFull read_buffer_full) {
-  auto result = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
+Result<size_t> Connection::ProcessReceived() {
+  auto result = context_->ProcessCalls(
+      shared_from_this(), ReadBuffer().AppendedVecs(), ReadBufferFull(ReadBuffer().Full()));
   VLOG_WITH_PREFIX(4) << "context_->ProcessCalls result: " << AsString(result);
   if (PREDICT_FALSE(!result.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();
-    return result;
+    return result.status();
   }
 
-  if (!result->consumed && read_buffer_full && context_->Idle()) {
+  if (!result->consumed && ReadBuffer().Full() && context_->Idle()) {
     return STATUS_FORMAT(
         InvalidArgument, "Command is greater than read buffer, exist data: $0",
-        IoVecsFullSize(data));
+        IoVecsFullSize(ReadBuffer().AppendedVecs()));
   }
 
-  return result;
+  ReadBuffer().Consume(result->consumed, result->buffer);
+
+  return result->bytes_to_skip;
 }
 
 Status Connection::HandleCallResponse(CallData* call_data) {

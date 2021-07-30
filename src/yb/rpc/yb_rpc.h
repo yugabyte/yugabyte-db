@@ -72,7 +72,7 @@ class YBInboundConnectionContext : public YBConnectionContext {
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
-  Result<ProcessDataResult> ProcessCalls(const ConnectionPtr& connection,
+  Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,
                                           const IoVecs& data,
                                           ReadBufferFull read_buffer_full) override;
 
@@ -242,9 +242,9 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;
-  Result<ProcessDataResult> ProcessCalls(const ConnectionPtr& connection,
-                              const IoVecs& data,
-                              ReadBufferFull read_buffer_full) override;
+  Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,
+                                          const IoVecs& data,
+                                          ReadBufferFull read_buffer_full) override;
 
   void UpdateLastRead(const ConnectionPtr& connection) override;
 

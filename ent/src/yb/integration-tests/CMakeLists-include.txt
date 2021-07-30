@@ -35,7 +35,6 @@ set(YB_ENT_CURRENT_SOURCE_DIR
 set(INTEGRATION_TESTS_LIB_EXTENSIONS cdc_test_util PARENT_SCOPE)
 
 set(INTEGRATION_TESTS_EXTENSIONS_TESTS
-  external_mini_cluster_secure_test
   secure_connection_test
   snapshot-test
   transaction-ent-test

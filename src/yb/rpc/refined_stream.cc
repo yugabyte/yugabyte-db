@@ -134,48 +134,28 @@ const Protocol* RefinedStream::GetProtocol() {
 }
 
 StreamReadBuffer& RefinedStream::ReadBuffer() {
-  return read_buffer_;
+  return state_ != RefinedStreamState::kDisabled ? read_buffer_ : context_->ReadBuffer();
 }
 
-Result<ProcessDataResult> RefinedStream::ProcessReceived(
-    const IoVecs& data, ReadBufferFull read_buffer_full) {
+Result<size_t> RefinedStream::ProcessReceived() {
   switch (state_) {
     case RefinedStreamState::kInitial: {
-      IoVecs data_copy = data;
-      auto consumed = VERIFY_RESULT(refiner_->ProcessHeader(data_copy));
+      RETURN_NOT_OK(refiner_->ProcessHeader());
       if (state_ == RefinedStreamState::kInitial) {
         // Received data was not enough to check stream header.
-        RSTATUS_DCHECK_EQ(consumed, 0, InternalError,
-                          "Consumed data while keeping stream in initial state");
-        return ProcessDataResult{0, Slice()};
+        return 0;
       }
-      data_copy[0].iov_len -= consumed;
-      data_copy[0].iov_base = static_cast<char*>(data_copy[0].iov_base) + consumed;
-      auto result = VERIFY_RESULT(ProcessReceived(data_copy, read_buffer_full));
-      result.consumed += consumed;
-      return result;
+      return ProcessReceived();
     }
 
     case RefinedStreamState::kDisabled:
-      return context_->ProcessReceived(data, read_buffer_full);
+      return context_->ProcessReceived();
 
-    case RefinedStreamState::kHandshake: FALLTHROUGH_INTENDED;
+    case RefinedStreamState::kHandshake:
+      return Handshake();
+
     case RefinedStreamState::kEnabled: {
-      size_t result = 0;
-      for (const auto& iov : data) {
-        Slice slice(static_cast<char*>(iov.iov_base), iov.iov_len);
-        for (;;) {
-          auto len = VERIFY_RESULT(refiner_->Receive(slice));
-          result += len;
-          if (len == slice.size()) {
-            break;
-          }
-          slice.remove_prefix(len);
-          RETURN_NOT_OK(HandshakeOrRead());
-        }
-      }
-      RETURN_NOT_OK(HandshakeOrRead());
-      return ProcessDataResult{ result, Slice() };
+      return Read();
     }
   }
 
@@ -196,9 +176,40 @@ void RefinedStream::Connected() {
   }
 }
 
+CHECKED_STATUS TransferData(StreamReadBuffer* source, StreamReadBuffer* dest) {
+  auto dst = VERIFY_RESULT(dest->PrepareAppend());
+  auto dst_it = dst.begin();
+  size_t total_len = 0;
+  for (auto src_vec : source->AppendedVecs()) {
+    while (src_vec.iov_len != 0) {
+      if (dst_it->iov_len == 0) {
+        if (++dst_it == dst.end()) {
+          return STATUS(RuntimeError, "No enough space in destination buffer");
+        }
+      }
+      size_t len = std::min(dst_it->iov_len, src_vec.iov_len);
+      memcpy(dst_it->iov_base, src_vec.iov_base, len);
+      IoVecRemovePrefix(len, &*dst_it);
+      IoVecRemovePrefix(len, &src_vec);
+      total_len += len;
+    }
+  }
+  source->Consume(total_len, Slice());
+  dest->DataAppended(total_len);
+  return Status::OK();
+}
+
 Status RefinedStream::Established(RefinedStreamState state) {
   state_ = state;
+
+  if (state == RefinedStreamState::kDisabled) {
+    RETURN_NOT_OK(TransferData(&read_buffer_, &context_->ReadBuffer()));
+  }
+
   ResetLogPrefix();
+
+  VLOG_WITH_PREFIX(1) << __func__ << ": " << state;
+
   context().Connected();
   for (auto& data : pending_data_) {
     RETURN_NOT_OK(Send(std::move(data)));
@@ -217,65 +228,100 @@ Status RefinedStream::StartHandshake() {
   return Status::OK();
 }
 
-Status RefinedStream::HandshakeOrRead() {
-  if (PREDICT_FALSE(state_ != RefinedStreamState::kEnabled)) {
-    auto handshake_status = refiner_->Handshake();
-    LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
-    RETURN_NOT_OK(handshake_status);
-  }
+Result<size_t> RefinedStream::Handshake() {
+  auto handshake_status = refiner_->Handshake();
+  LOG_IF_WITH_PREFIX(INFO, !handshake_status.ok()) << "Handshake failed: " << handshake_status;
+  RETURN_NOT_OK(handshake_status);
 
   if (state_ == RefinedStreamState::kEnabled) {
     return Read();
   }
 
-  return Status::OK();
+  return 0;
 }
 
-Status RefinedStream::Read() {
-  auto& refined_read_buffer = context_->ReadBuffer();
-  bool done = false;
-  while (!done) {
-    if (lower_stream_bytes_to_skip_ > 0) {
+// Used to read bytes to global skip buffer.
+class SkipStreamReadBuffer : public StreamReadBuffer {
+ public:
+  explicit SkipStreamReadBuffer(const Slice& out, size_t skip_len)
+      : out_(out), wpos_(out_.mutable_data()), skip_len_(skip_len) {}
+
+  bool ReadyToRead() override { return false; }
+
+  bool Empty() override { return true; }
+
+  void Reset() override {
+    wpos_ = out_.mutable_data();
+  }
+
+  bool Full() override {
+    return wpos_ == out_.end();
+  }
+
+  Result<IoVecs> PrepareAppend() override {
+    return IoVecs({iovec{
+      .iov_base = wpos_,
+      .iov_len = std::min(static_cast<size_t>(out_.end() - wpos_), skip_len_),
+    }});
+  }
+
+  void DataAppended(size_t len) override {
+    skip_len_ -= len;
+    wpos_ += len;
+  }
+
+  IoVecs AppendedVecs() override {
+    return IoVecs({iovec{
+      .iov_base = out_.mutable_data(),
+      .iov_len = static_cast<size_t>(wpos_ - out_.mutable_data()),
+    }});
+  }
+
+  void Consume(size_t count, const Slice& prepend) override {
+  }
+
+  std::string ToString() const override {
+    return "SkipStreamReadBuffer";
+  }
+
+ private:
+  Slice out_;
+  uint8_t* wpos_;
+  size_t skip_len_;
+};
+
+Result<size_t> RefinedStream::Read() {
+  auto& out_buffer = context_->ReadBuffer();
+  for (;;) {
+    if (upper_stream_bytes_to_skip_ > 0) {
       auto global_skip_buffer = GetGlobalSkipBuffer();
       do {
-        auto len = VERIFY_RESULT(refiner_->Read(
-            global_skip_buffer.mutable_data(),
-            std::min(global_skip_buffer.size(), lower_stream_bytes_to_skip_)));
-        if (len == 0) {
-          done = true;
+        SkipStreamReadBuffer buffer(global_skip_buffer, upper_stream_bytes_to_skip_);
+        RETURN_NOT_OK(refiner_->Read(&buffer));
+        size_t len = buffer.AppendedVecs()[0].iov_len;
+        if (!len) {
           break;
         }
-        VLOG_WITH_PREFIX(4) << "Skip lower: " << len;
-        lower_stream_bytes_to_skip_ -= len;
-      } while (lower_stream_bytes_to_skip_ > 0);
+        VLOG_WITH_PREFIX(4) << "Skip upper: " << len << " of " << upper_stream_bytes_to_skip_;
+        upper_stream_bytes_to_skip_ -= len;
+      } while (upper_stream_bytes_to_skip_ > 0);
     }
-    auto out = VERIFY_RESULT(refined_read_buffer.PrepareAppend());
-    size_t appended = 0;
-    for (auto iov = out.begin(); iov != out.end();) {
-      auto len = VERIFY_RESULT(refiner_->Read(iov->iov_base, iov->iov_len));
-      if (len == 0) {
-        done = true;
-        break;
-      }
-      VLOG_WITH_PREFIX(4) << "Read lower: " << len;
-      appended += len;
-      iov->iov_base = static_cast<char*>(iov->iov_base) + len;
-      iov->iov_len -= len;
-      if (iov->iov_len <= 0) {
-        ++iov;
+
+    if (upper_stream_bytes_to_skip_ == 0) {
+      RETURN_NOT_OK(refiner_->Read(&out_buffer));
+      if (out_buffer.ReadyToRead()) {
+        auto temp = VERIFY_RESULT(context_->ProcessReceived());
+        upper_stream_bytes_to_skip_ = temp;
+        VLOG_IF_WITH_PREFIX(3, temp != 0) << "Skip: " << upper_stream_bytes_to_skip_;
       }
     }
-    refined_read_buffer.DataAppended(appended);
-    if (refined_read_buffer.ReadyToRead()) {
-      auto temp = VERIFY_RESULT(context_->ProcessReceived(
-          refined_read_buffer.AppendedVecs(), ReadBufferFull(refined_read_buffer.Full())));
-      refined_read_buffer.Consume(temp.consumed, temp.buffer);
-      DCHECK_EQ(lower_stream_bytes_to_skip_, 0);
-      lower_stream_bytes_to_skip_ = temp.bytes_to_skip;
+
+    if (read_buffer_.Empty()) {
+      break;
     }
   }
 
-  return Status::OK();
+  return 0;
 }
 
 RefinedStreamFactory::RefinedStreamFactory(
@@ -288,13 +334,12 @@ RefinedStreamFactory::RefinedStreamFactory(
 std::unique_ptr<Stream> RefinedStreamFactory::Create(const StreamCreateData& data) {
   auto receive_buffer_size = data.socket->GetReceiveBufferSize();
   if (!receive_buffer_size.ok()) {
-    LOG(WARNING) << "Compressed stream failure: " << receive_buffer_size.status();
+    LOG(WARNING) << "Refined stream failure: " << receive_buffer_size.status();
     receive_buffer_size = 256_KB;
   }
   auto lower_stream = lower_layer_factory_->Create(data);
   return std::make_unique<RefinedStream>(
-      std::move(lower_stream), refiner_factory_(*receive_buffer_size, buffer_tracker_, data),
-      *receive_buffer_size, buffer_tracker_);
+      std::move(lower_stream), refiner_factory_(data), *receive_buffer_size, buffer_tracker_);
 }
 
 }  // namespace rpc

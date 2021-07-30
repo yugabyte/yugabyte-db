@@ -70,11 +70,14 @@ RedisConnectionContext::RedisConnectionContext(
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
-Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
+Result<rpc::ProcessCallsResult> RedisConnectionContext::ProcessCalls(
     const rpc::ConnectionPtr& connection, const IoVecs& data,
     rpc::ReadBufferFull read_buffer_full) {
   if (!can_enqueue()) {
-    return rpc::ProcessDataResult{0, Slice()};
+    return rpc::ProcessCallsResult{
+      .consumed = 0,
+      .buffer = Slice(),
+    };
   }
 
   if (!parser_) {
@@ -111,7 +114,10 @@ Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
   }
   parser.Consume(begin_of_batch);
   end_of_batch_ -= begin_of_batch;
-  return rpc::ProcessDataResult{begin_of_batch, Slice()};
+  return rpc::ProcessCallsResult{
+    .consumed = begin_of_batch,
+    .buffer = Slice(),
+  };
 }
 
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,

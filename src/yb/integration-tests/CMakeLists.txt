@@ -161,6 +161,7 @@ endfunction()
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)
+ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 

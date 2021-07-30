@@ -133,12 +133,12 @@ uint64_t YBConnectionContext::ExtractCallId(InboundCall* call) {
   return down_cast<YBInboundCall*>(call)->call_id();
 }
 
-Result<ProcessDataResult> YBInboundConnectionContext::ProcessCalls(
+Result<ProcessCallsResult> YBInboundConnectionContext::ProcessCalls(
     const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
   if (state_ == RpcConnectionPB::NEGOTIATING) {
     // We assume that header is fully contained in the first block.
     if (data[0].iov_len < kConnectionHeaderSize) {
-      return ProcessDataResult{ 0, Slice() };
+      return ProcessCallsResult{ 0, Slice() };
     }
 
     Slice slice(static_cast<const char*>(data[0].iov_base), data[0].iov_len);
@@ -557,7 +557,7 @@ void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connecti
   connection->QueueOutboundData(ConnectionHeaderInstance());
 }
 
-Result<ProcessDataResult> YBOutboundConnectionContext::ProcessCalls(
+Result<ProcessCallsResult> YBOutboundConnectionContext::ProcessCalls(
     const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
   return parser().Parse(connection, data, read_buffer_full, nullptr /* tracker_for_throttle */);
 }

@@ -571,8 +571,13 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
   auto stream = VERIFY_RESULT(CreateStream(
       messenger_->stream_factories_, conn_id.protocol(),
-      {conn_id.remote(), hostname, &sock,
-       messenger_->connection_context_factory_->buffer_tracker()}));
+      StreamCreateData{
+        .remote = conn_id.remote(),
+        .remote_hostname = hostname,
+        .socket = &sock,
+        .mem_tracker = messenger_->connection_context_factory_->buffer_tracker(),
+        .metric_entity = messenger_->metric_entity(),
+      }));
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
@@ -879,7 +884,13 @@ void Reactor::RegisterInboundSocket(
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
-      {remote, std::string(), socket, mem_tracker});
+      StreamCreateData {
+        .remote = remote,
+        .remote_hostname = std::string(),
+        .socket = socket,
+        .mem_tracker = mem_tracker,
+        .metric_entity = messenger_->metric_entity()
+      });
   if (!stream.ok()) {
     LOG_WITH_PREFIX(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;

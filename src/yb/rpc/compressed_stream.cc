@@ -44,7 +44,7 @@ class Compressor {
       const boost::container::small_vector_base<RefCntBuffer>& input, RefCntBuffer* output) = 0;
 
   // Decompress specified input slice to specified output buffer.
-  virtual Result<size_t> Decompress(const Slice& input, StreamReadBuffer* output) = 0;
+  virtual Result<size_t> Decompress(Slice* input, void* out, size_t outlen) = 0;
 
   // Connection header associated with this compressor.
   virtual OutboundDataPtr ConnectionHeader() = 0;
@@ -71,7 +71,8 @@ class GZipCompressor : public Compressor {
   ~GZipCompressor() {
     if (deflate_inited_) {
       int res = deflateEnd(&deflate_stream_);
-      LOG_IF(WARNING, res != Z_OK) << "Failed to destroy deflate stream: " << res;
+      LOG_IF(WARNING, res != Z_OK && res != Z_DATA_ERROR)
+          << "Failed to destroy deflate stream: " << res;
     }
     if (inflate_inited_) {
       int res = inflateEnd(&inflate_stream_);
@@ -145,38 +146,19 @@ class GZipCompressor : public Compressor {
     return Status::OK();
   }
 
-  Result<size_t> Decompress(const Slice& input, StreamReadBuffer* output) override {
-    auto io_vecs = VERIFY_RESULT(output->PrepareAppend());
-    size_t total_out = 0;
-    inflate_stream_.avail_out = 0;
+  Result<size_t> Decompress(Slice* input, void* out, size_t outlen) override {
+    inflate_stream_.next_in = const_cast<Bytef*>(pointer_cast<const Bytef*>(input->data()));
+    inflate_stream_.avail_in = input->size();
+    inflate_stream_.next_out = static_cast<Bytef*>(out);
+    inflate_stream_.avail_out = outlen;
 
-    inflate_stream_.next_in = const_cast<Bytef*>(pointer_cast<const Bytef*>(input.data()));
-    inflate_stream_.avail_in = input.size();
-
-    auto next_io_vec_it = io_vecs.begin();
-    while (inflate_stream_.avail_in != 0) {
-      if (inflate_stream_.avail_out == 0) {
-        if (next_io_vec_it == io_vecs.end()) {
-          // We don't have space in output buffer.
-          // So return with what we have, and expect that caller would free some space and
-          // call decompress again.
-          break;
-        }
-        inflate_stream_.avail_out = next_io_vec_it->iov_len;
-        inflate_stream_.next_out = static_cast<Bytef*>(next_io_vec_it->iov_base);
-        ++next_io_vec_it;
-      }
-      auto old_avail_out = inflate_stream_.avail_out;
-      int res = inflate(&inflate_stream_, Z_NO_FLUSH);
-      if (res != Z_OK) {
-        return STATUS_FORMAT(RuntimeError, "Decompression failed: $0", res);
-      }
-      total_out += old_avail_out - inflate_stream_.avail_out;
+    int res = inflate(&inflate_stream_, Z_NO_FLUSH);
+    if (res != Z_OK && res != Z_BUF_ERROR) {
+      return STATUS_FORMAT(RuntimeError, "Decompression failed: $0", res);
     }
 
-    output->DataAppended(total_out);
-
-    return input.size() - inflate_stream_.avail_in;
+    input->remove_prefix(input->size() - inflate_stream_.avail_in);
+    return outlen - inflate_stream_.avail_out;
   }
 
  private:
@@ -211,37 +193,36 @@ std::unique_ptr<Compressor> CreateOutboundCompressor() {
 
 class CompressedRefiner : public StreamRefiner {
  public:
-  explicit CompressedRefiner(size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker)
-    : read_buffer_(receive_buffer_size, buffer_tracker) {
-  }
+  CompressedRefiner() = default;
 
  private:
   void Start(RefinedStream* stream) override {
     stream_ = stream;
   }
 
-  Result<size_t> ProcessHeader(const IoVecs& data) override {
+  CHECKED_STATUS ProcessHeader() override {
     constexpr int kHeaderLen = 3;
 
-    if (data[0].iov_len < kHeaderLen) {
+    auto data = stream_->ReadBuffer().AppendedVecs();
+    if (data.empty() || data[0].iov_len < kHeaderLen) {
       // Did not receive enough bytes to make a decision.
       // So just wait more bytes.
-      return 0;
+      return Status::OK();
     }
 
-    const uint8_t* bytes = static_cast<const uint8_t*>(data[0].iov_base);
+    const auto* bytes = static_cast<const uint8_t*>(data[0].iov_base);
     if (bytes[0] == 'Y' && bytes[1] == 'B') {
       compressor_ = CreateCompressor(bytes[2]);
       if (compressor_) {
         RETURN_NOT_OK(compressor_->Init());
         RETURN_NOT_OK(stream_->StartHandshake());
-        return kHeaderLen;
+        stream_->ReadBuffer().Consume(kHeaderLen, Slice());
+        return Status::OK();
       }
     }
 
     // Don't use compression on this stream.
-    RETURN_NOT_OK(stream_->Established(RefinedStreamState::kDisabled));
-    return 0;
+    return stream_->Established(RefinedStreamState::kDisabled);
   }
 
   CHECKED_STATUS Send(OutboundDataPtr data) override {
@@ -268,31 +249,40 @@ class CompressedRefiner : public StreamRefiner {
     return stream_->Established(RefinedStreamState::kEnabled);
   }
 
-  Result<size_t> Read(void* buf, size_t num) override {
-    VLOG_WITH_PREFIX(4) << __func__ << ", " << num;
+  CHECKED_STATUS Read(StreamReadBuffer* out) override {
+    VLOG_WITH_PREFIX(4) << __func__;
 
-    auto io_vecs = read_buffer_.AppendedVecs();
-    char* wpos = static_cast<char*>(buf);
-    char* wend = wpos + num;
-    for (const auto& io_vec : io_vecs) {
-      auto left = wend - wpos;
-      if (io_vec.iov_len >= left) {
-        memcpy(wpos, io_vec.iov_base, left);
-        wpos += left;
+    auto& inp = stream_->ReadBuffer();
+    size_t consumed = 0;
+
+    auto out_vecs = VERIFY_RESULT(out->PrepareAppend());
+    auto out_it = out_vecs.begin();
+    size_t appended = 0;
+
+    for (const auto& iov : inp.AppendedVecs()) {
+      Slice slice(static_cast<char*>(iov.iov_base), iov.iov_len);
+      for (;;) {
+        if (out_it->iov_len == 0) {
+          if (++out_it == out_vecs.end()) {
+            break;
+          }
+        }
+        size_t len = VERIFY_RESULT(compressor_->Decompress(
+            &slice, out_it->iov_base, out_it->iov_len));
+        appended += len;
+        IoVecRemovePrefix(len, &*out_it);
+        if (slice.empty()) {
+          break;
+        }
+      }
+      consumed += iov.iov_len - slice.size();
+      if (!slice.empty()) {
         break;
       }
-      memcpy(wpos, io_vec.iov_base, io_vec.iov_len);
-      wpos += io_vec.iov_len;
     }
-    auto result = wpos - static_cast<char*>(buf);
-    read_buffer_.Consume(result, Slice());
-    return result;
-  }
-
-  Result<size_t> Receive(const Slice& slice) override {
-    VLOG_WITH_PREFIX(4) << __func__ << ", " << slice.ToDebugString();
-
-    return compressor_->Decompress(slice, &read_buffer_);
+    out->DataAppended(appended);
+    inp.Consume(consumed, Slice());
+    return Status::OK();
   }
 
   const Protocol* GetProtocol() override {
@@ -309,7 +299,6 @@ class CompressedRefiner : public StreamRefiner {
 
   RefinedStream* stream_ = nullptr;
   std::unique_ptr<Compressor> compressor_ = nullptr;
-  CircularReadBuffer read_buffer_;
 };
 
 } // namespace
@@ -322,10 +311,8 @@ const Protocol* CompressedStreamProtocol() {
 StreamFactoryPtr CompressedStreamFactory(
     StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker) {
   return std::make_shared<RefinedStreamFactory>(
-      std::move(lower_layer_factory), buffer_tracker,
-      [](size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
-         const StreamCreateData& data) {
-    return std::make_unique<CompressedRefiner>(receive_buffer_size, buffer_tracker);
+      std::move(lower_layer_factory), buffer_tracker, [](const StreamCreateData& data) {
+    return std::make_unique<CompressedRefiner>();
   });
 }
 
