@@ -590,12 +590,11 @@ Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp
   return Status::OK();
 }
 
-#define VERIFY_NAMESPACE_FOUND(expr, resp) \
-  __extension__ ({ auto&& __result = (expr); \
-                   if (!__result.ok()) {   \
-                     return SetupError((resp)->mutable_error(), __result.status()); \
-                   } \
-                   WrapMove(std::move(__result)); })
+#define VERIFY_NAMESPACE_FOUND(expr, resp) RESULT_CHECKER_HELPER( \
+    expr, \
+    if (!__result.ok()) { \
+        return SetupError((resp)->mutable_error(), __result.status()); \
+    });
 
 MasterErrorPB_Code NamespaceMasterError(SysNamespaceEntryPB_State state) {
   switch (state) {
@@ -5216,7 +5215,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     auto ns = FindNamespaceUnlocked(ns_identifier);
     if (!ns.ok() || (**ns).state() != SysNamespaceEntryPB::RUNNING) {
       if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
-        VERIFY_NAMESPACE_FOUND(ns, resp);
+        VERIFY_NAMESPACE_FOUND(std::move(ns), resp);
       }
       LOG(ERROR) << "Unable to find namespace with id " << ltm->namespace_id()
                  << " for table " << ltm->name();
