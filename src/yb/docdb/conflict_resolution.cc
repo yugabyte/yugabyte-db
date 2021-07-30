@@ -203,6 +203,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
             Slice(existing_value.data(), TransactionId::StaticSize())));
 
+        // TODO(savepoints) - if the intent corresponds to an aborted subtransaction, ignore.
         if (!context_->IgnoreConflictsWith(transaction_id)) {
           conflicts_.insert(transaction_id);
         }
