@@ -4058,6 +4058,7 @@ Status CatalogManager::CompactSysCatalog(
       const CompactSysCatalogRequestPB* req,
       CompactSysCatalogResponsePB* resp,
       rpc::RpcContext* rpc){
+  RETURN_NOT_OK(sys_catalog_->tablet_peer()->shared_tablet()->ForceFullRocksDBCompact());
   return Status::OK();
 }
 
