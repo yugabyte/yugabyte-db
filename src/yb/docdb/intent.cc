@@ -32,13 +32,18 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
 
   int doc_ht_size = 0;
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(intent_prefix, &doc_ht_size));
-  if (intent_prefix.size() < doc_ht_size + 3) {
+  // There should always be 3 bytes present before teh start of the doc_ht:
+  // 1. ValueType::kIntentTypeSet
+  // 2. the corresponding value for ValueType::kIntentTypeSet
+  // 3. ValueType::kHybridTime
+  constexpr int kBytesBeforeDocHt = 3;
+  if (intent_prefix.size() < doc_ht_size + kBytesBeforeDocHt) {
     return STATUS_FORMAT(
         Corruption, "Intent key is too short: $0 bytes", encoded_intent_key.size());
   }
-  intent_prefix.remove_suffix(doc_ht_size + 3);
+  intent_prefix.remove_suffix(doc_ht_size + kBytesBeforeDocHt);
   RETURN_NOT_OK(result.doc_ht.FullyDecodeFrom(
-      Slice(intent_prefix.data() + intent_prefix.size() + 3, doc_ht_size)));
+      Slice(intent_prefix.data() + intent_prefix.size() + kBytesBeforeDocHt, doc_ht_size)));
   auto* prefix_end = intent_prefix.end();
 
   if (prefix_end[2] != ValueTypeAsChar::kHybridTime)

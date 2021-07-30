@@ -285,6 +285,18 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
 
 void PgTxnManager::SetActiveSubTransaction(SubTransactionId id) {
   sub_txn_.subtransaction_id = id;
+  sub_txn_.highest_subtransaction_id = std::max(sub_txn_.highest_subtransaction_id, id);
+}
+
+Status PgTxnManager::RollbackSubTransaction(SubTransactionId id) {
+  // We should abort the range [id, sub_txn_.highest_subtransaction_id]. It's possible that we have
+  // created and released savepoints, such that there have been writes with a subtransaction_id
+  // greater than sub_txn_.subtransaction_id, and those should be aborted as well.
+  SCHECK_GE(
+    sub_txn_.highest_subtransaction_id, id,
+    InternalError,
+    "Attempted to rollback to non-existent savepoint.");
+  return sub_txn_.aborted.SetRange(id, sub_txn_.highest_subtransaction_id);
 }
 
 Status PgTxnManager::RestartTransaction() {

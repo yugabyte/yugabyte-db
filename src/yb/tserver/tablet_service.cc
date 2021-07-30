@@ -2071,7 +2071,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
     auto* write_batch = write_req.mutable_write_batch();
     auto status = leader_peer.peer->tablet()->CreateReadIntents(
-        req->transaction(), req->ql_batch(), req->pgsql_batch(), write_batch);
+        req->transaction(), req->subtransaction(), req->ql_batch(), req->pgsql_batch(),
+        write_batch);
     if (!status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), status, &read_context->context);
       return;
@@ -2318,7 +2319,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
           read_context->context.GetClientDeadline(), read_time,
           !read_context->allow_retry /* is_explicit_request_read_time */, pgsql_read_req,
-          read_context->req->transaction(), &result, &num_rows_read));
+          read_context->req->transaction(), read_context->req->subtransaction(), &result,
+          &num_rows_read));
 
       total_num_rows_read += num_rows_read;
 

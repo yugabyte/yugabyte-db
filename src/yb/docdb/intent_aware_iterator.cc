@@ -160,14 +160,23 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     result.intent_time = decoded_intent_key.doc_ht;
     result.same_transaction = decoded_txn_id == txn_op_context.transaction_id;
 
-    if (result.intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+    auto is_aborted_subtxn = !txn_op_context.subtransaction.IsDefaultState() &&
+      result.same_transaction &&
+      txn_op_context.subtransaction.aborted.Test(decoded_intent_value.subtransaction_id);
+
+    if (is_aborted_subtxn || result.intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+      // By setting the value time to kMin, we ensure the caller ignores this intent. This is true
+      // because the caller is skipping all intents written before or at the same time as
+      // intent_dht_from_same_txn_ or resolved_intent_txn_dht_, which of course are greater than or
+      // equal to DocHybridTime::kMin
       result.value_time = DocHybridTime::kMin;
     } else if (result.same_transaction) {
       result.value_time = decoded_intent_key.doc_ht;
     } else {
       auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(decoded_txn_id));
-      result.value_time = DocHybridTime(
-          commit_ht, commit_ht != HybridTime::kMin ? decoded_intent_value.write_id : 0);
+      result.value_time = commit_ht == HybridTime::kMin
+          ? DocHybridTime::kMin
+          : DocHybridTime(commit_ht, decoded_intent_value.write_id);
       VLOG(4) << "Transaction id: " << decoded_txn_id
               << ", subtransaction id: " << decoded_intent_value.subtransaction_id
               << ", value time: " << result.value_time

@@ -104,6 +104,7 @@ class AbstractTablet {
       bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result,
       size_t* number_rows_read) = 0;
 

@@ -496,3 +496,6 @@ YB_TEST_TARGET_LINK_LIBRARIES(encrypted_env-test encryption_test_util)
 
 ADD_YB_TEST(ctr_cipher_stream-test)
 YB_TEST_TARGET_LINK_LIBRARIES(ctr_cipher_stream-test encryption_test_util)
+
+ADD_YB_TEST(uint_set-test)
+YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)

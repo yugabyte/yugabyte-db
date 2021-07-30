@@ -1042,8 +1042,9 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto mapped_projection = std::make_unique<Schema>();
   RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
 
-  auto txn_op_ctx = CreateTransactionOperationContext(
-      boost::none, schema.table_properties().is_ysql_catalog_table());
+  auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
+      /* transaction_id */ boost::none,
+      schema.table_properties().is_ysql_catalog_table()));
   const auto read_time = read_hybrid_time
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
@@ -1425,7 +1426,8 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
   Result<TransactionOperationContextOpt> txn_op_ctx =
       CreateTransactionOperationContext(
           operation->request()->write_batch().transaction(),
-          /* is_ysql_catalog_table */ false);
+          /* is_ysql_catalog_table */ false,
+          operation->request()->write_batch().subtransaction());
   if (!txn_op_ctx.ok()) {
     WriteOperation::StartSynchronization(std::move(operation), txn_op_ctx.status());
     return;
@@ -1655,6 +1657,7 @@ Status Tablet::HandlePgsqlReadRequest(
     bool is_explicit_request_read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
+    const SubTransactionMetadataPB& subtransaction_metadata,
     PgsqlReadRequestResult* result,
     size_t* num_rows_read) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
@@ -1679,7 +1682,8 @@ Status Tablet::HandlePgsqlReadRequest(
   Result<TransactionOperationContextOpt> txn_op_ctx =
       CreateTransactionOperationContext(
           transaction_metadata,
-          table_info->schema.table_properties().is_ysql_catalog_table());
+          table_info->schema.table_properties().is_ysql_catalog_table(),
+          subtransaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
@@ -1809,8 +1813,8 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
         // Use the value of is_ysql_catalog_table from the first operation in the batch.
         txn_op_ctx = CreateTransactionOperationContext(
             operation->request()->write_batch().transaction(),
-            // TODO(savepoints) -- mask aborted subtransactions.
-            table_info->schema.table_properties().is_ysql_catalog_table());
+            table_info->schema.table_properties().is_ysql_catalog_table(),
+            operation->request()->write_batch().subtransaction());
         RETURN_NOT_OK(txn_op_ctx);
       }
       auto write_op = std::make_unique<PgsqlWriteOperation>(table_info->schema, *txn_op_ctx);
@@ -3338,7 +3342,8 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 
 Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata,
-    bool is_ysql_catalog_table) const {
+    bool is_ysql_catalog_table,
+    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
   if (!txns_enabled_)
     return boost::none;
 
@@ -3346,15 +3351,18 @@ Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext
     Result<TransactionId> txn_id = FullyDecodeTransactionId(
         transaction_metadata.transaction_id());
     RETURN_NOT_OK(txn_id);
-    return CreateTransactionOperationContext(boost::make_optional(*txn_id), is_ysql_catalog_table);
+    return CreateTransactionOperationContext(
+        boost::make_optional(*txn_id), is_ysql_catalog_table, subtransaction_metadata);
   } else {
-    return CreateTransactionOperationContext(boost::none, is_ysql_catalog_table);
+    return CreateTransactionOperationContext(
+        /* transaction_id */ boost::none, is_ysql_catalog_table, subtransaction_metadata);
   }
 }
 
-TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
+Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
     const boost::optional<TransactionId>& transaction_id,
-    bool is_ysql_catalog_table) const {
+    bool is_ysql_catalog_table,
+    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
   if (!txns_enabled_) {
     return boost::none;
   }
@@ -3374,17 +3382,24 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
     return boost::none;
   }
 
-  return TransactionOperationContext(*txn_id, transaction_participant());
+  if (!subtransaction_metadata) {
+    return TransactionOperationContext(*txn_id, transaction_participant());
+  }
+
+  auto subtxn = VERIFY_RESULT(SubTransactionMetadata::FromPB(*subtransaction_metadata));
+  return TransactionOperationContext(*txn_id, std::move(subtxn), transaction_participant());
 }
 
 Status Tablet::CreateReadIntents(
     const TransactionMetadataPB& transaction_metadata,
+    const SubTransactionMetadataPB& subtransaction_metadata,
     const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
     const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
     docdb::KeyValueWriteBatchPB* write_batch) {
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       transaction_metadata,
-      /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_));
+      /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_,
+      subtransaction_metadata));
 
   for (const auto& ql_read : ql_batch) {
     docdb::QLReadOperation doc_op(ql_read, txn_op_ctx);

@@ -33,6 +33,8 @@
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uint_set.h"
 #include "yb/util/uuid.h"
 
 namespace rocksdb {
@@ -205,15 +207,56 @@ class RequestScope {
   int64_t request_id_;
 };
 
+using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
+
+// Represents all metadata tracked about subtransaction state by the client in support of postgres
+// savepoints. Can be serialized and deserialized to/from SubTransactionMetadataPB. This should be
+// sent by the client on any transactional read/write requests where a savepoint has been created,
+// and finally on transaction commit.
+struct SubTransactionMetadata {
+  SubTransactionId subtransaction_id = kMinSubTransactionId;
+  AbortedSubTransactionSet aborted;
+  // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
+  // the highest live subtransaction_id.
+  SubTransactionId highest_subtransaction_id = subtransaction_id;
+
+  void ToPB(SubTransactionMetadataPB* dest) const;
+
+  static Result<SubTransactionMetadata> FromPB(
+      const SubTransactionMetadataPB& source);
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(subtransaction_id, highest_subtransaction_id, aborted);
+  }
+
+  // Returns true if this is the default state, i.e. default subtransaction_id. This indicates
+  // whether the client has interacted with savepoints at all in the context of a session. If true,
+  // the client could, for example, skip sending subtransaction-related metadata in RPCs.
+  // TODO(savepoints) -- update behavior and comment to track default aborted subtransaction state
+  // as well.
+  bool IsDefaultState() const;
+};
+
+std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);
+
 struct TransactionOperationContext {
   TransactionOperationContext(
       const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_)
       : transaction_id(transaction_id_),
         txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
 
+  TransactionOperationContext(
+      const TransactionId& transaction_id_,
+      SubTransactionMetadata&& subtransaction_,
+      TransactionStatusManager* txn_status_manager_)
+      : transaction_id(transaction_id_),
+        subtransaction(std::move(subtransaction_)),
+        txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
+
   bool transactional() const;
 
   TransactionId transaction_id;
+  SubTransactionMetadata subtransaction;
   TransactionStatusManager& txn_status_manager;
 };
 
@@ -263,25 +306,6 @@ inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
-
-struct SubTransactionMetadata {
-  SubTransactionId subtransaction_id = kMinSubTransactionId;
-
-  void ToPB(SubTransactionMetadataPB* dest) const;
-
-  std::string ToString() const {
-    return Format("{ subtransaction_id: $0 }", subtransaction_id);
-  }
-
-  // Returns true if this is the default state, i.e. default subtransaction_id. This indicates
-  // whether the client has interacted with savepoints at all in the context of a session. If true,
-  // the client could, for example, skip sending subtransaction-related metadata in RPCs.
-  // TODO(savepoints) -- update behavior and comment to track default aborted subtransaction state
-  // as well.
-  bool IsDefaultState() const;
-};
-
-std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);
 
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();

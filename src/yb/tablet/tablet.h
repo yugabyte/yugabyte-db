@@ -323,6 +323,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result,
       size_t* num_rows_read) override;
 
@@ -537,6 +538,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS CreateReadIntents(
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
       const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
       docdb::KeyValueWriteBatchPB* out);
@@ -694,11 +696,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
       const TransactionMetadataPB& transaction_metadata,
-      bool is_ysql_catalog_table) const;
+      bool is_ysql_catalog_table,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
 
-  TransactionOperationContextOpt CreateTransactionOperationContext(
+  Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
-      bool is_ysql_catalog_table) const;
+      bool is_ysql_catalog_table,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
 
   // Pause abortable/non-abortable new read/write operations and wait for all
   // abortable/non-abortable pending read/write operations to finish.
