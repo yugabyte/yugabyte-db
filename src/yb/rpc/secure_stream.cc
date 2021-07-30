@@ -376,9 +376,8 @@ class SecureRefiner : public StreamRefiner {
   CHECKED_STATUS Init();
 
   CHECKED_STATUS Send(OutboundDataPtr data) override;
-  Result<size_t> ProcessHeader(const IoVecs& data) override;
-  Result<size_t> Read(void* buf, size_t num) override;
-  Result<size_t> Receive(const Slice& slice) override;
+  CHECKED_STATUS ProcessHeader() override;
+  CHECKED_STATUS Read(StreamReadBuffer* out) override;
 
   std::string ToString() const override {
     return "SECURE";
@@ -394,6 +393,7 @@ class SecureRefiner : public StreamRefiner {
   bool MatchUid(X509* cert, GENERAL_NAMES* gens);
   bool MatchUidEntry(const Slice& value, const char* name);
   Result<bool> WriteEncrypted(OutboundDataPtr data);
+  void DecryptReceived();
 
   CHECKED_STATUS Established(RefinedStreamState state) {
     VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
@@ -460,16 +460,16 @@ Result<bool> SecureRefiner::WriteEncrypted(OutboundDataPtr data) {
   return true;
 }
 
-Result<size_t> SecureRefiner::ProcessHeader(const IoVecs& data) {
-  if (data[0].iov_len < 2) {
-    return 0;
+Status SecureRefiner::ProcessHeader() {
+  auto data = stream_->ReadBuffer().AppendedVecs();
+  if (data.empty() || data[0].iov_len < 2) {
+    return Status::OK();
   }
 
-  const uint8_t* bytes = static_cast<const uint8_t*>(data[0].iov_base);
+  const auto* bytes = static_cast<const uint8_t*>(data[0].iov_base);
   if (bytes[0] == 0x16 && bytes[1] == 0x03) { // TLS handshake header
     RETURN_NOT_OK(Init());
-    RETURN_NOT_OK(stream_->StartHandshake());
-    return 0;
+    return stream_->StartHandshake();
   }
 
   if (!FLAGS_allow_insecure_connections) {
@@ -477,36 +477,70 @@ Result<size_t> SecureRefiner::ProcessHeader(const IoVecs& data) {
                          Slice(bytes, 2).ToDebugHexString());
   }
 
-  RETURN_NOT_OK(Established(RefinedStreamState::kDisabled));
-  return 0;
+  return Established(RefinedStreamState::kDisabled);
 }
 
 // Tries to do SSL_read up to num bytes from buf. Possible results:
 // > 0 - number of bytes actually read.
 // = 0 - in case of SSL_ERROR_WANT_READ.
 // Status with network error - in case of other errors.
-Result<size_t> SecureRefiner::Read(void* buf, size_t num) {
-  auto len = SSL_read(ssl_.get(), buf, num);
-  if (len <= 0) {
-    auto error = SSL_get_error(ssl_.get(), len);
-    if (error == SSL_ERROR_WANT_READ) {
-      return 0;
-    } else {
+Status SecureRefiner::Read(StreamReadBuffer* out) {
+  DecryptReceived();
+  auto total = 0;
+  auto iovecs = VERIFY_RESULT(out->PrepareAppend());
+  auto iov_it = iovecs.begin();
+  for (;;) {
+    auto len = SSL_read(ssl_.get(), iov_it->iov_base, iov_it->iov_len);
+
+    if (len <= 0) {
+      auto error = SSL_get_error(ssl_.get(), len);
+      if (error == SSL_ERROR_WANT_READ) {
+        VLOG_WITH_PREFIX(4) << "Read decrypted: SSL_ERROR_WANT_READ";
+        break;
+      }
       auto status = STATUS_FORMAT(
           NetworkError, "SSL read failed: $0 ($1)", SSLErrorMessage(error), error);
       LOG_WITH_PREFIX(INFO) << status;
       return status;
     }
+
+    VLOG_WITH_PREFIX(4) << "Read decrypted: " << len;
+    total += len;
+    IoVecRemovePrefix(len, &*iov_it);
+    if (iov_it->iov_len == 0) {
+      if (++iov_it == iovecs.end()) {
+        break;
+      }
+    }
   }
-  return len;
+  out->DataAppended(total);
+  return Status::OK();
 }
 
-Result<size_t> SecureRefiner::Receive(const Slice& slice) {
-  return BIO_write(bio_.get(), slice.data(), slice.size());
+void SecureRefiner::DecryptReceived() {
+  auto& inp = stream_->ReadBuffer();
+  if (inp.Empty()) {
+    return;
+  }
+  size_t total = 0;
+  for (const auto& iov : inp.AppendedVecs()) {
+    auto res = BIO_write(bio_.get(), iov.iov_base, iov.iov_len);
+    VLOG_WITH_PREFIX(4) << "Decrypted: " << res << " of " << iov.iov_len;
+    if (res <= 0) {
+      break;
+    }
+    total += res;
+    if (res < iov.iov_len) {
+      break;
+    }
+  }
+  inp.Consume(total, {});
 }
 
 Status SecureRefiner::Handshake() {
   RETURN_NOT_OK(Init());
+
+  DecryptReceived();
 
   for (;;) {
     if (stream_->IsConnected()) {
@@ -870,9 +904,7 @@ StreamFactoryPtr SecureStreamFactory(
     StreamFactoryPtr lower_layer_factory, const MemTrackerPtr& buffer_tracker,
     const SecureContext* context) {
   return std::make_shared<RefinedStreamFactory>(
-      std::move(lower_layer_factory), buffer_tracker,
-      [context](size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
-                const StreamCreateData& data) {
+      std::move(lower_layer_factory), buffer_tracker, [context](const StreamCreateData& data) {
     return std::make_unique<SecureRefiner>(*context, data);
   });
 }

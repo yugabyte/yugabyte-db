@@ -60,7 +60,7 @@ class ThreadPoolTask;
 class LocalYBInboundCall;
 
 struct CallData;
-struct ProcessDataResult;
+struct ProcessCallsResult;
 struct RpcMethodMetrics;
 struct RpcMetrics;
 

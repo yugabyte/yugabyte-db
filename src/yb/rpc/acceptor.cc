@@ -154,8 +154,8 @@ void Acceptor::IoHandler(ev::io& io, int events) {
       VLOG(2) << "calling accept() on socket " << socket.GetFd();
       Status s = socket.Accept(&new_sock, &remote, Socket::FLAG_NONBLOCKING);
       if (!s.ok()) {
-        if (!Socket::IsTemporarySocketError(s)) {
-          LOG(WARNING) << "Acceptor: accept failed: " << s.ToString();
+        if (!s.IsTryAgain()) {
+          LOG(WARNING) << "Acceptor: accept failed: " << s;
         }
         return;
       }
