@@ -53,9 +53,17 @@ docker pull yugabytedb/yugabyte:2.7.2.0-b216
 
 #### Yugabyte Platform
 
+* [[7349](https://github.com/yugabyte/yugabyte-db/issues/7349)] [Platform] Support for multiple backup configs. (#7668)
+* [[8767](https://github.com/yugabyte/yugabyte-db/issues/8767)] [Platform] RedHat OpenShift provider is no longer beta.
+* [[8775](https://github.com/yugabyte/yugabyte-db/issues/8775)] [Platform] [UI] Platform high availability is no longer beta.
+
 #### Core Database
 
-N/A
+* [[1127](https://github.com/yugabyte/yugabyte-db/issues/1127)] [YSQL] Collation Support (part 1)
+* [[3785](https://github.com/yugabyte/yugabyte-db/issues/3785)] [DocDB] Add support for LZ4 compression
+* [[7509](https://github.com/yugabyte/yugabyte-db/issues/7509)] [YCQL] Support partial indexes
+* [[7719](https://github.com/yugabyte/yugabyte-db/issues/7719)] [DocDB] Introduce Aggregation Function for Metrics
+* [[8323](https://github.com/yugabyte/yugabyte-db/issues/8323)] [YSQL] Add support for USING INDEX TABLESPACE
 
 ### Improvements
 
@@ -63,18 +71,16 @@ N/A
 
 * [[3452](https://github.com/yugabyte/yugabyte-db/issues/3452)] [Platform] Allow TLS Encryption to be enabled on existing universes
 * [[6857](https://github.com/yugabyte/yugabyte-db/issues/6857)] [Platform] Preflight checks for encryption-at-rest keys (#8737)
-* [[7349](https://github.com/yugabyte/yugabyte-db/issues/7349)] [Platform] Support for multiple backup configs. (#7668)
+* [[7509](https://github.com/yugabyte/yugabyte-db/issues/7509)] [YCQL] Allow both = and != operator in partial indexes.
 * [[8141](https://github.com/yugabyte/yugabyte-db/issues/8141)] [Platform] Disable backup button is moved to the universe action list. (#8788)
 * [[8144](https://github.com/yugabyte/yugabyte-db/issues/8144)] [Platform] Validate custom certs on the node
 * [[8313](https://github.com/yugabyte/yugabyte-db/issues/8313)] [Platform] Don't download all node logs at once
-* [[8324](https://github.com/yugabyte/yugabyte-db/issues/8324)] [Platform] Disabled the query monitoring under Quries tab. (#8576)
+* [[8324](https://github.com/yugabyte/yugabyte-db/issues/8324)] [Platform] Disabled the query monitoring under Queries tab. (#8576)
 * [[8406](https://github.com/yugabyte/yugabyte-db/issues/8406)] [Platform] Add deviceInfo validation on universe/read replica cluster create operations
 * [[8487](https://github.com/yugabyte/yugabyte-db/issues/8487)] [Platform] Add indices on customer_task and task_info to improve Tasks page performance
 * [[8631](https://github.com/yugabyte/yugabyte-db/issues/8631)] [Platform] Add ability to use different certificates for node to node and client to node connections.
 * [[8632](https://github.com/yugabyte/yugabyte-db/issues/8632)] [Platform] Add ability to take custom certificates in platform for client to server connections.
 * [[8662](https://github.com/yugabyte/yugabyte-db/issues/8662)] [Platform] Release pause universe and multiple provider feature
-* [[8767](https://github.com/yugabyte/yugabyte-db/issues/8767)] [Platform] Remove Beta tag from RedHat OpenShift provider config tab.
-* [[8775](https://github.com/yugabyte/yugabyte-db/issues/8775)] [Platform] [UI] Remove Beta tag from Platform HA
 * [[8789](https://github.com/yugabyte/yugabyte-db/issues/8789)] Add support for certificate chaining in platform/yb-client.
 * [[8813](https://github.com/yugabyte/yugabyte-db/issues/8813)] [Platform] requesting Email alerts uptime in days, hours, minutes, seconds.
 * [[8824](https://github.com/yugabyte/yugabyte-db/issues/8824)] [Platform] S3 backup preflight check while updating the backups. (#8926)
@@ -90,45 +96,29 @@ N/A
 
 #### Core Database
 
-* [[1127](https://github.com/yugabyte/yugabyte-db/issues/1127)] [YSQL] Collation Support (part 1)
 * [[2272](https://github.com/yugabyte/yugabyte-db/issues/2272)] [YSQL] Creating system and shared system catalog tables
-* [[2318](https://github.com/yugabyte/yugabyte-db/issues/2318)] [2DC] yb-admin should prevent setup_universe_replication from self-referencing.
 * [[3375](https://github.com/yugabyte/yugabyte-db/issues/3375)] [DocDB] Add multi drives and env to TS servers for MiniCluster
-* [[3785](https://github.com/yugabyte/yugabyte-db/issues/3785)] [DocDB] Add support for LZ4 compression
 * [[4014](https://github.com/yugabyte/yugabyte-db/issues/4014)] [YSQL] Indexes on Enum based columns
 * [[4437](https://github.com/yugabyte/yugabyte-db/issues/4437)] [DocDB] disabled bloom filters for master tablet and fixed DocDBAwareV2FilterPolicy compatibility for range-partitioned co-located tables
 * [[4519](https://github.com/yugabyte/yugabyte-db/issues/4519)] [YSQL] Re-enable merge join
 * [[5026](https://github.com/yugabyte/yugabyte-db/issues/5026)] [[9001](https://github.com/yugabyte/yugabyte-db/issues/9001)] [YCQL] Run operations within a transaction block in serial
 * [[7110](https://github.com/yugabyte/yugabyte-db/issues/7110)] [DocDB] Add Clang thread safety annotations to YQLPartitionsVTable (#8364)
-* [[7213](https://github.com/yugabyte/yugabyte-db/issues/7213)] [DocDB] Potential deadlock in yb::client::YBTable::MaybeRefreshPartitions
 * [[7349](https://github.com/yugabyte/yugabyte-db/issues/7349)]Change ToString to TextVlue for json node (#8792)
-* [[7509](https://github.com/yugabyte/yugabyte-db/issues/7509)] [YCQL] Allow both = and != operator in partial indexes.
-* [[7509](https://github.com/yugabyte/yugabyte-db/issues/7509)] [YCQL] Support partial indexes
 * [[7530](https://github.com/yugabyte/yugabyte-db/issues/7530)] YB-Master HTML page should show the tablespace and tablespace replication info for a table
 * [[7535](https://github.com/yugabyte/yugabyte-db/issues/7535)] [YSQL] Use geo-location (tablespace) to cost index scans
-* [[7719](https://github.com/yugabyte/yugabyte-db/issues/7719)] [DocDB] Introduce Aggregation Function for Metrics
 * [[7794](https://github.com/yugabyte/yugabyte-db/issues/7794)] [YSQL] Add option to forward pggate RPCs to local tserver
 * [[7835](https://github.com/yugabyte/yugabyte-db/issues/7835)] [YCQL] Prohibit NULL value in the collections.
-* [[7863](https://github.com/yugabyte/yugabyte-db/issues/7863)] [YSQL] Single row optimization for Updates is not being used for partitioned tables even when only one partition is being updated.
 * [[7877](https://github.com/yugabyte/yugabyte-db/issues/7877)] Some raw json cleanup across the board
 * [[8010](https://github.com/yugabyte/yugabyte-db/issues/8010)] Handle creation of tables in a tablespace with invalid placement policy gracefully
-* [[8011](https://github.com/yugabyte/yugabyte-db/issues/8011)] [YBase] Don't abort replica assignment for other tables if one table has an invalid placement
 * [[8039](https://github.com/yugabyte/yugabyte-db/issues/8039)] [DocDB] Rename flag controlling forced tablet split threshold for very large tablets
 * [[8039](https://github.com/yugabyte/yugabyte-db/issues/8039)] Implement phased ramp-up of tablet splitting rate
-* [[8076](https://github.com/yugabyte/yugabyte-db/issues/8076)] [YBase] Master skips deleting tablet data on restarted tservers
 * [[8084](https://github.com/yugabyte/yugabyte-db/issues/8084)] Remove dependence of client to server TLS on node to node TLS.
-* [[8170](https://github.com/yugabyte/yugabyte-db/issues/8170)] Correct fix for removing tablet in ProcessTabletAssignment
-* [[8204](https://github.com/yugabyte/yugabyte-db/issues/8204)] [YBase] GetLoadMoveCompletionPercent returns an incorrect 100% if tservers haven't
 * [[8225](https://github.com/yugabyte/yugabyte-db/issues/8225)] Disable automatic tablet splitting for YEDIS tables
 * [[8234](https://github.com/yugabyte/yugabyte-db/issues/8234)] [DocDB] Remove tablet_split_heartbeat_data_provider and delegate all split decisions to yb-master
 * [[8249](https://github.com/yugabyte/yugabyte-db/issues/8249)] [YSQL] Allow any hash column in index to be an expression based column
 * [[8254](https://github.com/yugabyte/yugabyte-db/issues/8254)] No leader lease needed for BackfillIndex
 * [[8257](https://github.com/yugabyte/yugabyte-db/issues/8257)] [YBase] Disable tablet splitting for PITR tracked tables
-* [[8271](https://github.com/yugabyte/yugabyte-db/issues/8271)] YB-Master should not periodically read the pg_class table if there are no tablespaces.
-* [[8282](https://github.com/yugabyte/yugabyte-db/issues/8282)] Fix commons-lang deps.
-* [[8294](https://github.com/yugabyte/yugabyte-db/issues/8294)] Fix missing conflict when creating row using multiple inserts
 * [[8295](https://github.com/yugabyte/yugabyte-db/issues/8295)] [DocDB] Improved tablet RocksDBs shutdown process
-* [[8323](https://github.com/yugabyte/yugabyte-db/issues/8323)] [YSQL] Add support for USING INDEX TABLESPACE
 * [[8330](https://github.com/yugabyte/yugabyte-db/issues/8330)] [YCQL] Provide capability to skip writing null jsonb attribute in UPDATE stmt
 * [[8347](https://github.com/yugabyte/yugabyte-db/issues/8347)] Wait until executor finish executing async calls on shutdown
 * [[8382](https://github.com/yugabyte/yugabyte-db/issues/8382)] [YSQL] Import Fix mishandling of resjunk columns in ON CONFLICT ... UPDATE tlists.
@@ -140,14 +130,10 @@ N/A
 * [[8512](https://github.com/yugabyte/yugabyte-db/issues/8512)] [YCQL] Added CQL metric for USE statement and tests for Prepared INSERT.
 * [[8519](https://github.com/yugabyte/yugabyte-db/issues/8519)] [YSQL] Optimize FK check
 * [[8575](https://github.com/yugabyte/yugabyte-db/issues/8575)] [YSQL] Optimize row locking in case of using IN operator for single range key column
-* [[8584](https://github.com/yugabyte/yugabyte-db/issues/8584)] [DocDB] fixed RocksDB manual compaction abort on shutdown
 * [[8591](https://github.com/yugabyte/yugabyte-db/issues/8591)] [DocDB] Add protection against missing UserFrontiers in older SST files during intents cleanup
 * [[8619](https://github.com/yugabyte/yugabyte-db/issues/8619)] Log index table name instead of index id (#8693)
-* [[8666](https://github.com/yugabyte/yugabyte-db/issues/8666)] [DocDB] Fix tserver response to SplitTablet RPC in case tablet is not in ready state
 * [[8672](https://github.com/yugabyte/yugabyte-db/issues/8672)] [YSQL] Check status of YBCPgResetOperationsBuffering function
 * [[8691](https://github.com/yugabyte/yugabyte-db/issues/8691)] Remove dump-statistics related code from db_impl.cc;
-* [[8696](https://github.com/yugabyte/yugabyte-db/issues/8696)] Fix potential deadlock in WaitLoaded and WaitAllLoaded
-* [[8709](https://github.com/yugabyte/yugabyte-db/issues/8709)] fix yb-ctl start_node to wait for tserver startup instead… (#8711)
 * [[8712](https://github.com/yugabyte/yugabyte-db/issues/8712)] Reduce space consumed by HdrHistogram metrics for per-table metrics
 * [[8723](https://github.com/yugabyte/yugabyte-db/issues/8723)] Simplify RemoteMethodsCache code
 * [[8749](https://github.com/yugabyte/yugabyte-db/issues/8749)] [YSQL] Import Don't leak rd_statlist when a relcache entry is dropped.
@@ -250,7 +236,21 @@ N/A
 
 #### Core database
 
+* [[2318](https://github.com/yugabyte/yugabyte-db/issues/2318)] [2DC] yb-admin should prevent setup_universe_replication from self-referencing.
+* [[7213](https://github.com/yugabyte/yugabyte-db/issues/7213)] [DocDB] Potential deadlock in yb::client::YBTable::MaybeRefreshPartitions
+* [[7863](https://github.com/yugabyte/yugabyte-db/issues/7863)] [YSQL] Single row optimization for Updates is not being used for partitioned tables even when only one partition is being updated.
+* [[8011](https://github.com/yugabyte/yugabyte-db/issues/8011)] [YBase] Don't abort replica assignment for other tables if one table has an invalid placement
+* [[8076](https://github.com/yugabyte/yugabyte-db/issues/8076)] [YBase] Master skips deleting tablet data on restarted tservers
+* [[8170](https://github.com/yugabyte/yugabyte-db/issues/8170)] Correct fix for removing tablet in ProcessTabletAssignment
+* [[8204](https://github.com/yugabyte/yugabyte-db/issues/8204)] [YBase] GetLoadMoveCompletionPercent returns an incorrect 100% if tservers haven't
+* [[8271](https://github.com/yugabyte/yugabyte-db/issues/8271)] YB-Master should not periodically read the pg_class table if there are no tablespaces.
+* [[8282](https://github.com/yugabyte/yugabyte-db/issues/8282)] Fix commons-lang deps.
+* [[8294](https://github.com/yugabyte/yugabyte-db/issues/8294)] Fix missing conflict when creating row using multiple inserts
 * [[8390](https://github.com/yugabyte/yugabyte-db/issues/8390)] Fix NPE Handling for indexed_table_id
+* [[8584](https://github.com/yugabyte/yugabyte-db/issues/8584)] [DocDB] fixed RocksDB manual compaction abort on shutdown
+* [[8666](https://github.com/yugabyte/yugabyte-db/issues/8666)] [DocDB] Fix tserver response to SplitTablet RPC in case tablet is not in ready state
+* [[8696](https://github.com/yugabyte/yugabyte-db/issues/8696)] Fix potential deadlock in WaitLoaded and WaitAllLoaded
+* [[8709](https://github.com/yugabyte/yugabyte-db/issues/8709)] fix yb-ctl start_node to wait for tserver startup instead… (#8711)
 * [[8719](https://github.com/yugabyte/yugabyte-db/issues/8719)] [[8594](https://github.com/yugabyte/yugabyte-db/issues/8594)] [DocDB] Don't send TabletPathInfo for non data ready tablets
 * [[8721](https://github.com/yugabyte/yugabyte-db/issues/8721)] [YSQL] Skip iteration of bucket when YugaByte is enabled
 * [[8722](https://github.com/yugabyte/yugabyte-db/issues/8722)] [YSQL] Remove autogenerated files as a part of orafce source tree
