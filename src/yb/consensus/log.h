@@ -72,6 +72,12 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 namespace log {
 
 YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
+YB_DEFINE_ENUM(
+    SegmentAllocationState,
+    (kAllocationNotStarted)  // No segment allocation requested
+    (kAllocationInProgress)  // Next segment allocation started
+    (kAllocationFinished)    // Next segment ready
+);
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
@@ -320,13 +326,6 @@ class Log : public RefCountedThreadSafe<Log> {
     kLogClosed
   };
 
-  // State of segment (pre-) allocation.
-  enum SegmentAllocationState {
-    kAllocationNotStarted, // No segment allocation requested
-    kAllocationInProgress, // Next segment allocation started
-    kAllocationFinished // Next segment ready
-  };
-
   Log(LogOptions options,
       std::string wal_dir,
       std::string tablet_id,
@@ -362,7 +361,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Creates a new WAL segment on disk, writes the next_segment_header_ to disk as the header, and
   // sets active_segment_ to point to this new segment.
-  CHECKED_STATUS SwitchToAllocatedSegment() EXCLUDES(allocation_mutex_);
+  CHECKED_STATUS SwitchToAllocatedSegment();
 
   // Preallocates the space for a new segment.
   CHECKED_STATUS PreAllocateNewSegment();
@@ -398,14 +397,13 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
-  CHECKED_STATUS AsyncAllocateSegment() REQUIRES(allocation_mutex_);
+  CHECKED_STATUS AsyncAllocateSegment();
 
-  SegmentAllocationState allocation_state() EXCLUDES(allocation_mutex_) {
+  SegmentAllocationState allocation_state() {
     return allocation_state_.load(std::memory_order_acquire);
   }
 
-  bool NeedNewSegment(uint32_t entry_batch_bytes);
-  CHECKED_STATUS RollOverIfNecessary(uint32_t entry_batch_bytes) EXCLUDES(allocation_mutex_);
+  LogEntryBatch* ReserveMarker(LogEntryTypePB type);
 
   LogOptions options_;
 
@@ -507,11 +505,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // The status of the most recent log-allocation action.
   Promise<Status> allocation_status_;
 
-  // Read-write lock to protect 'allocation_state_'.
-  mutable std::mutex allocation_mutex_;
-  std::condition_variable allocation_cond_;
   std::atomic<SegmentAllocationState> allocation_state_;
-  bool allocation_requested_ GUARDED_BY(allocation_mutex_) = false;
 
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;

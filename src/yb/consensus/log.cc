@@ -173,6 +173,15 @@ using std::shared_ptr;
 using std::unique_ptr;
 using strings::Substitute;
 
+namespace {
+
+bool IsMarkerType(LogEntryTypePB type) {
+  return type == LogEntryTypePB::ROLLOVER_MARKER ||
+         type == LogEntryTypePB::FLUSH_MARKER;
+}
+
+} // namespace
+
 // This class represents a batch of operations to be written and synced to the log. It is opaque to
 // the user and is managed by the Log class.
 class LogEntryBatch {
@@ -227,7 +236,9 @@ class LogEntryBatch {
     return Slice(buffer_);
   }
 
-  bool flush_marker() const;
+  bool IsMarker() const;
+
+  bool IsSingleEntryOfType(LogEntryTypePB type) const;
 
   size_t count() const { return count_; }
 
@@ -528,7 +539,7 @@ Log::Log(
       interval_durable_wal_write_(options_.interval_durable_wal_write),
       bytes_durable_wal_write_mb_(options_.bytes_durable_wal_write_mb),
       sync_disabled_(false),
-      allocation_state_(kAllocationNotStarted),
+      allocation_state_(SegmentAllocationState::kAllocationNotStarted),
       table_metric_entity_(table_metric_entity),
       tablet_metric_entity_(tablet_metric_entity),
       on_disk_size_(0),
@@ -596,10 +607,12 @@ Status Log::Init() {
 
 Status Log::AsyncAllocateSegment() {
   SCHECK_EQ(
-      allocation_state_.load(std::memory_order_acquire), kAllocationNotStarted, AlreadyPresent,
-      "Allocation already running");
+      allocation_state_.load(std::memory_order_acquire),
+      SegmentAllocationState::kAllocationNotStarted, AlreadyPresent, "Allocation already running");
   allocation_status_.Reset();
-  allocation_state_.store(kAllocationInProgress, std::memory_order_release);
+  allocation_state_.store(SegmentAllocationState::kAllocationInProgress, std::memory_order_release);
+  VLOG_WITH_PREFIX(1) << "Active segment: " << active_segment_sequence_number_
+                      << ". Starting new segment allocation.";
   return allocation_token_->SubmitClosure(Bind(&Log::SegmentAllocationTask, Unretained(this)));
 }
 
@@ -622,23 +635,26 @@ Status Log::CloseCurrentSegment() {
 }
 
 Status Log::RollOver() {
-  SCOPED_LATENCY_METRIC(metrics_, roll_latency);
-  RSTATUS_DCHECK(active_segment_, InternalError, "Called RollOver without active segment.");
+  LOG_SLOW_EXECUTION(WARNING, 50, LogPrefix() + "Log roll took a long time") {
+    SCOPED_LATENCY_METRIC(metrics_, roll_latency);
+    RSTATUS_DCHECK(active_segment_, InternalError, "Called RollOver without active segment.");
 
-  // Check if any errors have occurred during allocation
-  RETURN_NOT_OK(allocation_status_.Get());
+    // Check if any errors have occurred during allocation
+    RETURN_NOT_OK(allocation_status_.Get());
 
-  DCHECK_EQ(allocation_state(), kAllocationFinished);
+    DCHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
 
-  LOG_WITH_PREFIX(INFO) << Format("Last appended OpId in segment $0: $1", active_segment_->path(),
-                                  last_appended_entry_op_id_.ToString());
+    LOG_WITH_PREFIX(INFO) << Format(
+        "Last appended OpId in segment $0: $1", active_segment_->path(),
+        last_appended_entry_op_id_.ToString());
 
-  RETURN_NOT_OK(Sync());
-  RETURN_NOT_OK(CloseCurrentSegment());
+    RETURN_NOT_OK(Sync());
+    RETURN_NOT_OK(CloseCurrentSegment());
 
-  RETURN_NOT_OK(SwitchToAllocatedSegment());
+    RETURN_NOT_OK(SwitchToAllocatedSegment());
 
-  LOG_WITH_PREFIX(INFO) << "Rolled over to a new segment: " << active_segment_->path();
+    LOG_WITH_PREFIX(INFO) << "Rolled over to a new segment: " << active_segment_->path();
+  }
   return Status::OK();
 }
 
@@ -724,91 +740,25 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
   return Status::OK();
 }
 
-bool Log::NeedNewSegment(uint32_t entry_batch_bytes) {
-  return (active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_;
-}
-
-Status Log::RollOverIfNecessary(uint32_t entry_batch_bytes) {
-  // If the size of this entry overflows the current segment, get a new one.
-  auto allocation_state = this->allocation_state();
-  if (allocation_state == kAllocationNotStarted) {
-    if (!NeedNewSegment(entry_batch_bytes)) {
-      return Status::OK();
-    }
-  }
-  enum class Outcome {
-    kNotDefined,
-    kRunRollOver,
-    kWaitRollOver,
-    kDoNothing,
-  };
-  Outcome outcome = Outcome::kNotDefined;
-  {
-    std::lock_guard<std::mutex> lock(allocation_mutex_);
-    switch (allocation_state) {
-      case kAllocationNotStarted: {
-          if (!NeedNewSegment(entry_batch_bytes)) {
-            return Status::OK();
-          }
-          LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
-                                << "Starting new segment allocation. ";
-          auto status = AsyncAllocateSegment();
-          if (!status.ok()) {
-            if (!status.IsAlreadyPresent()) {
-              return status;
-            }
-            outcome = Outcome::kWaitRollOver;
-          } else if (options_.async_preallocate_segments) {
-            allocation_requested_ = true;
-            outcome = Outcome::kDoNothing;
-          } else {
-            outcome = Outcome::kRunRollOver;
-          }
-        } break;
-      case kAllocationFinished: {
-          if (!allocation_requested_) {
-            outcome = Outcome::kWaitRollOver;
-          } else {
-            outcome = Outcome::kRunRollOver;
-            allocation_requested_ = false;
-          }
-        } break;
-      case kAllocationInProgress: {
-        VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
-        outcome = allocation_requested_ ? Outcome::kDoNothing : Outcome::kWaitRollOver;
-      } break;
-    }
-  }
-  switch (outcome) {
-    case Outcome::kNotDefined:
-      FATAL_INVALID_ENUM_VALUE(SegmentAllocationState, allocation_state);
-      return Status::OK();
-    case Outcome::kRunRollOver:
-      LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
-        return RollOver();
-      }
-      return Status::OK();
-    case Outcome::kWaitRollOver: {
-        std::unique_lock<std::mutex> lock(allocation_mutex_);
-        allocation_cond_.wait(lock, [this] {
-          return allocation_state_.load(std::memory_order_acquire) == kAllocationNotStarted;
-        });
-      }
-      return Status::OK();
-    case Outcome::kDoNothing:
-      return Status::OK();
-  }
-  FATAL_INVALID_ENUM_VALUE(Outcome, outcome);
-}
-
 Status Log::DoAppend(LogEntryBatch* entry_batch,
                      bool caller_owns_operation,
                      bool skip_wal_write) {
   if (!skip_wal_write) {
     RETURN_NOT_OK(entry_batch->Serialize());
     Slice entry_batch_data = entry_batch->data();
-    LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->flush_marker())
+    LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->IsMarker())
         << "Cannot call DoAppend() with no data";
+
+    if (entry_batch->IsSingleEntryOfType(ROLLOVER_MARKER)) {
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Got ROLLOVER_MARKER";
+      if (active_segment_ && footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
+        // Active segment is not empty - rollover.
+        if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
+          RETURN_NOT_OK(AsyncAllocateSegment());
+        }
+        return RollOver();
+      }
+    }
 
     uint32_t entry_batch_bytes = entry_batch->total_size_bytes();
     // If there is no data to write return OK.
@@ -816,7 +766,21 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
       return Status::OK();
     }
 
-    RETURN_NOT_OK(RollOverIfNecessary(entry_batch_bytes));
+    // If the size of this entry overflows the current segment, get a new one.
+    if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
+      if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
+        LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
+                              << "Starting new segment allocation. ";
+        RETURN_NOT_OK(AsyncAllocateSegment());
+        if (!options_.async_preallocate_segments) {
+          RETURN_NOT_OK(RollOver());
+        }
+      }
+    } else if (allocation_state() == SegmentAllocationState::kAllocationFinished) {
+      RETURN_NOT_OK(RollOver());
+    } else {
+      VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
+    }
 
     int64_t start_offset = active_segment_->written_offset();
 
@@ -895,11 +859,11 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
 }
 
 Status Log::AllocateSegmentAndRollOver() {
-  {
-    std::lock_guard<std::mutex> lock(allocation_mutex_);
-    RETURN_NOT_OK(AsyncAllocateSegment());
-  }
-  return RollOver();
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "Start";
+  auto* reserved_entry_batch = ReserveMarker(ROLLOVER_MARKER);
+  Synchronizer s;
+  RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
+  return s.Wait();
 }
 
 Status Log::EnsureInitialNewSegmentAllocated() {
@@ -911,10 +875,7 @@ Status Log::EnsureInitialNewSegmentAllocated() {
     return STATUS_FORMAT(
         IllegalState, "Unexpected log state in EnsureInitialNewSegmentAllocated: $0", log_state_);
   }
-  {
-    std::lock_guard<std::mutex> lock(allocation_mutex_);
-    RETURN_NOT_OK(AsyncAllocateSegment());
-  }
+  RETURN_NOT_OK(AsyncAllocateSegment());
   RETURN_NOT_OK(allocation_status_.Get());
   RETURN_NOT_OK(SwitchToAllocatedSegment());
 
@@ -1046,12 +1007,17 @@ Status Log::Append(LogEntryPB* phys_entry,
   return s;
 }
 
+LogEntryBatch* Log::ReserveMarker(LogEntryTypePB type) {
+  LogEntryBatchPB entry_batch;
+  entry_batch.add_entry()->set_type(type);
+  LogEntryBatch* reserved_entry_batch;
+  Reserve(type, &entry_batch, &reserved_entry_batch);
+  return reserved_entry_batch;
+}
+
 Status Log::WaitUntilAllFlushed() {
   // In order to make sure we empty the queue we need to use the async API.
-  LogEntryBatchPB entry_batch;
-  entry_batch.add_entry()->set_type(log::FLUSH_MARKER);
-  LogEntryBatch* reserved_entry_batch;
-  Reserve(FLUSH_MARKER, &entry_batch, &reserved_entry_batch);
+  auto* reserved_entry_batch = ReserveMarker(FLUSH_MARKER);
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
   return s.Wait();
@@ -1110,7 +1076,7 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
           << ", last appended: " << last_appended_entry_op_id_
           << ", last submitted: " << last_submitted_op_id_
           << ", appender: " << appender_->ToString()
-          << ", passed: " << (CoarseMonoClock::Now() - start);
+          << ", passed: " << MonoDelta(CoarseMonoClock::Now() - start);
     }
   }
 
@@ -1362,7 +1328,7 @@ uint64_t Log::NextSegmentDesiredSize() {
 
 Status Log::PreAllocateNewSegment() {
   TRACE_EVENT1("log", "PreAllocateNewSegment", "file", next_segment_path_);
-  CHECK_EQ(allocation_state(), kAllocationInProgress);
+  CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationInProgress);
 
   WritableFileOptions opts;
   // We always want to sync on close: https://github.com/yugabyte/yugabyte-db/issues/3490
@@ -1378,17 +1344,12 @@ Status Log::PreAllocateNewSegment() {
     RETURN_NOT_OK(next_segment_file_->PreAllocate(next_segment_size));
   }
 
-  {
-    std::lock_guard<std::mutex> lock(allocation_mutex_);
-    // We implement something like shared lock for allocation_state_, so modifications should be
-    // done while holding the mutex.
-    allocation_state_.store(kAllocationFinished, std::memory_order_release);
-  }
+  allocation_state_.store(SegmentAllocationState::kAllocationFinished, std::memory_order_release);
   return Status::OK();
 }
 
 Status Log::SwitchToAllocatedSegment() {
-  CHECK_EQ(allocation_state(), kAllocationFinished);
+  CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
 
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
@@ -1444,12 +1405,8 @@ Status Log::SwitchToAllocatedSegment() {
   active_segment_.reset(new_segment.release());
   cur_max_segment_size_ = NextSegmentDesiredSize();
 
-  {
-    std::lock_guard<decltype(allocation_mutex_)> lock_guard(allocation_mutex_);
-    allocation_state_.store(kAllocationNotStarted, std::memory_order_release);
-  }
-  // Notify roll over waiters.
-  allocation_cond_.notify_all();
+  allocation_state_.store(
+      SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
 
   return Status::OK();
 }
@@ -1520,7 +1477,7 @@ LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_
     : type_(type),
       entry_batch_pb_(std::move(entry_batch_pb)),
       count_(entry_batch_pb_.entry().size()) {
-  if (type_ != LogEntryTypePB::FLUSH_MARKER) {
+  if (!IsMarkerType(type_)) {
     DCHECK_NE(entry_batch_pb_.mono_time(), 0);
   }
 }
@@ -1540,15 +1497,19 @@ void LogEntryBatch::MarkReserved() {
   state_ = kEntryReserved;
 }
 
-bool LogEntryBatch::flush_marker() const {
-  return count() == 1 && entry_batch_pb_.entry(0).type() == FLUSH_MARKER;
+bool LogEntryBatch::IsMarker() const {
+  return count() == 1 && IsMarkerType(entry_batch_pb_.entry(0).type());
+}
+
+bool LogEntryBatch::IsSingleEntryOfType(LogEntryTypePB type) const {
+  return count() == 1 && entry_batch_pb_.entry(0).type() == type;
 }
 
 Status LogEntryBatch::Serialize() {
   DCHECK_EQ(state_, kEntryReady);
   buffer_.clear();
-  // FLUSH_MARKER LogEntries are markers and are not serialized.
-  if (PREDICT_FALSE(flush_marker())) {
+  // *_MARKER LogEntries are markers and are not serialized.
+  if (PREDICT_FALSE(IsMarker())) {
     total_size_bytes_ = 0;
     state_ = kEntrySerialized;
     return Status::OK();
