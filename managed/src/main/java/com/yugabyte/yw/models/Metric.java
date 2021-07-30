@@ -3,13 +3,13 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DB_OR_CHAIN_TO_WARN;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
 import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.ExpressionList;
@@ -98,7 +98,6 @@ public class Metric extends Model {
     return uuid == null;
   }
 
-  @VisibleForTesting
   public Metric setUuid(UUID uuid) {
     this.uuid = uuid;
     this.labels.forEach(label -> label.setMetric(this));
@@ -147,9 +146,7 @@ public class Metric extends Model {
 
   public static ExpressionList<Metric> createQueryByFilter(MetricFilter filter) {
     ExpressionList<Metric> query = find.query().fetch("labels").where();
-    if (filter.getId() != null) {
-      query.eq("id", filter.getId());
-    }
+    appendInClause(query, "uuid", filter.getUuids());
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());
     }
