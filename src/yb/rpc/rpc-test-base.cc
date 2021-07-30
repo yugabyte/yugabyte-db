@@ -369,7 +369,7 @@ CHECKED_STATUS RpcTestBase::DoTestSyncCall(Proxy* proxy, const RemoteMethod* met
   AddResponsePB resp;
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
-  RETURN_NOT_OK(proxy->SyncRequest(method, req, &resp, &controller));
+  RETURN_NOT_OK(proxy->SyncRequest(method, /* method_metrics= */ nullptr, req, &resp, &controller));
 
   VLOG(1) << "Result: " << resp.ShortDebugString();
   CHECK_EQ(req.x() + req.y(), resp.result());
@@ -391,7 +391,8 @@ void RpcTestBase::DoTestSidecar(Proxy* proxy,
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
   auto status = proxy->SyncRequest(
-      CalculatorServiceMethods::SendStringsMethod(), req, &resp, &controller);
+      CalculatorServiceMethods::SendStringsMethod(), /* method_metrics= */ nullptr, req, &resp,
+      &controller);
 
   ASSERT_EQ(expected_code, status.code()) << "Invalid status received: " << status.ToString();
 
@@ -419,7 +420,8 @@ void RpcTestBase::DoTestExpectTimeout(Proxy* proxy, const MonoDelta& timeout) {
   c.set_timeout(timeout);
   Stopwatch sw;
   sw.start();
-  Status s = proxy->SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &c);
+  Status s = proxy->SyncRequest(
+      CalculatorServiceMethods::SleepMethod(), /* method_metrics= */ nullptr, req, &resp, &c);
   ASSERT_FALSE(s.ok());
   sw.stop();
 

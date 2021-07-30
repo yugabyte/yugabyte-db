@@ -3,14 +3,19 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.ebean.Finder;
 import io.ebean.Model;
+import java.util.List;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
-
-import javax.persistence.*;
-import java.util.List;
-import java.util.UUID;
 
 @Table(
     uniqueConstraints =

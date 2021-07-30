@@ -8,16 +8,15 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import scala.concurrent.ExecutionContext;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import scala.concurrent.ExecutionContext;
 
 @Singleton
 public class TaskGarbageCollector {

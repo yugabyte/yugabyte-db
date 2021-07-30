@@ -21,7 +21,6 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
 
-#include "yb/yql/pggate/pg_analyze.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -135,7 +134,7 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
       }
     }
   } while (!rowsets.empty());
-  return std::move(result);
+  return result;
 }
 
 } // namespace
@@ -203,7 +202,7 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
     async_client_init_.AddPostCreateHook([this](client::YBClient *client) {
       const auto& tserver_shared_data = **tserver_shared_object_;
       HostPort host_port(tserver_shared_data.endpoint());
-      boost::optional<MonoDelta> resolve_cache_timeout;
+      MonoDelta resolve_cache_timeout;
       if (FLAGS_use_node_hostname_for_local_tserver) {
         host_port = HostPort(tserver_shared_data.host().ToBuffer(),
                              tserver_shared_data.endpoint().port());
@@ -267,7 +266,7 @@ Status PgApiImpl::InvalidateCache() {
   return Status::OK();
 }
 
-const bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
+bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
   return FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry;
 }
 
@@ -580,6 +579,9 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
                                 PgStatement **handle) {
   auto stmt = std::make_unique<PgAlterTable>(pg_session_, table_id);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -1065,24 +1067,6 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
   return down_cast<PgDelete*>(handle)->Exec();
 }
 
-Status PgApiImpl::NewAnalyze(const PgObjectId& table_id, PgStatement **handle) {
-  *handle = nullptr;
-  auto analyze = std::make_unique<PgAnalyze>(pg_session_, table_id);
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(analyze), handle));
-  return Status::OK();
-}
-
-Status PgApiImpl::ExecAnalyze(PgStatement *handle, int32_t* rows) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ANALYZE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  auto analyze = down_cast<PgAnalyze*>(handle);
-  RETURN_NOT_OK(analyze->Exec());
-  *rows = VERIFY_RESULT(analyze->GetNumRows());
-  return Status::OK();
-}
-
 Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DELETE)) {
     // Invalid handle.
@@ -1337,6 +1321,14 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
     ResetCatalogReadTime();
   }
   return Status::OK();
+}
+
+Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
+  return pg_session_->SetActiveSubTransaction(id);
+}
+
+Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
+  return pg_session_->RollbackSubTransaction(id);
 }
 
 void PgApiImpl::ResetCatalogReadTime() {

@@ -2,25 +2,39 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.Users.Role;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.alerts.AlertDefinitionLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
+import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.Unit;
-import com.yugabyte.yw.models.helpers.KnownAlertCodes;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import play.libs.Json;
-
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -28,8 +42,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.Users.Role;
+import play.libs.Json;
 
 public class ModelFactory {
 
@@ -297,33 +310,33 @@ public class ModelFactory {
             .setGroupUUID(group.getUuid())
             .setCustomerUUID(customer.getUuid())
             .setQuery("query {{ query_condition }} {{ query_threshold }}")
-            .setLabels(AlertDefinitionLabelsBuilder.create().appendTarget(universe).get())
+            .setLabels(AlertLabelsBuilder.create().appendTarget(universe).get())
             .generateUUID();
     alertDefinition.save();
     return alertDefinition;
   }
 
   public static Alert createAlert(Customer customer) {
-    return createAlert(customer, null, null, KnownAlertCodes.CUSTOMER_ALERT);
+    return createAlert(customer, null, null);
   }
 
   public static Alert createAlert(Customer customer, Universe universe) {
-    return createAlert(customer, universe, null, KnownAlertCodes.CUSTOMER_ALERT);
+    return createAlert(customer, universe, null);
   }
 
   public static Alert createAlert(Customer customer, AlertDefinition definition) {
-    return createAlert(customer, null, definition, KnownAlertCodes.CUSTOMER_ALERT);
+    return createAlert(customer, null, definition);
   }
 
   public static Alert createAlert(
-      Customer customer, Universe universe, AlertDefinition definition, KnownAlertCodes code) {
+      Customer customer, Universe universe, AlertDefinition definition) {
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
-            .setErrCode(code)
+            .setName("Alert 1")
+            .setTargetName("Target 1")
             .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
             .setMessage("Universe on fire!")
-            .setSendEmail(true)
             .generateUUID();
     if (definition != null) {
       AlertDefinitionGroup group =
@@ -339,7 +352,7 @@ public class ModelFactory {
               .collect(Collectors.toList());
       alert.setLabels(labels);
     } else {
-      AlertDefinitionLabelsBuilder labelsBuilder = AlertDefinitionLabelsBuilder.create();
+      AlertLabelsBuilder labelsBuilder = AlertLabelsBuilder.create();
       if (universe != null) {
         labelsBuilder.appendTarget(universe);
       } else {
@@ -356,6 +369,18 @@ public class ModelFactory {
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = EmailFixtures.createSmtpData();
     return AlertReceiver.create(customer.uuid, name, params);
+  }
+
+  public static AlertRoute createAlertRoute(
+      UUID customerUUID, String name, List<AlertReceiver> receivers) {
+    AlertRoute route =
+        new AlertRoute()
+            .generateUUID()
+            .setCustomerUUID(customerUUID)
+            .setName(name)
+            .setReceiversList(receivers);
+    route.save();
+    return route;
   }
 
   /*

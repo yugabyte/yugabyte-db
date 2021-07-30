@@ -25,7 +25,7 @@ YSQL supports the following types of partitioning:
 
 - Range partitioning, when a table is partitioned into ranges defined by one or more key columns. In this case, the ranges of values assigned to partitions do not overlap.
 - List partitioning, when a table is partitioned via listing key values to appear in each partition.
-- Hash partitioning, when a table is partitioned by specifying a modulus and remainder for each  partition.
+- Hash partitioning, when a table is partitioned by specifying a modulus and remainder for each partition.
 
 For supplementary information on partitioning, see [Row-Level Geo-Partitioning](../../multi-region-deployments/row-level-geo-partitioning/).
 
@@ -35,7 +35,7 @@ YSQL allows you to specify how exactly to divide a table. You provide a partitio
 
 You can nest partitions, in which case they would have their own distinct indexes, constraints, and default values.
 
-A regular table cannot become a partitioned table, just as a partitioned table cannot become a regular table. That said, YSQL allows attaching a regular table (provided it has the same schema as that of the partitioned table) as a partition to the partitioned  table. Conversely, a partition can be detached from the partitioned table, in which case it can behave as a regular table that is not part of the partitioning hierarchy. A partitioned table and its partitions have hierarchical structure and are subject to most of its rules.
+A regular table cannot become a partitioned table, just as a partitioned table cannot become a regular table. That said, YSQL allows attaching a regular table (provided it has the same schema as that of the partitioned table) as a partition to the partitioned table. Conversely, a partition can be detached from the partitioned table, in which case it can behave as a regular table that is not part of the partitioning hierarchy. A partitioned table and its partitions have hierarchical structure and are subject to most of its rules.
 
 Suppose you work with a database that includes the following table:
 
@@ -109,7 +109,7 @@ CREATE INDEX ON order_changes_2020_12 (change_date);
 CREATE INDEX ON order_changes_2021_01 (change_date);
 ```
 
-Partitioning is a flexible technique that allows you to remove old partitions and add new partitions for  new data when required. You do this by changing the partition structure instead of the actual data.
+Partitioning is a flexible technique that allows you to remove old partitions and add new partitions for new data when required. You do this by changing the partition structure instead of the actual data.
 
 The following example shows how to remove the partition from the partitioned table while retaining access to it as a separate table which enables you to perform operations on the data:
 
@@ -142,7 +142,7 @@ The following example shows a query that scans every partition of the `order_cha
 SELECT count(*) FROM order_changes WHERE change_date >= DATE '2020-01-01';
 ```
 
-If you enable partition pruning on the preceding query by setting  `enable_partition_pruning` to `on` (default), as shown in the following example, the query planner examines the definition of each partition and proves that the partition does not require scanning because it cannot contain data to satisfy the condition in the `WHERE` clause. This excludes the partition from the query plan.
+If you enable partition pruning on the preceding query by setting `enable_partition_pruning` to `on` (default), as shown in the following example, the query planner examines the definition of each partition and proves that the partition does not require scanning because it cannot contain data to satisfy the condition in the `WHERE` clause. This excludes the partition from the query plan.
 
 ```sql
 SET enable_partition_pruning = on;
@@ -166,6 +166,6 @@ If you do not apply constraint exclusion, the preceding query would scan every p
 
 Note the following:
 
-- You should only apply constraint exclusion to queries whose  `WHERE` clause contains constants.
+- You should only apply constraint exclusion to queries whose `WHERE` clause contains constants.
 - For the query planner to be able to prove that partitions do not require visits, partitioning constraints need to be relatively simple.
 - Since every constraint on every partition of the partitioned table is examined during constraint exclusion, having a lot of partitions significantly increases query planning time.

@@ -9,14 +9,13 @@ groups:
           group_type: UNIVERSE
           definition_uuid: <definition_uuid>
           definition_name: alertDefinitionGroup
-          definition_active: true
           customer_uuid: <customer_uuid>
-          error_code: CUSTOMER_ALERT
           severity: SEVERE
+          threshold: 1
           universe_uuid: <universe_uuid>
           universe_name: Test Universe
           target_uuid: <universe_uuid>
           target_name: Test Universe
           target_type: universe
         annotations:
-          summary: "alertDefinitionGroup Alert for Test Universe is firing"
+          summary: "Average memory usage for universe 'Test Universe' is above 1%. Current value is {{ $value | printf \"%.0f\" }}%"

@@ -13,11 +13,11 @@
 //
 //
 
-#include <shared_mutex>
-#include <thread>
-
 #include <boost/optional/optional.hpp>
 #include <boost/optional/optional_io.hpp>
+
+#include <shared_mutex>
+#include <thread>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -186,33 +186,35 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   CHECKED_STATUS WaitSync(int begin, int end, const TableHandle& table) {
     auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
-
-    master::GetTableLocationsRequestPB req;
-    master::GetTableLocationsResponsePB resp;
-    req.set_max_returned_locations(std::numeric_limits<uint32_t>::max());
-    table->name().SetIntoTableIdentifierPB(req.mutable_table());
-    RETURN_NOT_OK(
-        cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
-    std::vector<master::TabletLocationsPB> tablets;
+    std::vector<std::string> tablet_ids;
     std::unordered_set<std::string> replicas;
-    for (const auto& tablet : resp.tablet_locations()) {
-      tablets.emplace_back(tablet);
-      for (const auto& replica : tablet.replicas()) {
-        replicas.insert(replica.ts_info().permanent_uuid());
+
+    auto tablet_infos = GetTabletInfos(table.name());
+    if (!tablet_infos) {
+      return STATUS_FORMAT(NotFound,
+                           "No tablet information found for $0",
+                           table->name());
+    }
+    for (auto tablet_info : *tablet_infos) {
+      tablet_ids.emplace_back(tablet_info->tablet_id());
+      auto replica_map = tablet_info->GetReplicaLocations();
+      for (auto it = replica_map->begin(); it != replica_map->end(); it++) {
+        replicas.insert(it->first);
       }
     }
     for (const auto& replica : replicas) {
-      RETURN_NOT_OK(DoWaitSync(deadline, tablets, replica, begin, end, table));
+      RETURN_NOT_OK(DoWaitSync(deadline, tablet_ids, replica, begin, end, table));
     }
     return Status::OK();
   }
 
-  CHECKED_STATUS DoWaitSync(const MonoTime& deadline,
-                            const std::vector<master::TabletLocationsPB>& tablets,
-                            const std::string& replica,
-                            int begin,
-                            int end,
-                            const TableHandle& table) {
+  CHECKED_STATUS DoWaitSync(
+      const MonoTime& deadline,
+      const std::vector<std::string>& tablet_ids,
+      const std::string& replica,
+      int begin,
+      int end,
+      const TableHandle& table) {
     auto tserver = cluster_->find_tablet_server(replica);
     if (!tserver) {
       return STATUS_FORMAT(NotFound, "Tablet server for $0 not found", replica);
@@ -224,7 +226,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     auto condition = [&]() -> Result<bool> {
       for (int i = begin; i != end; ++i) {
         bool found = false;
-        for (const auto& tablet : tablets) {
+        for (const std::string& tablet_id : tablet_ids) {
           tserver::ReadRequestPB req;
           {
             std::string partition_key;
@@ -237,11 +239,12 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
             ql_batch->set_max_hash_code(hash_code);
           }
 
-          tserver::ReadResponsePB resp;
           rpc::RpcController controller;
           controller.set_timeout(MonoDelta::FromSeconds(1));
-          req.set_tablet_id(tablet.tablet_id());
+          req.set_tablet_id(tablet_id);
           req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+
+          tserver::ReadResponsePB resp;
           proxy->Read(req, &resp, &controller);
 
           const auto& ql_batch = resp.ql_batch(0);
@@ -250,8 +253,14 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
                                  "Bad resp status: $0",
                                  QLResponsePB_QLStatus_Name(ql_batch.status()));
           }
-          std::shared_ptr<std::vector<ColumnSchema>>
-            columns = std::make_shared<std::vector<ColumnSchema>>(table->schema().columns());
+          Schema projection;
+          vector<ColumnId> column_refs;
+          column_refs.emplace_back(table.ColumnId(kValueColumn));
+          Schema total_schema = client::internal::GetSchema(table->schema());
+          RETURN_NOT_OK(total_schema.CreateProjectionByIdsIgnoreMissing(column_refs, &projection));
+          std::shared_ptr<std::vector<ColumnSchema>> columns =
+              std::make_shared<std::vector<ColumnSchema>>(YBSchema(projection).columns());
+
           Slice data = VERIFY_RESULT(controller.GetSidecar(ql_batch.rows_data_sidecar()));
           yb::ql::RowsResult result(table->name(), columns, data.ToBuffer());
           auto row_block = result.GetRowBlock();
@@ -283,8 +292,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     EXPECT_OK(cluster_->FlushTablets());
 
-    auto source_infos = GetTabletInfos(kTable1Name);
-    auto dest_infos = GetTabletInfos(kTable2Name);
+    auto source_infos = VERIFY_RESULT(GetTabletInfos(kTable1Name));
+    auto dest_infos = VERIFY_RESULT(GetTabletInfos(kTable2Name));
     EXPECT_EQ(source_infos.size(), dest_infos.size());
     for (size_t i = 0; i != source_infos.size(); ++i) {
       std::string start1, end1, start2, end2;
@@ -323,20 +332,21 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  scoped_refptr<master::TableInfo> GetTableInfo(const YBTableName& table_name) {
-    auto* catalog_manager = cluster_->leader_mini_master()->master()->catalog_manager();
+  Result<scoped_refptr<master::TableInfo>> GetTableInfo(const YBTableName& table_name) {
+    auto* catalog_manager =
+        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
     auto all_tables = catalog_manager->GetTables(master::GetTablesMode::kAll);
     for (const auto& table : all_tables) {
       if (table->name() == table_name.table_name()) {
         return table;
       }
     }
-    return nullptr;
+    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
   }
 
-  std::vector<scoped_refptr<master::TabletInfo>> GetTabletInfos(const YBTableName& table_name) {
-    auto table_info = GetTableInfo(table_name);
-    EXPECT_NE(nullptr, table_info);
+  Result<std::vector<scoped_refptr<master::TabletInfo>>> GetTabletInfos(
+      const YBTableName& table_name) {
+    auto table_info = VERIFY_RESULT(GetTableInfo(table_name));
     std::vector<scoped_refptr<master::TabletInfo>> tablets;
     table_info->GetAllTablets(&tablets);
     return tablets;
@@ -352,7 +362,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
       auto master_proxy = std::make_shared<master::MasterServiceProxy>(
           &client_->proxy_cache(),
-          cluster_->leader_mini_master()->bound_rpc_addr());
+          VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
       rpc::RpcController rpc;
       rpc.set_timeout(MonoDelta::FromSeconds(30));
 
@@ -446,7 +456,7 @@ TEST_F(QLTabletTest, TransactionsTableTablets) {
   ASSERT_OK(WaitForTableCreation(table_name, &resp));
   ASSERT_TRUE(resp.done());
 
-  auto tablets = GetTabletInfos(table_name);
+  auto tablets = ASSERT_RESULT(GetTabletInfos(table_name));
   ASSERT_EQ(tablets.size(), cluster_->num_tablet_servers() * FLAGS_yb_num_shards_per_tserver);
 }
 

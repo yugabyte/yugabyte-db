@@ -63,9 +63,6 @@ class MasterServiceImpl : public MasterServiceIf,
   void IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                          IsCreateTableDoneResponsePB* resp,
                          rpc::RpcContext rpc) override;
-  void AnalyzeTable(const AnalyzeTableRequestPB* req,
-                    AnalyzeTableResponsePB* resp,
-                    rpc::RpcContext rpc) override;
   void TruncateTable(const TruncateTableRequestPB* req,
                      TruncateTableResponsePB* resp,
                      rpc::RpcContext rpc) override;
@@ -329,6 +326,10 @@ class MasterServiceImpl : public MasterServiceIf,
   void GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
                               GetUniverseReplicationResponsePB* resp,
                               rpc::RpcContext rpc) override;
+
+  void IsSetupUniverseReplicationDone(const IsSetupUniverseReplicationDoneRequestPB* req,
+                                      IsSetupUniverseReplicationDoneResponsePB* resp,
+                                      rpc::RpcContext rpc) override;
 
   void SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;

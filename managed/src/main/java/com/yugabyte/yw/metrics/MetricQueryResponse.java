@@ -1,25 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.yugabyte.yw.models.MetricConfig;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-
-import com.yugabyte.yw.models.MetricConfig;
-
-import play.libs.Json;
-
-import org.apache.commons.lang3.tuple.ImmutablePair;
 
 public class MetricQueryResponse {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryResponse.class);

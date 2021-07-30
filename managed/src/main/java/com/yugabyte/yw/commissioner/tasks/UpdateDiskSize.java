@@ -18,10 +18,9 @@ import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.Set;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UpdateDiskSize extends UniverseDefinitionTaskBase {

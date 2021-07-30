@@ -65,6 +65,11 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return STATUS(NotSupported, "WaitForSafeTime not implemented");
   }
 
+  const TabletId& tablet_id() const override {
+    static TabletId tablet_id;
+    return tablet_id;
+  }
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };

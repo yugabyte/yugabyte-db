@@ -111,6 +111,7 @@ QLRow& QLRowBlock::Extend() {
   rows_.emplace_back(schema_);
   return rows_.back();
 }
+
 void QLRowBlock::Reserve(size_t size) {
   rows_.reserve(size);
 }

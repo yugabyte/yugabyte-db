@@ -570,6 +570,16 @@ Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
 }
 
 Status PgAlterTable::Exec() {
+  boost::optional<TransactionMetadata> txn;
+  if (txn_future_) {
+    txn = VERIFY_RESULT((*txn_future_).get());
+    table_alterer->part_of_transaction(&*txn);
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
+    table_alterer->timeout(MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec));
+  }
+
   Status s = table_alterer->Alter();
   pg_session_->InvalidateTableCache(table_id_);
   return s;

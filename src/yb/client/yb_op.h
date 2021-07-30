@@ -379,7 +379,7 @@ class YBqlReadOp : public YBqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 
@@ -535,7 +535,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 

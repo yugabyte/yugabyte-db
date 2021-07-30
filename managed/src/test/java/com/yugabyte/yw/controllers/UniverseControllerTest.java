@@ -10,6 +10,26 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
@@ -19,29 +39,17 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+import java.net.URLEncoder;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseControllerTest extends UniverseControllerTestBase {
@@ -98,8 +106,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testEmptyUniverseListWithValidUUID() {
-    Result result =
-        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/universes", authToken);
+    Result result = listUniverses();
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
@@ -113,14 +120,37 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
 
-    Result result =
-        doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/universes", authToken);
+    Result result = listUniverses();
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     assertValue(json.get(0), "universeUUID", u.universeUUID.toString());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  private Result listUniverses() {
+    return doRequestWithAuthToken(
+        "GET", "/api/customers/" + customer.uuid + "/universes", authToken);
+  }
+
+  @Test
+  @Parameters({
+    "Fake Universe, 0",
+    "Test Universe, 1",
+  })
+  public void testUniverseFindByName(String name, int expected) {
+    UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
+    String findUrl =
+        "/api/customers/" + customer.uuid + "/universes?name=" + URLEncoder.encode(name);
+    Result result = doRequestWithAuthToken("GET", findUrl, authToken);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.isArray());
+    assertEquals(expected, json.size());
     assertAuditEntry(0, customer.uuid);
   }
 

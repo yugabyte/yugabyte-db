@@ -10,14 +10,14 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class ValidatingFormFactory {

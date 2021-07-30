@@ -10,6 +10,14 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.AliasListEntry;
 import com.amazonaws.services.kms.model.CreateAliasRequest;
@@ -23,33 +31,19 @@ import com.amazonaws.services.kms.model.KeyMetadata;
 import com.amazonaws.services.kms.model.ListAliasesRequest;
 import com.amazonaws.services.kms.model.ListAliasesResult;
 import com.amazonaws.services.kms.model.UpdateAliasRequest;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertNotNull;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.Ignore;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import static org.mockito.Mockito.*;
-import org.mockito.runners.MockitoJUnitRunner;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import play.api.Play;
-import play.libs.Json;
-import play.test.Helpers;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.runners.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AwsEARServiceTest extends FakeDBApplication {

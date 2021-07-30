@@ -21,9 +21,8 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {

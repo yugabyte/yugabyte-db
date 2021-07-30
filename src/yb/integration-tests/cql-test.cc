@@ -26,7 +26,7 @@ DECLARE_int32(client_read_write_timeout_ms);
 
 namespace yb {
 
-class CqlTest : public CqlTestBase {
+class CqlTest : public CqlTestBase<MiniCluster> {
  public:
   virtual ~CqlTest() = default;
 };

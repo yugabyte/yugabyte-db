@@ -46,7 +46,7 @@ Result<Snapshots> SnapshotTestUtil::ListSnapshots(
 
   rpc::RpcController controller;
   controller.set_timeout(60s);
-  RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshots(req, &resp, &controller));
+  RETURN_NOT_OK(VERIFY_RESULT(MakeBackupServiceProxy()).ListSnapshots(req, &resp, &controller));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -133,7 +133,7 @@ Result<TxnSnapshotRestorationId> SnapshotTestUtil::StartRestoration(
   if (restore_at) {
     req.set_restore_ht(restore_at.ToUint64());
   }
-  RETURN_NOT_OK(MakeBackupServiceProxy().RestoreSnapshot(req, &resp, &controller));
+  RETURN_NOT_OK(VERIFY_RESULT(MakeBackupServiceProxy()).RestoreSnapshot(req, &resp, &controller));
   return FullyDecodeTxnSnapshotRestorationId(resp.restoration_id());
 }
 
@@ -146,7 +146,8 @@ Result<bool> SnapshotTestUtil::IsRestorationDone(const TxnSnapshotRestorationId&
   for (;;) {
     rpc::RpcController controller;
     controller.set_deadline(deadline);
-    RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotRestorations(req, &resp, &controller));
+    RETURN_NOT_OK(
+        VERIFY_RESULT(MakeBackupServiceProxy()).ListSnapshotRestorations(req, &resp, &controller));
     LOG(INFO) << "Restoration: " << resp.ShortDebugString();
     if (!resp.has_status()) {
       break;
@@ -180,7 +181,7 @@ Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const TableHandle& table) 
   auto id = req.add_tables();
   id->set_table_id(table.table()->id());
   master::CreateSnapshotResponsePB resp;
-  RETURN_NOT_OK(MakeBackupServiceProxy().CreateSnapshot(req, &resp, &controller));
+  RETURN_NOT_OK(VERIFY_RESULT(MakeBackupServiceProxy()).CreateSnapshot(req, &resp, &controller));
   return FullyDecodeTxnSnapshotId(resp.snapshot_id());
 }
 
@@ -197,7 +198,7 @@ CHECKED_STATUS SnapshotTestUtil::DeleteSnapshot(const TxnSnapshotId& snapshot_id
   rpc::RpcController controller;
   controller.set_timeout(60s);
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
-  RETURN_NOT_OK(MakeBackupServiceProxy().DeleteSnapshot(req, &resp, &controller));
+  RETURN_NOT_OK(VERIFY_RESULT(MakeBackupServiceProxy()).DeleteSnapshot(req, &resp, &controller));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -233,7 +234,8 @@ Result<ImportedSnapshotData> SnapshotTestUtil::StartImportSnapshot(
 
   *req.mutable_snapshot() = snapshot;
 
-  RETURN_NOT_OK(MakeBackupServiceProxy().ImportSnapshotMeta(req, &resp, &controller));
+  RETURN_NOT_OK(
+      VERIFY_RESULT(MakeBackupServiceProxy()).ImportSnapshotMeta(req, &resp, &controller));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -260,7 +262,8 @@ Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
   auto& tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
   tables.Add()->set_table_id(table.table()->id());
   master::CreateSnapshotScheduleResponsePB resp;
-  RETURN_NOT_OK(MakeBackupServiceProxy().CreateSnapshotSchedule(req, &resp, &controller));
+  RETURN_NOT_OK(
+      VERIFY_RESULT(MakeBackupServiceProxy()).CreateSnapshotSchedule(req, &resp, &controller));
   auto id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id()));
   if (wait_snapshot) {
     RETURN_NOT_OK(WaitScheduleSnapshot(id));
@@ -278,7 +281,8 @@ Result<Schedules> SnapshotTestUtil::ListSchedules(const SnapshotScheduleId& id) 
 
   rpc::RpcController controller;
   controller.set_timeout(60s);
-  RETURN_NOT_OK(MakeBackupServiceProxy().ListSnapshotSchedules(req, &resp, &controller));
+  RETURN_NOT_OK(
+      VERIFY_RESULT(MakeBackupServiceProxy()).ListSnapshotSchedules(req, &resp, &controller));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }

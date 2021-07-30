@@ -150,9 +150,9 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
   "com.cronutils" % "cron-utils" % "9.0.1",
-  "io.prometheus" % "simpleclient" % "0.8.0",
-  "io.prometheus" % "simpleclient_hotspot" % "0.8.0",
-  "io.prometheus" % "simpleclient_servlet" % "0.8.0",
+  "io.prometheus" % "simpleclient" % "0.11.0",
+  "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
+  "io.prometheus" % "simpleclient_servlet" % "0.11.0",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
   "org.pac4j" %% "play-pac4j" % "7.0.1",
   "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
@@ -172,7 +172,8 @@ libraryDependencies ++= Seq(
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
-  "org.projectlombok" % "lombok" % "1.18.20"
+  "org.projectlombok" % "lombok" % "1.18.20",
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test
 )
 // Clear default resolvers.
 appResolvers := None

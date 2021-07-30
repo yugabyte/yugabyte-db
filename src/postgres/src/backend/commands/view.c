@@ -35,6 +35,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
+#include "catalog/catalog.h"
+#include "pg_yb_utils.h"
+
 
 static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
 
@@ -74,6 +78,8 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 	CreateStmt *createStmt = makeNode(CreateStmt);
 	List	   *attrList;
 	ListCell   *t;
+
+	Oid			ruleOid = InvalidOid;
 
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of the
@@ -124,6 +130,37 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 	 */
 	lockmode = replace ? AccessExclusiveLock : NoLock;
 	(void) RangeVarGetAndCheckCreationNamespace(relation, lockmode, &viewOid);
+
+	/*
+	 * In YB, system views can only be created during initdb and YSQL upgrade.
+	 * System views created during upgrade must specify rewrite rule OID,
+	 * while normal views cannot have it set.
+	 */
+	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
+	{
+		Oid namespaceOid;
+
+		/* Handles WITH (rewrite_rule_oid = x). */
+		ruleOid = GetRewriteRuleOidFromRelOptions(options);
+
+		namespaceOid = relation->schemaname ?
+			LookupExplicitNamespace(relation->schemaname, true) :
+			InvalidOid;
+		if (IsSystemNamespace(namespaceOid))
+		{
+			if (!IsYsqlUpgrade)
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("system views cannot be created outside of YSQL upgrade")));
+
+			if (!OidIsValid(ruleOid))
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						errmsg("system views must specify rewrite_rule_oid "
+							   "(exactly as it is generated during initdb!)")));
+		}
+		else if (OidIsValid(ruleOid))
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					errmsg("only system views may have rewrite_rule_oid set")));
+	}
 
 	if (OidIsValid(viewOid) && replace)
 	{
@@ -204,7 +241,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		 * the new view be automatically updatable, but the old view may not
 		 * have been).
 		 */
-		StoreViewQuery(viewOid, viewParse, replace);
+		StoreViewQuery(viewOid, viewParse, replace, ruleOid);
 
 		/* Make the new view query visible */
 		CommandCounterIncrement();
@@ -262,7 +299,7 @@ DefineVirtualRelation(RangeVar *relation, List *tlist, bool replace,
 		CommandCounterIncrement();
 
 		/* Store the query for the view */
-		StoreViewQuery(address.objectId, viewParse, replace);
+		StoreViewQuery(address.objectId, viewParse, replace, ruleOid);
 
 		return address;
 	}
@@ -324,7 +361,7 @@ checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc)
 }
 
 static void
-DefineViewRules(Oid viewOid, Query *viewParse, bool replace)
+DefineViewRules(Oid viewOid, Query *viewParse, bool replace, Oid yb_rule_id)
 {
 	/*
 	 * Set up the ON SELECT rule.  Since the query has already been through
@@ -336,7 +373,8 @@ DefineViewRules(Oid viewOid, Query *viewParse, bool replace)
 					   CMD_SELECT,
 					   true,
 					   replace,
-					   list_make1(viewParse));
+					   list_make1(viewParse),
+					   yb_rule_id);
 
 	/*
 	 * Someday: automatic ON INSERT, etc
@@ -574,9 +612,12 @@ DefineView(ViewStmt *stmt, const char *queryString,
 
 /*
  * Use the rules system to store the query for the view.
+ *
+ * YB NOTE: yb_rule_id is used to specify a predefined OID for a
+ * pg_rewrite entry, should be InvalidOid otherwise.
  */
 void
-StoreViewQuery(Oid viewOid, Query *viewParse, bool replace)
+StoreViewQuery(Oid viewOid, Query *viewParse, bool replace, Oid yb_rule_id)
 {
 	/*
 	 * The range table of 'viewParse' does not contain entries for the "OLD"
@@ -587,5 +628,5 @@ StoreViewQuery(Oid viewOid, Query *viewParse, bool replace)
 	/*
 	 * Now create the rules associated with the view.
 	 */
-	DefineViewRules(viewOid, viewParse, replace);
+	DefineViewRules(viewOid, viewParse, replace, yb_rule_id);
 }

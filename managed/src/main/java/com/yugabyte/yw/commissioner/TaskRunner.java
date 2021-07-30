@@ -8,16 +8,15 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.api.Play;
-
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.api.Play;
 
 /**
  * This class is responsible for creating and running a task. It provides all the common
@@ -149,10 +148,8 @@ public class TaskRunner implements Runnable {
 
     } catch (Throwable t) {
       LOG.error("Error running task", t);
-      if (task.shouldSendNotification()) task.sendNotification();
       // Update the task state to failure and checkpoint it.
       updateTaskState(TaskInfo.State.Failure);
-
     } finally {
       // Update the customer task to a completed state.
       CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfo.getTaskUUID());

@@ -182,6 +182,9 @@ class TabletPeer : public consensus::ConsensusContext,
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
 
+  // Returns whether shutdown started. If shutdown already completed returns true as well.
+  bool IsShutdownStarted() const;
+
   // Check that the tablet is in a SHUTDOWN/NOT_STARTED state.
   CHECKED_STATUS CheckShutdownOrNotStarted() const;
 
@@ -462,7 +465,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   // List of maintenance operations for the tablet that need information that only the peer
   // can provide.
-  std::vector<MaintenanceOp*> maintenance_ops_;
+  std::vector<std::unique_ptr<MaintenanceOp>> maintenance_ops_;
 
   // Cache the permanent of the tablet UUID to retrieve it without a lock in the common case.
   const std::string permanent_uuid_;

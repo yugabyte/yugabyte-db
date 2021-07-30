@@ -2,6 +2,22 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.HELM_DELETE;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE;
+import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.VOLUME_DELETE;
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
+import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -9,30 +25,23 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType.*;
-import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
-import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {

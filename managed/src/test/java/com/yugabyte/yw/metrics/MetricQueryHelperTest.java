@@ -1,6 +1,21 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static junit.framework.TestCase.assertTrue;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.AllOf.allOf;
+import static org.hamcrest.core.Is.is;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -9,6 +24,15 @@ import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.apache.commons.io.IOUtils;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matchers;
@@ -22,25 +46,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.*;
-
-import static junit.framework.TestCase.assertTrue;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.core.AllOf.allOf;
-import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.*;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.test.Helpers.contentAsString;
 
 @RunWith(MockitoJUnitRunner.class)
 public class MetricQueryHelperTest extends FakeDBApplication {

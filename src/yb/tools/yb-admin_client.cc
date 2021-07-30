@@ -527,15 +527,19 @@ Status ClusterAdminClient::Init() {
       .wait_for_leader_election_on_init(FLAGS_wait_if_no_leader_master)
       .Build(messenger_.get()));
 
-  // Find the leader master's socket info to set up the master proxy.
-  leader_addr_ = yb_client_->GetMasterLeaderAddress();
-  master_proxy_.reset(new MasterServiceProxy(proxy_cache_.get(), leader_addr_));
-
-  master_backup_proxy_.reset(new master::MasterBackupServiceProxy(
-      proxy_cache_.get(), leader_addr_));
+  ResetMasterProxy();
 
   initted_ = true;
   return Status::OK();
+}
+
+void ClusterAdminClient::ResetMasterProxy() {
+  // Find the leader master's socket info to set up the master proxy.
+  leader_addr_ = yb_client_->GetMasterLeaderAddress();
+  master_proxy_ = std::make_unique<MasterServiceProxy>(proxy_cache_.get(), leader_addr_);
+
+  master_backup_proxy_ = std::make_unique<master::MasterBackupServiceProxy>(
+      proxy_cache_.get(), leader_addr_);
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(

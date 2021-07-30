@@ -457,6 +457,54 @@ Waiting for compaction...
 Compaction complete: SUCCESS
 ```
 
+#### modify_table_placement_info
+
+Modifies the placement information (cloud, region, and zone) for a table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    modify_table_placement_info <keyspace> <table_name> <placement_info> <replication_factor> \
+    [ <placement_id> ]
+```
+
+or alternatively:
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    modify_table_placement_info tableid.<table_id> <placement_info> <replication_factor> \
+    [ <placement_id> ]
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* keyspace: The namespace, or name of the database or keyspace.
+* table_name: The name of the table.
+* table_id: The unique uuid associated with the table whose placement policy is being changed.
+* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
+* *replication_factor*: The number of replicas for each tablet.
+* *placement_id*: Identifier of the primary cluster. Optional. If set, it has to match the placement_id specified for the primary cluster in the cluster configuration.
+
+**Example**
+
+```sh
+$ ./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    modify_table_placement_info  testdatabase testtable \
+    aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
+```
+
+Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:7000/`) and clicking **Tables** in the navigation bar. Navigate to the appropriate table whose placement information you're changing, and check the Replication Info section.
+
+{{< note title="Notes" >}}
+
+Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
+
+Use this command to create custom placement policies only for YCQL tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+{{< /note >}}
+
 ---
 
 ### Backup and snapshot commands
@@ -570,16 +618,16 @@ When `show_details` is included, the `list_snapshot` command prints the followin
 * `type`: `TABLE` <== Use for table or index
   * `id`: `"<table_id>"`  or `"<index_id>"`
   * `data`:
-    * `name`: `"<table_name>"` or `"<index_id>"` 
+    * `name`: `"<table_name>"` or `"<index_id>"`
     * `version`: `"<table_version>"`
     * `state`: `"<state>"`
     * `state_msg`: `"<state_msg>"`
     * `next_column_id`: `"<column_id>"`
     * `table_type`: `"YQL_TABLE_TYPE"`
     * `namespace_id`: `"<namespace_id>"`
-    * `indexed_table_id` (index only): `<table_id>` 
+    * `indexed_table_id` (index only): `<table_id>`
     * `is_local_index` (index only): `true` or `false`
-    * `is_unique_index` (index only):  `true` or `false` 
+    * `is_unique_index` (index only):  `true` or `false`
 
 **Example**
 
@@ -833,7 +881,7 @@ Returns one or more schedule lists in JSON format.
 
 * schedule ID
 * schedule options (interval and retention time)
-* a list of snapshots that the system has automatically taken 
+* a list of snapshots that the system has automatically taken
 
 **Snapshot list** entries include:
 
@@ -1103,6 +1151,10 @@ replication_info {
 
 #### setup_universe_replication
 
+Sets up the universe replication for the specified producer universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+
+To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
+
 **Syntax**
 
 ```sh
@@ -1141,6 +1193,10 @@ Changes the universe replication for the specified producer universe. Use this c
 
 * Add or remove tables in an existing replication UUID.
 * Modify the master addresses.
+
+If no tables have been configured for replication, use [`setup_universe_replication`](#setup-universe-replication).
+
+To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
 
 **Syntax**
 
@@ -1371,6 +1427,34 @@ yb-admin \
 To display a list of tables and their UUID (`table_id`) values, open the **YB-Master UI** (`<master_host>:7000/`) and click **Tables** in the navigation bar.
 
 {{< /note >}}
+
+#### list_cdc_streams
+
+Lists the CDC streams for the specified YB-Master servers.
+
+{{< note title="Tip" >}}
+
+Use this command when setting up universe replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+
+{{< /note >}}
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_cdc_streams
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    list_cdc_streams
+```
 
 ---
 

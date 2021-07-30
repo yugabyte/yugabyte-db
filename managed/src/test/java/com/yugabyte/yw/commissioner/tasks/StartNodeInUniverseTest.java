@@ -2,6 +2,19 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -15,6 +28,11 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,15 +42,6 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class StartNodeInUniverseTest extends CommissionerBaseTest {
@@ -100,8 +109,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
-          TaskType.SwamperTargetsFileUpdate,
           TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
@@ -110,8 +119,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
@@ -125,7 +134,6 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
-          TaskType.SwamperTargetsFileUpdate,
           // The following four tasks comes from "MasterInfoUpdateTask" and must be done
           // after tserver is added
           TaskType.AnsibleConfigureServers,
@@ -133,6 +141,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
@@ -150,8 +159,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private void assertStartNodeSequence(
