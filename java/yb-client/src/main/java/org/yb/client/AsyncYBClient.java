@@ -41,6 +41,8 @@
 //
 package org.yb.client;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
@@ -74,6 +76,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
@@ -114,7 +117,6 @@ import org.yb.util.AsyncUtil;
 import org.yb.util.NetUtil;
 import org.yb.util.Pair;
 import org.yb.util.Slice;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * A fully asynchronous and thread-safe client for YB.
@@ -779,6 +781,143 @@ public class AsyncYBClient implements AutoCloseable {
     Deferred<HasUniverseKeyInMemoryResponse> d = rpc.getDeferred();
     client.sendRpc(rpc);
     return d;
+  }
+
+  /**
+   * Create xCluster replication relationships between the source universe and the target universe,
+   * and replicate the given tables
+   *
+   * Prerequisites: tables to be replicated must exist on target universe with same name and schema.
+   * AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   * @param sourceTableIDs The tables in the source universe that should be replicated
+   * @param sourceMasterAddresses The master addresses of the source universe
+   * @param sourceBootstrapIDs The bootstrap IDs for the source universe
+   *                           (optional, can pass an empty list)
+   *
+   * @return a deferred object that yields a create xCluster replication response.
+   * */
+  public Deferred<CreateXClusterReplicationResponse> createXClusterReplication(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDs,
+    List<Common.HostPortPB> sourceMasterAddresses,
+    List<String> sourceBootstrapIDs) {
+    checkIsClosed();
+    CreateXClusterReplicationRequest request =
+      new CreateXClusterReplicationRequest(
+        this.masterTable,
+        sourceUniverseUUID,
+        sourceTableIDs,
+        sourceMasterAddresses,
+        sourceBootstrapIDs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Alter existing xCluster replication relationships by modifying which tables to replicate from a
+   * source universe, as well as the master addresses of the source universe
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   * @param sourceTableIDsToAdd Table IDs in the source universe to start replicating from
+   * @param sourceTableIDsToRemove Table IDs in the source universe to stop replicating from
+   * @param sourceMasterAddresses New list of master addresses for the source universe
+   *                              (optional, can pass an empty list)
+   *
+   * @return a deferred object that yields an alter xCluster replication response.
+   * */
+  public Deferred<AlterXClusterReplicationResponse> alterXClusterReplication(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDsToAdd,
+    List<String> sourceTableIDsToRemove,
+    List<Common.HostPortPB> sourceMasterAddresses) {
+    checkIsClosed();
+    AlterXClusterReplicationRequest request =
+      new AlterXClusterReplicationRequest(
+        this.masterTable,
+        sourceUniverseUUID,
+        sourceTableIDsToAdd,
+        sourceTableIDsToRemove,
+        sourceMasterAddresses);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Delete existing xCluster replications from a source universe to our target universe
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   *
+   * @return a deferred object that yields a delete xCluster replication response.
+   * */
+  public Deferred<DeleteXClusterReplicationResponse> deleteXClusterReplication(
+    UUID sourceUniverseUUID) {
+    checkIsClosed();
+    DeleteXClusterReplicationRequest request =
+      new DeleteXClusterReplicationRequest(this.masterTable, sourceUniverseUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Gets all xCluster replication info between the source and target universe
+   * (tables being replicated, state of replication, etc).
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   *
+   * @return a deferred object that yields a get xCluster replication response.
+   * */
+  public Deferred<GetXClusterReplicationInfoResponse> getXClusterReplicationInfo(
+    UUID sourceUniverseUUID) {
+    checkIsClosed();
+    GetXClusterReplicationInfoRequest request =
+      new GetXClusterReplicationInfoRequest(this.masterTable, sourceUniverseUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Sets existing xCluster replication relationships between the source and target universes to be
+   * either active or inactive
+   *
+   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param sourceUniverseUUID The source universe's UUID
+   * @param active Whether the replication should be enabled or not
+   *
+   * @return a deferred object that yields a set xCluster replication active response.
+   * */
+  public Deferred<SetXClusterReplicationActiveResponse> setXClusterReplicationActive(
+    UUID sourceUniverseUUID, boolean active) {
+    checkIsClosed();
+    SetXClusterReplicationActiveRequest request =
+      new SetXClusterReplicationActiveRequest(this.masterTable, sourceUniverseUUID, active);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Creates a checkpoint of most recent op ids for all tablets of the given tables (otherwise known
+   * as bootstrapping)
+   *
+   * @param tableIDs List of table IDs to create checkpoints for
+   *
+   * @return a deferred object that yields a bootstrap universe response which contains a list of
+   * bootstrap IDs corresponding to the same order of table IDs.
+   * */
+  public Deferred<BootstrapUniverseResponse> bootstrapUniverse(List<String> tableIDs) {
+    checkIsClosed();
+    BootstrapUniverseRequest request =
+      new BootstrapUniverseRequest(this.masterTable, tableIDs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
   }
 
   /**
