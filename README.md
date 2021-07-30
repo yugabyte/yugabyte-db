@@ -95,7 +95,7 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Pessimistic locking Design | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.7           |                 |               |
 | [Platform Alerting and Notification](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-alerting-and-notification.md) | PROGRESS | v2.7           | [Track](https://github.com/yugabyte/yugabyte-db/issues/8212)     |               |
-| [xCluster replication management through Platform](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-xcluster-replication-management.md | PROGRESS | v2.7           |       [Track](https://github.com/yugabyte/yugabyte-db/issues/8963)          |               |
+| [xCluster replication management through Platform](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-xcluster-replication-management.md) | PROGRESS | v2.7           |       [Track](https://github.com/yugabyte/yugabyte-db/issues/8963)          |               |
 | Platform APIs | PROGRESS | v2.7           |                 |               |
 
 
