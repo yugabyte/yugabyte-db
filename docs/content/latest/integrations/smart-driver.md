@@ -175,7 +175,7 @@ To be able to use the samples, you need to complete the following steps:
   <br> The following is an example of a shell command that runs the script:
 
   ```sh
-  ./run.sh -v -i -D ~/yugabyte-2.7.1.1/
+  ./run.sh -v -i -D ~/yugabyte-2.7.2.0/
   ```
 
   <br>The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
