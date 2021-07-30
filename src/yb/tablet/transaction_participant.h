@@ -239,11 +239,14 @@ class TransactionParticipant : public TransactionStatusManager {
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
-  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline);
+  CHECKED_STATUS StopActiveTxnsPriorTo(
+      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
   std::string DumpTransactions() const;
+
+  const TabletId& tablet_id() const override;
 
   size_t TEST_GetNumRunningTransactions() const;
 

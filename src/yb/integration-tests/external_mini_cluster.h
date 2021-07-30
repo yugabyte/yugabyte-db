@@ -217,6 +217,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return a pointer to the running leader master. This may be NULL
   // if the cluster is not started.
+  // WARNING: If leader master is not elected after kMaxRetryIterations, first available master
+  // will be returned.
   ExternalMaster* GetLeaderMaster();
 
   // Perform an RPC to determine the leader of the external mini cluster.  Set 'index' to the leader
@@ -254,7 +256,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
   // Empty blacklist.
-  CHECKED_STATUS EmptyBlacklist(ExternalMaster* master);
+  CHECKED_STATUS ClearBlacklist(ExternalMaster* master);
 
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
@@ -447,7 +449,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  HostPort DoGetLeaderMasterBoundRpcAddr() override;
+  Result<HostPort> DoGetLeaderMasterBoundRpcAddr() override;
 
   CHECKED_STATUS StartMasters();
 

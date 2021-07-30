@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.common.alerts;
 
-import java.util.Objects;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Objects;
 
-@ApiModel(value = "Smtp Data", description = "Customers features and Universe UUID.")
+@ApiModel(value = "Smtp Data", description = "Customers SMTP data.")
 public class SmtpData {
   @ApiModelProperty(value = "SMTP server", example = "smtp.gmail.com")
   public String smtpServer = null;

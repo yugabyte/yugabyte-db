@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-
 import javax.inject.Inject;
 
 public class RemoveUniverseEntry extends UniverseTaskBase {

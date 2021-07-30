@@ -4,15 +4,13 @@ package com.yugabyte.yw.models;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
-import java.util.List;
-import java.util.UUID;
-
-import org.junit.Before;
-import org.junit.Test;
-
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import java.util.List;
+import java.util.UUID;
+import org.junit.Before;
+import org.junit.Test;
 
 public class NodeInstanceTest extends FakeDBApplication {
   private Provider provider;

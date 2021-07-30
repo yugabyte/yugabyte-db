@@ -273,7 +273,7 @@ export default class ListBackups extends Component {
   };
 
   handleModalSubmit = (type, data) => {
-    const taskUUID = data.taskUUID;
+    const taskUUID = data?.taskUUID || null;
     this.setState({
       taskUUID,
       showAlert: true,
@@ -418,6 +418,21 @@ export default class ListBackups extends Component {
               actionType="delete-backup"
               onSubmit={(data) => this.handleModalSubmit('Delete', data)}
               onError={() => this.handleModalSubmit('Delete')}
+            />
+          </DropdownButton>
+        );
+      } else if (row.status === 'InProgress' && !row.showActions) {
+        return (
+          <DropdownButton
+            className="btn btn-default"
+            title="Actions"
+            id="bg-nested-dropdown"
+            pullRight
+          >
+            <TableAction
+              currentRow={row}
+              actionType="stop-backup"
+              onError={() => this.handleModalSubmit('Stop')}
             />
           </DropdownButton>
         );

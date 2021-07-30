@@ -10,6 +10,10 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
@@ -24,15 +28,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
-import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
-import play.libs.Json;
-import play.mvc.Http;
-
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -40,9 +39,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
+import play.mvc.Http;
 
 @Slf4j
 public class UniverseInfoHandler {
@@ -156,10 +155,13 @@ public class UniverseInfoHandler {
     return resultNode;
   }
 
-  public JsonNode getSlowQueries(Universe universe) {
+  public JsonNode getSlowQueries(Universe universe, String username, String password) {
     JsonNode resultNode;
     try {
-      resultNode = queryHelper.slowQueries(universe);
+      resultNode = queryHelper.slowQueries(universe, username, password);
+    } catch (IllegalArgumentException e) {
+      log.error(e.getMessage(), e);
+      throw new YWServiceException(BAD_REQUEST, e.getMessage());
     } catch (NullPointerException e) {
       log.error("Universe does not have a private IP or DNS", e);
       throw new YWServiceException(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
@@ -187,7 +189,10 @@ public class UniverseInfoHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     log.debug("Retrieving logs for " + nodeName);
-    NodeDetails node = universe.getNode(nodeName);
+    NodeDetails node =
+        universe
+            .maybeGetNode(nodeName)
+            .orElseThrow(() -> new YWServiceException(NOT_FOUND, nodeName));
     String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
     String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
     Path targetFile = Paths.get(storagePath + "/" + tarFileName);

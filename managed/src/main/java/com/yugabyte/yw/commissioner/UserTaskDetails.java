@@ -1,11 +1,10 @@
 package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.models.TaskInfo;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Class that encapsulates the user task details. */
 public class UserTaskDetails {

@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
-
 import java.util.UUID;
 
 public interface ITask extends Runnable {
@@ -40,8 +39,4 @@ public interface ITask extends Runnable {
    * @param userTaskUUID UUID of the user-facing top-level task for this Task's Task tree.
    */
   public void setUserTaskUUID(UUID userTaskUUID);
-
-  public boolean shouldSendNotification();
-
-  public void sendNotification();
 }

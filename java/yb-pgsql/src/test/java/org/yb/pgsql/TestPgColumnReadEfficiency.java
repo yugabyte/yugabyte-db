@@ -35,6 +35,8 @@ import java.util.stream.Stream;
 
 @RunWith(YBTestRunnerNonTsanOnly.class)
 public class TestPgColumnReadEfficiency extends BasePgSQLTest {
+  private static final int QUERY_ATTEMPTS = 30;
+  private static final int ITEMS_COUNT = 10000;
 
   @Test
   public void testScans() throws Exception {
@@ -48,8 +50,8 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
                                              Stream.of("_prefix")).collect(Collectors.joining());
       stmt.execute(String.format(
         "INSERT INTO t SELECT 1, s, 1, s, s, '%1$s_1', '%1$s_2', '%1$s_3', '%1$s_4', '%1$s_5'" +
-          "FROM generate_series(1, 30000) AS s",
-        longTextPrefix));
+          "FROM generate_series(1, %2$d) AS s",
+        longTextPrefix, ITEMS_COUNT));
       stmt.execute("SELECT COUNT(*) FROM t WHERE h = 1");
       // The following functions compare median execution time of 'fat' and 'thin' queries.
       // Where 'fat' queries contain multiple heavy text columns and 'thin' contain single
@@ -84,15 +86,14 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
                           String expectedScanType) throws SQLException {
     List<Double> fatTime = new ArrayList<>();
     List<Double> thinTime = new ArrayList<>();
-    int attempts = 30;
-    for (int i = 0; i < attempts; ++i) {
+    for (int i = 0; i < QUERY_ATTEMPTS; ++i) {
       thinTime.add(getExecutionTime(stmt, queryThinColumns, expectedScanType));
       fatTime.add(getExecutionTime(stmt, queryFatColumns, expectedScanType));
     }
     Comparator<Double> comparator = Comparator.naturalOrder();
     Collections.sort(thinTime, comparator);
     Collections.sort(fatTime, comparator);
-    int medianIndex = attempts / 2;
+    int medianIndex = QUERY_ATTEMPTS / 2;
     double fatTimeMedian = fatTime.get(medianIndex);
     double thinTimeMedian = thinTime.get(medianIndex);
     assertGreaterThan(

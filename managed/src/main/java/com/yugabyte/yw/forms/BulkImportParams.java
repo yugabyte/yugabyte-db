@@ -4,7 +4,6 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-
 import play.data.validation.Constraints;
 
 @ApiModel(value = "Bulk import params", description = "Bulk import params")

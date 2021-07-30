@@ -14,11 +14,10 @@ import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
 import com.yugabyte.yw.models.AlertDefinitionLabel;
-import lombok.RequiredArgsConstructor;
-
 import java.text.DecimalFormat;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 
 public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
 
@@ -57,8 +56,7 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
                   new AlertDefinitionGroupLabelProvider(group, definition, severity);
               AlertTemplateSubstitutor<AlertDefinitionGroupLabelProvider> substitutor =
                   new AlertTemplateSubstitutor<>(labelProvider);
-              return substitutor.replace(
-                  "{{ $labels.definition_name }} Alert for {{ $labels.target_name }} is firing");
+              return substitutor.replace(group.getTemplate().getSummaryTemplate());
             default:
               throw new IllegalArgumentException(
                   "Unexpected placeholder " + key + " in rule template file");

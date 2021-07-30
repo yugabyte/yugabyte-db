@@ -105,19 +105,35 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static boolean pgInitialized = false;
 
-  public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
+  public void runPgRegressTest(File inputDir, String schedule, long maxRuntimeMillis)
+        throws Exception {
     final int tserverIndex = 0;
-    PgRegressRunner pgRegress = new PgRegressRunner(schedule,
-        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER,
-        maxRuntimeMillis);
-    pgRegress.setEnvVars(getPgRegressEnvVars());
-    pgRegress.start();
+    String label = String.format("using schedule %s at %s", schedule, inputDir);
+    PgRegressRunner pgRegress = new PgRegressRunner(inputDir, label, maxRuntimeMillis);
+    ProcessBuilder procBuilder = new PgRegressBuilder()
+        .setDirs(inputDir, PgRegressRunner.OUTPUT_DIR)
+        .setSchedule(schedule)
+        .setHost(getPgHost(tserverIndex))
+        .setPort(getPgPort(tserverIndex))
+        .setUser(DEFAULT_PG_USER)
+        .setDatabase("yugabyte")
+        .setEnvVars(getPgRegressEnvVars())
+        .getProcessBuilder();
+    pgRegress.start(procBuilder);
     pgRegress.stop();
   }
 
+  public void runPgRegressTest(File inputDir, String schedule) throws Exception {
+    runPgRegressTest(inputDir, schedule, 0 /* maxRuntimeMillis */);
+  }
+
+  public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
+    File inputDir = PgRegressBuilder.getPgRegressDir();
+    runPgRegressTest(inputDir, schedule, maxRuntimeMillis);
+  }
+
   public void runPgRegressTest(String schedule) throws Exception {
-    // Run test without maximum time.
-    runPgRegressTest(schedule, 0);
+    runPgRegressTest(schedule, 0 /* maxRuntimeMillis */);
   }
 
   private static int getRetryableRpcSingleCallTimeoutMs() {

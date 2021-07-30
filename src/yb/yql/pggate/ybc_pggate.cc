@@ -614,17 +614,6 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
-YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
-                          const YBCPgOid table_oid,
-                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewAnalyze(table_id, handle));
-}
-
-YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count) {
-  return ToYBCStatus(pgapi->ExecAnalyze(handle, rows_count));
-}
-
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
@@ -829,6 +818,14 @@ YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
   return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(success));
 }
 
+YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->SetActiveSubTransaction(id));
+}
+
+YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->RollbackSubTransaction(id));
+}
+
 // Referential Integrity Caching
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *source) {
   return ProcessYbctid(*source, [](auto table_id, const auto& ybctid){
@@ -890,7 +887,7 @@ YBCStatus YBCPgIsInitDbDone(bool* initdb_done) {
   return ExtractValueFromResult(pgapi->IsInitDbDone(), initdb_done);
 }
 
-const bool YBCGetDisableTransparentCacheRefreshRetry() {
+bool YBCGetDisableTransparentCacheRefreshRetry() {
   return pgapi->GetDisableTransparentCacheRefreshRetry();
 }
 

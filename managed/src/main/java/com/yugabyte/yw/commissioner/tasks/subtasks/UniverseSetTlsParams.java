@@ -4,13 +4,13 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UniverseSetTlsParams extends UniverseTaskBase {
@@ -23,8 +23,10 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public boolean enableNodeToNodeEncrypt;
     public boolean enableClientToNodeEncrypt;
+    public boolean rootAndClientRootCASame;
     public boolean allowInsecure;
     public UUID rootCA;
+    public UUID clientRootCA;
   }
 
   protected UniverseSetTlsParams.Params taskParams() {
@@ -58,8 +60,13 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
             userIntent.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
             universeDetails.allowInsecure = taskParams().allowInsecure;
             universeDetails.rootCA = null;
-            if (taskParams().enableNodeToNodeEncrypt || taskParams().enableClientToNodeEncrypt) {
+            universeDetails.clientRootCA = null;
+            universeDetails.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+            if (CertificateHelper.isRootCARequired(taskParams())) {
               universeDetails.rootCA = taskParams().rootCA;
+            }
+            if (CertificateHelper.isClientRootCARequired(taskParams())) {
+              universeDetails.clientRootCA = taskParams().clientRootCA;
             }
             universe.setUniverseDetails(universeDetails);
           };

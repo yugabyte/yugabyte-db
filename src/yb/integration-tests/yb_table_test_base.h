@@ -59,6 +59,7 @@ class YBTableTestBase : public YBTest {
   virtual void SetUp() override;
   virtual void TearDown() override;
   virtual void BeforeCreateTable();
+  virtual void BeforeStartCluster();
 
   virtual bool use_external_mini_cluster();
   virtual bool use_yb_admin_client();
@@ -133,7 +134,10 @@ class YBTableTestBase : public YBTest {
   static constexpr bool kDefaultEnableYSQL = true;
   static const client::YBTableName kDefaultTableName;
 
+  // Set custom Env and rocksdb::Env to be used by MiniTabletServer, otherwise MiniTabletServer
+  // will use own Env and rocksdb::Env.
   std::unique_ptr<Env> ts_env_;
+  std::unique_ptr<rocksdb::Env> ts_rocksdb_env_;
 
   vector<uint16_t> master_rpc_ports();
   // Calls CreateYBClient and assigns it to local class field.

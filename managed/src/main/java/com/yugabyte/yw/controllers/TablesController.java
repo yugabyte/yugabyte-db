@@ -2,6 +2,11 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -18,11 +23,31 @@ import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponse;
+import io.swagger.annotations.ApiResponses;
+import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import lombok.Builder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +60,6 @@ import org.yb.master.Master.RelationType;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
-import play.mvc.Results;
-
-import java.util.*;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 @Api(value = "Tables", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TablesController extends AuthenticatedController {

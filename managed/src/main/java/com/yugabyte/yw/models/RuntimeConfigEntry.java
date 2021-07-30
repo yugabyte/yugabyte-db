@@ -1,23 +1,21 @@
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+import static play.mvc.Http.Status.NOT_FOUND;
+
 import com.yugabyte.yw.common.YWServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Transactional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
-
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-import static play.mvc.Http.Status.NOT_FOUND;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Entity
 public class RuntimeConfigEntry extends Model {

@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -12,11 +15,6 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
@@ -25,9 +23,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
 
 @Entity
 @ApiModel(description = "Customers Task Information.")
@@ -101,24 +104,47 @@ public class CustomerTask extends Model {
     @EnumValue("Release")
     Release,
 
+    @EnumValue("RestartUniverse")
+    RestartUniverse,
+
+    @EnumValue("SoftwareUpgrade")
+    SoftwareUpgrade,
+
+    @EnumValue("GFlagsUpgrade")
+    GFlagsUpgrade,
+
+    @EnumValue("CertsRotate")
+    CertsRotate,
+
+    @EnumValue("TlsToggle")
+    TlsToggle,
+
+    @EnumValue("VMImageUpgrade")
+    VMImageUpgrade,
+
+    @Deprecated
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 
+    @Deprecated
     @EnumValue("UpgradeVMImage")
     UpgradeVMImage,
 
     @EnumValue("ResizeNode")
     ResizeNode,
 
+    @Deprecated
     @EnumValue("UpdateCert")
     UpdateCert,
 
+    @Deprecated
     @EnumValue("ToggleTls")
     ToggleTls,
 
     @EnumValue("UpdateDiskSize")
     UpdateDiskSize,
 
+    @Deprecated
     @EnumValue("UpgradeGflags")
     UpgradeGflags,
 
@@ -163,6 +189,18 @@ public class CustomerTask extends Model {
           return completed ? "Updated " : "Updating ";
         case Delete:
           return completed ? "Deleted " : "Deleting ";
+        case RestartUniverse:
+          return completed ? "Restarted " : "Restarting ";
+        case SoftwareUpgrade:
+          return completed ? "Upgraded Software " : "Upgrading Software ";
+        case GFlagsUpgrade:
+          return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+        case CertsRotate:
+          return completed ? "Updated Certificates " : "Updating Certificates ";
+        case TlsToggle:
+          return completed ? "Toggled TLS " : "Toggling TLS ";
+        case VMImageUpgrade:
+          return completed ? "Upgraded VM Image " : "Upgrading VM Image ";
         case UpgradeSoftware:
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case UpdateCert:

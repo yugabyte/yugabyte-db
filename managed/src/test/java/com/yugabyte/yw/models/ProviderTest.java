@@ -2,20 +2,26 @@
 
 package com.yugabyte.yw.models;
 
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import org.junit.Before;
-import org.junit.Test;
-
 import java.util.Map;
 import java.util.UUID;
-
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
+import org.junit.Before;
+import org.junit.Test;
 
 public class ProviderTest extends FakeDBApplication {
   private Customer defaultCustomer;

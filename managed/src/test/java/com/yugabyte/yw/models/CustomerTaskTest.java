@@ -2,23 +2,32 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.junit.Before;
-import org.junit.Test;
-import play.libs.Json;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.*;
+import org.junit.Before;
+import org.junit.Test;
+import play.libs.Json;
 
 public class CustomerTaskTest extends FakeDBApplication {
   private Customer defaultCustomer;

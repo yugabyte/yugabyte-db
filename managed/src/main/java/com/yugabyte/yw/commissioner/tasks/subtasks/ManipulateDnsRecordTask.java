@@ -18,11 +18,10 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class ManipulateDnsRecordTask extends UniverseTaskBase {

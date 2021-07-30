@@ -862,12 +862,14 @@ class TransactionParticipant::Impl
     return result;
   }
 
-  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
+  CHECKED_STATUS StopActiveTxnsPriorTo(
+      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
     vector<TransactionId> ids_to_abort;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& txn : transactions_.get<StartTimeTag>()) {
-        if (txn->start_ht() > cutoff) {
+        if (txn->start_ht() > cutoff ||
+            (exclude_txn_id != nullptr && txn->id() == *exclude_txn_id)) {
           break;
         }
         if (!txn->WasAborted()) {
@@ -1245,7 +1247,8 @@ class TransactionParticipant::Impl
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
     YB_TRANSACTION_DUMP(
-        Remove, transaction.id(), participant_context()->Now(), static_cast<uint8_t>(reason));
+        Remove, participant_context_.tablet_id(), transaction.id(), participant_context_.Now(),
+        static_cast<uint8_t>(reason));
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
@@ -1670,8 +1673,9 @@ std::string TransactionParticipant::DumpTransactions() const {
   return impl_->DumpTransactions();
 }
 
-Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
-  return impl_->StopActiveTxnsPriorTo(cutoff, deadline);
+Status TransactionParticipant::StopActiveTxnsPriorTo(
+    HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+  return impl_->StopActiveTxnsPriorTo(cutoff, deadline, exclude_txn_id);
 }
 
 Result<HybridTime> TransactionParticipant::WaitForSafeTime(
@@ -1681,6 +1685,10 @@ Result<HybridTime> TransactionParticipant::WaitForSafeTime(
 
 void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit) {
   impl_->IgnoreAllTransactionsStartedBefore(limit);
+}
+
+const TabletId& TransactionParticipant::tablet_id() const {
+  return impl_->participant_context()->tablet_id();
 }
 
 std::string TransactionParticipantContext::LogPrefix() const {

@@ -2,33 +2,29 @@
 
 package com.yugabyte.yw.queries;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import static play.libs.Json.toJson;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.forms.RunQueryFormData;
-import com.yugabyte.yw.forms.SlowQueriesParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Universe;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.Callable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.api.Play;
 import play.libs.Json;
-
-import javax.inject.Singleton;
-import java.sql.*;
-import java.util.*;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-
-import static play.libs.Json.newObject;
-import static play.libs.Json.toJson;
 
 public class SlowQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(LiveQueryExecutor.class);
@@ -39,15 +35,25 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
   private int port;
   private String query;
   private Universe universe;
+  private String username;
+  private String password;
 
   private final String DEFAULT_DB_USER = "yugabyte";
   private final String DEFAULT_DB_PASSWORD = "yugabyte";
 
-  public SlowQueryExecutor(String hostName, int port, Universe universe, String query) {
+  public SlowQueryExecutor(
+      String hostName,
+      int port,
+      Universe universe,
+      String query,
+      String username,
+      String password) {
     this.hostName = hostName;
     this.port = port;
     this.universe = universe;
     this.query = query;
+    this.username = username == null ? DEFAULT_DB_USER : username;
+    this.password = password == null ? DEFAULT_DB_PASSWORD : password;
     this.apiHelper = Play.current().injector().instanceOf(ApiHelper.class);
   }
 
@@ -75,8 +81,8 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     ObjectNode response = Json.newObject();
     String connectString = String.format("jdbc:postgresql://%s:%d/%s", hostName, port, "postgres");
     Properties connInfo = new Properties();
-    connInfo.put("user", DEFAULT_DB_USER);
-    connInfo.put("password", DEFAULT_DB_PASSWORD);
+    connInfo.put("user", this.username);
+    connInfo.put("password", this.password);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {

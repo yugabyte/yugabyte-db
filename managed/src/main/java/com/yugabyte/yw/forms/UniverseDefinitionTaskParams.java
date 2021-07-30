@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -21,13 +23,18 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -209,7 +216,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      * Check if instance tags are same as the passed in cluster.
      *
      * @param cluster another cluster to check against.
-     * @return true if the tag maps are same for aws provider, false otherwise.
+     * @return true if the tag maps are same for aws provider, false otherwise. This is because
+     *     modify tags not implemented in devops for any cloud other than AWS.
      */
     public boolean areTagsSame(Cluster cluster) {
       if (cluster == null) {
@@ -225,7 +233,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
 
       // Check if Provider supports instance tags and the instance tags match.
-      if (!Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)
+      if (!Provider.InstanceTagsModificationEnabledProviders.contains(userIntent.providerType)
           || userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
         return true;
       }

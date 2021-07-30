@@ -69,8 +69,8 @@ const char kConnectionHeaderBytes[] = "YB\1";
 const size_t kConnectionHeaderSize = sizeof(kConnectionHeaderBytes) - 1;
 
 OutboundDataPtr ConnectionHeaderInstance() {
-  static OutboundDataPtr result(
-      new StringOutboundData(kConnectionHeaderBytes, kConnectionHeaderSize, "ConnectionHeader"));
+  static OutboundDataPtr result = std::make_shared<StringOutboundData>(
+      kConnectionHeaderBytes, kConnectionHeaderSize, "ConnectionHeader");
   return result;
 }
 
@@ -442,7 +442,7 @@ void YBInboundCall::LogTrace() const {
   }
 }
 
-void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void YBInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
   output->push_back(std::move(response_buf_));

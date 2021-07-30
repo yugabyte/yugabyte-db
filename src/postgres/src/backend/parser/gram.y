@@ -1382,6 +1382,8 @@ CreateSchemaStmt:
 					/* One can omit the schema name or the authorization id. */
 					n->schemaname = $3;
 					n->authrole = $5;
+					if ($6 != NIL)
+						parser_ybc_not_support(@6, "CREATE SCHEMA with elements");
 					n->schemaElts = $6;
 					n->if_not_exists = false;
 					$$ = (Node *)n;
@@ -1392,6 +1394,8 @@ CreateSchemaStmt:
 					/* ...but not both */
 					n->schemaname = $3;
 					n->authrole = NULL;
+					if ($4 != NIL)
+						parser_ybc_not_support(@4, "CREATE SCHEMA with elements");
 					n->schemaElts = $4;
 					n->if_not_exists = false;
 					$$ = (Node *)n;
@@ -1436,7 +1440,6 @@ OptSchemaName:
 OptSchemaEltList:
 			OptSchemaEltList schema_stmt
 				{
-					parser_ybc_not_support(@2, "CREATE SCHEMA with elements");
 					if (@$ < 0)			/* see comments for YYLLOC_DEFAULT */
 						@$ = @2;
 					$$ = lappend($1, $2);
@@ -3777,6 +3780,12 @@ ColConstraintElem:
 				}
 			| PRIMARY KEY opt_definition OptConsTableSpace
 				{
+					if ($4)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+								errmsg("Cannot set TABLESPACE for PRIMARY KEY INDEX."),
+								errdetail("The tablespace of the indexed table will be used.")));
+					}
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_PRIMARY;
 					n->location = @1;
@@ -4031,6 +4040,12 @@ ConstraintElem:
 					n->including = $6;
 					n->options = $7;
 					n->indexname = NULL;
+					if ($8)
+					{
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+								errmsg("Cannot set TABLESPACE for PRIMARY KEY INDEX."),
+								errdetail("The tablespace of the indexed table will be used.")));
+					}
 					n->indexspace = $8;
 					processCASbits($9, @9, "PRIMARY KEY",
 								   &n->deferrable, &n->initdeferred, NULL,
@@ -4313,7 +4328,6 @@ OptTableSpace:
 OptConsTableSpace:
 			USING INDEX TABLESPACE name
 				{
-					parser_ybc_signal_unsupported(@1, "USING INDEX TABLESPACE", 1129);
 					$$ = $4;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -9402,7 +9416,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER SCHEMA name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER SCHEMA");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_SCHEMA;
 					n->subname = $3;
@@ -10781,7 +10794,9 @@ TransactionStmt:
 				}
 			| SAVEPOINT ColId
 				{
-					parser_ybc_signal_unsupported(@1, "SAVEPOINT <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "SAVEPOINT <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_SAVEPOINT;
 					n->savepoint_name = $2;
@@ -10789,7 +10804,9 @@ TransactionStmt:
 				}
 			| RELEASE SAVEPOINT ColId
 				{
-					parser_ybc_signal_unsupported(@1, "RELEASE SAVEPOINT <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "RELEASE SAVEPOINT <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $3;
@@ -10797,7 +10814,9 @@ TransactionStmt:
 				}
 			| RELEASE ColId
 				{
-					parser_ybc_signal_unsupported(@1, "RELEASE <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "RELEASE <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
 					n->savepoint_name = $2;
@@ -10805,6 +10824,7 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
+					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
 					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
@@ -10813,6 +10833,7 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO ColId
 				{
+					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
 					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;

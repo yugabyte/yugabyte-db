@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "c.h"
 #include "postgres.h"
 #include "miscadmin.h"
 #include "access/sysattr.h"
@@ -303,6 +304,17 @@ YBTransactionsEnabled()
 	return IsYugaByteEnabled() && cached_value;
 }
 
+bool
+YBSavepointsEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", false);
+	}
+	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
+}
+
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -486,6 +498,20 @@ YBCAbortTransaction()
 
 	if (YBTransactionsEnabled())
 		HandleYBStatus(YBCPgAbortTransaction());
+}
+
+void
+YBCSetActiveSubTransaction(SubTransactionId id)
+{
+	if (YBSavepointsEnabled())
+		HandleYBStatus(YBCPgSetActiveSubTransaction(id));
+}
+
+void
+YBCRollbackSubTransaction(SubTransactionId id)
+{
+	if (YBSavepointsEnabled())
+		HandleYBStatus(YBCPgRollbackSubTransaction(id));
 }
 
 bool
@@ -1126,7 +1152,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_AlterTableCmd:
 		case T_AlterTableMoveAllStmt:
 		case T_AlterTableSpaceOptionsStmt:
-		case T_AlterTableStmt:
 		case T_AlterUserMappingStmt:
 		case T_AlternativeSubPlan:
 		case T_AlternativeSubPlanState:
@@ -1134,6 +1159,17 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
 			return true;
+
+		case T_AlterTableStmt:
+		{
+			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
+			ListCell *lcmd = stmt->cmds->head;
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
+				*is_breaking_catalog_change = false;
+			}
+			return true;
+		}
 
 		// T_Grant...
 		case T_GrantStmt:
