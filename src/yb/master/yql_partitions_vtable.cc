@@ -133,7 +133,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
   std::unordered_map<std::string, InetAddress> dns_results;
 
   for (auto& p : dns_lookups) {
-    dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(p.second.get())));
+    dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(Copy(p.second.get()))));
   }
 
   // Reserve upfront memory, as we're likely to need to insert a row for each tablet.
