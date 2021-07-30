@@ -957,12 +957,9 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 
-#define VERIFY_RESULT_OR_RETURN(expr) \
-  __extension__ ({ \
-    auto&& __result = (expr); \
-    if (!__result.ok()) { return; } \
-    std::move(*__result); \
-  })
+#define VERIFY_RESULT_OR_RETURN(expr) RESULT_CHECKER_HELPER( \
+    expr, \
+    if (!__result.ok()) { return; });
 
 void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           UpdateTransactionResponsePB* resp,

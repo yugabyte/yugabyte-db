@@ -70,7 +70,8 @@ PgCreateDatabase::~PgCreateDatabase() {
 Status PgCreateDatabase::Exec() {
   boost::optional<TransactionMetadata> txn;
   if (txn_future_) {
-    txn = VERIFY_RESULT((*txn_future_).get()); // Ensure the future has been executed by this time.
+    // Ensure the future has been executed by this time.
+    txn = VERIFY_RESULT(Copy(txn_future_->get()));
   }
   return pg_session_->CreateDatabase(database_name_, database_oid_, source_database_oid_,
                                      next_oid_, txn, colocated_);
@@ -355,10 +356,9 @@ Status PgCreateTable::Exec() {
     }
   }
 
-  boost::optional<TransactionMetadata> txn;
   if (txn_future_) {
-    txn = VERIFY_RESULT((*txn_future_).get());
-    table_creator->part_of_transaction(&*txn);
+    RETURN_NOT_OK(txn_future_->get());
+    table_creator->part_of_transaction(&*txn_future_->get());
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
@@ -572,8 +572,8 @@ Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
 Status PgAlterTable::Exec() {
   boost::optional<TransactionMetadata> txn;
   if (txn_future_) {
-    txn = VERIFY_RESULT((*txn_future_).get());
-    table_alterer->part_of_transaction(&*txn);
+    RETURN_NOT_OK(txn_future_->get());
+    table_alterer->part_of_transaction(&*txn_future_->get());
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
