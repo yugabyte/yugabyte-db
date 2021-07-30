@@ -45,9 +45,9 @@ class BinaryCallParser {
 
   // If tracker_for_throttle is not nullptr - throttle big requests when tracker_for_throttle
   // (or any of its ancestors) exceeds soft memory limit.
-  Result<ProcessDataResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
-                                  ReadBufferFull read_buffer_full,
-                                  const MemTrackerPtr* tracker_for_throttle);
+  Result<ProcessCallsResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
+                                   ReadBufferFull read_buffer_full,
+                                   const MemTrackerPtr* tracker_for_throttle);
 
  private:
   MemTrackerPtr buffer_tracker_;

@@ -830,6 +830,8 @@ class Metric : public RefCountedThreadSafe<Metric> {
   DISALLOW_COPY_AND_ASSIGN(Metric);
 };
 
+using MetricPtr = scoped_refptr<Metric>;
+
 // Registry of all the metrics for a server.
 //
 // This aggregates the MetricEntity objects associated with the server.
@@ -1347,6 +1349,8 @@ class Counter : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
 
+using CounterPtr = scoped_refptr<Counter>;
+
 class MillisLagPrototype : public MetricPrototype {
  public:
   explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
@@ -1423,9 +1427,15 @@ class AtomicMillisLag : public MillisLag {
   DISALLOW_COPY_AND_ASSIGN(AtomicMillisLag);
 };
 
-inline void IncrementCounter(const scoped_refptr<Counter>& counter) {
+inline void IncrementCounter(const CounterPtr& counter) {
   if (counter) {
     counter->Increment();
+  }
+}
+
+inline void IncrementCounterBy(const CounterPtr& counter, int64_t amount) {
+  if (counter) {
+    counter->IncrementBy(amount);
   }
 }
 
@@ -1498,6 +1508,8 @@ class Histogram : public Metric {
   const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
+
+using HistogramPtr = scoped_refptr<Histogram>;
 
 inline void IncrementHistogram(const scoped_refptr<Histogram>& histogram, int64_t value) {
   if (histogram) {
