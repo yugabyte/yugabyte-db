@@ -789,9 +789,11 @@ DefineIndex(Oid relationId,
 						accessMethodName),
 				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
 						 "Click '+' on the description to raise its priority")));
-	if (!IsYBRelation(rel) && accessMethodId == LSM_AM_OID)
+	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
+							   accessMethodId == YBGIN_AM_OID))
 		ereport(ERROR,
-				(errmsg("access method \"%s\" only supported for indexes"
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("access method \"%s\" only supported for indexes"
 						" using Yugabyte storage",
 						accessMethodName)));
 
