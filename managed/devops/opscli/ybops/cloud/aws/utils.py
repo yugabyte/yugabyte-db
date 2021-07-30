@@ -960,12 +960,13 @@ def create_instance(args):
         "ResourceType": "instance",
         "Tags": instance_tags
     })
-    for tagged_resource in resources_to_tag:
-        resources_tag_dict = {
-            "ResourceType": tagged_resource,
-            "Tags": user_tags
-        }
-        tag_dicts.append(resources_tag_dict)
+    if user_tags:
+        for tagged_resource in resources_to_tag:
+            resources_tag_dict = {
+                "ResourceType": tagged_resource,
+                "Tags": user_tags
+            }
+            tag_dicts.append(resources_tag_dict)
     vars["TagSpecifications"] = tag_dicts
     # TODO: user_data > templates/cloud_init.yml.j2, still needed?
     logging.info("[app] About to create AWS VM {}. ".format(args.search_pattern))
