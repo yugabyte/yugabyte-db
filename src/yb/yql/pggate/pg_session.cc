@@ -672,7 +672,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
     // Try one more time.
     result = LoadTable(oid);
   }
-  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(result);
+  auto t = VERIFY_RESULT(std::move(result));
 
   auto psql_write(t->NewPgsqlInsert());
 
@@ -822,7 +822,7 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
     return Status::OK();
   }
 
-  PgTableDesc::ScopedRefPtr t = CHECK_RESULT(r);
+  auto t = std::move(*r);
   if (t == nullptr) {
     return Status::OK();
   }

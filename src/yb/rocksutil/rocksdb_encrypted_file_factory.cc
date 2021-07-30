@@ -32,9 +32,8 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
     std::unique_ptr<BlockAccessCipherStream> stream;
     uint32_t header_size;
 
-    auto res = GetEncryptionInfoFromFile<uint8_t>(
-        header_manager, underlying_ra.get(), &stream, &header_size);
-    bool file_encrypted = VERIFY_RESULT(res);
+    const auto file_encrypted = VERIFY_RESULT(GetEncryptionInfoFromFile<uint8_t>(
+        header_manager, underlying_ra.get(), &stream, &header_size));
     if (!file_encrypted) {
       *result = std::move(underlying_seq);
       return Status::OK();

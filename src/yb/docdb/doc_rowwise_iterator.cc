@@ -709,7 +709,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
     } else {
-      doc_found = VERIFY_RESULT(doc_found_res);
+      doc_found = *doc_found_res;
     }
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();

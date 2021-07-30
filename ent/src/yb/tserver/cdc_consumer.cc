@@ -303,7 +303,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
             return; // Don't finish creation.  Try again on the next heartbeat.
           }
 
-          remote_client->client = CHECK_RESULT(client_result);
+          remote_client->client = std::move(*client_result);
           remote_clients_[uuid] = std::move(remote_client);
         }
 

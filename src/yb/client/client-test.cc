@@ -2603,10 +2603,10 @@ TEST_F(ClientTest, ColocatedTablesLookupTablet) {
   TabletId colocated_tablet_id;
   for (const auto& table_name : table_names) {
     auto table = ASSERT_RESULT(client_->OpenTable(table_name));
-    const auto tablet_result = client_->LookupTabletByKeyFuture(
+    auto tablet = ASSERT_RESULT(client_->LookupTabletByKeyFuture(
         table, /* partition_key =*/ "",
-        CoarseMonoClock::now() + kTabletLookupTimeout).get();
-    const auto tablet_id = ASSERT_RESULT(tablet_result)->tablet_id();
+        CoarseMonoClock::now() + kTabletLookupTimeout).get());
+    const auto tablet_id = tablet->tablet_id();
     if (colocated_tablet_id.empty()) {
       colocated_tablet_id = tablet_id;
     } else {

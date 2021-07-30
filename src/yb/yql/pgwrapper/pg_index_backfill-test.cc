@@ -1177,7 +1177,7 @@ TEST_F_EX(PgIndexBackfillTest,
     while (true) {
       Result<PGResultPtr> result = conn_->FetchFormat("SELECT count(*) FROM $0", kTableName);
       if (result.ok()) {
-        PGResultPtr res = ASSERT_RESULT(result);
+        PGResultPtr res = std::move(*result);
         const int64_t main_table_size = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
         ASSERT_EQ(main_table_size, 2);
         break;

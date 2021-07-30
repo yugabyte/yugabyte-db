@@ -2000,7 +2000,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
           *retry = retry_on_not_found;
           return result.status();
         }
-        actual_index_permissions = VERIFY_RESULT(result);
+        actual_index_permissions = *result;
         *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
       },
@@ -2050,7 +2050,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
           *retry = retry_on_not_found;
           return result.status();
         }
-        actual_index_permissions = VERIFY_RESULT(result);
+        actual_index_permissions = *result;
         *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
       },
