@@ -71,16 +71,5 @@ The following is a YCQL OPS and latency metrics :
 Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=node-1
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                   --base_dir=node-2
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                   --base_dir=node-3
+$ ./bin/yugabyted destroy
 ```
