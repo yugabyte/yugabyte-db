@@ -26,7 +26,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
+The following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
 
 We will use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 GKE clusters. 
 
@@ -45,23 +45,26 @@ The following steps show how to meet these prerequisites.
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 
-- Configure defaults for gcloud
+- Configure defaults for `gcloud`.
 
-Set the project ID as `yugabyte`. You can change this as per your need.
+    \
+    Set the project ID as `yugabyte`. You can change this as per your need.
 
-```sh
-$ gcloud config set project yugabyte
-```
+    ```sh
+    $ gcloud config set project yugabyte
+    ```
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command. 
+    \
+    After installing Cloud SDK, install the `kubectl` command line tool by running the following command. 
 
-```sh
-$ gcloud components install kubectl
-```
+    ```sh
+    $ gcloud components install kubectl
+    ```
 
-Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest `kubectl` version that is compatible across different Kubernetes distributions if that's what you intend to.
+    \
+    Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest `kubectl` version that is compatible across different Kubernetes distributions if that's what you intend to.
 
 - Ensure `helm` is installed
 
@@ -73,7 +76,7 @@ $ helm version
 
 For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
+```output
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
 
@@ -81,7 +84,7 @@ version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8
 
 ### Create clusters
 
-Following commands create 3 Kubernetes clusters in 3 different regions (`us-west1`,`us-central1`,`us-east1`), with 1 node in each cluster.
+The following commands create 3 Kubernetes clusters in 3 different regions (`us-west1`,`us-central1`,`us-east1`), with 1 node in each cluster.
 
 - This example highlights a multi-region Kubernetes configuration along with a multi-cluster Kubernetes configuration.
 
@@ -117,7 +120,7 @@ Confirm that you now have 3 Kubernetes contexts as shown below.
 kubectl config get-contexts
 ```
 
-```
+```output
 CURRENT   NAME                                          CLUSTER                                 ...                                  
           gke_yugabyte_us-central1-b_yugabytedb2        gke_yugabyte_us-central1-b_yugabytedb2                
 *         gke_yugabyte_us-east1-b_yugabytedb3           gke_yugabyte_us-east1-b_yugabytedb3                            
@@ -130,7 +133,7 @@ We need to ensure that the storage classes used by the pods in a given zone are 
 
 Copy the contents below to a file named `gke-us-west1-b.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -144,7 +147,7 @@ parameters:
 
 Copy the contents below to a file named `gke-us-central1-b.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -158,7 +161,7 @@ parameters:
 
 Copy the contents below to a file named `gke-us-east1-b.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -195,7 +198,7 @@ The YAML file shown below adds an internal load balancer (which is not exposed o
 
 Copy the contents to a file named `yb-dns-lb.yaml`.
 
-```sh
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -230,7 +233,7 @@ The script starts out by creating a new namespace in each of the 3 clusters. The
 
 Open the script and edit the `contexts` and `regions` sections to reflect your own configuration.
 
-```
+```python
 # Replace the following with your own k8s cluster contexts
 contexts = {
     'us-west1-b': 'gke_yugabyte_us-west1-b_yugabytedb1',
@@ -252,7 +255,7 @@ Now run the script as shown below.
 python yb-multiregion-k8s-setup.py
 ```
 
-```
+```output
 namespace/yb-demo-us-east1-b created
 service/kube-dns-lb created
 namespace/yb-demo-us-central1-b created
@@ -291,7 +294,7 @@ Validate that you have the updated chart version.
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```sh
+```output
 NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
 yugabytedb/yugabyte 2.1.0        2.1.0.0-b18    YugabyteDB is the high-performance distr...
 ```
@@ -300,7 +303,7 @@ yugabytedb/yugabyte 2.1.0        2.1.0.0-b18    YugabyteDB is the high-performan
 
 Copy the contents below to a file named `overrides-us-west1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-west1-b
@@ -333,7 +336,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-central1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-central1-b
@@ -366,7 +369,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-east1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east1-b
@@ -446,7 +449,7 @@ Check the services.
 $ kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.31.250.228   35.185.207.11   7000:31185/TCP                                 91m
 yb-masters           ClusterIP      None            <none>          7100/TCP,7000/TCP                              91m
@@ -511,7 +514,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` address of o
 $ kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.31.247.185   34.83.192.162   6379:31858/TCP,9042:30444/TCP,5433:30854/TCP   91m
@@ -530,4 +533,6 @@ kubectl scale statefulset yb-master --replicas=0 -n yb-demo-us-central1-b \
  --context gke_yugabyte_us-central1-b_yugabytedb2
 ```
 
-If you re-run the queries from Step 6 after re-connecting to the nodes in the `us-west1` region, you will see that there is absolutely no impact to the availability of the cluster and the data stored therein. However, there is higher latency for some of the transactions since the farthest `us-east1` region now has to be involved in the write path. In other words, the database cluster is fully protected against region failures but may temporarily experience higher latency. This is a much better place to be than a complete outage of the business-critical database service. The post [Understanding How YugabyteDB Runs on Kubernetes](https://blog.yugabyte.com/understanding-how-yugabyte-db-runs-on-kubernetes/) details how YugabyteDB self-heals the replicas when subjected to the failure of a fault domain (the cloud region in this case) by auto-electing a new leader for each of the impacted shards in the remaining fault domains. The cluster goes back to its original configuration as soon as the nodes in the lost region become available again.
+If you re-run the queries from Step 6 after re-connecting to the nodes in the `us-west1` region, you will see that there is absolutely no impact to the availability of the cluster and the data stored therein. However, there is higher latency for some of the transactions since the farthest `us-east1` region now has to be involved in the write path. In other words, the database cluster is fully protected against region failures but may temporarily experience higher latency. This is a much better place to be than a complete outage of the business-critical database service.
+
+The post [Understanding How YugabyteDB Runs on Kubernetes](https://blog.yugabyte.com/understanding-how-yugabyte-db-runs-on-kubernetes/) details how YugabyteDB self-heals the replicas when subjected to the failure of a fault domain (the cloud region in this case) by auto-electing a new leader for each of the impacted shards in the remaining fault domains. The cluster goes back to its original configuration as soon as the nodes in the lost region become available again.

@@ -38,43 +38,48 @@ The following steps show how to meet these prerequisites.
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 
-- Configure defaults for `gcloud`
+- Configure defaults for `gcloud`.
 
-Set the project ID as `yugabyte`. You can change this as per your need.
+    \
+    Set the project ID as `yugabyte`. You can change this as per your need.
 
-```sh
-$ gcloud config set project yugabyte
-```
+    ```sh
+    $ gcloud config set project yugabyte
+    ```
 
-- Install `kubectl`
+- Install `kubectl`.
 
-After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command. 
+    \
+    After installing the Google Cloud SDK, install the `kubectl` command line tool by running the following command. 
 
-```sh
-$ gcloud components install kubectl
-```
+    ```sh
+    $ gcloud components install kubectl
+    ```
 
-Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest `kubectl` version that is compatible across different Kubernetes distributions if that's what you intend to.
+    \
+    Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest `kubectl` version that is compatible across different Kubernetes distributions if that's what you intend to.
 
-- Ensure `helm` is installed
+- Ensure `helm` is installed.
 
-First, check to see if Helm is installed by using the Helm version command.
+    \
+    First, check to see if Helm is installed by using the Helm version command.
 
-```sh
-$ helm version
-```
+    ```sh
+    $ helm version
+    ```
 
-For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
+    \
+    For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
-version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
-```
+    ```output
+    version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
+    ```
 
 ## 1. Create a GKE cluster
 
 ### Create regional cluster
 
-Following command creates a 3-node cluster with 1 node each in the us-central1-a, us-central1-b and us-central1-c zones.
+The following command creates a 3-node cluster with 1 node each in the us-central1-a, us-central1-b and us-central1-c zones.
 
 ```sh
 $ gcloud container clusters create my-regional-cluster \
@@ -84,7 +89,7 @@ $ gcloud container clusters create my-regional-cluster \
      --node-locations us-central1-a,us-central1-b,us-central1-c
 ```
 
-```
+```output
 ...
 NAME                 LOCATION     MASTER_VERSION  MASTER_IP      MACHINE_TYPE   NODE_VERSION    NUM_NODES  STATUS
 my-regional-cluster  us-central1  1.14.10-gke.17  35.226.36.261  n1-standard-8  1.14.10-gke.17  3          RUNNING
@@ -98,7 +103,7 @@ We need to ensure that the storage classes used by the pods in a given zone are 
 
 Copy the contents below to a file named `storage.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -159,7 +164,7 @@ Validate that you have the updated Chart version.
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```sh
+```output
 NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
 yugabytedb/yugabyte 2.1.0        2.1.0.0-b18    YugabyteDB is the high-performance distr...
 ```
@@ -168,7 +173,7 @@ yugabytedb/yugabyte 2.1.0        2.1.0.0-b18    YugabyteDB is the high-performan
 
 Copy the contents below to a file named `overrides-us-central1-a.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-central1-a
@@ -199,7 +204,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-central1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-central1-b
@@ -230,7 +235,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-central1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-central1-c
@@ -301,7 +306,7 @@ Check the pods.
 $ kubectl get pods --all-namespaces
 ```
 
-```
+```output
 NAMESPACE               NAME          READY   STATUS    RESTARTS   AGE
 ...
 yb-demo-us-central1-a   yb-master-0   2/2     Running   0          6m54s
@@ -318,7 +323,7 @@ Check the services.
 $ kubectl get services --all-namespaces
 ```
 
-```
+```output
 NAMESPACE               NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                                        AGE
 ...
 yb-demo-us-central1-a   yb-master-ui           LoadBalancer   10.27.249.152   34.71.83.45      7000:31927/TCP                                 9m33s
@@ -384,7 +389,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` address of o
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.98.36.163    35.225.153.214     6379:30929/TCP,9042:30975/TCP,5433:30048/TCP   10s
