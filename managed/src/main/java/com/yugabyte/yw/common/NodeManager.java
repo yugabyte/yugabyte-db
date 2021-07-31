@@ -10,30 +10,41 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @Singleton
 public class NodeManager extends DevopsBase {
@@ -62,6 +73,12 @@ public class NodeManager extends DevopsBase {
     Disk_Update,
     Pause,
     Resume,
+  }
+
+  public enum CertRotateAction {
+    APPEND_NEW_ROOT_CERT,
+    REMOVE_OLD_ROOT_CERT,
+    ROTATE_CERTS,
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
@@ -478,9 +495,24 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--yb_process_type");
             subcommand.add(processType.toLowerCase());
           }
+          String taskSubType = taskParam.getProperty("taskSubType");
+          if (taskSubType == null) {
+            throw new RuntimeException("taskSubType is null");
+          }
+
+          subcommand.add("--cert_rotate_action");
+          if (taskSubType.equals(UpgradeTaskSubType.AppendNewRootCert.toString())) {
+            subcommand.add(CertRotateAction.APPEND_NEW_ROOT_CERT.toString());
+          } else if (taskSubType.equals(UpgradeTaskSubType.RotateCerts.toString())) {
+            subcommand.add(CertRotateAction.ROTATE_CERTS.toString());
+          } else if (taskSubType.equals(UpgradeTaskSubType.RemoveOldRootCert.toString())) {
+            subcommand.add(CertRotateAction.REMOVE_OLD_ROOT_CERT.toString());
+          } else {
+            throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
+          }
+
           CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
           subcommand.add("--use_custom_certs");
-          subcommand.add("--rotating_certs");
           subcommand.add("--root_cert_path");
           subcommand.add(customCertInfo.rootCertPath);
           subcommand.add("--node_cert_path");

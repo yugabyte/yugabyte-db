@@ -2,35 +2,31 @@
 
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-
-import io.ebean.*;
-import io.ebean.annotation.*;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.annotation.JsonFormat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.data.validation.Constraints;
-
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Enumerated;
-import javax.persistence.EnumType;
-import javax.persistence.Id;
-
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.CertificateParams;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import io.ebean.annotation.EnumValue;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
+import play.libs.Json;
 
 @Entity
 public class CertificateInfo extends Model {
@@ -152,6 +148,28 @@ public class CertificateInfo extends Model {
     return cert;
   }
 
+  public static CertificateInfo createCopy(
+      CertificateInfo certificateInfo, String label, String certFilePath)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo copy = new CertificateInfo();
+    copy.uuid = UUID.randomUUID();
+    copy.customerUUID = certificateInfo.customerUUID;
+    copy.label = label;
+    copy.startDate = certificateInfo.startDate;
+    copy.expiryDate = certificateInfo.expiryDate;
+    copy.privateKey = certificateInfo.privateKey;
+    copy.certificate = certFilePath;
+    copy.certType = certificateInfo.certType;
+    copy.checksum = Util.getFileChecksum(certFilePath);
+    copy.customCertInfo = certificateInfo.customCertInfo;
+    copy.save();
+    return copy;
+  }
+
+  public static boolean isTemporary(CertificateInfo certificateInfo) {
+    return certificateInfo.certificate.endsWith("ca.multi.root.crt");
+  }
+
   private static final Finder<UUID, CertificateInfo> find =
       new Finder<UUID, CertificateInfo>(CertificateInfo.class) {};
 
@@ -164,11 +182,20 @@ public class CertificateInfo extends Model {
   }
 
   public static List<CertificateInfo> getAllNoChecksum() {
-    return find.query().where().isNull("checksum").findList();
+    List<CertificateInfo> certificateInfoList = find.query().where().isNull("checksum").findList();
+    return certificateInfoList
+        .stream()
+        .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+        .collect(Collectors.toList());
   }
 
   public static List<CertificateInfo> getAll(UUID customerUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID).findList();
+    List<CertificateInfo> certificateInfoList =
+        find.query().where().eq("customer_uuid", customerUUID).findList();
+    return certificateInfoList
+        .stream()
+        .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+        .collect(Collectors.toList());
   }
 
   public static boolean isCertificateValid(UUID certUUID) {

@@ -2,6 +2,16 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
+import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.CommunicationPorts;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.EncryptionAtRestConfig;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import static com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -9,7 +19,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -18,18 +27,60 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.AlertConfigFormData;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserFormData;
+import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.queries.QueryHelper;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,23 +88,10 @@ import org.yb.client.YBClient;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
+import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Http.HeaderNames;
 import play.mvc.Result;
 import play.mvc.Results;
-import play.libs.concurrent.HttpExecutionContext;
-
-import java.io.*;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
-import java.util.concurrent.CompletionStage;
-
-import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
-import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.*;
-import static com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 
 public class UniverseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
@@ -1482,19 +1520,34 @@ public class UniverseController extends AuthenticatedController {
             return ApiResponse.error(
                 BAD_REQUEST, "certUUID is required for taskType: " + taskParams.taskType);
           }
-          if (!taskParams.getPrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
-            return ApiResponse.error(
-                BAD_REQUEST, "Certs can only be rotated for onprem." + taskParams.taskType);
-          }
           CertificateInfo cert = CertificateInfo.get(taskParams.certUUID);
+          if (cert == null) {
+            throw new IllegalArgumentException("Certificate not present: " + taskParams.certUUID);
+          }
           if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
             return ApiResponse.error(
-                BAD_REQUEST, "Need a custom cert. Cannot use self-signed." + taskParams.taskType);
+                BAD_REQUEST, "Need a custom cert. Cannot use self-signed. " + taskParams.certUUID);
+          }
+          if (!universe
+              .getUniverseDetails()
+              .getPrimaryCluster()
+              .userIntent
+              .providerType
+              .equals(CloudType.onprem)) {
+            return ApiResponse.error(
+                BAD_REQUEST, "Certs can only be rotated for onprem." + taskParams.taskType);
           }
           cert = CertificateInfo.get(universe.getUniverseDetails().rootCA);
           if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
             return ApiResponse.error(
-                BAD_REQUEST, "Only custom certs can be rotated." + taskParams.taskType);
+                BAD_REQUEST,
+                "Only custom certs can be rotated. current rootCA is self-signed: " + cert.uuid);
+          }
+          if (!taskParams.rotateRoot
+              && CertificateHelper.areCertsDiff(
+                  universe.getUniverseDetails().rootCA, taskParams.certUUID)) {
+            throw new IllegalArgumentException(
+                "CA certificates cannot be different when rotateRoot set to false.");
           }
       }
 
