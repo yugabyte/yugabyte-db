@@ -137,7 +137,7 @@ metadata:
   name: standard-us-west1-b
 provisioner: kubernetes.io/gce-pd
 parameters:
-  type: pd-standard
+  type: pd-ssd
   replication-type: none
   zone: us-west1-b
 ```
@@ -151,7 +151,7 @@ metadata:
   name: standard-us-central1-b
 provisioner: kubernetes.io/gce-pd
 parameters:
-  type: pd-standard
+  type: pd-ssd
   replication-type: none
   zone: us-central1-b
 ```
@@ -165,7 +165,7 @@ metadata:
   name: standard-us-east1-b
 provisioner: kubernetes.io/gce-pd
 parameters:
-  type: pd-standard
+  type: pd-ssd
   replication-type: none
   zone: us-east1-b
 
