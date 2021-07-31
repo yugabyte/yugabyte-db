@@ -11,7 +11,6 @@
 package com.yugabyte.yw.models;
 
 import io.ebean.annotation.EnumValue;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.io.Serializable;
 import java.util.UUID;
 import javax.persistence.Column;

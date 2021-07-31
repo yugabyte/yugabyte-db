@@ -633,7 +633,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array Dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   collation);	/* type's collation */
+				   collation,	/* type's collation */
+				   false);		/* whether relation is shared (n/a here) */
 	Assert(typoid == address.objectId);
 
 	/*
@@ -674,7 +675,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   collation);		/* type's collation */
+			   collation,		/* type's collation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(array_type);
 
@@ -1068,7 +1070,8 @@ DefineDomain(CreateDomainStmt *stmt)
 				   basetypeMod, /* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
 				   typNotNull,	/* Type NOT NULL */
-				   domaincoll); /* type's collation */
+				   domaincoll,	/* type's collation */
+				   false);		/* whether relation is shared (n/a here) */
 
 	/*
 	 * Create the array type that goes with it.
@@ -1108,7 +1111,8 @@ DefineDomain(CreateDomainStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   domaincoll);		/* type's collation */
+			   domaincoll,		/* type's collation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(domainArrayName);
 
@@ -1223,7 +1227,8 @@ DefineEnum(CreateEnumStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation */
+				   InvalidOid,	/* type's collation */
+				   false);		/* whether relation is shared (n/a here) */
 
 	/* Enter the enum's values into pg_enum */
 	EnumValuesCreate(enumTypeAddr.objectId, stmt->vals);
@@ -1263,7 +1268,8 @@ DefineEnum(CreateEnumStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* type's collation */
+			   InvalidOid,		/* type's collation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(enumArrayName);
 
@@ -1272,10 +1278,10 @@ DefineEnum(CreateEnumStmt *stmt)
 
 /*
  * AlterEnum
- *		ALTER TYPE on an enum.
+ *		Adds a new label to an existing enum.
  */
 ObjectAddress
-AlterEnum(AlterEnumStmt *stmt, bool isTopLevel)
+AlterEnum(AlterEnumStmt *stmt)
 {
 	Oid			enum_type_oid;
 	TypeName   *typename;
@@ -1293,6 +1299,8 @@ AlterEnum(AlterEnumStmt *stmt, bool isTopLevel)
 	/* Check it's an enum and check user has permission to ALTER the enum */
 	checkEnumOwner(tup);
 
+	ReleaseSysCache(tup);
+
 	if (stmt->oldVal)
 	{
 		/* Rename an existing label */
@@ -1301,28 +1309,6 @@ AlterEnum(AlterEnumStmt *stmt, bool isTopLevel)
 	else
 	{
 		/* Add a new label */
-
-		/*
-		 * Ordinarily we disallow adding values within transaction blocks,
-		 * because we can't cope with enum OID values getting into indexes and
-		 * then having their defining pg_enum entries go away.  However, it's
-		 * okay if the enum type was created in the current transaction, since
-		 * then there can be no such indexes that wouldn't themselves go away
-		 * on rollback.  (We support this case because pg_dump
-		 * --binary-upgrade needs it.)  We test this by seeing if the pg_type
-		 * row has xmin == current XID and is not HEAP_UPDATED.  If it is
-		 * HEAP_UPDATED, we can't be sure whether the type was created or only
-		 * modified in this xact.  So we are disallowing some cases that could
-		 * theoretically be safe; but fortunately pg_dump only needs the
-		 * simplest case.
-		 */
-		if (!IsYugaByteEnabled() &&
-			HeapTupleHeaderGetXmin(tup->t_data) == GetCurrentTransactionId() &&
-			!(tup->t_data->t_infomask & HEAP_UPDATED))
-			 /* safe to do inside transaction block */ ;
-		else
-			PreventInTransactionBlock(isTopLevel, "ALTER TYPE ... ADD");
-
 		AddEnumLabel(enum_type_oid, stmt->newVal,
 					 stmt->newValNeighbor, stmt->newValIsAfter,
 					 stmt->skipIfNewValExists);
@@ -1331,8 +1317,6 @@ AlterEnum(AlterEnumStmt *stmt, bool isTopLevel)
 	InvokeObjectPostAlterHook(TypeRelationId, enum_type_oid, 0);
 
 	ObjectAddressSet(address, TypeRelationId, enum_type_oid);
-
-	ReleaseSysCache(tup);
 
 	return address;
 }
@@ -1573,7 +1557,8 @@ DefineRange(CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation (ranges never have one) */
+				   InvalidOid,	/* type's collation (ranges never have one) */
+				   false);		/* whether relation is shared (n/a here) */
 	Assert(typoid == address.objectId);
 
 	/* Create the entry in pg_range */
@@ -1615,7 +1600,8 @@ DefineRange(CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* typcollation */
+			   InvalidOid,		/* typcollation */
+			   false);			/* whether relation is shared (n/a here) */
 
 	pfree(rangeArrayName);
 
@@ -2313,7 +2299,9 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 							 0, /* relation kind is n/a */
 							 false, /* a domain isn't an implicit array */
 							 false, /* nor is it any kind of dependent type */
-							 true); /* We do need to rebuild dependencies */
+							 true, /* We do need to rebuild dependencies */
+							 false, /* not a system relation rowtype */
+							 false); /* not a shared relation rowtype */
 
 	InvokeObjectPostAlterHook(TypeRelationId, domainoid, 0);
 

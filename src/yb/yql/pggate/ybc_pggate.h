@@ -58,7 +58,7 @@ YBCStatus YBCPgInvalidateCache();
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
-const bool YBCGetDisableTransparentCacheRefreshRetry();
+bool YBCGetDisableTransparentCacheRefreshRetry();
 
 // Set catalog_version to the local tserver's catalog version stored in shared memory.  Return error
 // if the shared memory has not been initialized (e.g. in initdb).
@@ -358,11 +358,18 @@ YBCStatus YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 void YBCPgDropBufferedOperations();
 
-YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
-                          const YBCPgOid table_oid,
-                          YBCPgStatement *handle);
+YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
+                         const YBCPgOid table_oid,
+                         const int targrows,
+                         YBCPgStatement *handle);
 
-YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count);
+YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state);
+
+YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more);
+
+YBCStatus YBCPgExecSample(YBCPgStatement handle);
+
+YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
@@ -429,6 +436,8 @@ YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode(bool success);
+YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
+YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -521,6 +530,8 @@ void YBCPgSetThreadLocalErrMsg(const void* new_msg);
 const void* YBCPgGetThreadLocalErrMsg();
 
 void YBCPgResetCatalogReadTime();
+
+void YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
 
 #ifdef __cplusplus
 }  // extern "C"

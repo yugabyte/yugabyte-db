@@ -99,9 +99,9 @@ void TakeRegistration(consensus::RaftPeerPB* source, TSInfoPB* dest) {
 }
 
 void CopyRegistration(const consensus::RaftPeerPB& source, TSInfoPB* dest) {
-  dest->mutable_private_rpc_addresses()->CopyFrom(source.last_known_private_addr());
-  dest->mutable_broadcast_addresses()->CopyFrom(source.last_known_broadcast_addr());
-  dest->mutable_cloud_info()->CopyFrom(source.cloud_info());
+  *dest->mutable_private_rpc_addresses() = source.last_known_private_addr();
+  *dest->mutable_broadcast_addresses() = source.last_known_broadcast_addr();
+  *dest->mutable_cloud_info() = source.cloud_info();
 }
 
 void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest) {
@@ -156,6 +156,33 @@ TableType GetTableTypeForDatabase(const YQLDatabase database_type) {
       DCHECK_EQ(database_type, YQLDatabase::YQL_DATABASE_UNKNOWN);
       return TableType::DEFAULT_TABLE_TYPE;
   }
+}
+
+Result<bool> TableMatchesIdentifier(
+    const TableId& id, const SysTablesEntryPB& table, const TableIdentifierPB& table_identifier) {
+  if (table_identifier.has_table_id()) {
+    return id == table_identifier.table_id();
+  }
+  if (!table_identifier.table_name().empty() && table_identifier.table_name() != table.name()) {
+    return false;
+  }
+  if (table_identifier.has_namespace_()) {
+    const auto& ns = table_identifier.namespace_();
+    if (ns.has_id()) {
+      return table.namespace_id() == ns.id();
+    }
+    if (ns.has_database_type() &&
+        ns.database_type() != master::GetDatabaseTypeForTable(table.table_type())) {
+      return false;
+    }
+    if (ns.has_name()) {
+      return table.namespace_name() == ns.name();
+    }
+    return STATUS_FORMAT(
+      InvalidArgument, "Wrong namespace identifier format: $0", ns);
+  }
+  return STATUS_FORMAT(
+    InvalidArgument, "Wrong table identifier format: $0", table_identifier);
 }
 
 } // namespace master

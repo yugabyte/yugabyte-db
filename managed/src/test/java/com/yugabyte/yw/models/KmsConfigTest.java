@@ -10,12 +10,13 @@
 
 package com.yugabyte.yw.models;
 
+import static org.junit.Assert.assertEquals;
+
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import java.util.UUID;
 import org.junit.Test;
 import play.libs.Json;
-import java.util.UUID;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
-import static org.junit.Assert.assertEquals;
 
 public class KmsConfigTest extends FakeDBApplication {
   @Test

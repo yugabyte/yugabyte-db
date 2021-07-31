@@ -14,20 +14,30 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
+import static com.yugabyte.yw.models.Users.Role;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -35,6 +45,21 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import javax.persistence.PersistenceException;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -46,56 +71,46 @@ import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
 import play.libs.ws.StandaloneWSResponse;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
-import play.mvc.*;
+import play.mvc.Controller;
+import play.mvc.Http;
+import play.mvc.Result;
+import play.mvc.Results;
+import play.mvc.With;
 
-import javax.persistence.PersistenceException;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
-import static com.yugabyte.yw.models.Users.Role;
-
-@Api
+@Api(value = "Session")
 public class SessionController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
   static final Pattern PROXY_PATTERN = Pattern.compile("^(.+):([0-9]{1,5})/.*$");
 
-  @Inject FormFactory formFactory;
+  @Inject private ValidatingFormFactory formFactory;
 
-  @Inject Configuration appConfig;
+  @Inject private Configuration appConfig;
 
-  @Inject ConfigHelper configHelper;
+  @Inject private ConfigHelper configHelper;
 
-  @Inject Environment environment;
+  @Inject private Environment environment;
 
-  @Inject WSClient ws;
+  @Inject private WSClient ws;
 
   @Inject private PlaySessionStore playSessionStore;
 
-  @Inject ApiHelper apiHelper;
+  @Inject private ApiHelper apiHelper;
 
-  @Inject PasswordPolicyService passwordPolicyService;
+  @Inject private PasswordPolicyService passwordPolicyService;
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
-  @Inject HttpExecutionContext ec;
+  @Inject private AlertRouteService alertRouteService;
+
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject private HttpExecutionContext ec;
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -106,7 +121,9 @@ public class SessionController extends Controller {
   private CommonProfile getProfile() {
     final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
     final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
-    return profileManager.get(true).get();
+    return profileManager
+        .get(true)
+        .orElseThrow(() -> new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
 
   @ApiOperation(value = "login", response = Object.class)
@@ -124,15 +141,9 @@ public class SessionController extends Controller {
       responseJson.put("error", "Platform login not supported when using SSO.");
       return badRequest(responseJson);
     }
-    Form<CustomerLoginFormData> formData =
-        formFactory.form(CustomerLoginFormData.class).bindFromRequest();
 
-    if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
-    }
-
-    CustomerLoginFormData data = formData.get();
+    CustomerLoginFormData data =
+        formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get();
     Users user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
 
     if (user == null) {
@@ -175,10 +186,9 @@ public class SessionController extends Controller {
 
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin() {
-    ObjectNode responseJson = Json.newObject();
     CommonProfile profile = getProfile();
     String emailAttr = appConfig.getString("yb.security.oidcEmailAttribute", "");
-    String email = "";
+    String email;
     if (emailAttr.equals("")) {
       email = profile.getEmail();
     } else {
@@ -224,7 +234,7 @@ public class SessionController extends Controller {
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
     if (securityLevel != null && securityLevel.equals("insecure")) {
       List<Users> users = Users.getAllReadOnly();
-      if (users == null || users.isEmpty()) {
+      if (users.isEmpty()) {
         responseJson.put("error", "No read only customer exists.");
         return unauthorized(responseJson);
       }
@@ -257,16 +267,12 @@ public class SessionController extends Controller {
   @With(TokenAuthenticator.class)
   public Result set_security(UUID customerUUID) {
     Form<SetSecurityFormData> formData =
-        formFactory.form(SetSecurityFormData.class).bindFromRequest();
+        formFactory.getFormDataOrBadRequest(SetSecurityFormData.class);
     ObjectNode responseJson = Json.newObject();
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
       responseJson.put("error", "Cannot allow insecure with multiple customers.");
       return unauthorized(responseJson);
-    }
-    if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
     }
 
     SetSecurityFormData data = formData.get();
@@ -312,15 +318,11 @@ public class SessionController extends Controller {
   }
 
   public Result register() {
-    Form<CustomerRegisterFormData> formData =
-        formFactory.form(CustomerRegisterFormData.class).bindFromRequest();
-
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    CustomerRegisterFormData data =
+        formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
     boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
-    int customerCount = Customer.find.all().size();
+    int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
       return ApiResponse.error(
           BAD_REQUEST, "Cannot register multiple " + "accounts in Single tenancy.");
@@ -329,7 +331,6 @@ public class SessionController extends Controller {
       return ApiResponse.error(
           BAD_REQUEST, "Cannot register multiple " + "accounts with SSO enabled platform.");
     }
-    CustomerRegisterFormData data = formData.get();
     if (customerCount == 0) {
       return registerCustomer(data, true);
     } else {
@@ -344,18 +345,20 @@ public class SessionController extends Controller {
   private Result registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
     try {
       Customer cust = Customer.create(data.getCode(), data.getName());
-      if (cust == null) {
-        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to register the customer");
-      }
       Role role = Role.Admin;
       if (isSuper) {
         role = Role.SuperAdmin;
       }
-      Result passwordCheckResult =
-          passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-      if (passwordCheckResult != null) {
-        return passwordCheckResult;
-      }
+      passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
+      alertRouteService.createDefaultRoute(cust.uuid);
+
+      List<AlertDefinitionGroup> alertGroups =
+          Arrays.stream(AlertDefinitionTemplate.values())
+              .filter(AlertDefinitionTemplate::isCreateForNewCustomer)
+              .map(template -> alertDefinitionGroupService.createGroupFromTemplate(cust, template))
+              .collect(Collectors.toList());
+      alertDefinitionGroupService.save(alertGroups);
+
       Users user =
           Users.create(
               data.getEmail(), data.getPassword(), role, cust.uuid, /* Primary user*/ true);
@@ -397,11 +400,11 @@ public class SessionController extends Controller {
     int customerCount = Customer.find.all().size();
     ObjectNode response = Json.newObject();
     response.put("count", customerCount);
-    return ApiResponse.success(response);
+    return YWResults.withRawData(response);
   }
 
   public Result appVersion() {
-    return ApiResponse.success(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
+    return YWResults.withData(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
   }
 
   @With(TokenAuthenticator.class)
@@ -427,7 +430,7 @@ public class SessionController extends Controller {
       }
       result.put("lines", lines);
 
-      return ApiResponse.success(result);
+      return YWResults.withRawData(result);
     } catch (IOException ex) {
       LOG.error("Log file open failed.", ex);
       return ApiResponse.error(

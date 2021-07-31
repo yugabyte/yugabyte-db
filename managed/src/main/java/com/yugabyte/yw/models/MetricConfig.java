@@ -2,21 +2,27 @@
 
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import io.ebean.annotation.*;
-import com.fasterxml.jackson.databind.JsonNode;
-import play.libs.Json;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Transient;
+import com.fasterxml.jackson.databind.JsonNode;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.Transient;
+import play.libs.Json;
 
+@ApiModel(description = "Metric config")
 @Entity
 public class MetricConfig extends Model {
   public static class Layout {
@@ -35,11 +41,12 @@ public class MetricConfig extends Model {
   @Transient public String metric;
   @Transient public String function;
   @Transient public String range;
-  @Transient public JsonNode filters;
+  @Transient public Map<String, String> filters = new HashMap<>();
   @Transient public String group_by;
-  @Transient public JsonNode layout;
+  @Transient public Layout layout = new Layout();
   @Transient public String operator;
 
+  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_ONLY)
   @Id
   @Column(length = 100)
   private String config_key;
@@ -52,6 +59,8 @@ public class MetricConfig extends Model {
     this.config_key = key;
   }
 
+  // TODO : update this field once json cleanup is done.
+  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_WRITE)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode config;
@@ -69,17 +78,11 @@ public class MetricConfig extends Model {
   static final Pattern specialFilterPattern = Pattern.compile("[*|+$]");
 
   public Map<String, String> getFilters() {
-    if (this.getConfig().filters != null) {
-      return Json.fromJson(this.getConfig().filters, Map.class);
-    }
-    return new HashMap<>();
+    return this.getConfig().filters;
   }
 
   public Layout getLayout() {
-    if (this.getConfig().layout != null) {
-      return Json.fromJson(this.getConfig().layout, Layout.class);
-    }
-    return new Layout();
+    return this.getConfig().layout;
   }
 
   public Map<String, String> getQueries(Map<String, String> additionalFilters, int queryRangeSecs) {

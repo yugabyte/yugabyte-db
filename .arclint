@@ -51,16 +51,11 @@
       "type": "googlecpplint",
       "exclude": [
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_undef[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_cxx_decl[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_common[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_wrapper_common[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_wrapper_decl[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_wrapper_impl[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_pg_wrapper_inl[.]h$)",
-        "(^src/yb/yql/pggate/pg_api_example_if[.]h$)",
-        "(^src/yb/yql/pggate/pg_txn_manager_if[.]h$)",
-        "(^src/yb/yql/pggate/pggate_if[.]h$)"
+        "(^src/yb/gutil/linux_syscall_support[.]h$)",
+        "(^src/yb/gutil/cycleclock-inl[.]h$)",
+        "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
+        "(^src/yb/gutil/port[.]h$)",
+        "(^src/yb/rocksdb/util/murmurhash[.]cc$)"
       ],
       "include": [
         "(\\.cpp$)",

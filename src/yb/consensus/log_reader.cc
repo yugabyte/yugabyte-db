@@ -75,10 +75,9 @@ METRIC_DEFINE_counter(tablet, log_reader_entries_read, "Entries Read From Log",
                       yb::MetricUnit::kEntries,
                       "Number of entries read from the WAL since tablet start");
 
-METRIC_DEFINE_histogram(table, log_reader_read_batch_latency, "Log Read Latency",
+METRIC_DEFINE_coarse_histogram(table, log_reader_read_batch_latency, "Log Read Latency",
                         yb::MetricUnit::kBytes,
-                        "Microseconds spent reading log entry batches",
-                        60000000LU, 2);
+                        "Microseconds spent reading log entry batches");
 
 DEFINE_test_flag(bool, record_segments_violate_max_time_policy, false,
     "If set, everytime GetSegmentPrefixNotIncluding runs, segments that violate the max time "

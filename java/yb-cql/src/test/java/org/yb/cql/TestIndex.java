@@ -511,6 +511,156 @@ public class TestIndex extends BaseCQLTest {
                 "");
   }
 
+  private void testUniqueIndexUpdate(boolean strongConsistency) throws Exception {
+    // Create test table and indexes.
+    createTable("create table test_update " +
+                "(h1 int, h2 int, r1 int, r2 int, v1 int, v2 int, " +
+                "primary key ((h1, h2), r1, r2)) ", strongConsistency);
+    createIndex("create unique index idx_pk on test_update(r1)", strongConsistency);
+    createIndex("create unique index idx_non_pk on test_update(v1)", strongConsistency);
+
+    Map<String, String> tableColumnMap = new HashMap<String, String>() {{
+        put("idx_pk", "r1, h1, h2, r2");
+        put("idx_non_pk", "v1, h1, h2, r1, r2");
+      }};
+
+    Map<String, String> indexColumnMap = new HashMap<String, String>() {{
+        put("idx_pk", "\"C$_r1\", \"C$_h1\", \"C$_h2\", \"C$_r2\"");
+        put("idx_non_pk", "\"C$_v1\", \"C$_h1\", \"C$_h2\", \"C$_r1\", \"C$_r2\"");
+      }};
+
+    // test_update: Row[1, 1, 1, 1, 1, 1]
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+                      "insert into test_update (h1, h2, r1, r2, v1, v2) " +
+                      "values (1, 1, 1, 1, 1, 1);");
+
+    // test_update: Row[1, 1, 1, 1, 99, 1]
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+                      "update test_update set v1 = 99 " +
+                      "where h1 = 1 and h2 = 1 and r1 = 1 and r2 = 1;");
+
+    // Conflict on 'v1=99' duplicate value in unique index 'idx_non_pk'.
+    runInvalidStmt(
+          "update test_update set v1=99, v2=5 WHERE h1=9 and h2=9 and r1=9 and r2=9",
+          "Duplicate value disallowed by unique index idx_non_pk");
+
+    // Conflict on 'r1=1' duplicate value in unique index 'idx_pk'.
+    runInvalidStmt(
+          "update test_update set v1=88, v2=88 WHERE h1=9 and h2=9 and r1=1 and r2=9;",
+          "Duplicate value disallowed by unique index idx_pk");
+
+    if (strongConsistency) {
+      // Conflict on 'v1=NULL' duplicate value in unique index 'idx_non_pk'.
+      runInvalidStmt(
+          "start transaction;" +
+          "  update test_update set v1=NULL, v2=5 WHERE h1=2 and h2=1 and r1=2 and r2=2;" +
+          "  update test_update set v1=NULL, v2=6 WHERE h1=2 and h2=1 and r1=3 and r2=3;" +
+          "commit;",
+          "Duplicate value disallowed by unique index idx_non_pk");
+      assertQuery("select * from test_update where v1 = NULL", "");
+
+      // Conflict on 'r1=4' duplicate value in unique index 'idx_pk'.
+      runInvalidStmt(
+          "start transaction;" +
+          "  update test_update set v1=11, v2=12 WHERE h1=3 and h2=1 and r1=4 and r2=1;" +
+          "  update test_update set v1=21, v2=22 WHERE h1=3 and h2=1 and r1=4 and r2=2;" +
+          "commit;",
+          "Duplicate value disallowed by unique index idx_pk");
+      assertQuery("select * from test_update where r1 = 4", "");
+    } else {
+      runInvalidStmt(
+          "start transaction;" +
+          "  update test_update set v1=7, v2=7 WHERE h1=7 and h2=7 and r1=7 and r2=7;" +
+          "commit;",
+          "Transactions are not enabled in the table");
+    }
+  }
+
+  private void testIndexUpdateMisc(boolean strongConsistency) throws Exception {
+    // #7641: UPDATE a row without liveness column. Set some columns with only null values
+    // (so it actually seems like a delete until we discover an existing non-null column).
+    // A row without liveness column can be achieved by inserting a row using UPDATE (upsert
+    // semantics). There should be no deletion of index entry.
+    createTable("create table test_update (h1 int, r1 int, v1 int, v2 int, v3 int, " +
+      "primary key(h1, r1)) ", strongConsistency);
+    createIndex("create index i1 on test_update (v3)", strongConsistency);
+
+    Map<String, String> tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1, r1");}};
+    Map<String, String> indexColumnMap = new HashMap<String, String>() {{
+      put("i1", "\"C$_v3\", \"C$_h1\", \"C$_r1\"");
+    }};
+
+    // Create row without liveness column. Assert that index entry is created.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v1=3, v2=4, v3=null where h1=1 and r1=2");
+
+    // Perform update as described in #7641. Assert that index entry isn't removed spuriously.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v2=null where h1=1 and r1=2");
+
+    session.execute("drop table test_update");
+
+    // =========================================================================
+
+    // Follow-up test case: Apart from actual bug in #7641, we also test below case:
+    //   - UPDATE a row without liveness column. Set only null values on regular columns except a
+    //     non-null value on a static column. Index entry should get deleted.
+    createTable("create table test_update (h1 int, r1 int, s1 int static, v2 int, v3 int, " +
+      "primary key(h1, r1)) ", strongConsistency);
+    createIndex("create index i1 on test_update (v3)", strongConsistency);
+
+    // Create row without liveness column. Assert that index entry is created.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set s1=3, v2=4, v3=null where h1=1 and r1=2");
+
+    // Perform update - index entry should be removed since tuple is removed in main table.
+    session.execute("update test_update set s1=4, v2=null where h1=1 and r1=2");
+    assertQuery("select * from test_update where v3=null", "");
+    Set<String> index_tuples = queryTable("i1", indexColumnMap.get("i1"));
+    assertTrue(index_tuples.size() == 0);
+    session.execute("drop table test_update");
+
+    // =========================================================================
+
+    // Test case for #8834
+    String create_table_stmt = "CREATE TABLE test_update(h1 uuid PRIMARY KEY," +
+      " v1 int, v2 int, v3 text) WITH default_time_to_live = 0";
+
+    if (strongConsistency)
+      create_table_stmt += " AND transactions = {'enabled': 'true'}";
+
+    session.execute(create_table_stmt);
+    createIndex("CREATE INDEX i1 ON test_update (v2, h1)", strongConsistency);
+
+    tableColumnMap = new HashMap<String, String>() {{put("i1", "v2, h1");}};
+    indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v2\", \"C$_h1\"");}};
+
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+
+    session.execute("drop index i1");
+
+    // Test to ensure below condition in case of a row deletion using
+    // DELETE of some cols/ UPDATE of cols to NULLs -
+    //   A column that is DELETEd or UPDATEd to NULL is still read
+    //   in cql_operation.cc if there is an index on that column. This is to ensure that the old
+    //   index entry for that column is removed.
+    createIndex("CREATE INDEX i1 ON test_update (v3)", strongConsistency);
+    tableColumnMap = new HashMap<String, String>() {{put("i1", "v3, h1");}};
+    indexColumnMap = new HashMap<String, String>() {{put("i1", "\"C$_v3\", \"C$_h1\"");}};
+
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = NULL where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+
+    // Add the row again and this time do a DELETE.
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "update test_update set v3 = 'ABC' where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+    assertIndexUpdate(tableColumnMap, indexColumnMap,
+      "DELETE v3 from test_update where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
+  }
+
   @Test
   public void testIndexUpdate() throws Exception {
     testIndexUpdate(true);
@@ -519,6 +669,26 @@ public class TestIndex extends BaseCQLTest {
   @Test
   public void testWeakIndexUpdate() throws Exception {
     testIndexUpdate(false);
+  }
+
+  @Test
+  public void testUniqueIndexUpdate() throws Exception {
+    testUniqueIndexUpdate(true);
+  }
+
+  @Test
+  public void testWeakUniqueIndexUpdate() throws Exception {
+    testUniqueIndexUpdate(false);
+  }
+
+  @Test
+  public void testIndexUpdateMisc() throws Exception {
+    testIndexUpdateMisc(true);
+  }
+
+  @Test
+  public void testWeakIndexUpdateMisc() throws Exception {
+    testIndexUpdateMisc(false);
   }
 
   @Test
@@ -885,7 +1055,7 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testDMLInTranaction() throws Exception {
+  public void testDMLInTransaction() throws Exception {
     // Create 2 tables with secondary indexes and verify they can be updated in the one transaction.
     session.execute("create table test_txn1 (k int primary key, v int) " +
                     "with transactions = {'enabled' : true};");
@@ -916,7 +1086,29 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testDMLInTranactionWith2Indexes() throws Exception {
+  public void testDMLInTransactionWithIndex() throws Exception {
+    // Create 2 tables with secondary indexes and verify they can be updated in the one transaction.
+    session.execute("create table test_txn1 (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true}");
+    session.execute("create index test_txn1_by_v on test_txn1 (v)");
+
+    session.execute("create table test_txn2 (k text primary key, v text) " +
+                    "with transactions = {'enabled' : true}");
+    session.execute("create index test_txn2_by_v on test_txn2 (v)");
+
+    session.execute("begin transaction" +
+                    "  insert into test_txn1 (k, v) values (1, 101);" +
+                    "  insert into test_txn2 (k, v) values ('k1', 'v101');" +
+                    "end transaction;");
+    // Verify the rows.
+    assertQuery("select * from test_txn1", "Row[1, 101]");
+    assertQuery("select * from test_txn1_by_v", "Row[1, 101]");
+    assertQuery("select * from test_txn2", "Row[k1, v101]");
+    assertQuery("select * from test_txn2_by_v", "Row[k1, v101]");
+  }
+
+  @Test
+  public void testDMLInTransactionWith2Indexes() throws Exception {
     // Create table with 2 secondary indexes and verify they can be updated in the one transaction.
     session.execute("create table test_txn (k int primary key, v1 int, v2 int) " +
                     "with transactions = {'enabled' : true};");
@@ -1017,7 +1209,7 @@ public class TestIndex extends BaseCQLTest {
     }
   }
 
-  protected void doTestDMLInTranactionWith9Indexes(boolean testAbort) throws Exception {
+  protected void doTestDMLInTransactionWith9Indexes(boolean testAbort) throws Exception {
     // Create table with secondary indexes and verify they can be updated in the one transaction.
     session.execute("create table test_txn (k int primary key, " +
                     "v1 int, v2 int, v3 int, v4 int, v5 int, v6 int, v7 int, v8 int, v9 int) " +
@@ -1048,13 +1240,13 @@ public class TestIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testDMLInTranactionWith9Indexes() throws Exception {
-    doTestDMLInTranactionWith9Indexes(false);
+  public void testDMLInTransactionWith9Indexes() throws Exception {
+    doTestDMLInTransactionWith9Indexes(false);
   }
 
   @Test
-  public void testDMLInAbortedTranactionWith9Indexes() throws Exception {
-    doTestDMLInTranactionWith9Indexes(true);
+  public void testDMLInAbortedTransactionWith9Indexes() throws Exception {
+    doTestDMLInTransactionWith9Indexes(true);
   }
 
   @Test

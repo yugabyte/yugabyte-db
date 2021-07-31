@@ -39,6 +39,7 @@
 #include "yb/yql/pggate/type_mapping.h"
 
 #include "yb/server/hybrid_clock.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -98,7 +99,7 @@ class PgApiImpl {
   CHECKED_STATUS InvalidateCache();
 
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
-  const bool GetDisableTransparentCacheRefreshRetry();
+  bool GetDisableTransparentCacheRefreshRetry();
 
   Result<bool> IsInitDbDone();
 
@@ -421,10 +422,17 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Analyze.
-  CHECKED_STATUS NewAnalyze(const PgObjectId& table_id,
+  CHECKED_STATUS NewSample(const PgObjectId& table_id,
+                           const int targrows,
                            PgStatement **handle);
 
-  CHECKED_STATUS ExecAnalyze(PgStatement *handle, int32_t* rows);
+  CHECKED_STATUS InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
+
+  CHECKED_STATUS SampleNextBlock(PgStatement *handle, bool *has_more);
+
+  CHECKED_STATUS ExecSample(PgStatement *handle);
+
+  CHECKED_STATUS GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows);
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
@@ -440,6 +448,8 @@ class PgApiImpl {
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
   CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -490,12 +500,14 @@ class PgApiImpl {
     std::unique_ptr<rpc::Messenger> messenger;
   };
 
+  void ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
+
  private:
   // Control variables.
   PggateOptions pggate_options_;
 
   // Metrics.
-  gscoped_ptr<MetricRegistry> metric_registry_;
+  std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
 
   // Memory tracker.

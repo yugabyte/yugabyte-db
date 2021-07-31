@@ -9,83 +9,155 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.models.AlertDefinition.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
+import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Singleton;
+import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.EntityOperation;
+import io.ebean.annotation.Transactional;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
+@Slf4j
 public class AlertDefinitionService {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AlertDefinitionService.class);
+  private final AlertService alertService;
 
-  public AlertDefinition create(AlertDefinition definition) {
-    if (definition.getUuid() != null) {
-      throw new IllegalArgumentException("Can't create alert definition with predefined uuid");
+  @Inject
+  public AlertDefinitionService(AlertService alertService) {
+    this.alertService = alertService;
+  }
+
+  @Transactional
+  public List<AlertDefinition> save(List<AlertDefinition> definitions) {
+    if (CollectionUtils.isEmpty(definitions)) {
+      return definitions;
     }
-    definition.generateUUID();
-    definition.save();
-    LOG.debug("Alert definition {} created", definition);
-    return definition;
+
+    Set<UUID> definitionUuids =
+        definitions
+            .stream()
+            .filter(definition -> !definition.isNew())
+            .map(AlertDefinition::getUuid)
+            .collect(Collectors.toSet());
+    AlertDefinitionFilter filter = AlertDefinitionFilter.builder().uuids(definitionUuids).build();
+    Map<UUID, AlertDefinition> beforeDefinitions =
+        list(filter)
+            .stream()
+            .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
+
+    Map<EntityOperation, List<AlertDefinition>> toCreateAndUpdate =
+        definitions
+            .stream()
+            .peek(definition -> validate(definition, beforeDefinitions.get(definition.getUuid())))
+            .collect(Collectors.groupingBy(definition -> definition.isNew() ? CREATE : UPDATE));
+
+    if (toCreateAndUpdate.containsKey(CREATE)) {
+      List<AlertDefinition> toCreate = toCreateAndUpdate.get(CREATE);
+      toCreate.forEach(AlertDefinition::generateUUID);
+      AlertDefinition.db().saveAll(toCreate);
+    }
+
+    if (toCreateAndUpdate.containsKey(UPDATE)) {
+      List<AlertDefinition> toUpdate = toCreateAndUpdate.get(UPDATE);
+      AlertDefinition.db().updateAll(toUpdate);
+    }
+
+    log.debug("{} alert definitions saved", definitions.size());
+    return definitions;
+  }
+
+  @Transactional
+  public AlertDefinition save(AlertDefinition definition) {
+    return save(Collections.singletonList(definition)).get(0);
   }
 
   public AlertDefinition get(UUID uuid) {
-    return list(new AlertDefinitionFilter().setUuid(uuid)).stream().findFirst().orElse(null);
+    if (uuid == null) {
+      throw new YWServiceException(BAD_REQUEST, "Can't get alert definition by null uuid");
+    }
+    return list(AlertDefinitionFilter.builder().uuid(uuid).build())
+        .stream()
+        .findFirst()
+        .orElse(null);
   }
 
   public AlertDefinition getOrBadRequest(UUID uuid) {
-    return list(new AlertDefinitionFilter().setUuid(uuid))
-        .stream()
-        .findFirst()
-        .orElseThrow(
-            () -> new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid));
-  }
-
-  public List<AlertDefinition> list(AlertDefinitionFilter filter) {
-    return AlertDefinition.list(filter);
-  }
-
-  public List<UUID> listIds(AlertDefinitionFilter filter) {
-    return AlertDefinition.listIds(filter);
-  }
-
-  public void process(AlertDefinitionFilter filter, Consumer<AlertDefinition> consumer) {
-    AlertDefinition.process(filter, consumer);
-  }
-
-  public AlertDefinition update(AlertDefinition definition) {
-    if (definition.getUuid() == null) {
-      throw new IllegalArgumentException("Can't update alert definition without uuid");
+    if (uuid == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
     }
-    AlertDefinition before = get(definition.getUuid());
-    if (!definition.configEquals(before)) {
-      definition.setConfigWritten(false);
+    AlertDefinition definition = get(uuid);
+    if (definition == null) {
+      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
     }
-    definition.save();
-    LOG.debug("Alert definition {} updated", definition);
     return definition;
   }
 
-  public void delete(UUID uuid) {
-    AlertDefinition definition = get(uuid);
-    if (definition == null) {
-      LOG.warn("Alert definition {} is already deleted", uuid);
-      return;
-    }
-    definition.delete();
-    LOG.debug("Alert definition {} deleted", uuid);
+  public List<AlertDefinition> list(AlertDefinitionFilter filter) {
+    return createQueryByFilter(filter).findList();
   }
 
+  public List<UUID> listIds(AlertDefinitionFilter filter) {
+    return createQueryByFilter(filter).findIds();
+  }
+
+  public void process(AlertDefinitionFilter filter, Consumer<AlertDefinition> consumer) {
+    createQueryByFilter(filter).findEach(consumer);
+  }
+
+  @Transactional
+  public void delete(UUID uuid) {
+    delete(AlertDefinitionFilter.builder().uuid(uuid).build());
+  }
+
+  @Transactional
   public void delete(AlertDefinitionFilter filter) {
-    int deleted = AlertDefinition.delete(filter);
-    LOG.debug("{} alert definitions deleted", deleted);
+    List<AlertDefinition> toDelete = list(filter);
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .definitionUuids(
+                toDelete.stream().map(AlertDefinition::getUuid).collect(Collectors.toList()))
+            .build();
+    alertService.markResolved(alertFilter);
+    int deleted = createQueryByFilter(filter).delete();
+    log.debug("{} alert definitions deleted", deleted);
+  }
+
+  private void validate(AlertDefinition definition, AlertDefinition before) {
+    if (definition.getCustomerUUID() == null) {
+      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
+    }
+    if (definition.getGroupUUID() == null) {
+      throw new YWServiceException(BAD_REQUEST, "Group UUID field is mandatory");
+    }
+    if (StringUtils.isEmpty(definition.getQuery())) {
+      throw new YWServiceException(BAD_REQUEST, "Query field is mandatory");
+    }
+    if (before != null) {
+      if (!definition.getCustomerUUID().equals(before.getCustomerUUID())) {
+        throw new YWServiceException(
+            BAD_REQUEST, "Can't change customer UUID for definition " + definition.getUuid());
+      }
+    } else if (!definition.isNew()) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Can't update missing definition " + definition.getUuid());
+    }
   }
 }

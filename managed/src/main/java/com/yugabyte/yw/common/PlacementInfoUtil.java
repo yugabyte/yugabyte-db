@@ -2,6 +2,13 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toCollection;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -17,7 +24,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -25,23 +36,28 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Queue;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toCollection;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
@@ -379,12 +395,15 @@ public class PlacementInfoUtil {
     if (taskParams.universeUUID == null) {
       taskParams.universeUUID = UUID.randomUUID();
     } else {
-      try {
-        universe = Universe.getOrBadRequest(taskParams.universeUUID);
-      } catch (Exception e) {
-        LOG.info(
-            "Universe with UUID {} not found, configuring new universe.", taskParams.universeUUID);
-      }
+      universe =
+          Universe.maybeGet(taskParams.universeUUID)
+              .orElseGet(
+                  () -> {
+                    LOG.info(
+                        "Universe with UUID {} not found, configuring new universe.",
+                        taskParams.universeUUID);
+                    return null;
+                  });
     }
 
     String universeName =

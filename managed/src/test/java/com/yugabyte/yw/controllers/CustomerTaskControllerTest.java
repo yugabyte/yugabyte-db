@@ -2,65 +2,58 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+import static play.test.Helpers.route;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.Mock;
-
 import io.ebean.Model;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.mvc.Result;
-import play.test.WithApplication;
-import play.test.Helpers;
-
 import java.util.Calendar;
-import java.util.stream.IntStream;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
-import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.junit.Assert.*;
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
+import java.util.stream.IntStream;
+import org.junit.Before;
+import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
+import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CustomerTaskControllerTest extends FakeDBApplication {
@@ -264,6 +257,61 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testTasksListHistory() {
+    String authToken = user.createAuthToken();
+
+    UUID providerUUID = UUID.randomUUID();
+    UUID providerTaskUUID2 =
+        createTaskWithStatus(
+            providerUUID, CustomerTask.TargetType.Provider, Update, "Foo", "Running", 10.0);
+
+    String url = "/api/customers/" + customer.uuid + "/tasks_list";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    assertEquals(OK, result.status());
+    JsonNode universeTasks = Json.parse(contentAsString(result));
+
+    assertTrue(universeTasks.isArray());
+    assertEquals(1, universeTasks.size());
+    JsonNode task = universeTasks.get(0);
+    assertThat(
+        task.get("title").asText(), allOf(notNullValue(), equalTo("Updating Provider : Foo")));
+    assertThat(task.get("percentComplete").asDouble(), allOf(notNullValue(), equalTo(10.0)));
+    assertThat(task.get("status").asText(), allOf(notNullValue(), equalTo("Running")));
+    assertTrue(task.get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
+    assertTrue(task.get("completionTime").isNull());
+    assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Provider")));
+    assertThat(
+        task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(providerUUID.toString())));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testTaskListWithUniverseUUID() {
+    String authToken = user.createAuthToken();
+    Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
+
+    UUID taskUUID1 =
+        createTaskWithStatus(
+            universe.universeUUID,
+            CustomerTask.TargetType.Universe,
+            Create,
+            "Foo",
+            "Running",
+            50.0);
+    createTaskWithStatus(
+        universe1.universeUUID, CustomerTask.TargetType.Universe, Create, "Bar", "Running", 90.0);
+    String url = "/api/customers/" + customer.uuid + "/tasks_list?uUUID=" + universe.universeUUID;
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    assertEquals(OK, result.status());
+    JsonNode universeTasks = Json.parse(contentAsString(result));
+
+    assertTrue(universeTasks.isArray());
+    assertEquals(1, universeTasks.size());
+    assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testTaskCompletionTime() {
     String authToken = user.createAuthToken();
     UUID taskUUID =
@@ -420,12 +468,10 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    FakeApiHelper.doRequestWithAuthToken(
-                        "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken))
-            .getResult();
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken(
+                    "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken));
 
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));

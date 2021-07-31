@@ -90,17 +90,17 @@ ERROR:  Cannot use TABLEGROUP with TEMP table.
 -- Usage of WITH clause or specifying tablegroup name for CREATE INDEX. These all fail.
 --
 CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123);
-ERROR:  Cannot supply tablegroup through WITH clause.
+ERROR:  cannot supply tablegroup through WITH clause
 CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123, colocated=true);
-ERROR:  Cannot supply tablegroup through WITH clause.
+ERROR:  cannot supply tablegroup through WITH clause
 CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123) TABLEGROUP tgroup1;
-ERROR:  Cannot supply tablegroup through WITH clause.
+ERROR:  cannot supply tablegroup through WITH clause
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123);
-ERROR:  Cannot supply tablegroup through WITH clause.
+ERROR:  cannot supply tablegroup through WITH clause
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
-ERROR:  Cannot supply tablegroup through WITH clause.
+ERROR:  cannot supply tablegroup through WITH clause
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
-ERROR:  Cannot supply tablegroup through WITH clause.
+ERROR:  cannot supply tablegroup through WITH clause
 --
 -- Usage of SPLIT clause with TABLEGROUP should fail
 --

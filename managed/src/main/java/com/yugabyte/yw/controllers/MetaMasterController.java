@@ -2,6 +2,26 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+
+import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -9,37 +29,19 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import play.mvc.Controller;
 import play.mvc.Result;
 
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
-
+@Api(value = "Metamaster", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
 
   @Inject KubernetesManager kubernetesManager;
 
+  @ApiOperation(value = "get masters list", response = MastersList.class)
   public Result get(UUID universeUUID) {
     // Lookup the entry for the instanceUUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -48,21 +50,25 @@ public class MetaMasterController extends Controller {
     for (NodeDetails node : universe.getMasters()) {
       masters.add(MasterNode.fromUniverseNode(node));
     }
-    return ApiResponse.success(masters);
+    return YWResults.withData(masters);
   }
 
+  @ApiOperation(value = "get master address", response = String.class)
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.MASTER);
   }
 
+  @ApiOperation(value = "get YQL server address", response = String.class)
   public Result getYQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YQLSERVER);
   }
 
+  @ApiOperation(value = "get YSQL server address", response = String.class)
   public Result getYSQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YSQLSERVER);
   }
 
+  @ApiOperation(value = "get redis server address", response = String.class)
   public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
   }
@@ -77,18 +83,18 @@ public class MetaMasterController extends Controller {
     // instead of the POD ip.
     String serviceIPPort = getKuberenetesServiceIPPort(type, universe);
     if (serviceIPPort != null) {
-      return ApiResponse.success(serviceIPPort);
+      return YWResults.withData(serviceIPPort);
     }
 
     switch (type) {
       case MASTER:
-        return ApiResponse.success(universe.getMasterAddresses());
+        return YWResults.withData(universe.getMasterAddresses());
       case YQLSERVER:
-        return ApiResponse.success(universe.getYQLServerAddresses());
+        return YWResults.withData(universe.getYQLServerAddresses());
       case YSQLSERVER:
-        return ApiResponse.success(universe.getYSQLServerAddresses());
+        return YWResults.withData(universe.getYSQLServerAddresses());
       case REDISSERVER:
-        return ApiResponse.success(universe.getRedisServerAddresses());
+        return YWResults.withData(universe.getRedisServerAddresses());
       default:
         throw new IllegalArgumentException("Unexpected type " + type);
     }

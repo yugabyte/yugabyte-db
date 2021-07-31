@@ -20,14 +20,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link active">
+    <a href="../asynchronous-replication-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link">
+    <a href="../asynchronous-replication-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -35,7 +35,7 @@ showAsideToc: true
 
 </ul>
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/2dc-deployments/) in the Architecture section.
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. But sometimes asynchronous replication will meet your need for disaster recovery, auditing and compliance, and other applications. For more information, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/) in the Architecture section.
 
 This tutorial simulates a geo-distributed two data center deployment using two local YugabyteDB clusters, one representing "Data Center - East" and the other representing "Data Center - West." You can explore unidirectional (master-follower) asynchronous replication and bidirectional (multi-master) asynchronous replication using the [yugabyted](../../../reference/configuration/yugabyted) and [yb-admin](../../../admin/yb-admin) utilities.
 
@@ -67,8 +67,8 @@ Starting yugabyted...
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
 | YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/yugabyte-2.7.1.1/datacenter-east/data                        |
-| Log Dir             : /Users/myuser/yugabyte-2.7.1.1/datacenter-east/logs                        |
+| Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/data                        |
+| Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/logs                        |
 | Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
@@ -98,8 +98,8 @@ Starting yugabyted...
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
 | YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
-| Data Dir            : /Users/myuser/yugabyte-2.7.1.1/datacenter-west/data                        |
-| Log Dir             : /Users/myuser/yugabyte-2.7.1.1/datacenter-west/logs                        |
+| Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/data                        |
+| Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/logs                        |
 | Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
@@ -294,5 +294,5 @@ $ ./bin/yugabyted destroy \
 
 For more information, see the following in the Architecture section:
 
-- [Two data center (2DC) deployments](../../../architecture/2dc-deployments/)
-- [Change data capture (CDC)](../../../architecture/cdc-architecture)
+- [Asynchronous replication](../../../architecture/docdb-replication/async-replication/)
+- [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)

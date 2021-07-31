@@ -11,10 +11,9 @@
 package com.yugabyte.yw.common.password;
 
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
-import play.data.validation.ValidationError;
-
 import java.util.function.Function;
 import java.util.function.Predicate;
+import play.data.validation.ValidationError;
 
 class PasswordComplexityValidator implements PasswordValidator {
   private final Function<PasswordPolicyFormData, Integer> characterNumberExtractor;

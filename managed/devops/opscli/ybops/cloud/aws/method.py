@@ -11,7 +11,7 @@
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, ROOT_VOLUME_LABEL
@@ -470,3 +470,15 @@ class AwsListDnsEntryMethod(AbstractDnsMethod):
             }))
         except Exception as e:
             print(json.dumps({'error': repr(e)}))
+
+
+class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
+    def __init__(self, base_command):
+        super(AwsChangeInstanceTypeMethod, self).__init__(base_command)
+
+    def _change_instance_type(self, args, host_info):
+        self.cloud.change_instance_type(host_info, args.instance_type)
+
+    # We have to use this to uniform accessing host_info for AWS and GCP
+    def _host_info(self, args, host_info):
+        return host_info

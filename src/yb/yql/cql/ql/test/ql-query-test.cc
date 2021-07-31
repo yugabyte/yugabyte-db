@@ -1569,7 +1569,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
 
-  auto ts_manager = cluster_->leader_mini_master()->master()->ts_manager();
+  auto ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->ts_manager();
   NodeInstancePB instance;
   instance.set_permanent_uuid("test");
   instance.set_instance_seqno(0);

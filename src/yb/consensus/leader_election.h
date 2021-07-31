@@ -48,7 +48,6 @@
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/opid_util.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_controller.h"

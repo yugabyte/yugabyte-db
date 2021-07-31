@@ -24,6 +24,11 @@ if("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER
          " -Wno-stringop-truncation")
 endif()
 
+if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
+  string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+         " -DUSE_SSE42_CRC32C=1")
+endif()
+
 set(POSTGRES_EXTRA_LD_FLAGS "")
 if(NOT APPLE AND
    "${YB_BUILD_TYPE}" STREQUAL "asan" AND
@@ -34,8 +39,11 @@ endif()
 
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 
+set(POSTGRES_PKG_CONFIG_PATH "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib/pkgconfig")
+
 set(build_postgres_args
     "${CMAKE_COMMAND}" -E env "YB_BUILD_ROOT=$ENV{YB_BUILD_ROOT}"
+                          env "PKG_CONFIG_PATH=${POSTGRES_PKG_CONFIG_PATH}"
     "${BUILD_SUPPORT_DIR}/build_postgres"
       --build_root          "${YB_BUILD_ROOT}"
       --cflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
@@ -45,7 +53,8 @@ set(build_postgres_args
       --ldflags_ex          " ${CMAKE_EXE_LINKER_FLAGS}"
       --openssl_include_dir "${OPENSSL_INCLUDE_DIR}"
       --openssl_lib_dir     "${OPENSSL_LIB_DIR}"
-      --thirdparty_dir      "${YB_THIRDPARTY_DIR}")
+      --thirdparty_dir      "${YB_THIRDPARTY_DIR}"
+      --shared_library_suffix "${YB_SHARED_LIBRARY_SUFFIX}")
 
 if (NOT DEFINED LIBPQ_SHARED_LIB)
   message(FATAL_ERROR "LIBPQ_SHARED_LIB must be defined")

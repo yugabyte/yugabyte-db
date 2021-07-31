@@ -348,14 +348,13 @@
                                       yb::MetricLevel::kInfo),                 \
       max_val, num_sig_digits, yb::ExportPercentiles::kTrue)
 
-#define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val,      \
-                                num_sig_digits)                                \
+#define METRIC_DEFINE_coarse_histogram(entity, name, label, unit, desc)        \
   ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                        \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity),              \
                                       BOOST_PP_STRINGIZE(name), label, unit,   \
                                       desc,                                    \
                                       yb::MetricLevel::kInfo),                 \
-      max_val, num_sig_digits, yb::ExportPercentiles::kFalse)
+      2, 1, yb::ExportPercentiles::kFalse)
 
 // The following macros act as forward declarations for entity types and metric prototypes.
 #define METRIC_DECLARE_entity(name) \
@@ -593,6 +592,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
                      const MetricJsonOptions& opts) const;
 
   CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+                     const std::vector<std::string>& requested_metrics,
                      const MetricPrometheusOptions& opts) const;
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
@@ -830,6 +830,8 @@ class Metric : public RefCountedThreadSafe<Metric> {
   DISALLOW_COPY_AND_ASSIGN(Metric);
 };
 
+using MetricPtr = scoped_refptr<Metric>;
+
 // Registry of all the metrics for a server.
 //
 // This aggregates the MetricEntity objects associated with the server.
@@ -856,7 +858,24 @@ class MetricRegistry {
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
 
+  // Writes metrics in this registry to 'writer'.
+  //
+  // See the MetricPrometheusOptions struct definition above for options changing the
+  // output of this function.
   CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+                     const MetricPrometheusOptions& opts) const;
+  // Writes metrics in this registry to 'writer'.
+  //
+  // 'requested_metrics' is a set of substrings to match metric names against,
+  // where '*' matches all metrics.
+  //
+  // The string matching can either match an entity ID or a metric name.
+  // If it matches an entity ID, then all metrics for that entity will be printed.
+  //
+  // See the MetricPrometheusOptions struct definition above for options changing the
+  // output of this function.
+  CHECKED_STATUS WriteForPrometheus(PrometheusWriter* writer,
+                     const std::vector<std::string>& requested_metrics,
                      const MetricPrometheusOptions& opts) const;
 
   // For each registered entity, retires orphaned metrics. If an entity has no more
@@ -1330,6 +1349,8 @@ class Counter : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
 
+using CounterPtr = scoped_refptr<Counter>;
+
 class MillisLagPrototype : public MetricPrototype {
  public:
   explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
@@ -1406,9 +1427,15 @@ class AtomicMillisLag : public MillisLag {
   DISALLOW_COPY_AND_ASSIGN(AtomicMillisLag);
 };
 
-inline void IncrementCounter(const scoped_refptr<Counter>& counter) {
+inline void IncrementCounter(const CounterPtr& counter) {
   if (counter) {
     counter->Increment();
+  }
+}
+
+inline void IncrementCounterBy(const CounterPtr& counter, int64_t amount) {
+  if (counter) {
+    counter->IncrementBy(amount);
   }
 }
 
@@ -1477,10 +1504,12 @@ class Histogram : public Metric {
   explicit Histogram(std::unique_ptr<HistogramPrototype> proto, uint64_t highest_trackable_value,
         int num_significant_digits, ExportPercentiles export_percentiles);
 
-  const gscoped_ptr<HdrHistogram> histogram_;
+  const std::unique_ptr<HdrHistogram> histogram_;
   const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
+
+using HistogramPtr = scoped_refptr<Histogram>;
 
 inline void IncrementHistogram(const scoped_refptr<Histogram>& histogram, int64_t value) {
   if (histogram) {

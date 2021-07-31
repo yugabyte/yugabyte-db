@@ -48,11 +48,11 @@ showAsideToc: true
 
 ## Prerequisites
 
-1. One of the following operating systems
+1. One of the following operating systems:
 
-    - <i class="icon-centos"></i> CentOS 7
+    * <i class="icon-centos"></i> CentOS 7 or later
 
-    - <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+    * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
 
 1. Verify that you have Python 2 or 3 installed.
 
@@ -60,7 +60,7 @@ showAsideToc: true
     $ python --version
     ```
 
-    ```
+    ```output
     Python 3.7.3
     ```
 
@@ -79,13 +79,13 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 
     To install `wget`:
 
-    - CentOS: `yum install wget`
-    - Ubuntu: `apt install wget`
+    * CentOS: `yum install wget`
+    * Ubuntu: `apt install wget`
 
     To install `curl`:
 
-    - CentOS: `yum install curl`
-    - Ubuntu: `apt install curl`
+    * CentOS: `yum install curl`
+    * Ubuntu: `apt install curl`
 
 1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
 
@@ -94,13 +94,13 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    wget https://downloads.yugabyte.com/yugabyte-2.4.4.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.7.1.1-linux.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    tar xvfz yugabyte-2.4.4.0-linux.tar.gz && cd yugabyte-2.4.4.0/
+    $ tar xvfz yugabyte-2.7.1.1-linux.tar.gz && cd yugabyte-2.7.1.1/
     ```
 
 ## Configure YugabyteDB
@@ -108,7 +108,7 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 To configure YugabyteDB, run the following shell script.
 
 ```sh
-./bin/post_install.sh
+$ ./bin/post_install.sh
 ```
 
 {{<tip title="Next step" >}}

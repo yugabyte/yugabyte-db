@@ -324,22 +324,32 @@ T&& WrapMove(Result<T>&& result) {
 }
 
 template<class T>
-const T& WrapMove(const Result<T>& result) {
-  return *result;
-}
-
-template<class T>
 std::reference_wrapper<T> WrapMove(Result<T&>&& result) {
   return std::reference_wrapper<T>(*result);
 }
 
 template<class T>
-std::reference_wrapper<T> WrapMove(const Result<T&>& result) {
-  return std::reference_wrapper<T>(*result);
+Result<T> Copy(const Result<T>& src) {
+  return src;
 }
 
+template<class T>
+struct IsNonConstResultRvalue : std::false_type {};
+
+template<class T>
+struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
+
+// TODO(dmitry): Subsitute __static_assert array with real static_assert when
+//               old compilers (gcc 5.5) will not be used.
+//               static_assert(yb::IsNonConstResultRvalue<decltype(__result)>::value,
+//                             "only non const Result<T> rvalue reference is allowed");
 #define RESULT_CHECKER_HELPER(expr, checker) \
-  __extension__ ({ auto&& __result = (expr); checker; WrapMove(std::move(__result)); })
+  __extension__ ({ \
+    auto&& __result = (expr); \
+    __attribute__((unused)) constexpr char __static_assert[ \
+        ::yb::IsNonConstResultRvalue<decltype(__result)>::value ? 1 : -1] = {0}; \
+    checker; \
+    WrapMove(std::move(__result)); })
 
 // Checks that result is ok, extracts result value is case of success.
 #define CHECK_RESULT(expr) \

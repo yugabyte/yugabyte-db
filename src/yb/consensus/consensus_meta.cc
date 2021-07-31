@@ -31,6 +31,7 @@
 //
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
@@ -121,6 +122,21 @@ void ConsensusMetadata::set_current_term(int64_t term) {
   DCHECK_GE(term, kMinimumTerm);
   pb_.set_current_term(term);
   UpdateRoleAndTermCache();
+}
+
+
+bool ConsensusMetadata::has_split_parent_tablet_id() const {
+  return pb_.has_split_parent_tablet_id();
+}
+
+const TabletId& ConsensusMetadata::split_parent_tablet_id() const {
+  DCHECK(pb_.has_split_parent_tablet_id());
+  return pb_.split_parent_tablet_id();
+}
+
+void ConsensusMetadata::set_split_parent_tablet_id(const TabletId& split_parent_tablet_id) {
+  DCHECK(!split_parent_tablet_id.empty());
+  pb_.set_split_parent_tablet_id(split_parent_tablet_id);
 }
 
 bool ConsensusMetadata::has_voted_for() const {

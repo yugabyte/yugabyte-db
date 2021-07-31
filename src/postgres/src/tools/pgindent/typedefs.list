@@ -808,7 +808,7 @@ FuncExpr
 FuncInfo
 Function
 FunctionCallInfo
-FunctionCallInfoBaseData
+FunctionCallInfoData
 FunctionParameter
 FunctionParameterMode
 FunctionScan
@@ -1158,6 +1158,7 @@ LLVMJitHandle
 LLVMMemoryBufferRef
 LLVMModuleRef
 LLVMOrcJITStackRef
+LLVMOrcLookupStateRef
 LLVMOrcModuleHandle
 LLVMOrcTargetAddress
 LLVMPassManagerBuilderRef
@@ -1353,7 +1354,6 @@ NonEmptyRange
 Notification
 NotifyStmt
 Nsrt
-NullableDatum
 NullIfExpr
 NullTest
 NullTestType

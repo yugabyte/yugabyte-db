@@ -25,7 +25,6 @@
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -41,6 +40,7 @@
 
 
 namespace yb {
+struct TransactionMetadata;
 
 class ThreadPool;
 
@@ -115,7 +115,7 @@ class RetryingTSRpcTask : public MonitoredTask {
  public:
   RetryingTSRpcTask(Master *master,
                     ThreadPool* callback_pool,
-                    gscoped_ptr<TSPicker> replica_picker,
+                    std::unique_ptr<TSPicker> replica_picker,
                     const scoped_refptr<TableInfo>& table);
 
   ~RetryingTSRpcTask();
@@ -195,7 +195,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   Master* const master_;
   ThreadPool* const callback_pool_;
-  const gscoped_ptr<TSPicker> replica_picker_;
+  const std::unique_ptr<TSPicker> replica_picker_;
   const scoped_refptr<TableInfo> table_;
 
   MonoTime start_ts_;
@@ -252,6 +252,8 @@ class RetryingTSRpcTask : public MonitoredTask {
   std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
 };
 
+using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
+
 // RetryingTSRpcTask subclass which always retries the same tablet server,
 // identified by its UUID.
 class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
@@ -262,7 +264,7 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
                          const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(master,
                         callback_pool,
-                        gscoped_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
+                        std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
                         table),
       permanent_uuid_(permanent_uuid) {
   }
@@ -408,12 +410,18 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const scoped_refptr<TableInfo>& table)
-      : AsyncTabletLeaderTask(master, callback_pool, tablet, table) {}
+      const scoped_refptr<TableInfo>& table,
+      const TransactionId transaction_id)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, table), transaction_id_(transaction_id)
+      {}
 
   Type type() const override { return ASYNC_ALTER_TABLE; }
 
   std::string type_name() const override { return "Alter Table"; }
+
+  TableType table_type() const {
+    return tablet_->table()->GetTableType();
+  }
 
  protected:
   uint32_t schema_version_;
@@ -422,6 +430,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
  private:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+
+  TransactionId transaction_id_ = TransactionId::Nil();
 };
 
 class AsyncBackfillDone : public AsyncAlterTable {

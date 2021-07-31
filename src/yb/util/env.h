@@ -122,6 +122,8 @@ class FileFactory {
                                    std::unique_ptr<RWFile>* result) = 0;
 
   virtual Result<uint64_t> GetFileSize(const std::string& fname) = 0;
+
+  virtual bool IsEncrypted() const = 0;
 };
 
 class FileFactoryWrapper : public FileFactory {
@@ -171,6 +173,10 @@ class FileFactoryWrapper : public FileFactory {
 
   Result<uint64_t> GetFileSize(const std::string& fname) override {
     return target_->GetFileSize(fname);
+  }
+
+  bool IsEncrypted() const override {
+    return target_->IsEncrypted();
   }
 
  protected:
@@ -492,6 +498,9 @@ class Env {
   virtual CHECKED_STATUS SetUlimit(int resource, ResourceLimit value) = 0;
   virtual CHECKED_STATUS SetUlimit(
       int resource, ResourceLimit value, const std::string& resource_name) = 0;
+
+  virtual bool IsEncrypted() const = 0;
+
  private:
   // No copying allowed
   Env(const Env&);
@@ -837,6 +846,11 @@ class EnvWrapper : public Env {
       int resource, ResourceLimit value, const std::string& resource_name) override {
     return target_->SetUlimit(resource, value, resource_name);
   };
+
+  bool IsEncrypted() const override {
+    return target_->IsEncrypted();
+  }
+
  private:
   Env* target_;
 };

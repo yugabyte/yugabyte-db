@@ -3,30 +3,35 @@
 package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.Alert.TargetType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.DataConverters;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import play.Application;
 import play.api.Play;
 import play.libs.Json;
 
-import java.util.Collections;
-import java.util.UUID;
-import java.util.concurrent.*;
-
+@Slf4j
 public abstract class AbstractTaskBase implements ITask {
-
-  public static final Logger LOG = LoggerFactory.getLogger(AbstractTaskBase.class);
 
   // Number of concurrent tasks to execute at a time.
   private static final int TASK_THREADS = 10;
@@ -34,8 +39,6 @@ public abstract class AbstractTaskBase implements ITask {
   // The maximum time that excess idle threads will wait for new tasks before terminating.
   // The unit is specified in the API (and is seconds).
   private static final long THREAD_ALIVE_TIME = 60L;
-
-  @VisibleForTesting static final String ALERT_ERROR_CODE = "TASK_FAILURE";
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -51,6 +54,29 @@ public abstract class AbstractTaskBase implements ITask {
 
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";
+
+  protected final Application application;
+  protected final play.Environment environment;
+  protected final Config config;
+  protected final ConfigHelper configHelper;
+  protected final RuntimeConfigFactory runtimeConfigFactory;
+  protected final MetricService metricService;
+  protected final AlertDefinitionGroupService alertDefinitionGroupService;
+  protected final YBClientService ybService;
+  protected final TableManager tableManager;
+
+  @Inject
+  protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    this.application = baseTaskDependencies.getApplication();
+    this.environment = baseTaskDependencies.getEnvironment();
+    this.config = baseTaskDependencies.getConfig();
+    this.configHelper = baseTaskDependencies.getConfigHelper();
+    this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
+    this.metricService = baseTaskDependencies.getMetricService();
+    this.alertDefinitionGroupService = baseTaskDependencies.getAlertDefinitionGroupService();
+    this.ybService = baseTaskDependencies.getYbService();
+    this.tableManager = baseTaskDependencies.getTableManager();
+  }
 
   protected ITaskParams taskParams() {
     return taskParams;
@@ -126,7 +152,7 @@ public abstract class AbstractTaskBase implements ITask {
             if (node == null) {
               return;
             }
-            LOG.info(
+            log.info(
                 "Changing node {} state from {} to {} in universe {}.",
                 nodeName,
                 node.state,
@@ -145,48 +171,6 @@ public abstract class AbstractTaskBase implements ITask {
         };
     return updater;
   }
-
-  @Override
-  public boolean shouldSendNotification() {
-    try {
-      CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-      Customer customer = Customer.get(task.getCustomerUUID());
-      CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-      CustomerRegisterFormData.AlertingData alertingData =
-          Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-      return task.getType().equals(CustomerTask.TaskType.Create)
-          && task.getTarget().equals(CustomerTask.TargetType.Backup)
-          && alertingData.reportBackupFailures;
-    } catch (Exception e) {
-      return false;
-    }
-  }
-
-  @Override
-  public void sendNotification() {
-    CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-    Customer customer = Customer.get(task.getCustomerUUID());
-    String content =
-        String.format(
-            "%s %s failed for %s.\n\nTask Info: %s",
-            task.getType().name(),
-            task.getTarget().name(),
-            task.getNotificationTargetName(),
-            taskInfo);
-
-    Alert.TargetType alertType = DataConverters.taskTargetToAlertTargetType(task.getTarget());
-    Alert.create(
-        customer.uuid,
-        alertType == TargetType.TaskType ? task.getTaskUUID() : task.getTargetUUID(),
-        alertType,
-        ALERT_ERROR_CODE,
-        "Error",
-        content,
-        true,
-        null,
-        Collections.emptyList());
-  }
-
   /**
    * Creates task with appropriate dependency injection
    *

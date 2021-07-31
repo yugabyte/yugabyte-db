@@ -614,15 +614,28 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
-YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
-                          const YBCPgOid table_oid,
-                          YBCPgStatement *handle) {
+YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
+                         const YBCPgOid table_oid,
+                         const int targrows,
+                         YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewAnalyze(table_id, handle));
+  return ToYBCStatus(pgapi->NewSample(table_id, targrows, handle));
 }
 
-YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count) {
-  return ToYBCStatus(pgapi->ExecAnalyze(handle, rows_count));
+YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state) {
+  return ToYBCStatus(pgapi->InitRandomState(handle, rstate_w, rand_state));
+}
+
+YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
+  return ToYBCStatus(pgapi->SampleNextBlock(handle, has_more));
+}
+
+YBCStatus YBCPgExecSample(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecSample(handle));
+}
+
+YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows) {
+  return ToYBCStatus(pgapi->GetEstimatedRowCount(handle, liverows, deadrows));
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
@@ -829,6 +842,14 @@ YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
   return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(success));
 }
 
+YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->SetActiveSubTransaction(id));
+}
+
+YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->RollbackSubTransaction(id));
+}
+
 // Referential Integrity Caching
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *source) {
   return ProcessYbctid(*source, [](auto table_id, const auto& ybctid){
@@ -890,7 +911,7 @@ YBCStatus YBCPgIsInitDbDone(bool* initdb_done) {
   return ExtractValueFromResult(pgapi->IsInitDbDone(), initdb_done);
 }
 
-const bool YBCGetDisableTransparentCacheRefreshRetry() {
+bool YBCGetDisableTransparentCacheRefreshRetry() {
   return pgapi->GetDisableTransparentCacheRefreshRetry();
 }
 
@@ -946,6 +967,10 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.
   pgapi->SetTimeout(timeout_ms);
+}
+
+void YBCGetTabletServerHosts(YBCServerDescriptor **servers, int * count) {
+  pgapi->ListTabletServers(servers, count);
 }
 
 //------------------------------------------------------------------------------------------------

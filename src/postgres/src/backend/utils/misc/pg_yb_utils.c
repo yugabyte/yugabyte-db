@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "c.h"
 #include "postgres.h"
 #include "miscadmin.h"
 #include "access/sysattr.h"
@@ -40,6 +41,7 @@
 #include "catalog/catalog.h"
 #include "catalog/ybc_catalog_version.h"
 #include "commands/dbcommands.h"
+#include "funcapi.h"
 
 #include "pg_yb_utils.h"
 #include "catalog/ybctype.h"
@@ -253,6 +255,22 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
+YBIsDatabaseColocated(Oid dbId)
+{
+	bool colocated;
+	HandleYBStatus(YBCPgIsDatabaseColocated(dbId, &colocated));
+	return colocated;
+}
+
+bool
+YBIsTableColocated(Oid dbId, Oid relationId)
+{
+	bool colocated;
+	HandleYBStatus(YBCPgIsTableColocated(dbId, relationId, &colocated));
+	return colocated;
+}
+
+bool
 YBRelHasSecondaryIndices(Relation relation)
 {
 	if (!relation->rd_rel->relhasindex)
@@ -284,6 +302,17 @@ YBTransactionsEnabled()
 		cached_value = YBCIsEnvVarTrueWithDefault("YB_PG_TRANSACTIONS_ENABLED", true);
 	}
 	return IsYugaByteEnabled() && cached_value;
+}
+
+bool
+YBSavepointsEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", false);
+	}
+	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
 
 void
@@ -469,6 +498,20 @@ YBCAbortTransaction()
 
 	if (YBTransactionsEnabled())
 		HandleYBStatus(YBCPgAbortTransaction());
+}
+
+void
+YBCSetActiveSubTransaction(SubTransactionId id)
+{
+	if (YBSavepointsEnabled())
+		HandleYBStatus(YBCPgSetActiveSubTransaction(id));
+}
+
+void
+YBCRollbackSubTransaction(SubTransactionId id)
+{
+	if (YBSavepointsEnabled())
+		HandleYBStatus(YBCPgRollbackSubTransaction(id));
 }
 
 bool
@@ -725,7 +768,22 @@ YBCGetSchemaName(Oid schemaoid)
 Oid
 YBCGetDatabaseOid(Relation rel)
 {
-	return rel->rd_rel->relisshared ? TemplateDbOid : MyDatabaseId;
+	return YBCGetDatabaseOidFromShared(rel->rd_rel->relisshared);
+}
+
+Oid
+YBCGetDatabaseOidByRelid(Oid relid)
+{
+	Relation relation    = RelationIdGetRelation(relid);
+	bool     relisshared = relation->rd_rel->relisshared;
+	RelationClose(relation);
+	return YBCGetDatabaseOidFromShared(relisshared);
+}
+
+Oid
+YBCGetDatabaseOidFromShared(bool relisshared)
+{
+	return relisshared ? TemplateDbOid : MyDatabaseId;
 }
 
 void
@@ -789,6 +847,10 @@ bool yb_debug_report_error_stacktrace = false;
 bool yb_debug_log_catcache_events = false;
 
 bool yb_debug_log_internal_restarts = false;
+
+bool yb_test_system_catalogs_creation = false;
+
+bool yb_test_fail_next_ddl = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -1090,7 +1152,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_AlterTableCmd:
 		case T_AlterTableMoveAllStmt:
 		case T_AlterTableSpaceOptionsStmt:
-		case T_AlterTableStmt:
 		case T_AlterUserMappingStmt:
 		case T_AlternativeSubPlan:
 		case T_AlternativeSubPlanState:
@@ -1098,6 +1159,17 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
 			return true;
+
+		case T_AlterTableStmt:
+		{
+			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
+			ListCell *lcmd = stmt->cmds->head;
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
+				*is_breaking_catalog_change = false;
+			}
+			return true;
+		}
 
 		// T_Grant...
 		case T_GrantStmt:
@@ -1124,6 +1196,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 */
 			*is_breaking_catalog_change = false;
 			return true;
+
+		case T_VacuumStmt:
+			/* Vacuum with analyze updates relation and attribute statistics */
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
 
 		default:
 			/* Not a DDL operation. */
@@ -1228,4 +1306,88 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
 	last_attr->attr_num = YBUniqueIdxKeySuffixAttributeNumber;
 	last_attr->type_entity = YBCDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
 	last_attr->is_null = true;
+}
+
+void YBTestFailDdlIfRequested() {
+	if (!yb_test_fail_next_ddl)
+		return;
+
+	yb_test_fail_next_ddl = false;
+	elog(ERROR, "DDL failed as requested");
+}
+
+Datum
+yb_servers(PG_FUNCTION_ARGS)
+{
+  FuncCallContext *funcctx;
+  if (SRF_IS_FIRSTCALL())
+  {
+    MemoryContext oldcontext;
+    TupleDesc tupdesc;
+
+    funcctx = SRF_FIRSTCALL_INIT();
+    oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+    tupdesc = CreateTemplateTupleDesc(8, false);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+                       "host", TEXTOID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+                       "port", INT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+                       "num_connections", INT8OID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+                       "node_type", TEXTOID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+                       "cloud", TEXTOID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+                       "region", TEXTOID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+                       "zone", TEXTOID, -1, 0);
+    TupleDescInitEntry(tupdesc, (AttrNumber) 8,
+                       "public_ip", TEXTOID, -1, 0);
+    funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+    // Assuming not more than 1000 servers
+    YBCServerDescriptor **servers = (YBCServerDescriptor**)palloc0(1000 * sizeof(YBCServerDescriptor *));
+    int numservers = 0;
+    YBCGetTabletServerHosts(servers, &numservers);
+    funcctx->max_calls = numservers;
+    funcctx->user_fctx = servers;
+    MemoryContextSwitchTo(oldcontext);
+  }
+  funcctx = SRF_PERCALL_SETUP();
+  while (funcctx->call_cntr < funcctx->max_calls)
+  {
+    Datum		values[8];
+    bool		nulls[8];
+    HeapTuple	tuple;
+    YBCServerDescriptor** servers = (YBCServerDescriptor **)funcctx->user_fctx;
+    int cntr = funcctx->call_cntr;
+    YBCServerDescriptor *server = *(servers + cntr);
+    bool is_primary = server->isPrimary;
+    const char *node_type = is_primary ? "primary" : "read_replica";
+    // TODO: Remove hard coding of port and num_connections
+    values[0] = CStringGetTextDatum(server->host);
+    values[1] = Int64GetDatum(5433);
+    values[2] = Int64GetDatum(0);
+    values[3] = CStringGetTextDatum(node_type);
+    values[4] = CStringGetTextDatum(server->cloud);
+    values[5] = CStringGetTextDatum(server->region);
+    values[6] = CStringGetTextDatum(server->zone);
+    values[7] = CStringGetTextDatum(server->publicIp);
+    memset(nulls, 0, sizeof(nulls));
+    tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+    SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+  }
+  SRF_RETURN_DONE(funcctx);
+}
+
+bool IsYBSupportedLibcLocale(const char *localebuf) {
+	/*
+	 * For libc mode, Yugabyte only supports the basic locales.
+	 */
+	if (strcmp(localebuf, "C") == 0 || strcmp(localebuf, "POSIX") == 0)
+		return true;
+	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
+		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
 }

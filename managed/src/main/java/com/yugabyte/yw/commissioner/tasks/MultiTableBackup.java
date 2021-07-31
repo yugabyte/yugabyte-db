@@ -10,32 +10,37 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static org.yb.Common.TableType;
+
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import org.yb.master.Master.RelationType;
-import play.api.Play;
 
-import java.util.*;
-
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static org.yb.Common.TableType;
-
+@Slf4j
 public class MultiTableBackup extends UniverseTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(MultiTableBackup.class);
-
-  public YBClientService ybService;
+  @Inject
+  protected MultiTableBackup(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends BackupTableParams {
     public UUID customerUUID;
@@ -47,16 +52,13 @@ public class MultiTableBackup extends UniverseTaskBase {
   }
 
   @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
-  }
-
-  @Override
   public void run() {
     List<BackupTableParams> backupParamsList = new ArrayList<>();
     BackupTableParams tableBackupParams = new BackupTableParams();
+    tableBackupParams.customerUuid = params().customerUUID;
+    tableBackupParams.ignoreErrors = true;
     Set<String> tablesToBackup = new HashSet<>();
+    Universe universe = Universe.getOrBadRequest(params().universeUUID);
     try {
       checkUniverseVersion();
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -65,7 +67,6 @@ public class MultiTableBackup extends UniverseTaskBase {
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      Universe universe = Universe.getOrBadRequest(params().universeUUID);
       String masterAddresses = universe.getMasterAddresses(true);
       String certificate = universe.getCertificateNodetoNode();
 
@@ -82,7 +83,7 @@ public class MultiTableBackup extends UniverseTaskBase {
             if (tableSchema.getTableType() == TableType.PGSQL_TABLE_TYPE
                 || tableSchema.getTableType() != params().backupType
                 || tableSchema.getTableType() == TableType.TRANSACTION_STATUS_TABLE_TYPE) {
-              LOG.info("Skipping backup of table with UUID: " + tableUUID);
+              log.info("Skipping backup of table with UUID: " + tableUUID);
               continue;
             }
             if (params().transactionalBackup) {
@@ -101,7 +102,7 @@ public class MultiTableBackup extends UniverseTaskBase {
                       tableUUID);
               backupParamsList.add(backupParams);
             }
-            LOG.info(
+            log.info(
                 "Queuing backup for table {}:{}",
                 tableSchema.getNamespace(),
                 tableSchema.getTableName());
@@ -128,7 +129,7 @@ public class MultiTableBackup extends UniverseTaskBase {
                 || table.getRelationType() == RelationType.INDEX_TABLE_RELATION
                 || (params().getKeyspace() != null
                     && !params().getKeyspace().equals(tableKeySpace))) {
-              LOG.info(
+              log.info(
                   "Skipping keyspace/universe backup of table "
                       + tableUUID
                       + ". Expected keyspace is "
@@ -173,21 +174,21 @@ public class MultiTableBackup extends UniverseTaskBase {
                 backupParamsList.add(backupParams);
               }
             } else {
-              LOG.error(
+              log.error(
                   "Unrecognized table type {} for {}:{}",
                   tableType,
                   tableKeySpace,
                   table.getName());
             }
 
-            LOG.info("Queuing backup for table {}:{}", tableKeySpace, table.getName());
+            log.info("Queuing backup for table {}:{}", tableKeySpace, table.getName());
 
             tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
           }
         }
         ybService.closeClient(client, masterAddresses);
       } catch (Exception e) {
-        LOG.error("Failed to get list of tables in universe " + params().universeUUID, e);
+        log.error("Failed to get list of tables in universe " + params().universeUUID, e);
         ybService.closeClient(client, masterAddresses);
         unlockUniverseForUpdate();
         throw new RuntimeException(e);
@@ -197,9 +198,10 @@ public class MultiTableBackup extends UniverseTaskBase {
 
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
-      LOG.info("Successfully started scheduled backup of tables.");
+      log.info("Successfully started scheduled backup of tables.");
       if (params().getKeyspace() == null && params().tableUUIDList.size() == 0) {
         // Full universe backup, each table to be sequentially backed up
+
         tableBackupParams.backupList = backupParamsList;
         tableBackupParams.storageConfigUUID = params().storageConfigUUID;
         tableBackupParams.actionType = BackupTableParams.ActionType.CREATE;
@@ -210,29 +212,41 @@ public class MultiTableBackup extends UniverseTaskBase {
         tableBackupParams.timeBeforeDelete = params().timeBeforeDelete;
         tableBackupParams.transactionalBackup = params().transactionalBackup;
         tableBackupParams.backupType = params().backupType;
+
         Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+        backup.setTaskUUID(userTaskUUID);
+        tableBackupParams.backupUuid = backup.backupUUID;
+        log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
         for (BackupTableParams backupParams : backupParamsList) {
           createEncryptedUniverseKeyBackupTask(backupParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         }
-        createTableBackupTask(tableBackupParams, backup)
+        createTableBackupTask(tableBackupParams)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
       } else if (params().getKeyspace() != null
           && (params().backupType == TableType.PGSQL_TABLE_TYPE
               || (params().backupType == TableType.YQL_TABLE_TYPE
                   && params().transactionalBackup))) {
         Backup backup = Backup.create(params().customerUUID, tableBackupParams);
+        backup.setTaskUUID(userTaskUUID);
+        tableBackupParams.backupUuid = backup.backupUUID;
+        log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+
         createEncryptedUniverseKeyBackupTask(backup.getBackupInfo())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
-        createTableBackupTask(tableBackupParams, backup)
+        createTableBackupTask(tableBackupParams)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
       } else {
         for (BackupTableParams tableParams : backupParamsList) {
           Backup backup = Backup.create(params().customerUUID, tableParams);
+          backup.setTaskUUID(userTaskUUID);
+          tableBackupParams.backupUuid = backup.backupUUID;
+          log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
+
           createEncryptedUniverseKeyBackupTask(tableParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
-          createTableBackupTask(tableParams, backup)
+          createTableBackupTask(tableParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         }
       }
@@ -246,9 +260,15 @@ public class MultiTableBackup extends UniverseTaskBase {
       unlockUniverseForUpdate();
 
       subTaskGroupQueue.run();
-    } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
+      metricService.setOkStatusMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+    } catch (Throwable t) {
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+
+      metricService.setStatusMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe),
+          t.getMessage());
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
       unlockUniverseForUpdate();
@@ -256,7 +276,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     } finally {
       updateBackupState(false);
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   // Helper method to update passed in reference object

@@ -2,38 +2,38 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.TemplateManager;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.YWResults.YWSuccess;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.Form;
-import play.data.FormFactory;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Result;
-
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.Form;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Result;
 
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
-
+@Api(value = "AccessKey", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AccessKeyController extends AuthenticatedController {
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject AccessManager accessManager;
 
@@ -41,23 +41,26 @@ public class AccessKeyController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
+  @ApiOperation(value = "get access Key", response = AccessKey.class)
   public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
 
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
-    return ApiResponse.success(accessKey);
+    return YWResults.withData(accessKey);
   }
 
+  @ApiOperation(value = "list AccessKeys for a specific provider", response = AccessKey.class)
   public Result list(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
 
     List<AccessKey> accessKeys;
     accessKeys = AccessKey.getAll(providerUUID);
-    return ApiResponse.success(accessKeys);
+    return YWResults.withData(accessKeys);
   }
 
+  @ApiOperation(value = "create access Key", response = AccessKey.class)
   public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
     Form<AccessKeyFormData> formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class);
 
@@ -133,9 +136,10 @@ public class AccessKeyController extends AuthenticatedController {
           formData.get().nodeExporterUser);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return ApiResponse.success(accessKey);
+    return YWResults.withData(accessKey);
   }
 
+  @ApiOperation(value = "delete access Key", response = YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -145,6 +149,6 @@ public class AccessKeyController extends AuthenticatedController {
 
     accessKey.deleteOrThrow();
     auditService().createAuditEntry(ctx(), request());
-    return ApiResponse.success("Deleted KeyCode: " + keyCode);
+    return withMessage("Deleted KeyCode: " + keyCode);
   }
 }

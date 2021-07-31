@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.common;
 
+import static scala.compat.java8.JFunction.func;
+
 import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
@@ -20,19 +22,16 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.controllers.ReverseInternalHAController;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Call;
 import play.mvc.Http;
 import v1.RoutesPrefix;
-
-import java.io.File;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import static scala.compat.java8.JFunction.func;
 
 public class PlatformInstanceClient {
 

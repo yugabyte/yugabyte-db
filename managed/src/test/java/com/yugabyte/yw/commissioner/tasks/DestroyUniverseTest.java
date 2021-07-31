@@ -3,43 +3,47 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import java.util.List;
-import java.util.UUID;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.junit.MockitoJUnitRunner;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyUniverseTest extends CommissionerBaseTest {
 
-  private static final String ALERT_TEST_MESSAGE = "Test message";
   private CustomerConfig s3StorageConfig;
 
   @InjectMocks private Commissioner commissioner;
+
+  @InjectMocks private MetricService metricService;
 
   private Universe defaultUniverse;
   private ShellResponse dummyShellResponse;
@@ -68,35 +72,26 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testReleaseUniverseAndResolveAlerts() {
+  public void testReleaseUniverseAndRemoveMetrics() {
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
 
-    Alert.create(
-        defaultCustomer.uuid,
-        defaultUniverse.universeUUID,
-        Alert.TargetType.UniverseType,
-        "errorCode",
-        "Warning",
-        ALERT_TEST_MESSAGE);
-    Alert.create(
-        defaultCustomer.uuid,
-        defaultUniverse.universeUUID,
-        Alert.TargetType.UniverseType,
-        "errorCode2",
-        "Warning",
-        ALERT_TEST_MESSAGE);
+    metricService.setOkStatusMetric(
+        metricService.buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, defaultUniverse));
 
     submitTask(taskParams, 4);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
 
-    List<Alert> alerts = Alert.list(defaultCustomer.uuid);
-    assertEquals(2, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).getState());
-    assertEquals(Alert.State.RESOLVED, alerts.get(1).getState());
+    MetricKey metricKey =
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
+            .targetUuid(defaultUniverse.getUniverseUUID())
+            .build();
+    assertThat(metricService.get(metricKey), nullValue());
   }
 
   @Test

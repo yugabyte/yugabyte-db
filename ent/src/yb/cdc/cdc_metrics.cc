@@ -37,10 +37,9 @@
 
 // CDC Tablet metrics.
 // Todo(Rahul): Figure out appropriate aggregation functions for these metrics.
-METRIC_DEFINE_histogram(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
+METRIC_DEFINE_coarse_histogram(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
   yb::MetricUnit::kBytes,
-  "Payload size of responses to CDC GetChanges requests (only when records are included)",
-  60000000LU /* max int */, 2 /* digits */);
+  "Payload size of responses to CDC GetChanges requests (only when records are included)");
 METRIC_DEFINE_counter(cdc, rpc_heartbeats_responded, "CDC Rpc Heartbeat Count",
   yb::MetricUnit::kRequests,
   "Number of responses to CDC GetChanges requests without a record payload.");

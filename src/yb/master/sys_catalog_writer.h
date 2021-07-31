@@ -34,18 +34,15 @@ class SysCatalogWriter {
 
   ~SysCatalogWriter() = default;
 
-  // Disable for children of MetadataCowWrapper.
-  template <class Item>
-  CHECKED_STATUS MutateItem(const Item* item, QLWriteRequestPB::QLStmtType op_type) {
-    const auto& old_pb = item->old_pb();
-    const auto& new_pb = IsWrite(op_type) ? item->new_pb() : old_pb;
-    return DoMutateItem(Item::type(), item->id(), old_pb, new_pb, op_type);
+  CHECKED_STATUS Mutate(QLWriteRequestPB::QLStmtType op_type) {
+    return Status::OK();
   }
 
-  template <class Item>
-  CHECKED_STATUS MutateItem(const scoped_refptr<Item>& item,
-                            QLWriteRequestPB::QLStmtType op_type) {
-    return MutateItem(item.get(), op_type);
+  template <class Item, class... Items>
+  CHECKED_STATUS Mutate(
+      QLWriteRequestPB::QLStmtType op_type, const Item& item, Items&&... items) {
+    RETURN_NOT_OK(MutateHelper(item, op_type));
+    return Mutate(op_type, std::forward<Items>(items)...);
   }
 
   // Insert a row into a Postgres sys catalog table.
@@ -65,6 +62,30 @@ class SysCatalogWriter {
   }
 
  private:
+  template <class Item>
+  CHECKED_STATUS MutateHelper(const Item* item, QLWriteRequestPB::QLStmtType op_type) {
+    const auto& old_pb = item->old_pb();
+    const auto& new_pb = IsWrite(op_type) ? item->new_pb() : old_pb;
+    return DoMutateItem(Item::type(), item->id(), old_pb, new_pb, op_type);
+  }
+
+
+  template <class Item>
+  CHECKED_STATUS MutateHelper(const scoped_refptr<Item>& item,
+                            QLWriteRequestPB::QLStmtType op_type) {
+    return MutateHelper(item.get(), op_type);
+  }
+
+  template <class Items>
+  typename std::enable_if<IsCollection<Items>::value, Status>::type
+  MutateHelper(const Items& items,
+                              QLWriteRequestPB::QLStmtType op_type) {
+    for (const auto& item : items) {
+      RETURN_NOT_OK(MutateHelper(item, op_type));
+    }
+    return Status::OK();
+  }
+
   CHECKED_STATUS DoMutateItem(
       int8_t type,
       const std::string& item_id,

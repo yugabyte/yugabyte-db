@@ -2,25 +2,41 @@
 
 package com.yugabyte.yw.common;
 
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
+import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.alerts.MetricService;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
+import java.util.List;
+import java.util.UUID;
+import org.junit.function.ThrowingRunnable;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.List;
-import java.util.UUID;
-
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
-import static play.mvc.Http.Status.*;
-import static play.test.Helpers.contentAsString;
-
 public class AssertHelper {
   public static void assertOk(Result result) {
-    assertEquals(OK, result.status());
+    assertEquals(contentAsString(result), OK, result.status());
   }
 
   public static void assertBadRequest(Result result, String errorStr) {
@@ -127,5 +143,21 @@ public class AssertHelper {
     YWResults.YWSuccess ywSuccess =
         Json.fromJson(Json.parse(contentAsString(result)), YWResults.YWSuccess.class);
     assertNull(ywSuccess.message);
+  }
+
+  public static Result assertYWSE(ThrowingRunnable runnable) {
+    return assertThrows(YWServiceException.class, runnable).getResult();
+  }
+
+  public static Metric assertMetricValue(
+      MetricService metricService, MetricKey metricKey, Double value) {
+    Metric metric = metricService.get(metricKey);
+    if (value != null) {
+      assertNotNull(metric);
+      assertEquals(value, metric.getValue());
+    } else {
+      assertNull(metric);
+    }
+    return metric;
   }
 }

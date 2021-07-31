@@ -316,7 +316,8 @@ TEST_F(MultiThreadedRpcTest, MemoryLimit) {
         RpcController controller;
         controller.set_timeout(500ms);
         auto status = proxy->SyncRequest(
-            CalculatorServiceMethods::EchoMethod(), req, &resp, &controller);
+            CalculatorServiceMethods::EchoMethod(), /* method_metrics= */ nullptr, req, &resp,
+            &controller);
         if (big_call) {
           ASSERT_NOK(status);
         } else {

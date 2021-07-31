@@ -28,6 +28,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
@@ -35,6 +36,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
@@ -84,8 +86,6 @@ namespace {
 //--------------------------------------------------------------------------------------------------
 static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
 static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
-
-static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 // Columns names and ids.
 static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
@@ -672,7 +672,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
     // Try one more time.
     result = LoadTable(oid);
   }
-  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(result);
+  auto t = VERIFY_RESULT(std::move(result));
 
   auto psql_write(t->NewPgsqlInsert());
 
@@ -822,7 +822,7 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
     return Status::OK();
   }
 
-  PgTableDesc::ScopedRefPtr t = CHECK_RESULT(r);
+  auto t = std::move(*r);
   if (t == nullptr) {
     return Status::OK();
   }
@@ -887,10 +887,6 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
   table_cache_.erase(GetPgsqlTablegroupId(database_oid, tablegroup_oid) +
       ".tablegroup.parent.uuid");
   return s;
-}
-
-Result<master::AnalyzeTableResponsePB> PgSession::AnalyzeTable(const PgObjectId& table_id) {
-  return client_->AnalyzeTable(table_id.GetYBTableId());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -991,7 +987,12 @@ Result<bool> PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op)
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
   }
-  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
+  // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
+  // read restart error because subsequent cache refresh used an outdated txn to read from the
+  // system catalog,
+  // As a quick fix, we prevent yb_non_ddl_txn_for_sys_tables_allowed from affecting reads.
+  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn
+                                       && op.type() == YBOperation::Type::PGSQL_WRITE)) {
     return true;
   }
   if (op.type() == YBOperation::Type::PGSQL_WRITE) {
@@ -1121,11 +1122,11 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   // two strategy are possible:
   // 1. select keys belonging to same tablet to reduce number of simultaneous RPC
   // 2. select keys belonging to different tablets to distribute reads among different nodes
-  const auto intent_match = [table_id](const auto& it) { return it->table_id == table_id; };
+  const auto intent_match = [table_id](const auto& key) { return key.table_id == table_id; };
   for (auto it = fk_reference_intent_.begin();
        it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size;
        ++it) {
-    if (intent_match(it)) {
+    if (intent_match(*it)) {
       ybctids.push_back(it->ybctid);
     }
   }
@@ -1139,7 +1140,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   } else {
     for (auto it = fk_reference_intent_.begin();
         it != fk_reference_intent_.end() && intent_count_for_remove > 0;) {
-      if (intent_match(it)) {
+      if (intent_match(*it)) {
         it = fk_reference_intent_.erase(it);
         --intent_count_for_remove;
       } else {
@@ -1223,6 +1224,36 @@ Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool 
   return client_->TabletServerCount(tserver_count, primary_only, use_cache);
 }
 
+Status PgSession::ListTabletServers(YBCServerDescriptor **servers, int *numofservers) {
+  std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>> tablet_servers;
+  Status ret = client_->ListLiveTabletServers(&tablet_servers, false);
+  *numofservers = tablet_servers.size();
+  int cnt = *numofservers;
+  if (cnt > 0) {
+    for (int i = 0; i < cnt; i++) {
+      std::string host = tablet_servers.at(i)->hostname();
+      std::string cloud = tablet_servers.at(i)->cloud();
+      std::string region = tablet_servers.at(i)->region();
+      std::string zone = tablet_servers.at(i)->zone();
+      std::string publicIp = tablet_servers.at(i)->publicIp();
+      bool isPrimary = tablet_servers.at(i)->isPrimary();
+      const char *hostC = YBCPAllocStdString(host);
+      const char *cloudC = YBCPAllocStdString(cloud);
+      const char *regionC = YBCPAllocStdString(region);
+      const char *zoneC = YBCPAllocStdString(zone);
+      const char *publicIpC = YBCPAllocStdString(publicIp);
+      servers[i] = reinterpret_cast<YBCServerDescriptor *>(YBCPAlloc(sizeof(YBCServerDescriptor)));
+      servers[i]->host = hostC;
+      servers[i]->cloud = cloudC;
+      servers[i]->region = regionC;
+      servers[i]->zone = zoneC;
+      servers[i]->publicIp = publicIpC;
+      servers[i]->isPrimary = isPrimary;
+    }
+  }
+  return ret;
+}
+
 void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }
@@ -1237,6 +1268,25 @@ void PgSession::ResetCatalogReadPoint() {
 
 void PgSession::SetCatalogReadPoint(const ReadHybridTime& read_ht) {
   catalog_session_->SetReadPoint(read_ht);
+}
+
+Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
+  // It's required that we flush all buffered operations before changing the SubTransactionMetadata
+  // used by the underlying batcher and RPC logic, as this will snapshot the current
+  // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
+  // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
+  // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
+  // they are eventually sent to DocDB.
+  RETURN_NOT_OK(FlushBufferedOperations());
+  pg_txn_manager_->SetActiveSubTransaction(id);
+  return Status::OK();
+}
+
+Status PgSession::RollbackSubTransaction(SubTransactionId id) {
+  // TODO(savepoints) -- update client-side aborted subtransaction bitset
+  // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
+  // eventually send this metadata.
+  return Status::OK();
 }
 
 }  // namespace pggate

@@ -12,24 +12,33 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
-import io.swagger.annotations.*;
+import io.ebean.Model;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
-
-import java.util.*;
-import java.util.stream.Collectors;
 
 @Api(
     value = "RuntimeConfig",
@@ -70,7 +79,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private Result buildCachedResult() {
-    return ApiResponse.success(mutableKeys);
+    return YWResults.withData(mutableKeys);
   }
 
   private Set<String> buildMutableKeysSet() {
@@ -89,7 +98,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "listKeys",
+      value = "list Mutable keys",
       response = String.class,
       responseContainer = "List",
       notes = "List all the mutable runtime config keys")
@@ -106,17 +115,13 @@ public class RuntimeConfController extends AuthenticatedController {
               + "specific overrides for current customer and one scope each for each universe and "
               + "provider.")
   public Result listScopes(UUID customerUUID) {
-    return ApiResponse.success(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
+    return YWResults.withData(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
   }
 
   @ApiOperation(
-      value = "listScopes",
+      value = "list config entries for a scope",
       response = RuntimeConfigFormData.class,
-      notes =
-          "Lists all (including empty scopes) runtime config scopes for current customer. "
-              + "List includes the Global scope that spans multiple customers, scope for customer "
-              + "specific overrides for current customer and one scope each for each universe and "
-              + "provider.")
+      notes = "Lists all runtime config entries for a given scopes for current customer.")
   public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
     LOG.trace(
         "customerUUID: {} scopeUUID: {} includeInherited: {}",
@@ -124,15 +129,8 @@ public class RuntimeConfController extends AuthenticatedController {
         scopeUUID,
         includeInherited);
 
-    Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
-
-    if (!optScopedConfig.isPresent()) {
-      throw new YWServiceException(
-          NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
-    }
-
-    Config fullConfig =
-        optScopedConfig.get().type.forScopeType(scopeUUID, settableRuntimeConfigFactory);
+    ScopedConfig scopedConfig = getScopedConfigOrFail(customerUUID, scopeUUID);
+    Config fullConfig = scopedConfig.runtimeConfig(settableRuntimeConfigFactory);
     Map<String, String> overriddenInScope = RuntimeConfigEntry.getAsMapForScope(scopeUUID);
     for (String k : mutableKeys) {
       boolean isOverridden = overriddenInScope.containsKey(k);
@@ -140,15 +138,15 @@ public class RuntimeConfController extends AuthenticatedController {
           "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
 
       if (isOverridden) {
-        optScopedConfig.get().configEntries.add(new ConfigEntry(false, k, fullConfig.getString(k)));
+        scopedConfig.configEntries.add(new ConfigEntry(false, k, fullConfig.getString(k)));
       } else if (includeInherited) {
         // Show entries even if not overridden in this scope. We will lookup value from fullConfig
         // for this scope
-        optScopedConfig.get().configEntries.add(new ConfigEntry(true, k, fullConfig.getString(k)));
+        scopedConfig.configEntries.add(new ConfigEntry(true, k, fullConfig.getString(k)));
       }
     }
 
-    return ApiResponse.success(optScopedConfig.get());
+    return YWResults.withData(scopedConfig);
   }
 
   @ApiOperation(value = "getKey", produces = "text/plain")
@@ -189,52 +187,40 @@ public class RuntimeConfController extends AuthenticatedController {
     if (!mutableKeys.contains(path)) {
       throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
-    Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
-
-    if (!optScopedConfig.isPresent()) {
-      throw new YWServiceException(
-          NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
-    }
-
-    if (!optScopedConfig.get().mutableScope)
-      throw new YWServiceException(
-          FORBIDDEN,
-          "Customer "
-              + customerUUID
-              + "does not have access to mutate configuration for this scope "
-              + scopeUUID);
-    optScopedConfig
-        .get()
-        .type
-        .forScopeType(scopeUUID, settableRuntimeConfigFactory)
-        .setValue(path, newValue);
+    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).setValue(path, newValue);
 
     return ok();
   }
 
-  @ApiOperation(value = "deleteKey", response = Void.class)
+  @ApiOperation(value = "deleteKey")
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
 
-    Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
-    if (!optScopedConfig.isPresent()) {
-      throw new YWServiceException(
-          NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
-    }
+    getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
+    return ok();
+  }
 
-    if (!optScopedConfig.get().mutableScope)
+  private RuntimeConfig<? extends Model> getMutableRuntimeConfigForScopeOrFail(
+      UUID customerUUID, UUID scopeUUID) {
+    ScopedConfig scopedConfig = getScopedConfigOrFail(customerUUID, scopeUUID);
+    if (!scopedConfig.mutableScope) {
       throw new YWServiceException(
           FORBIDDEN,
           "Customer "
               + customerUUID
               + " does not have access to mutate configuration for this scope "
               + scopeUUID);
-    optScopedConfig
-        .get()
-        .type
-        .forScopeType(scopeUUID, settableRuntimeConfigFactory)
-        .deleteEntry(path);
-    return ok();
+    }
+    return scopedConfig.runtimeConfig(settableRuntimeConfigFactory);
+  }
+
+  private ScopedConfig getScopedConfigOrFail(UUID customerUUID, UUID scopeUUID) {
+    Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
+    if (!optScopedConfig.isPresent()) {
+      throw new YWServiceException(
+          NOT_FOUND, String.format("No scope %s found for customer %s", scopeUUID, customerUUID));
+    }
+    return optScopedConfig.get();
   }
 }

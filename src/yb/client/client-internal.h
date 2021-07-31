@@ -58,8 +58,6 @@ class HostPort;
 
 namespace master {
 class AlterTableRequestPB;
-class AnalyzeTableRequestPB;
-class AnalyzeTableResponsePB;
 class CreateTableRequestPB;
 class MasterServiceProxy;
 } // namespace master
@@ -121,9 +119,6 @@ class YBClient::Data {
                              const YBSchema& schema,
                              CoarseTimePoint deadline,
                              std::string* table_id);
-
-  Result<master::AnalyzeTableResponsePB> AnalyzeTable(
-      YBClient* client, const master::AnalyzeTableRequestPB& req, CoarseTimePoint deadline);
 
   // Take one of table id or name.
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
@@ -287,6 +282,11 @@ class YBClient::Data {
   void DeleteTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
       StdStatusCallback callback);
+
+  void GetTableLocations(
+      YBClient* client, const TableId& table_id, int32_t max_tablets,
+      RequireTabletsRunning require_tablets_running, CoarseTimePoint deadline,
+      GetTableLocationsCallback callback);
 
   CHECKED_STATUS InitLocalHostNames();
 

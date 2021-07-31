@@ -30,6 +30,8 @@ import tempfile
 import yaml
 import socket
 import time
+import re
+import ssl
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -49,6 +51,8 @@ class AbstractCloud(AbstractCommandParser):
     CLIENT_ROOT_NAME = "root.crt"
     CLIENT_CERT_NAME = "yugabytedb.crt"
     CLIENT_KEY_NAME = "yugabytedb.key"
+    CERT_LOCATION_NODE = "node"
+    CERT_LOCATION_PLATFORM = "platform"
     SSH_RETRY_COUNT = 30
     SSH_WAIT_SECONDS = 10
 
@@ -58,9 +62,9 @@ class AbstractCloud(AbstractCommandParser):
         vars_file = os.path.join(devops_home,
                                  AbstractCloud.VARS_DIR_SUFFIX,
                                  "{}.yml".format(self.name))
-        self.ansible_vars = yaml.load(open(vars_file))
+        self.ansible_vars = yaml.load(open(vars_file), yaml.SafeLoader)
         with open(vars_file, 'r') as f:
-            self.ansible_vars = yaml.load(f) or {}
+            self.ansible_vars = yaml.load(f, yaml.SafeLoader) or {}
 
         # The metadata file name is the same internally and externally.
         metadata_filename = "{}-metadata.yml".format(self.name)
@@ -72,7 +76,7 @@ class AbstractCloud(AbstractCommandParser):
             path = path_getter(metadata_filename)
             if os.path.isfile(path):
                 with open(path) as ymlfile:
-                    metadata = yaml.load(ymlfile)
+                    metadata = yaml.load(ymlfile, yaml.SafeLoader)
                     self.metadata.update(metadata)
 
     def update_metadata(self, override_filename):
@@ -166,14 +170,40 @@ class AbstractCloud(AbstractCommandParser):
         }
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        remote_shell = RemoteShell(updated_vars)
         if os.environ.get("YB_USE_FABRIC", False):
-            remote_shell = RemoteShell(updated_vars)
-            file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
-            remote_shell.run_command(
-                "{} {} {}".format(file_path, process, command)
-            )
+            if args.systemd_services:
+                if command == "start":
+                    remote_shell.run_command(
+                        "sudo systemctl enable yb-{}".format(process)
+                    )
+                remote_shell.run_command(
+                    "sudo systemctl {} yb-{}".format(command, process)
+                )
+                if command == "stop":
+                    remote_shell.run_command(
+                        "sudo systemctl disable yb-{}".format(process)
+                    )
+            else:
+                file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
+                remote_shell.run_command(
+                    "{} {} {}".format(file_path, process, command)
+                )
         else:
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
+            if args.systemd_services:
+                if command == "start":
+                    remote_shell.run_command(
+                        "sudo systemctl enable yb-{}".format(process)
+                    )
+                remote_shell.run_command(
+                    "sudo systemctl {} yb-{}".format(command, process)
+                )
+                if command == "stop":
+                    remote_shell.run_command(
+                        "sudo systemctl disable yb-{}".format(process)
+                    )
+            else:
+                self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
     def initYSQL(self, master_addresses, ssh_options):
         remote_shell = RemoteShell(ssh_options)
@@ -212,149 +242,147 @@ class AbstractCloud(AbstractCommandParser):
             # If there is an error code, that means the files are different. Should fail.
             remote_shell.run_command('diff -Z {} {}'.format(root_cert_path, yb_root_cert_path))
 
-    def __copy_certs(self, ssh_options, remote_shell, root_cert_path,
-                     node_cert_path, node_key_path, certs_dir):
+    def __verify_certs_hostname(self, node_crt_path, ssh_options):
+        host = ssh_options["ssh_host"]
+        remote_shell = RemoteShell(ssh_options)
+
+        # Get readable text version of cert
+        cert_text = remote_shell.run_command(
+            "openssl x509 -noout -text -in {}".format(node_crt_path))
+        if "Certificate:" not in cert_text.stdout:
+            raise YBOpsRuntimeError("Unable to decode the node cert: {}.".format(node_crt_path))
+
+        # Extract commonName and subjectAltName from the cert text output
+        regex_out = re.findall(" Subject:.*CN=([\\S]*)$| (DNS|IP Address):([\\S]*?)(,|$)",
+                               cert_text.stdout, re.M)
+        # Hostname will be present in group 0 for CN and in group 1 and 2 for SAN
+        cn_entry = [x[0] for x in regex_out if x[0] != '']
+        san_entry = {(x[1], x[2]) for x in regex_out if x[0] == ''}
+
+        # Create cert object following the below dictionary format
+        # https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert
+        cert_cn = {'subject': ((('commonName', cn_entry[0] if len(cn_entry) > 0 else ''),),)}
+        cert_san = {'subjectAltName': tuple(san_entry)}
+
+        # Check if the provided hostname matches with either CN or SAN
+        cn_matched = False
+        san_matched = False
+        try:
+            ssl.match_hostname(cert_cn, host)
+            cn_matched = True
+        except ssl.CertificateError:
+            pass
+        try:
+            ssl.match_hostname(cert_san, host)
+            san_matched = True
+        except ssl.CertificateError:
+            pass
+
+        if not cn_matched and not san_matched:
+            raise YBOpsRuntimeError(
+                "'{}' does not match with any entry in CN or SAN of the node cert: {}, "
+                "cert_cn: {}, cert_san: {}".format(host, node_crt_path, cert_cn, cert_san))
+
+    def verify_certs(self, root_crt_path, node_crt_path, ssh_options, verify_hostname=False):
+        remote_shell = RemoteShell(ssh_options)
+
+        try:
+            remote_shell.run_command('which openssl')
+        except YBOpsRuntimeError:
+            logging.debug("Openssl not found, skipping certificate verification.")
+            return
+
+        # Verify if the node cert is not expired
+        validity_verify = remote_shell.run_command_raw(
+            "openssl x509 -noout -checkend 86400 -in {}".format(node_crt_path))
+        if validity_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                "Node cert: {} is expired or will expire in one day.".format(node_crt_path))
+
+        # Verify if node cert has valid signature
+        signature_verify = remote_shell.run_command_raw(
+            "openssl verify -CAfile {} {} | egrep error".format(root_crt_path, node_crt_path))
+        if signature_verify.exited != 1:
+            raise YBOpsRuntimeError(
+                "Node cert: {} is not signed by the provided root cert: {}.".format(node_crt_path,
+                                                                                    root_crt_path))
+
+        if verify_hostname:
+            self.__verify_certs_hostname(node_crt_path, ssh_options)
+
+    def copy_server_certs(
+            self,
+            ssh_options,
+            root_cert_path,
+            server_cert_path,
+            server_key_path,
+            certs_location,
+            certs_dir):
+        remote_shell = RemoteShell(ssh_options)
         node_ip = ssh_options["ssh_host"]
-        logging.info("Moving certs located at {}, {}, {}.".format(
-            root_cert_path, node_cert_path, node_key_path))
-        key_file = 'node.{}.key'.format(node_ip)
+        logging.info("Moving server certs located at {}, {}, {}.".format(
+            root_cert_path, server_cert_path, server_key_path))
         cert_file = 'node.{}.crt'.format(node_ip)
+        key_file = 'node.{}.key'.format(node_ip)
 
         remote_shell.run_command('mkdir -p ' + certs_dir)
         # Give write permission in case file exists. If the command fails, ignore.
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
-        remote_shell.run_command('cp {} {}'.format(root_cert_path,
-                                                   os.path.join(certs_dir,
-                                                                self.ROOT_CERT_NAME)))
-        remote_shell.run_command('cp {} {}'.format(node_cert_path,
-                                                   os.path.join(certs_dir, cert_file)))
-        remote_shell.run_command('cp {} {}'.format(node_key_path,
-                                                   os.path.join(certs_dir, key_file)))
+
+        if certs_location == self.CERT_LOCATION_NODE:
+            self.verify_certs(root_cert_path, server_cert_path, ssh_options, verify_hostname=True)
+            remote_shell.run_command('cp {} {}'.format(root_cert_path,
+                                                       os.path.join(certs_dir,
+                                                                    self.ROOT_CERT_NAME)))
+            remote_shell.run_command('cp {} {}'.format(server_cert_path,
+                                                       os.path.join(certs_dir, cert_file)))
+            remote_shell.run_command('cp {} {}'.format(server_key_path,
+                                                       os.path.join(certs_dir, key_file)))
+        if certs_location == self.CERT_LOCATION_PLATFORM:
+            remote_shell.put_file(root_cert_path, os.path.join(certs_dir, self.ROOT_CERT_NAME))
+            remote_shell.put_file(server_cert_path, os.path.join(certs_dir, cert_file))
+            remote_shell.put_file(server_key_path, os.path.join(certs_dir, key_file))
+
+        # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
 
-    def copy_certs(self, extra_vars, ssh_options):
+    def copy_client_certs(
+            self,
+            ssh_options,
+            root_cert_path,
+            client_cert_path,
+            client_key_path,
+            certs_location):
         remote_shell = RemoteShell(ssh_options)
-        if "root_cert_path" in extra_vars:
-            node_ip = ssh_options["ssh_host"]
-            root_cert_path = extra_vars["root_cert_path"]
-            node_cert_path = extra_vars["node_cert_path"]
-            node_key_path = extra_vars["node_key_path"]
-            certs_node_dir = extra_vars["certs_node_dir"]
-            self.__copy_certs(ssh_options, remote_shell, root_cert_path, node_cert_path,
-                              node_key_path, certs_node_dir)
-        if "client_root_cert_path" in extra_vars:
-            node_ip = ssh_options["ssh_host"]
-            root_cert_path = extra_vars["client_root_cert_path"]
-            node_cert_path = extra_vars["client_node_cert_path"]
-            node_key_path = extra_vars["client_node_key_path"]
-            certs_client_dir = extra_vars["certs_client_dir"]
-            self.__copy_certs(ssh_options, remote_shell, root_cert_path, node_cert_path,
-                              node_key_path, certs_client_dir)
-        if "client_cert_path" in extra_vars:
-            client_cert_path = extra_vars["client_cert_path"]
-            client_key_path = extra_vars["client_key_path"]
-            logging.info("Moving client certs located at {}, {}.".format(client_cert_path,
-                                                                         client_key_path))
-            remote_shell.run_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
-            # Give write permission in case file exists. If the command fails, ignore.
-            remote_shell.run_command('chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+        node_ip = ssh_options["ssh_host"]
+        logging.info("Moving client certs located at {}, {}, {}.".format(
+            root_cert_path, client_cert_path, client_key_path))
+        cert_file = 'node.{}.crt'.format(node_ip)
+        key_file = 'node.{}.key'.format(node_ip)
+
+        remote_shell.run_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
+        # Give write permission in case file exists. If the command fails, ignore.
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+
+        if certs_location == self.CERT_LOCATION_NODE:
+            remote_shell.run_command('cp {} {}'.format(root_cert_path,
+                                                       os.path.join(self.YSQLSH_CERT_DIR,
+                                                                    self.ROOT_CERT_NAME)))
             remote_shell.run_command('cp {} {}'.format(client_cert_path,
                                                        os.path.join(self.YSQLSH_CERT_DIR,
                                                                     self.CLIENT_CERT_NAME)))
             remote_shell.run_command('cp {} {}'.format(client_key_path,
                                                        os.path.join(self.YSQLSH_CERT_DIR,
                                                                     self.CLIENT_KEY_NAME)))
-            remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
-
-    def __generate_client_cert(self, extra_vars, ssh_options, root_cert_path,
-                               root_key_path, certs_dir, remote_shell):
-        node_ip = ssh_options["ssh_host"]
-        with open(root_cert_path, 'rb') as cert_in:
-            certlines = cert_in.read()
-        root_cert = x509.load_pem_x509_certificate(certlines, default_backend())
-        with open(root_key_path, 'rb') as key_in:
-            keylines = key_in.read()
-        root_key = load_pem_private_key(keylines, None, default_backend())
-        private_key = rsa.generate_private_key(
-            public_exponent=self.PUBLIC_EXPONENT,
-            key_size=self.KEY_SIZE,
-            backend=default_backend()
-        )
-        public_key = private_key.public_key()
-        builder = x509.CertificateBuilder()
-        builder = builder.subject_name(x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, six.text_type(node_ip)),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, six.text_type(extra_vars["org_name"]))
-        ]))
-        builder = builder.issuer_name(root_cert.subject)
-        builder = builder.not_valid_before(datetime.datetime.utcnow())
-        builder = builder.not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(
-            extra_vars["cert_valid_duration"]))
-        builder = builder.serial_number(x509.random_serial_number())
-        builder = builder.public_key(public_key)
-        builder = builder.add_extension(x509.BasicConstraints(ca=False, path_length=None),
-                                        critical=True)
-        certificate = builder.sign(private_key=root_key, algorithm=hashes.SHA256(),
-                                   backend=default_backend())
-        # Write private key to file
-        pem = private_key.private_bytes(
-            encoding=Encoding.PEM,
-            format=PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=NoEncryption()
-        )
-        key_file = 'node.{}.key'.format(node_ip)
-        cert_file = 'node.{}.crt'.format(node_ip)
-        with tempfile.TemporaryDirectory() as common_path:
-            with open(os.path.join(common_path, key_file), 'wb') as pem_out:
-                pem_out.write(pem)
-            # Write certificate to file
-            pem = certificate.public_bytes(encoding=Encoding.PEM)
-            with open(os.path.join(common_path, cert_file), 'wb') as pem_out:
-                pem_out.write(pem)
-            # Copy files over to node
-            remote_shell.run_command('mkdir -p ' + certs_dir)
-            # Give write permission in case file exists. If the command fails, ignore.
-            remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
-            remote_shell.put_file(os.path.join(common_path, key_file),
-                                  os.path.join(certs_dir, key_file))
-            remote_shell.put_file(os.path.join(common_path, cert_file),
-                                  os.path.join(certs_dir, cert_file))
-            remote_shell.put_file(root_cert_path, os.path.join(certs_dir, self.ROOT_CERT_NAME))
-            remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
-
-    def generate_client_cert(self, extra_vars, ssh_options):
-        remote_shell = RemoteShell(ssh_options)
-        if "rootCA_cert" in extra_vars:
-            root_cert_path = extra_vars["rootCA_cert"]
-            root_key_path = extra_vars["rootCA_key"]
-            certs_node_dir = extra_vars["certs_node_dir"]
-            self.__generate_client_cert(extra_vars, ssh_options, root_cert_path,
-                                        root_key_path, certs_node_dir, remote_shell)
-
-        if "clientRootCA_cert" in extra_vars:
-            root_cert_path = extra_vars["clientRootCA_cert"]
-            root_key_path = extra_vars["clientRootCA_key"]
-            certs_client_dir = extra_vars["certs_client_dir"]
-            self.__generate_client_cert(extra_vars, ssh_options, root_cert_path,
-                                        root_key_path, certs_client_dir, remote_shell)
-
-        if "client_cert" in extra_vars:
-            if "rootCA_cert" in extra_vars:
-                root_cert_path = extra_vars["rootCA_cert"]
-            else:
-                root_cert_path = extra_vars["clientRootCA_cert"]
-            client_cert_path = extra_vars["client_cert"]
-            client_key_path = extra_vars["client_key"]
-            remote_shell.run_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
-            # Give write permission in case file exists. If the command fails, ignore.
-            remote_shell.run_command('chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+        if certs_location == self.CERT_LOCATION_PLATFORM:
             remote_shell.put_file(root_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
                                                                self.CLIENT_ROOT_NAME))
             remote_shell.put_file(client_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
                                                                  self.CLIENT_CERT_NAME))
             remote_shell.put_file(client_key_path, os.path.join(self.YSQLSH_CERT_DIR,
                                                                 self.CLIENT_KEY_NAME))
-            remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
+
+        remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
     def create_encryption_at_rest_file(self, extra_vars, ssh_options):
         encryption_key_path = extra_vars["encryption_key_file"]  # Source file path
@@ -416,6 +444,6 @@ class AbstractCloud(AbstractCommandParser):
                 raise YBOpsRuntimeError(
                     "Cannot reach the instance {} after its start at port {}".format(
                         instance_name, ssh_port)
-                    )
+                )
         finally:
             sock.close()

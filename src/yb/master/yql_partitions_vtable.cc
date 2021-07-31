@@ -59,11 +59,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     }
   }
 
-  RETURN_NOT_OK(GenerateAndCacheData());
-  return cache_;
+  return GenerateAndCacheData();
 }
 
-Status YQLPartitionsVTable::GenerateAndCacheData() const {
+Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() const {
   CatalogManager* catalog_manager = master_->catalog_manager();
   {
     SharedLock<boost::shared_mutex> read_lock(mutex_);
@@ -71,7 +70,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
         catalog_manager->tablets_version() == cached_tablets_version_ &&
         catalog_manager->tablet_locations_version() == cached_tablet_locations_version_) {
       // Cache is up to date, so we could use it.
-      return Status::OK();
+      return cache_;
     }
   }
 
@@ -82,7 +81,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
       new_tablets_version == cached_tablets_version_ &&
       new_tablet_locations_version == cached_tablet_locations_version_) {
     // Cache was updated between locks, and now it is up to date.
-    return Status::OK();
+    return cache_;
   }
 
   auto vtable = std::make_shared<QLRowBlock>(schema_);
@@ -134,7 +133,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
   std::unordered_map<std::string, InetAddress> dns_results;
 
   for (auto& p : dns_lookups) {
-    dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(p.second.get())));
+    dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(Copy(p.second.get()))));
   }
 
   // Reserve upfront memory, as we're likely to need to insert a row for each tablet.
@@ -175,7 +174,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
   cached_tablet_locations_version_ = new_tablet_locations_version;
   cache_ = vtable;
 
-  return Status::OK();
+  return cache_;
 }
 
 Schema YQLPartitionsVTable::CreateSchema() const {

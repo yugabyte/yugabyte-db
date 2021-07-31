@@ -10,20 +10,28 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-
 import java.util.Arrays;
 import java.util.HashSet;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class StopNodeInUniverse extends UniverseTaskBase {
+
+  @Inject
+  protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -41,7 +49,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      LOG.info(
+      log.info(
           "Stop Node with name {} from universe {}",
           taskParams().nodeName,
           taskParams().universeUUID);
@@ -49,7 +57,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -101,7 +109,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
@@ -113,6 +121,6 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       unlockUniverseForUpdate();
     }
 
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

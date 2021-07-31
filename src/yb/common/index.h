@@ -70,7 +70,7 @@ class IndexInfo {
   const std::vector<ColumnId>& indexed_range_column_ids() const {
     return indexed_range_column_ids_;
   }
-  const IndexPermissions index_permissions() const { return index_permissions_; }
+  IndexPermissions index_permissions() const { return index_permissions_; }
 
   std::shared_ptr<const IndexInfoPB::WherePredicateSpecPB>& where_predicate_spec() const {
     return where_predicate_spec_;

@@ -107,12 +107,11 @@ DEFINE_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
-  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig",
-  60000000LU, 2);
+  "Microseconds spent resolving DNS requests during SysCatalogTable::SetupConfig");
 METRIC_DEFINE_counter(
   server, sys_catalog_peer_write_count,
   "yb.master.SysCatalogTable Count of Writes",
@@ -641,13 +640,14 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   }
 
   auto latch = std::make_shared<CountDownLatch>(1);
-  auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer()->tablet(), &writer->req(), resp.get());
-  operation_state->set_completion_callback(
+  auto operation = std::make_unique<tablet::WriteOperation>(
+      writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
+      tablet_peer()->tablet(), resp.get());
+  *operation->AllocateRequest() = writer->req();
+  operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
-  tablet_peer()->WriteAsync(
-      std::move(operation_state), writer->leader_term(), CoarseTimePoint::max() /* deadline */);
+  tablet_peer()->WriteAsync(std::move(operation));
   peer_write_count->Increment();
 
   {
@@ -767,7 +767,6 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
   const Schema& schema = ysql_catalog_table_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   boost::none /* transaction_id */,
                                                    {} /* read_hybrid_time */,
                                                    ysql_catalog_table_id));
   QLTableRow source_row;
@@ -816,7 +815,6 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
       VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
   const Schema& schema = pg_tablespace_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   boost::none /* transaction_id */,
                                                    {} /* read_hybrid_time */,
                                                    kPgTablespaceTableId));
   QLTableRow source_row;
@@ -904,8 +902,7 @@ Status SysCatalogTable::ReadPgClassInfo(
   const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-    projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
-    {} /* read_hybrid_time */, pg_table_id));
+    projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
   {
     auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
@@ -1095,7 +1092,7 @@ Status SysCatalogTable::CopyPgsqlTables(
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
     std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
-        tablet->NewRowIterator(source_projection, boost::none, {}, source_table_id));
+        tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 
     while (VERIFY_RESULT(iter->HasNext())) {

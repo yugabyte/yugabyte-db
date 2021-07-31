@@ -110,7 +110,8 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     master::IsEncryptionEnabledRequestPB is_enabled_req;
     master::IsEncryptionEnabledResponsePB is_enabled_resp;
 
-    auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
+    auto* catalog_manager =
+        VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager();
     RETURN_NOT_OK(catalog_manager->IsEncryptionEnabled(&is_enabled_req, &is_enabled_resp));
     return is_enabled_resp.encryption_enabled() ? is_enabled_resp.key_id() : "";
   }
@@ -145,8 +146,8 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     return true;
   }
 
-  void WaitForAllMastersHaveLatestKeyInMemory() {
-    AssertLoggedWaitFor([&]() -> Result<bool> {
+  CHECKED_STATUS WaitForAllMastersHaveLatestKeyInMemory() {
+    return LoggedWaitFor([&]() -> Result<bool> {
       return AllMastersHaveLatestKeyInMemory();
     }, 30s, "Wait for all masters to have key in memory");
   }
@@ -162,21 +163,27 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     encryption_info_req.set_version_id(current_key_id_);
     encryption_info_req.set_in_memory(true);
 
-    auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
+    auto* catalog_manager =
+        ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager();
     ASSERT_OK(catalog_manager->ChangeEncryptionInfo(&encryption_info_req, &encryption_info_resp));
     ASSERT_FALSE(encryption_info_resp.has_error());
     auto res = ASSERT_RESULT(IsEncryptionEnabled());
     ASSERT_NE("", res);
     ASSERT_EQ(current_key_id_, res);
-    ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+    ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   }
 
-  void WaitForLoadBalanced() {
+  CHECKED_STATUS WaitForLoadBalanced() {
     SleepFor(MonoDelta::FromSeconds(5));
-    AssertLoggedWaitFor([&]() -> Result<bool> {
+    return LoggedWaitFor([&]() -> Result<bool> {
       master::IsLoadBalancedRequestPB req;
       master::IsLoadBalancedResponsePB resp;
-      auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
+      auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
+      if (!leader_mini_master.ok()) {
+        return false;
+      }
+      auto* catalog_manager =
+          (*leader_mini_master)->master()->catalog_manager();
       return catalog_manager->IsLoadBalanced(&req, &resp).ok();
     }, MonoDelta::FromSeconds(30), "Wait for load balanced");
   }
@@ -186,7 +193,8 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     master::ChangeEncryptionInfoResponsePB encryption_info_resp;
     encryption_info_req.set_encryption_enabled(false);
 
-    auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
+    auto* catalog_manager =
+        ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager();
     ASSERT_OK(catalog_manager->ChangeEncryptionInfo(&encryption_info_req, &encryption_info_resp));
     ASSERT_FALSE(encryption_info_resp.has_error());
 
@@ -217,14 +225,14 @@ TEST_P(EncryptionTest, BasicWriteRead) {
 TEST_F(EncryptionTest, MasterLeaderRestart) {
   WriteWorkload(0, kNumKeys);
   // Restart the master leader.
-  CHECK_OK(mini_cluster()->leader_mini_master()->Restart());
-  ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+  CHECK_OK(ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->Restart());
+  ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   // Restart the tablet servers and make sure they can contact the new master leader for the key.
   for (int i = 0; i < mini_cluster()->num_tablet_servers(); i++) {
     CHECK_OK(mini_cluster()->mini_tablet_server(i)->Restart());
   }
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -238,7 +246,7 @@ TEST_F(EncryptionTest, AllMastersRestart) {
     CHECK_OK(mini_cluster()->mini_master(i)->Restart());
   }
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -251,13 +259,13 @@ TEST_F(EncryptionTest, RollingMasterRestart) {
 
   for (int i = 0; i < mini_cluster()->num_masters(); i++) {
     CHECK_OK(mini_cluster()->mini_master(i)->Restart());
-    ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+    ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   }
   // Test that each master bootstraps from each other.
   ASSERT_NO_FATALS(AddUniverseKeys());
   ASSERT_NO_FATALS(RotateKey());
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -268,7 +276,7 @@ TEST_F(EncryptionTest, AddServer) {
   // Write 1000 values, add a server, and write 1000 more.
   WriteWorkload(0, kNumKeys);
   ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
   ClusterVerifier cv(mini_cluster());
@@ -301,7 +309,7 @@ TEST_F(EncryptionTest, DisableEncryption) {
 TEST_F(EncryptionTest, EmptyTable) {
   // No values added, make sure add server works with empty tables.
   ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   ClusterVerifier cv(mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
@@ -319,6 +327,11 @@ TEST_F(EncryptionTest, EnableEncryption) {
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
+TEST_F(EncryptionTest, EnvIsEncrypted) {
+  for (int i = 0; i < mini_cluster()->num_tablet_servers(); ++i) {
+    ASSERT_TRUE(mini_cluster()->mini_tablet_server(i)->server()->GetEnv()->IsEncrypted());
+  }
+}
 
 } // namespace integration_tests
 } // namespace yb

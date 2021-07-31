@@ -15,18 +15,17 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.HAConfigFormData;
+import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import java.util.Optional;
-import java.util.UUID;
 
 public class HAController extends AuthenticatedController {
 
@@ -34,15 +33,10 @@ public class HAController extends AuthenticatedController {
 
   @Inject private PlatformReplicationManager replicationManager;
 
-  @Inject private FormFactory formFactory;
-
   // TODO: (Daniel) - This could be a task
   public Result createHAConfig() {
     try {
-      Form<HAConfigFormData> formData = formFactory.form(HAConfigFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
 
       if (HighAvailabilityConfig.get().isPresent()) {
         LOG.error("An HA Config already exists");
@@ -52,7 +46,7 @@ public class HAController extends AuthenticatedController {
 
       HighAvailabilityConfig config = HighAvailabilityConfig.create(formData.get().cluster_key);
 
-      return ApiResponse.success(config);
+      return YWResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error creating HA config", e);
 
@@ -71,7 +65,7 @@ public class HAController extends AuthenticatedController {
         return Results.status(NOT_FOUND, jsonMsg);
       }
 
-      return ApiResponse.success(config.get());
+      return YWResults.withData(config.get());
     } catch (Exception e) {
       LOG.error("Error retrieving HA config", e);
 
@@ -86,16 +80,13 @@ public class HAController extends AuthenticatedController {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
-      Form<HAConfigFormData> formData = formFactory.form(HAConfigFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
 
       replicationManager.stop();
       HighAvailabilityConfig.update(config.get(), formData.get().cluster_key);
       replicationManager.start();
 
-      return ApiResponse.success(config);
+      return YWResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error updating cluster key", e);
 

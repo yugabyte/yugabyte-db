@@ -106,6 +106,9 @@ template <class Req, class Resp>
 class ClientMasterRpc;
 }
 
+using GetTableLocationsCallback =
+    std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
+
 // This needs to be called by a client app before performing any operations that could result in
 // logging.
 void InitLogging();
@@ -286,8 +289,6 @@ class YBClient {
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
   CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
-
-  Result<master::AnalyzeTableResponsePB> AnalyzeTable(const std::string& table_id);
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true);
@@ -549,6 +550,10 @@ class YBClient {
 
   void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
+  void GetTableLocations(
+      const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
+      GetTableLocationsCallback callback);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
@@ -557,6 +562,10 @@ class YBClient {
       bool use_cache = false);
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
+
+  CHECKED_STATUS ListLiveTabletServers(
+      std::vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers,
+      bool primary_only = false);
 
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,
@@ -716,7 +725,7 @@ class YBClient {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  void LookupTabletByKey(const std::shared_ptr<const YBTable>& table,
+  void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,
                          CoarseTimePoint deadline,
                          LookupTabletCallback callback);
@@ -732,7 +741,7 @@ class YBClient {
                         LookupTabletRangeCallback callback);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
-      const std::shared_ptr<const YBTable>& table,
+      const std::shared_ptr<YBTable>& table,
       const std::string& partition_key,
       CoarseTimePoint deadline);
 

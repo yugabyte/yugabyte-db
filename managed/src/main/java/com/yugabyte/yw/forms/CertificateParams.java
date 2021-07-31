@@ -2,10 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-import java.util.Date;
-
 import com.yugabyte.yw.models.CertificateInfo;
+import play.data.validation.Constraints;
 
 /**
  * This class will be used by the API and UI Form Elements to validate constraints for the custom
@@ -33,4 +31,11 @@ public class CertificateParams {
   }
 
   public CustomCertInfo customCertInfo;
+
+  public static class CustomServerCertData {
+    public String serverCertContent;
+    public String serverKeyContent;
+  }
+
+  public CustomServerCertData customServerCertData;
 }

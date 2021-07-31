@@ -165,9 +165,10 @@ Result<YBqlWriteOpPtr> Increment(
 }
 
 void CreateTable(
-    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table) {
-  ASSERT_OK(client->CreateNamespaceIfNotExists(kTableName.namespace_name(),
-                                               kTableName.namespace_type()));
+    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table,
+    const YBTableName& table_name) {
+  ASSERT_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                               table_name.namespace_type()));
 
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
@@ -178,7 +179,7 @@ void CreateTable(
     builder.SetTableProperties(table_properties);
   }
 
-  ASSERT_OK(table->Create(kTableName, num_tablets, client, &builder));
+  ASSERT_OK(table->Create(table_name, num_tablets, client, &builder));
 }
 
 void InitIndex(

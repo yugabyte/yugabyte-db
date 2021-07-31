@@ -108,7 +108,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.2.1
+        version: v2.27.1
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
@@ -294,7 +294,7 @@ components:
                 releases.path = "/opt/yugabyte/releases"
                 docker.release = "/opt/yugabyte/release"
                 thirdparty.packagePath = /opt/third-party
-                helm.package = "/opt/yugabyte/helm/yugabyte-latest.tgz"
+                helm.packagePath = "/opt/yugabyte/helm"
                 health.check_interval_ms = 300000
                 health.status_interval_ms = 43200000
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"

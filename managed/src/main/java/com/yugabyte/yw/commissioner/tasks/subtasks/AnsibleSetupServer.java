@@ -10,21 +10,26 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.models.Universe;
 
 import java.util.List;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class AnsibleSetupServer extends NodeTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AnsibleSetupServer.class);
+  @Inject
+  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   // Additional parameters for this task.
   public static class Params extends NodeTaskParams {
@@ -45,6 +50,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public String ipArnString;
     public String machineImage;
     public boolean reprovision;
+
+    // Systemd vs Cron Option (Default: Cron)
+    public boolean useSystemd = false;
   }
 
   @Override
@@ -58,13 +66,17 @@ public class AnsibleSetupServer extends NodeTaskBase {
     List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    taskParams().useSystemd =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
+
     // For now we will skipProvision if it's set in accessKeys.
     if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
       skipProvision = accessKeys.get(0).getKeyInfo().skipProvisioning;
     }
 
     if (skipProvision) {
-      LOG.info("Skipping ansible provision.");
+      log.info("Skipping ansible provision.");
     } else {
       // Execute the ansible command.
       ShellResponse response =

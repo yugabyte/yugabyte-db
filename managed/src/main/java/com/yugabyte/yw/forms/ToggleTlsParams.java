@@ -6,10 +6,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.CertificateInfo;
+import java.util.UUID;
 import play.data.validation.Constraints;
 import play.mvc.Http;
-
-import java.util.UUID;
 
 /** Class to capture request params for toggle_tls API */
 public class ToggleTlsParams {
@@ -21,31 +20,44 @@ public class ToggleTlsParams {
 
   public UUID rootCA = null;
 
+  public UUID clientRootCA = null;
+
+  public Boolean rootAndClientRootCASame = null;
+
   // Verifies the ToggleTlsParams by comparing with the existing
   // UniverseDefinitionTaskParams, returns YWError object if invalid else null
-  public YWError verifyParams(UniverseDefinitionTaskParams universeParams) {
+  public YWResults.YWError verifyParams(UniverseDefinitionTaskParams universeParams) {
     boolean existingEnableClientToNodeEncrypt =
         universeParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
     boolean existingEnableNodeToNodeEncrypt =
         universeParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
     UUID existingRootCA = universeParams.rootCA;
+    UUID existingClientRootCA = universeParams.clientRootCA;
 
     if (upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE) {
-      return new YWError("TLS upgrade can be performed either rolling or non-rolling way.");
+      return new YWResults.YWError(
+          "TLS upgrade can be performed either rolling or non-rolling way.");
     }
 
     if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt
         && this.enableNodeToNodeEncrypt == existingEnableNodeToNodeEncrypt) {
-      return new YWError("No changes in Tls parameters, cannot perform update operation.");
+      return new YWResults.YWError(
+          "No changes in Tls parameters, cannot perform update operation.");
     }
 
     if (rootCA != null && CertificateInfo.get(rootCA) == null) {
-      return new YWError("No valid rootCA found for UUID: " + rootCA);
+      return new YWResults.YWError("No valid rootCA found for UUID: " + rootCA);
     }
 
     if (existingRootCA != null && rootCA != null && !existingRootCA.equals(rootCA)) {
-      return new YWError("Cannot update root certificate, if already created.");
+      return new YWResults.YWError("Cannot update root certificate, if already created.");
+    }
+
+    if (existingClientRootCA != null
+        && clientRootCA != null
+        && !existingClientRootCA.equals(clientRootCA)) {
+      return new YWResults.YWError("Cannot update client root certificate, if already created.");
     }
 
     return null;
@@ -57,6 +69,8 @@ public class ToggleTlsParams {
     JsonNode nodeToNode = formData.get("enableNodeToNodeEncrypt");
     JsonNode clientToNode = formData.get("enableClientToNodeEncrypt");
     JsonNode rootCA = formData.get("rootCA");
+    JsonNode clientRootCA = formData.get("clientRootCA");
+    JsonNode rootAndClientRootCASame = formData.get("rootAndClientRootCASame");
 
     if (upgradeOption != null && upgradeOption.isTextual() && !upgradeOption.asText().isEmpty()) {
       try {
@@ -86,6 +100,23 @@ public class ToggleTlsParams {
         params.rootCA = UUID.fromString(rootCA.asText());
       } catch (IllegalArgumentException e) {
         throw new YWServiceException(Http.Status.BAD_REQUEST, "rootCA: Invalid Uuid String.");
+      }
+    }
+
+    if (clientRootCA != null && clientRootCA.isTextual() && !clientRootCA.asText().isEmpty()) {
+      try {
+        params.clientRootCA = UUID.fromString(clientRootCA.asText());
+      } catch (IllegalArgumentException e) {
+        throw new YWServiceException(Http.Status.BAD_REQUEST, "clientRootCA: Invalid Uuid String.");
+      }
+    }
+
+    if (rootAndClientRootCASame != null && rootAndClientRootCASame.isBoolean()) {
+      try {
+        params.rootAndClientRootCASame = rootAndClientRootCASame.asBoolean();
+      } catch (IllegalArgumentException e) {
+        throw new YWServiceException(
+            Http.Status.BAD_REQUEST, "rootAndClientRootCASame: Invalid Boolean.");
       }
     }
 

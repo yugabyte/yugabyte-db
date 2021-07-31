@@ -2,11 +2,18 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.models.Users.Role;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -15,14 +22,6 @@ import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import static com.yugabyte.yw.models.Users.Role;
 
 public class TokenAuthenticator extends Action.Simple {
   public static final String COOKIE_AUTH_TOKEN = "authToken";

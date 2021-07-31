@@ -2,32 +2,42 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.common.YWServiceException;
-
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.common.YWServiceException;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+
+@ApiModel(value = "Device info", description = "Device information")
 public class DeviceInfo {
 
   // The size of each volume in each instance (if specified).
+  @ApiModelProperty(value = "he size of each volume in each instance")
   public Integer volumeSize;
 
   // Number of volumes to be mounted on this instance at the default path (if specified).
+  @ApiModelProperty(value = "Number of volumes to be mounted on this instance at the default path")
   public Integer numVolumes;
 
   // Desired Iops for the volumes mounted on this instance (if specified).
+  @ApiModelProperty(value = "Desired iops for the volumes mounted on this instance")
   public Integer diskIops;
 
   // Desired throughput for the volumes mounted on this instance (if specified).
+  @ApiModelProperty(value = "Desired throughput for the volumes mounted on this instance")
   public Integer throughput;
 
   // Name of storage class (if specified)
+  @ApiModelProperty(value = "Name of storage class")
   public String storageClass = "standard";
 
   // Comma separated list of mount points for the devices in each instance (if specified).
+  @ApiModelProperty(value = "Comma separated list of mount points for the devices in each instance")
   public String mountPoints;
 
   // The type of storage used for this instance (null if instance volume type is not EBS).
+  @ApiModelProperty(value = "The type of storage used for this instance")
   public PublicCloudConstants.StorageType storageType;
 
   public String toString() {
