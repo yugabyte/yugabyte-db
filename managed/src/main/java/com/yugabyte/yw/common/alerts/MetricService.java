@@ -16,6 +16,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -28,7 +29,9 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.ebean.annotation.Transactional;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +48,11 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class MetricService {
   public static final long DEFAULT_METRIC_EXPIRY_SEC = TimeUnit.DAYS.toSeconds(10);
+  private static final Comparator<MetricKey> METRIC_KEY_COMPARATOR =
+      Comparator.comparing(MetricKey::getName)
+          .thenComparing(MetricKey::getCustomerUuid)
+          .thenComparing(MetricKey::getTargetUuid);
+  private final MultiKeyLock<MetricKey> metricKeyLock = new MultiKeyLock<>(METRIC_KEY_COMPARATOR);
 
   @Transactional
   public List<Metric> save(List<Metric> metrics) {
@@ -52,35 +60,40 @@ public class MetricService {
       return metrics;
     }
 
-    List<Metric> beforeMetrics = Collections.emptyList();
-    Set<MetricKey> metricKeys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
-    if (!metricKeys.isEmpty()) {
-      MetricFilter filter = MetricFilter.builder().keys(metricKeys).build();
-      beforeMetrics = list(filter);
+    try {
+      acquireLocks(metrics);
+      List<Metric> beforeMetrics = Collections.emptyList();
+      Set<MetricKey> metricKeys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
+      if (!metricKeys.isEmpty()) {
+        MetricFilter filter = MetricFilter.builder().keys(metricKeys).build();
+        beforeMetrics = list(filter);
+      }
+      Map<MetricKey, Metric> beforeMetricMap =
+          beforeMetrics.stream().collect(Collectors.toMap(MetricKey::from, Function.identity()));
+
+      Map<EntityOperation, List<Metric>> toCreateAndUpdate =
+          metrics
+              .stream()
+              .peek(this::validate)
+              .map(metric -> prepareForSave(metric, beforeMetricMap.get(MetricKey.from(metric))))
+              .collect(Collectors.groupingBy(metric -> metric.isNew() ? CREATE : UPDATE));
+
+      if (toCreateAndUpdate.containsKey(CREATE)) {
+        List<Metric> toCreate = toCreateAndUpdate.get(CREATE);
+        toCreate.forEach(Metric::generateUUID);
+        Metric.db().saveAll(toCreate);
+      }
+
+      if (toCreateAndUpdate.containsKey(UPDATE)) {
+        List<Metric> toUpdate = toCreateAndUpdate.get(UPDATE);
+        Metric.db().updateAll(toUpdate);
+      }
+
+      log.trace("{} metrics saved", metrics.size());
+      return metrics;
+    } finally {
+      releaseLocks(metrics);
     }
-    Map<MetricKey, Metric> beforeMetricMap =
-        beforeMetrics.stream().collect(Collectors.toMap(MetricKey::from, Function.identity()));
-
-    Map<EntityOperation, List<Metric>> toCreateAndUpdate =
-        metrics
-            .stream()
-            .peek(this::validate)
-            .peek(metric -> prepareForSave(metric, beforeMetricMap.get(MetricKey.from(metric))))
-            .collect(Collectors.groupingBy(metric -> metric.isNew() ? CREATE : UPDATE));
-
-    if (toCreateAndUpdate.containsKey(CREATE)) {
-      List<Metric> toCreate = toCreateAndUpdate.get(CREATE);
-      toCreate.forEach(Metric::generateUUID);
-      Metric.db().saveAll(toCreate);
-    }
-
-    if (toCreateAndUpdate.containsKey(UPDATE)) {
-      List<Metric> toUpdate = toCreateAndUpdate.get(UPDATE);
-      Metric.db().updateAll(toUpdate);
-    }
-
-    log.trace("{} metrics saved", metrics.size());
-    return metrics;
   }
 
   @Transactional
@@ -99,8 +112,21 @@ public class MetricService {
 
   @Transactional
   public void delete(MetricFilter filter) {
-    int deleted = createQueryByFilter(filter).delete();
-    log.trace("{} metrics deleted", deleted);
+    List<Metric> toDelete = list(filter);
+    if (toDelete.isEmpty()) {
+      return;
+    }
+    try {
+      acquireLocks(toDelete);
+      MetricFilter deleteFilter =
+          MetricFilter.builder()
+              .uuids(toDelete.stream().map(Metric::getUuid).collect(Collectors.toSet()))
+              .build();
+      int deleted = createQueryByFilter(deleteFilter).delete();
+      log.trace("{} metrics deleted", deleted);
+    } finally {
+      releaseLocks(toDelete);
+    }
   }
 
   @Transactional
@@ -199,12 +225,25 @@ public class MetricService {
     }
   }
 
-  private void prepareForSave(Metric metric, Metric before) {
-    metric.setUpdateTime(CommonUtils.nowWithoutMillis());
+  private Metric prepareForSave(Metric metric, Metric before) {
     if (before == null) {
-      return;
+      metric.setUpdateTime(CommonUtils.nowWithoutMillis());
+      return metric;
     }
-    metric.setUuid(before.getUuid());
-    metric.setCreateTime(before.getCreateTime());
+    before.setUpdateTime(CommonUtils.nowWithoutMillis());
+    before.setValue(metric.getValue());
+    before.setLabels(metric.getLabels());
+    before.setExpireTime(metric.getExpireTime());
+    return before;
+  }
+
+  private void acquireLocks(Collection<Metric> metrics) {
+    Set<MetricKey> keys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
+    metricKeyLock.acquireLocks(keys);
+  }
+
+  private void releaseLocks(Collection<Metric> metrics) {
+    Set<MetricKey> keys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
+    metricKeyLock.releaseLocks(keys);
   }
 }
