@@ -29,6 +29,7 @@
 #include "nodes/primnodes.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
+#include "utils/sampling.h"
 
 //-----------------------------------------------------------------------------
 // Memory Context
@@ -262,20 +263,39 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 // Relation sampling
 //-----------------------------------------------------------------------------
 
-YbgStatus YbgSamplerRandomFract(SamplerRandomState randstate, double *value)
+struct YbgReservoirStateData {
+	ReservoirStateData rs;
+};
+
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs) 
 {
 	PG_SETUP_ERROR_REPORTING();
-
-	*value = sampler_random_fract(randstate);
-
+	YbgReservoirState rstate = (YbgReservoirState) palloc0(sizeof(struct YbgReservoirStateData));
+	rstate->rs.W = rstate_w;
+	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
+	*yb_rs = rstate;
 	return PG_STATUS_OK;
 }
 
-YbgStatus YbgReservoirGetNextS(ReservoirState rs, double t, int n, double *s)
+YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate)
 {
 	PG_SETUP_ERROR_REPORTING();
+	*rstate_w = yb_rs->rs.W;
+	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
+	return PG_STATUS_OK;
+}
 
-	*s = reservoir_get_next_S(rs, t, n);
+YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
+{
+	PG_SETUP_ERROR_REPORTING();
+	ReservoirState rs = &yb_rs->rs;
+	*value = sampler_random_fract(rs->randstate);
+	return PG_STATUS_OK;
+}
 
+YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*s = reservoir_get_next_S(&yb_rs->rs, t, n);
 	return PG_STATUS_OK;
 }
