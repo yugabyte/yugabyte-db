@@ -698,9 +698,9 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const common::YQLStorageIf& ql_
   // Current number of rows to skip before collecting next one for sample
   double rowstoskip = sampling_state.rowstoskip();
   // Variables for the random numbers generator
-  ReservoirStateData rstate;
-  rstate.W = sampling_state.rstate_w();
-  Uint64ToSamplerRandomState(rstate.randstate, sampling_state.rand_state());
+  YbgPrepareMemoryContext();
+  YbgReservoirState rstate = NULL;
+  YbgSamplerCreate(sampling_state.rstate_w(), sampling_state.rand_state(), &rstate);
   // Buffer to hold selected row ids from the current page
   std::unique_ptr<QLValuePB[]> reservoir = std::make_unique<QLValuePB[]>(targrows);
   // Number of rows to scan for the current page.
@@ -742,12 +742,12 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const common::YQLStorageIf& ql_
         // Pick random tuple in the reservoir to replace
         double rvalue;
         int k;
-        YbgSamplerRandomFract(rstate.randstate, &rvalue);
+        YbgSamplerRandomFract(rstate, &rvalue);
         k = static_cast<int>(targrows * rvalue);
         // Overwrite previous value with new one
         reservoir[k].set_binary_value(ybctid.data(), ybctid.size());
         // Choose next number of rows to skip
-        YbgReservoirGetNextS(&rstate, samplerows, targrows, &rowstoskip);
+        YbgReservoirGetNextS(rstate, samplerows, targrows, &rowstoskip);
       } else {
         rowstoskip -= 1;
       }
@@ -783,8 +783,12 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const common::YQLStorageIf& ql_
   new_sampling_state->set_targrows(targrows);
   new_sampling_state->set_samplerows(samplerows);
   new_sampling_state->set_rowstoskip(rowstoskip);
-  new_sampling_state->set_rstate_w(rstate.W);
-  new_sampling_state->set_rand_state(SamplerRandomStateToUint64(rstate.randstate));
+  uint64_t randstate = 0;
+  double rstate_w = 0;
+  YbgSamplerGetState(rstate, &rstate_w, &randstate);
+  new_sampling_state->set_rstate_w(rstate_w);
+  new_sampling_state->set_rand_state(randstate);
+  YbgDeleteMemoryContext();
 
   // Return paging state if scan has not been completed
   RETURN_NOT_OK(SetPagingStateIfNecessary(table_iter_.get(), scanned_rows, row_count_limit,
