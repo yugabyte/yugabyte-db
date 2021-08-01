@@ -24,8 +24,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/gutil/integral_types.h"
-#include "utils/sampling.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -143,16 +141,32 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum, int type, uint64_t **result_datum_a
 // Relation sampling
 //-----------------------------------------------------------------------------
 
+#ifdef __cplusplus
+typedef void* YbgReservoirState;
+#else
+typedef struct YbgReservoirStateData* YbgReservoirState;
+#endif
+
+/*
+ * Allocate and initialize a YbgReservoirState.
+ */
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs);
+
+/*
+ * Allocate and initialize a YbgReservoirState.
+ */
+YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate);
+
 /*
  * Select a random value R uniformly distributed in (0 - 1)
  */
-YbgStatus YbgSamplerRandomFract(SamplerRandomState randstate, double *value);
+YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value);
 
 /*
  * Calculate next number of rows to skip based on current number of scanned rows
  * and requested sample size.
  */
-YbgStatus YbgReservoirGetNextS(ReservoirState rs, double t, int n, double *s);
+YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s);
 
 #ifdef __cplusplus
 }
