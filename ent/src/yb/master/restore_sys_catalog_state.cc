@@ -61,9 +61,9 @@ CHECKED_STATUS ApplyWriteRequest(
     const Schema& schema, PgsqlWriteRequestPB* write_request,
     docdb::DocWriteBatch* write_batch) {
   HybridTime restart_read_ht;
-  docdb::DocOperationApplyData apply_data{
-      .doc_write_batch = write_batch,
-      .restart_read_ht = &restart_read_ht};
+  docdb::DocOperationApplyData apply_data;
+  apply_data.doc_write_batch = write_batch;
+  apply_data.restart_read_ht = &restart_read_ht;
   docdb::PgsqlWriteOperation operation(schema, boost::none);
   PgsqlResponsePB response;
   RETURN_NOT_OK(operation.Init(write_request, &response));
