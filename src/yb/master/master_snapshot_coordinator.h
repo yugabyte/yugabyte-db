@@ -42,6 +42,13 @@ struct ModifiedTable {
   TableModificationType modification;
 };
 
+struct ModifiedPgCatalogTable {
+  TableName name = "";
+  uint32_t num_inserts = 0;
+  uint32_t num_deletes = 0;
+  uint32_t num_updates = 0;
+};
+
 struct SnapshotScheduleRestoration {
   TxnSnapshotId snapshot_id;
   HybridTime restore_at;
@@ -50,10 +57,14 @@ struct SnapshotScheduleRestoration {
   HybridTime write_time;
   int64_t term;
   SnapshotScheduleFilterPB filter;
-  std::vector<TabletId> obsolete_tablets;
-  std::vector<TableId> obsolete_tables;
-  std::vector<ModifiedTable> modified_tables;
-  std::unordered_map<std::string, SysRowEntry::Type> objects_to_restore;
+  std::vector<TabletId> non_system_obsolete_tablets;
+  std::vector<TableId> non_system_obsolete_tables;
+  std::vector<ModifiedTable> non_system_modified_tables;
+  std::unordered_map<std::string, SysRowEntry::Type> non_system_objects_to_restore;
+  // pg_catalog_tables to restore for YSQL tables.
+  std::unordered_map<TableId, TableName> system_tables_to_restore;
+  // Counts of Insert/Delete/Updates to the pg_catalog tables.
+  std::unordered_map<TableId, ModifiedPgCatalogTable> pg_catalog_modification_details;
 };
 
 // Class that coordinates transaction aware snapshots at master.
