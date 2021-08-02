@@ -89,6 +89,7 @@ class YBTableCreator;
 class YBTableName;
 class YBTabletServer;
 class YBTabletServerPlacementInfo;
+class UniverseKeyClient;
 
 struct YBTableInfo;
 
