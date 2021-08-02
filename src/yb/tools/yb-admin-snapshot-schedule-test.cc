@@ -30,6 +30,7 @@
 #include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
 
+#include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
@@ -93,7 +94,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   CHECKED_STATUS RestoreSnapshotSchedule(const std::string& schedule_id, Timestamp restore_at) {
     return WaitRestorationDone(
-        VERIFY_RESULT(StartRestoreSnapshotSchedule(schedule_id, restore_at)), 40s);
+        VERIFY_RESULT(
+            StartRestoreSnapshotSchedule(schedule_id, restore_at)), 40s * kTimeMultiplier);
   }
 
   CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
@@ -137,7 +139,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   virtual std::vector<std::string> ExtraMasterFlags() {
     // To speed up tests.
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
-             "--snapshot_coordinator_poll_interval_ms=500" };
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_transactional_ddl_gc=false" };
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
@@ -490,7 +493,7 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   }, deadline, "Deleted table cleanup"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(Pgsql),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -511,7 +514,28 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
   ASSERT_EQ(res, "before");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateTable),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+
+  ASSERT_NOK(conn.Execute("INSERT INTO test_table VALUES (2, 'now')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'after')"));
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>(
+      "SELECT value FROM test_table WHERE key = 1"));
+  ASSERT_EQ(res, "after");
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateIndex),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -524,11 +548,39 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex)
   ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
 
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_NOK(restore_status);
-  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore DDL for YSQL database");
+  ASSERT_OK(restore_status);
+
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
+  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropTable),
+          YbAdminSnapshotScheduleTestWithYsql) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'before')"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.Execute("DROP TABLE test_table"));
+
+  auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
+  ASSERT_OK(restore_status);
+
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>(
+      "SELECT value FROM test_table WHERE key = 1"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'after'"));
+  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table WHERE key = 1"));
+  ASSERT_EQ(res, "after");
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropIndex),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -543,11 +595,17 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
   ASSERT_OK(conn.Execute("DROP INDEX test_table_idx"));
 
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_NOK(restore_status);
-  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore DDL for YSQL database");
+  ASSERT_OK(restore_status);
+
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  ASSERT_NOK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'after')"));
+  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table WHERE key = 2"));
+  ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddColumn),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -559,10 +617,17 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value2 TEXT"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value = 'now'"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value2 = 'now2'"));
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value2 FROM test_table"));
+  ASSERT_EQ(res, "now2");
 
   auto restore_status = RestoreSnapshotSchedule(schedule_id, time);
-  ASSERT_NOK(restore_status);
-  ASSERT_STR_CONTAINS(restore_status.ToString(), "Unable to restore DDL for YSQL database");
+  ASSERT_OK(restore_status);
+  res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  auto result_status = conn.FetchValue<std::string>("SELECT value2 FROM test_table");
+  ASSERT_EQ(result_status.ok(), false);
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndex) {

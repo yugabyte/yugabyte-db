@@ -1511,21 +1511,16 @@ Status CatalogManager::RestoreSysCatalog(
   RETURN_NOT_OK(state.LoadExistingObjects(schema(), tablet->doc_db()));
   RETURN_NOT_OK(state.Process());
 
-  for (const auto& table : restoration->modified_tables) {
-    if (table.type != TableType::PGSQL_TABLE_TYPE) {
-      continue;
-    }
-    *complete_status = STATUS_EC_FORMAT(
-        NotSupported, MasterError(MasterErrorPB::INVALID_TABLE_TYPE),
-        "Unable to restore DDL for YSQL database: $0 $1", table.name, table.modification);
+  docdb::DocWriteBatch write_batch(
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
-    return Status::OK();
-  }
-
-  // Generate write batch.
-  docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);
+  // Patch the pg_yb_catalog_version table.
+  RETURN_NOT_OK(state.PatchPgVersionTable(tablet, &write_batch));
+  // Restore the pg_catalog tables.
+  RETURN_NOT_OK(state.ProcessPgCatalogRestores(tablet, &write_batch));
+  // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
-  for (const auto& tablet_id : restoration->obsolete_tablets) {
+  for (const auto& tablet_id : restoration->non_system_obsolete_tablets) {
     auto info = GetTabletInfo(tablet_id);
     if (!info.ok()) {
       continue;
@@ -1533,7 +1528,7 @@ Status CatalogManager::RestoreSysCatalog(
     RETURN_NOT_OK(state.PrepareTabletCleanup(
         tablet_id, (**info).LockForRead()->pb, schema(), &write_batch));
   }
-  for (const auto& table_id : restoration->obsolete_tables) {
+  for (const auto& table_id : restoration->non_system_obsolete_tables) {
     auto info = GetTableInfo(table_id);
     if (!info) {
       continue;
@@ -1543,18 +1538,7 @@ Status CatalogManager::RestoreSysCatalog(
   }
 
   // Apply write batch to RocksDB.
-  docdb::KeyValueWriteBatchPB kv_write_batch;
-  write_batch.MoveToWriteBatchPB(&kv_write_batch);
-
-  rocksdb::WriteBatch rocksdb_write_batch;
-  PrepareNonTransactionWriteBatch(
-      kv_write_batch, restoration->write_time, nullptr, &rocksdb_write_batch, nullptr);
-  docdb::ConsensusFrontiers frontiers;
-  set_op_id(restoration->op_id, &frontiers);
-  set_hybrid_time(restoration->write_time, &frontiers);
-
-  tablet->WriteToRocksDB(
-      &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
+  state.WriteToRocksDB(&write_batch, restoration->write_time, restoration->op_id, tablet);
 
   // TODO(pitr) Handle master leader failover.
   RETURN_NOT_OK(ElectedAsLeaderCb());
@@ -1564,7 +1548,7 @@ Status CatalogManager::RestoreSysCatalog(
 
 Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
   auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(restoration.filter.tables().tables()));
-  auto objects_to_restore = restoration.objects_to_restore;
+  auto objects_to_restore = restoration.non_system_objects_to_restore;
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
   for (const auto& entry : entries.entries()) {
     VLOG_WITH_PREFIX(1)

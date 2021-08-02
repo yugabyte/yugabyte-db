@@ -23,7 +23,9 @@
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -57,6 +59,16 @@ class RestoreSysCatalogState {
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
+  void WriteToRocksDB(
+      docdb::DocWriteBatch* pg_catalog_write_batch, const yb::HybridTime& write_time,
+      const yb::OpId& op_id, tablet::Tablet* tablet);
+
+  CHECKED_STATUS PatchPgVersionTable(const tablet::Tablet* tablet,
+                                     docdb::DocWriteBatch* write_batch);
+
+  CHECKED_STATUS ProcessPgCatalogRestores(const tablet::Tablet* tablet,
+                                          docdb::DocWriteBatch* write_batch);
+
   Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
 
   void TEST_AddNamespace(const NamespaceId& id, const SysNamespaceEntryPB& value) {
@@ -72,7 +84,8 @@ class RestoreSysCatalogState {
 
   // Determine entries that should be restored. I.e. apply filter and serialize.
   template <class ProcessEntry>
-  CHECKED_STATUS DetermineEntries(const Objects& objects, const ProcessEntry& process_entry);
+  CHECKED_STATUS DetermineEntries(
+      const Objects& objects, bool is_restoration_objects, const ProcessEntry& process_entry);
 
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(

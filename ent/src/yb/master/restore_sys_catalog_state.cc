@@ -13,17 +13,29 @@
 
 #include "yb/master/restore_sys_catalog_state.h"
 
+#include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/index.h"
 
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_expr.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/pgsql_operation.h"
 
 #include "yb/master/master.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
+#include "yb/master/pg_sys_catalog_util.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_writer.h"
 
+#include "yb/rocksdb/write_batch.h"
+#include "yb/tablet/tablet.h"
 #include "yb/util/pb_util.h"
 
 using namespace std::placeholders;
@@ -41,6 +53,19 @@ CHECKED_STATUS ApplyWriteRequest(
   IndexMap index_map;
   docdb::QLWriteOperation operation(schema_ptr, index_map, nullptr, boost::none);
   QLResponsePB response;
+  RETURN_NOT_OK(operation.Init(write_request, &response));
+  return operation.Apply(apply_data);
+}
+
+CHECKED_STATUS ApplyWriteRequest(
+    const Schema& schema, PgsqlWriteRequestPB* write_request,
+    docdb::DocWriteBatch* write_batch) {
+  HybridTime restart_read_ht;
+  docdb::DocOperationApplyData apply_data{
+      .doc_write_batch = write_batch,
+      .restart_read_ht = &restart_read_ht};
+  docdb::PgsqlWriteOperation operation(schema, boost::none);
+  PgsqlResponsePB response;
   RETURN_NOT_OK(operation.Init(write_request, &response));
   return operation.Apply(apply_data);
 }
@@ -72,7 +97,7 @@ void RestoreSysCatalogState::AddRestoringEntry(
   entry.set_id(id);
   pb_util::SerializeToString(pb, buffer);
   entry.set_data(buffer->data(), buffer->size());
-  restoration_.objects_to_restore.emplace(id, type);
+  restoration_.non_system_objects_to_restore.emplace(id, type);
 }
 
 Status RestoreSysCatalogState::Process() {
@@ -83,31 +108,31 @@ Status RestoreSysCatalogState::Process() {
 
   VLOG_WITH_FUNC(2) << "Check restoring objects";
   RETURN_NOT_OK_PREPEND(DetermineEntries(
-      restoring_objects_,
+      restoring_objects_, true,
       [this](const auto& id_and_pb, faststring* buffer) {
         AddRestoringEntry(id_and_pb.first, id_and_pb.second, buffer);
   }), "Determine restoring entries failed");
 
   VLOG_WITH_FUNC(2) << "Check existing objects";
   RETURN_NOT_OK_PREPEND(DetermineEntries(
-      existing_objects_,
+      existing_objects_, false,
       [this](const auto& id_and_pb, faststring* buffer) {
         CheckExistingEntry(id_and_pb.first, id_and_pb.second, buffer);
   }), "Determine obsolete entries failed");
 
   for (const auto& table : restoring_objects_.tables) {
-    if (!restoration_.objects_to_restore.count(table.first)) {
+    if (!restoration_.non_system_objects_to_restore.count(table.first)) {
       continue;
     }
     auto it = existing_objects_.tables.find(table.first);
     if (it == existing_objects_.tables.end()) {
-      restoration_.modified_tables.push_back(ModifiedTable{
+      restoration_.non_system_modified_tables.push_back(ModifiedTable{
         .name = table.second.name(),
         .type = table.second.table_type(),
         .modification = TableModificationType::kDrop,
       });
     } else if (table.second.version() != it->second.version()) {
-      restoration_.modified_tables.push_back(ModifiedTable{
+      restoration_.non_system_modified_tables.push_back(ModifiedTable{
         .name = table.second.name(),
         .type = table.second.table_type(),
         .modification = TableModificationType::kAlter,
@@ -116,15 +141,17 @@ Status RestoreSysCatalogState::Process() {
   }
 
   // Sort generated vectors, so binary search could be used to check whether object is obsolete.
-  std::sort(restoration_.obsolete_tablets.begin(), restoration_.obsolete_tablets.end());
-  std::sort(restoration_.obsolete_tables.begin(), restoration_.obsolete_tables.end());
+  std::sort(restoration_.non_system_obsolete_tablets.begin(),
+            restoration_.non_system_obsolete_tablets.end());
+  std::sort(restoration_.non_system_obsolete_tables.begin(),
+            restoration_.non_system_obsolete_tables.end());
 
   return Status::OK();
 }
 
 template <class ProcessEntry>
 Status RestoreSysCatalogState::DetermineEntries(
-    const Objects& objects, const ProcessEntry& process_entry) {
+    const Objects& objects, bool is_restoration_objects, const ProcessEntry& process_entry) {
   std::unordered_set<NamespaceId> restored_namespaces;
   std::unordered_set<TableId> restored_tables;
   faststring buffer;
@@ -147,6 +174,22 @@ Status RestoreSysCatalogState::DetermineEntries(
           restoration_.filter, id_and_metadata.first, id_and_metadata.second));
     }
     if (!match) {
+      continue;
+    }
+    // Process pg_catalog tables that need to be restored.
+    if (id_and_metadata.second.schema().table_properties().is_ysql_catalog_table()) {
+      if (is_restoration_objects) {
+        LOG(INFO) << "PITR: Adding " << id_and_metadata.second.name()
+                  << " for restoring. ID: " << id_and_metadata.first;
+        restoration_.system_tables_to_restore.emplace(
+          id_and_metadata.first,
+          id_and_metadata.second.name()
+        );
+      } else if (restoration_.system_tables_to_restore.count(id_and_metadata.first) == 0) {
+        return STATUS_FORMAT(
+            NotFound, "PG Catalog table $0 not found in the present set of tables"
+            " but found in the objects to restore.", id_and_metadata.second.name());
+      }
       continue;
     }
     if (restored_namespaces.insert(id_and_metadata.second.namespace_id()).second) {
@@ -183,11 +226,6 @@ Result<bool> RestoreSysCatalogState::Objects::MatchTable(
     const SnapshotScheduleFilterPB& filter, const TableId& id,
     const SysTablesEntryPB& table) const {
   VLOG(1) << __func__ << "(" << id << ", " << table.ShortDebugString() << ")";
-  // Postgres system tables are part of system catalog, so they are restored using
-  // separate mechanism.
-  if (table.schema().table_properties().is_ysql_catalog_table()) {
-    return false;
-  }
   for (const auto& table_identifier : filter.tables().tables()) {
     if (VERIFY_RESULT(master::TableMatchesIdentifier(id, table, table_identifier))) {
       return true;
@@ -253,7 +291,7 @@ void RestoreSysCatalogState::CheckExistingEntry(
     return;
   }
   LOG(INFO) << "PITR: Will remove tablet: " << id;
-  restoration_.obsolete_tablets.push_back(id);
+  restoration_.non_system_obsolete_tablets.push_back(id);
 }
 
 void RestoreSysCatalogState::CheckExistingEntry(
@@ -263,8 +301,8 @@ void RestoreSysCatalogState::CheckExistingEntry(
     return;
   }
   LOG(INFO) << "PITR: Will remove table: " << id;
-  restoration_.obsolete_tables.push_back(id);
-  restoration_.modified_tables.push_back(ModifiedTable {
+  restoration_.non_system_obsolete_tables.push_back(id);
+  restoration_.non_system_modified_tables.push_back(ModifiedTable {
     .name = pb.name(),
     .type = pb.table_type(),
     .modification = TableModificationType::kCreate,
@@ -313,6 +351,81 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
 Result<bool> RestoreSysCatalogState::TEST_MatchTable(
     const TableId& id, const SysTablesEntryPB& table) {
   return restoring_objects_.MatchTable(restoration_.filter, id, table);
+}
+
+void RestoreSysCatalogState::WriteToRocksDB(
+    docdb::DocWriteBatch* write_batch, const HybridTime& write_time, const OpId& op_id,
+    tablet::Tablet* tablet) {
+  docdb::KeyValueWriteBatchPB kv_write_batch;
+  write_batch->MoveToWriteBatchPB(&kv_write_batch);
+
+  rocksdb::WriteBatch rocksdb_write_batch;
+  PrepareNonTransactionWriteBatch(
+      kv_write_batch, write_time, nullptr, &rocksdb_write_batch, nullptr);
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id(op_id, &frontiers);
+  set_hybrid_time(write_time, &frontiers);
+
+  tablet->WriteToRocksDB(
+      &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
+}
+
+Status RestoreSysCatalogState::PatchPgVersionTable(const tablet::Tablet* tablet,
+                                                   docdb::DocWriteBatch* write_batch) {
+  if (restoration_.system_tables_to_restore.empty()) {
+    return Status::OK();
+  }
+
+  // Increase the current version in pg_yb_catalog_version table.
+  QLTableRow row = VERIFY_RESULT(ExtractPgYbCatalogVersionRow(*tablet));
+  // First generate a PgsqlWriteRequestPB.
+  PgsqlWriteRequestPB write_request;
+  RETURN_NOT_OK(FillPgCatalogRequest(*tablet, kPgYbCatalogVersionTableId, row,
+                                     PgsqlWriteRequestPB::PGSQL_UPDATE, &write_request));
+  // Now bump up the version number in the write_request.
+  auto current_version = write_request.column_new_values(0).expr().value().int64_value();
+  ++current_version;
+  auto value = write_request.mutable_column_new_values(0);
+  value->mutable_expr()->mutable_value()->set_int64_value(current_version);
+
+  // Apply to the write batch.
+  const auto& table_info = VERIFY_RESULT(
+      tablet->metadata()->GetTableInfo(kPgYbCatalogVersionTableId));
+  RETURN_NOT_OK(ApplyWriteRequest(table_info->schema, &write_request, write_batch));
+
+  LOG(INFO) << "PITR: Increasing the current version in pg_yb_catalog_version to "
+            << current_version;
+
+  return Status::OK();
+}
+
+Status RestoreSysCatalogState::ProcessPgCatalogRestores(const tablet::Tablet* tablet,
+                                                        docdb::DocWriteBatch* write_batch) {
+  for (const auto& id_and_name : restoration_.system_tables_to_restore) {
+    const auto& table_info = VERIFY_RESULT(
+        tablet->metadata()->GetTableInfo(id_and_name.first));
+
+    RETURN_NOT_OK(ComputePgCatalogTableDifferenceBetweenCurrentAndPast(
+        *tablet, id_and_name.first, ReadHybridTime::SingleTime(restoration_.restore_at),
+        &restoration_,
+        [&](const QLTableRow& row, PgsqlWriteRequestPB_PgsqlStmtType op_type) -> Status {
+          PgsqlWriteRequestPB write_request;
+          RETURN_NOT_OK(FillPgCatalogRequest(*tablet, id_and_name.first, row,
+                                             op_type, &write_request));
+          RETURN_NOT_OK(ApplyWriteRequest(table_info->schema, &write_request, write_batch));
+          return Status::OK();
+        }));
+  }
+
+  for (const auto& id_and_details : restoration_.pg_catalog_modification_details) {
+    LOG(INFO) << "PITR: For table " << id_and_details.second.name << "/"
+              << id_and_details.first << " - number of insertions: "
+              << id_and_details.second.num_inserts
+              << ", number of deletions: " << id_and_details.second.num_deletes
+              << ", number of updates: " << id_and_details.second.num_updates;
+  }
+
+  return Status::OK();
 }
 
 }  // namespace master
