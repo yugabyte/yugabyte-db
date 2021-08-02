@@ -85,6 +85,19 @@
   when: not systemd_option
 
 - block:
+  # Remove old cron jobs that clean cores and purge logs
+  - name: Remove old cron job that cleans cores (for upgrades)
+    cron:
+      name: "cleanup core files hourly"
+      user: "{{ user_name }}"
+      state: absent
+
+  - name: Remove old cron job that purges logs (for upgrades)
+    cron:
+      name: "cleanup yb log files hourly"
+      user: "{{ user_name }}"
+      state: absent
+
   # Daemon-reload for zip_purge_yb_logs and clean_cores
   - name: Perform daemon-reload for the new services
     shell:
@@ -116,4 +129,5 @@
   - name: Run yb-clean_cores.sh (using timer) for cleaning cores
     shell:
       cmd: "sudo systemctl start yb-clean_cores.timer"
+  tags: systemd_upgrade
   when: systemd_option

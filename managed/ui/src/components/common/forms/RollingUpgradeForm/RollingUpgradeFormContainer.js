@@ -82,6 +82,7 @@ function mapStateToProps(state, ownProps) {
     initialValues.tlsCertificate = currentUniverse.data.universeDetails.rootCA;
 
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+    var intialSystemdValue = primaryCluster.userIntent.useSystemd;
     if (isDefinedNotNull(primaryCluster)) {
       const masterGFlags = primaryCluster.userIntent.masterGFlags;
       const tserverGFlags = primaryCluster.userIntent.tserverGFlags;
@@ -101,6 +102,7 @@ function mapStateToProps(state, ownProps) {
   initialValues.timeDelay = TASK_LONG_TIMEOUT / 1000;
   initialValues.upgradeOption = 'Rolling';
   initialValues.rollingUpgrade = true;
+  initialValues.systemdValue = intialSystemdValue;
 
   let certificates = [];
   const allCertificates = state.customer.userCertificates;
@@ -113,7 +115,7 @@ function mapStateToProps(state, ownProps) {
   }
 
   const selector = formValueSelector(FORM_NAME);
-  const formValues = selector(state, 'upgradeOption', 'ybSoftwareVersion', 'tlsCertificate');
+  const formValues = selector(state, 'upgradeOption', 'systemdValue', 'ybSoftwareVersion', 'tlsCertificate');
 
   return {
     modal: state.modal,

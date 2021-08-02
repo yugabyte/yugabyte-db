@@ -122,6 +122,9 @@ public class CustomerTask extends Model {
     @EnumValue("VMImageUpgrade")
     VMImageUpgrade,
 
+    @EnumValue("SystemdUpgrade")
+    SystemdUpgrade,
+
     @Deprecated
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
@@ -193,6 +196,8 @@ public class CustomerTask extends Model {
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case SystemdUpgrade:
+          return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case CertsRotate:

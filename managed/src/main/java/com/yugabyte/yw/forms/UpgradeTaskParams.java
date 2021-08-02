@@ -24,6 +24,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
   public enum UpgradeTaskType {
     Everything,
     Software,
+    Systemd,
     VMImage,
     GFlags,
     Restart,

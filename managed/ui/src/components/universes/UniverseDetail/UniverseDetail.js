@@ -31,6 +31,7 @@ import {
   isUniverseType
 } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
@@ -209,6 +210,7 @@ class UniverseDetail extends Component {
       showSoftwareUpgradesModal,
       showTLSConfigurationModal,
       showRollingRestartModal,
+      showUpgradeSystemdModal,
       showRunSampleAppsModal,
       showGFlagsModal,
       showManageKeyModal,
@@ -225,6 +227,10 @@ class UniverseDetail extends Component {
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
+    const primaryCluster = getPrimaryCluster(
+      universe?.currentUniverse?.data?.universeDetails?.clusters
+    );
+    const useSystemd = primaryCluster?.userIntent?.useSystemd;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -538,6 +544,21 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       )}
 
+                      {!universePaused && !useSystemd && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showUpgradeSystemdModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.systemdUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade To Systemd
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
+
                       {!isReadOnlyUniverse &&
                         !universePaused &&
                         isNotHidden(
@@ -736,7 +757,8 @@ class UniverseDetail extends Component {
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
               visibleModal === 'tlsConfigurationModal' ||
-              visibleModal === 'rollingRestart')
+              visibleModal === 'rollingRestart' ||
+              visibleModal === 'systemdUpgrade')
           }
           onHide={closeModal}
         />

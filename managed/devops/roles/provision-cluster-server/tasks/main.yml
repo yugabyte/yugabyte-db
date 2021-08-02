@@ -190,4 +190,5 @@
       dest: "/etc/systemd/system/yb-clean_cores.timer"
       owner: "{{ user_name }}"
       mode: 0644
+  tags: systemd_upgrade
   when: systemd_option

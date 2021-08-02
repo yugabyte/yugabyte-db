@@ -119,6 +119,12 @@ export default class RollingUpgradeForm extends Component {
         payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
         break;
       }
+      case 'systemdUpgrade': {
+        payload.taskType = 'Systemd';
+        payload.upgradeOption = 'Rolling';
+        var systemdBoolean = true;
+        break;
+      }
       case 'gFlagsModal': {
         payload.taskType = 'GFlags';
         payload.upgradeOption = values.upgradeOption;
@@ -168,6 +174,7 @@ export default class RollingUpgradeForm extends Component {
     primaryCluster.userIntent.ybSoftwareVersion = values.ybSoftwareVersion;
     primaryCluster.userIntent.masterGFlags = masterGFlagList;
     primaryCluster.userIntent.tserverGFlags = tserverGFlagList;
+    primaryCluster.userIntent.useSystemd = systemdBoolean;
     payload.clusters = [primaryCluster];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
@@ -386,6 +393,42 @@ export default class RollingUpgradeForm extends Component {
                 label="Confirm rolling restart"
                 input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation }}
               />
+            }
+            asyncValidating={!this.state.formConfirmed}
+          >
+            <div className="form-right-aligned-labels rolling-upgrade-form">
+              <Field
+                name="timeDelay"
+                type="number"
+                component={YBInputField}
+                label="Rolling Restart Delay Between Servers (secs)"
+              />
+            </div>
+            {errorAlert}
+          </YBModal>
+        );
+      }
+      case 'systemdUpgrade': {
+        return (
+          <YBModal
+            className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
+            visible={modalVisible}
+            formName="RollingUpgradeForm"
+            onHide={this.resetAndClose}
+            submitLabel="Upgrade"
+            showCancelButton
+            title="Upgrade from Cron to Systemd"
+            onFormSubmit={submitAction}
+            error={error}
+            footerAccessory={
+              formValues.systemdValue !== true
+                ? (
+                  <YBCheckBox
+                    label="Confirm Systemd upgrade"
+                    input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation }}
+                  />
+                )
+                : <span>Already upgraded to Systemd</span>
             }
             asyncValidating={!this.state.formConfirmed}
           >

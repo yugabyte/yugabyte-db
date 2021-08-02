@@ -854,6 +854,12 @@ public class UniverseCRUDHandler {
           throw new YWServiceException(BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
         }
         break;
+      case Systemd:
+        customerTaskType = CustomerTask.TaskType.SystemdUpgrade;
+        if (taskParams.upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+          throw new YWServiceException(BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
+        }
+        break;
       case Certs:
         customerTaskType = CustomerTask.TaskType.UpdateCert;
         if (taskParams.certUUID == null) {

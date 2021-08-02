@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
@@ -412,6 +413,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.instanceType = instanceType;
     params.volumeSize = volumeSize;
     PersistResizeNode task = createTask(PersistResizeNode.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to persist changes by Systemd Upgrade task */
+  public SubTaskGroup createPersistSystemdUpgradeTask(Boolean useSystemd) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("PersistSystemdUpgrade", executor);
+    PersistSystemdUpgrade.Params params = new PersistSystemdUpgrade.Params();
+
+    params.universeUUID = taskParams().universeUUID;
+    params.useSystemd = useSystemd;
+    PersistSystemdUpgrade task = createTask(PersistSystemdUpgrade.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
