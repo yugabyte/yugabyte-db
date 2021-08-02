@@ -28,6 +28,8 @@
 #include <string.h>         // for memcpy
 #include <limits.h>         // for enumeration casts and tests
 
+#include <memory>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
