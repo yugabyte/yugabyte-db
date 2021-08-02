@@ -350,7 +350,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 	/*
 	 * Support for hypothetical BRIN indexes is broken in some minor versions
 	 * of pg10, pg11 and pg12.  For simplicity, check PG_VERSION_NUM rather
-	 * than the real instance version, which should should be right most of the
+	 * than the real instance version, which should be right most of the
 	 * time.  When it's not, the only effect is to have a less user-friendly
 	 * error message.
 	 */
