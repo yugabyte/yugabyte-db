@@ -37,3 +37,23 @@ CREATE INDEX rix ON road USING lsm (name text_ops);
 CREATE INDEX iix ON ihighway USING lsm (name text_ops);
 
 CREATE INDEX six ON shighway USING lsm (name text_ops);
+
+--
+-- Try some concurrent index builds
+--
+-- Unfortunately this only tests about half the code paths because there are
+-- no concurrent updates happening to the table at the same time.
+
+CREATE TABLE concur_heap (f1 text, f2 text);
+-- empty table
+CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
+
+-- You can't do a concurrent index build in a transaction
+BEGIN;
+CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
+COMMIT;
+
+-- But you can do a regular index build in a transaction
+BEGIN;
+CREATE INDEX std_index on concur_heap(f2);
+COMMIT;

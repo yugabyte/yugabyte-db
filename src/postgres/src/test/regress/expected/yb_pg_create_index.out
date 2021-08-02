@@ -27,3 +27,30 @@ CREATE INDEX iix ON ihighway USING lsm (name text_ops);
 ERROR:  relation "ihighway" does not exist
 CREATE INDEX six ON shighway USING lsm (name text_ops);
 ERROR:  relation "shighway" does not exist
+--
+-- Try some concurrent index builds
+--
+-- Unfortunately this only tests about half the code paths because there are
+-- no concurrent updates happening to the table at the same time.
+CREATE TABLE concur_heap (f1 text, f2 text);
+-- empty table
+CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
+ERROR:  CREATE INDEX CONCURRENTLY not supported yet
+LINE 1: CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1...
+                     ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+-- You can't do a concurrent index build in a transaction
+BEGIN;
+CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
+ERROR:  CREATE INDEX CONCURRENTLY not supported yet
+LINE 1: CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
+                     ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+COMMIT;
+-- But you can do a regular index build in a transaction
+BEGIN;
+CREATE INDEX std_index on concur_heap(f2);
+NOTICE:  making create index for table "concur_heap" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+COMMIT;
