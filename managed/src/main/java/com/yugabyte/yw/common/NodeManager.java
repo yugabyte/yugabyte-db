@@ -390,10 +390,8 @@ public class NodeManager extends DevopsBase {
                   serverCertFile,
                   serverKeyFile);
               rootCertPath = clientRootCert.certificate;
-              serverCertPath =
-                  String.format("%s/%s", tempStorageDirectory.toString(), serverCertFile);
-              serverKeyPath =
-                  String.format("%s/%s", tempStorageDirectory.toString(), serverKeyFile);
+              serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
+              serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
             } catch (IOException e) {
               LOG.error(e.getMessage(), e);
@@ -418,6 +416,7 @@ public class NodeManager extends DevopsBase {
             serverCertPath = customServerCertInfo.serverCert;
             serverKeyPath = customServerCertInfo.serverKey;
             certsLocation = CERT_LOCATION_PLATFORM;
+            break;
           }
         default:
           {
