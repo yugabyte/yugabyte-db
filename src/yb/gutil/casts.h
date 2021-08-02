@@ -417,6 +417,11 @@ Out pointer_cast(const In* in) {
   return static_cast<Out>(temp);
 }
 
+template<class D, class S>
+std::unique_ptr<D> down_pointer_cast(std::unique_ptr<S> s) {
+  return std::unique_ptr<D>(down_cast<D*>(s.release()));
+}
+
 } // namespace yb
 
 using yb::bit_cast;
