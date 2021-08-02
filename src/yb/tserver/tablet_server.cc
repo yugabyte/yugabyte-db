@@ -43,11 +43,14 @@
 
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/universe_key_client.h"
 
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/master.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
+#include "yb/rpc/messenger.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
 #include "yb/tablet/maintenance_manager.h"
@@ -65,6 +68,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/env.h"
+#include "yb/util/universe_key_manager.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/rocksdb/env.h"
@@ -229,6 +233,15 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   return Status::OK();
 }
 
+void TabletServer::SetUniverseKeys(const yb::UniverseKeysPB& universe_keys) {
+  opts_.universe_key_manager->SetUniverseKeys(universe_keys);
+}
+
+void TabletServer::GetUniverseKeyRegistrySync() {
+  universe_key_client_->GetUniverseKeyRegistrySync();
+}
+
+
 Status TabletServer::Init() {
   CHECK(!initted_.load(std::memory_order_acquire));
 
@@ -249,6 +262,20 @@ Status TabletServer::Init() {
     metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));
   }
 
+  std::vector<HostPort> hps;
+  for (const auto& master_addr_vector : *opts_.GetMasterAddresses()) {
+    for (const auto& master_addr : master_addr_vector) {
+      hps.push_back(master_addr);
+    }
+  }
+
+  universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
+      hps, proxy_cache_.get(), [&] (const UniverseKeysPB& universe_keys) {
+        opts_.universe_key_manager->SetUniverseKeys(universe_keys);
+  });
+  opts_.universe_key_manager->SetGetUniverseKeysCallback([&]() {
+    universe_key_client_->GetUniverseKeyRegistrySync();
+  });
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 

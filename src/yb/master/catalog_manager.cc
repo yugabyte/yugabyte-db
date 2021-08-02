@@ -164,6 +164,7 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/universe_key_client.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -740,15 +741,19 @@ Status CatalogManager::Init() {
                           "Failed waiting for the catalog tablet to run");
     std::vector<consensus::RaftPeerPB> masters_raft;
     RETURN_NOT_OK(master_->ListRaftConfigMasters(&masters_raft));
-    HostPortSet hps;
+    std::vector<HostPort> hps;
     for (const auto& peer : masters_raft) {
       if (master_->instance_pb().permanent_uuid() == peer.permanent_uuid()) {
         continue;
       }
       HostPort hp = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
-      hps.insert(hp);
+      hps.push_back(hp);
     }
-    RETURN_NOT_OK(encryption_manager_->AddPeersToGetUniverseKeyFrom(hps));
+    universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
+        hps, &master_->proxy_cache(), [&] (const UniverseKeysPB& universe_keys) {
+          encryption_manager_->PopulateUniverseKeys(universe_keys);
+        });
+    universe_key_client_->GetUniverseKeyRegistryAsync();
     RETURN_NOT_OK(EnableBgTasks());
   }
 

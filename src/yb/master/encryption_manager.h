@@ -56,10 +56,7 @@ class EncryptionManager {
 
   CHECKED_STATUS GetUniverseKeyRegistry(rpc::ProxyCache* proxy_cache);
 
-  void ProcessGetUniverseKeyRegistryResponse(
-      std::shared_ptr<GetUniverseKeyRegistryResponsePB> resp,
-      std::shared_ptr<rpc::RpcController> rpc,
-      HostPort hp);
+  void PopulateUniverseKeys(const UniverseKeysPB& universe_key_registry);
 
   CHECKED_STATUS AddPeersToGetUniverseKeyFrom(const HostPortSet& hps);
 
@@ -77,8 +74,6 @@ class EncryptionManager {
   mutable simple_spinlock universe_key_mutex_;
 
   std::unique_ptr<UniverseKeysPB> universe_keys_ PT_GUARDED_BY(universe_key_mutex_);
-
-  HostPortSet peers_to_get_universe_key_from_ GUARDED_BY(universe_key_mutex_);
 };
 
 } // namespace master
