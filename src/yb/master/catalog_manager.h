@@ -51,6 +51,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -752,6 +753,10 @@ class CatalogManager :
 
   EncryptionManager& encryption_manager() {
     return *encryption_manager_;
+  }
+
+  client::UniverseKeyClient& universe_key_client() {
+    return *universe_key_client_;
   }
 
   CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
@@ -1473,6 +1478,8 @@ class CatalogManager :
   scoped_refptr<TasksTracker> jobs_tracker_;
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
+
+  std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 
   // A pointer to the system.partitions tablet for the RebuildYQLSystemPartitions bg task.
   std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;

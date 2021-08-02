@@ -1009,6 +1009,9 @@ Status ClusterAdminClient::AllMastersHaveUniverseKeyInMemory(const std::string& 
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
+    if (!resp.has_key()) {
+      return STATUS_FORMAT(TryAgain, "Node $0 does not have universe key in memory", hp);
+    }
 
     std::cout << Format("Node $0 has universe key in memory: $1\n", hp.ToString(), resp.has_key());
   }
