@@ -140,7 +140,7 @@ export default class UniverseAppsModal extends Component {
       });
 
       const commandSyntax = isItKubernetesUniverse
-        ? 'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps '
+        ? 'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps --'
         : 'docker run -d yugabytedb/yb-sample-apps';
 
        const command = (appType.title === 'YCQL'
