@@ -162,6 +162,9 @@ public class UserTaskDetails {
     // Rotate Node Certs.
     RotatingCert,
 
+    // Upgrade to Systemd.
+    SystemdUpgrade,
+
     // Add certificates and toggle TLS gflags
     ToggleTls;
   }
@@ -204,6 +207,10 @@ public class UserTaskDetails {
       case ResizingDisk:
         title = "Increasing disk size";
         description = "Increasing disk size on live nodes to the size intended by the user";
+        break;
+      case SystemdUpgrade:
+        title = "Upgrading to Systemd";
+        description = "Upgrading Cron Job to Systemd for all nodes in the universe.";
         break;
       case ChangeInstanceType:
         title = "Changing instance type";
