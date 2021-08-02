@@ -928,8 +928,14 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          // Systemd vs Cron Option
-          if (taskParam.useSystemd) {
+          if (taskParam.isSystemdUpgrade) {
+            // Cron to Systemd Upgrade
+            commandArgs.add("--reuse_host");
+            commandArgs.add("--tags");
+            commandArgs.add("systemd_upgrade");
+            commandArgs.add("--systemd_services");
+          } else if (taskParam.useSystemd) {
+            // Systemd for new universes
             commandArgs.add("--systemd_services");
           }
 
@@ -1013,8 +1019,13 @@ public class NodeManager extends DevopsBase {
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
           commandArgs.addAll(getConfigureSubCommand(taskParam));
 
-          // Systemd vs Cron Option
-          if (taskParam.useSystemd) {
+          if (taskParam.isSystemdUpgrade) {
+            // Cron to Systemd Upgrade
+            commandArgs.add("--tags");
+            commandArgs.add("systemd_upgrade");
+            commandArgs.add("--systemd_services");
+          } else if (taskParam.useSystemd) {
+            // Systemd for new universes
             commandArgs.add("--systemd_services");
           }
 

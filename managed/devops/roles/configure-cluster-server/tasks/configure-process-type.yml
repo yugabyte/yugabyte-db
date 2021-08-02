@@ -100,6 +100,19 @@
   when: not systemd_option
 
 - block:
+  # Remove old cron jobs and its tasks that start master and tserver
+  - name: Remove old cron job that starts master (for upgrades)
+    cron:
+      name: "Check liveness of master"
+      user: "yugabyte"
+      state: absent
+
+  - name: Remove old cron job that starts tserver (for upgrades)
+    cron:
+      name: "Check liveness of tserver"
+      user: "yugabyte"
+      state: absent
+
   # Systemd daemon-reload for yb-master and yb-tserver service files
   - name: Perform daemon-reload for the new services
     shell:
@@ -122,4 +135,5 @@
   - name: Run yb-tserver.service to start the tserver
     shell:
       cmd: "sudo systemctl start yb-tserver"
+  tags: systemd_upgrade
   when: systemd_option

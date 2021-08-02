@@ -68,6 +68,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public CertRotationType rootCARotationType = CertRotationType.None;
     public CertRotationType clientRootCARotationType = CertRotationType.None;
     public CertRotateAction certRotateAction = CertRotateAction.ROTATE_CERTS;
+
+    // For cron to systemd upgrades
+    public boolean isSystemdUpgrade = false;
   }
 
   @Override

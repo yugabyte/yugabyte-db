@@ -73,6 +73,8 @@ public enum TaskType {
 
   PersistResizeNode("subtasks.PersistResizeNode"),
 
+  PersistSystemdUpgrade("subtasks.PersistSystemdUpgrade"),
+
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),

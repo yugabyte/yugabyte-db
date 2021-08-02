@@ -696,7 +696,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes, boolean reprovision) {
+  public SubTaskGroup createSetupServerTasks(
+      Collection<NodeDetails> nodes, boolean reprovision, boolean isSystemdUpgrade) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -704,6 +705,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
       params.reprovision = reprovision;
+      params.isSystemdUpgrade = isSystemdUpgrade;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
@@ -713,6 +715,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes, boolean reprovision) {
+    return createSetupServerTasks(nodes, reprovision, false /* isSystemdUpgrade */);
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
@@ -746,6 +752,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       boolean isMasterInShellMode,
       boolean updateMasterAddrsOnly,
       boolean isMaster) {
+    return createConfigureServerTasks(
+        nodes, isMasterInShellMode, updateMasterAddrsOnly, isMaster, false /* isSystemdUpgrade */);
+  }
+
+  public SubTaskGroup createConfigureServerTasks(
+      Collection<NodeDetails> nodes,
+      boolean isMasterInShellMode,
+      boolean updateMasterAddrsOnly,
+      boolean isMaster,
+      boolean isSystemdUpgrade) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -778,6 +794,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.clientRootCA = taskParams().clientRootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
+      params.isSystemdUpgrade = isSystemdUpgrade;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
