@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/client/client_fwd.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master.h"
@@ -187,8 +188,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   virtual rocksdb::Env* GetRocksDBEnv();
 
+  void SetUniverseKeys(const UniverseKeysPB& universe_keys);
+
   virtual CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry);
+
+  void GetUniverseKeyRegistrySync();
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
@@ -232,8 +237,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
+  std::thread fetch_universe_key_thread_;
+
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
+
+  std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 
   // Thread responsible for collecting metrics snapshots for native storage.
   std::unique_ptr<MetricsSnapshotter> metrics_snapshotter_;
