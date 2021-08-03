@@ -71,7 +71,7 @@ REGRESS = scan \
           cypher_match \
           cypher_set \
           cypher_remove \
-	  cypher_delete \
+          cypher_delete \
           cypher_with \
           drop
 
@@ -79,15 +79,20 @@ ag_regress_dir = $(srcdir)/regress
 REGRESS_OPTS = --load-extension=age --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958
 
 ag_regress_out = instance/ log/ results/ regression.*
-EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out))
+EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out)) src/backend/parser/cypher_gram.c src/include/parser/cypher_gram_def.h
 
 ag_include_dir = $(srcdir)/src/include
-PG_CPPFLAGS = -I$(ag_include_dir)
+PG_CPPFLAGS = -I$(ag_include_dir) -I$(ag_include_dir)/parser
 
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-src/backend/parser/cypher_gram.c: BISONFLAGS += --defines=$(ag_include_dir)/parser/$(basename $(notdir $@))_def.h
+src/include/parser/cypher_gram_def.h: src/backend/parser/cypher_gram.c
+
+src/backend/parser/cypher_gram.c: BISONFLAGS += --defines=src/include/parser/cypher_gram_def.h
+
+src/backend/parser/cypher_parser.o: src/backend/parser/cypher_gram.c
+src/backend/parser/cypher_keywords.o: src/backend/parser/cypher_gram.c
 
 src/backend/parser/ag_scanner.c: FLEX_NO_BACKUP=yes

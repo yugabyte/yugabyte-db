@@ -12,7 +12,7 @@ jobs:
         - postgresql-11
         - postgresql-server-dev-11
     script:
-    - sudo make install
+    - sudo make install -j$(nproc)
     - make installcheck
     after_failure: cat regress/regression.diffs
   - name: documentation
