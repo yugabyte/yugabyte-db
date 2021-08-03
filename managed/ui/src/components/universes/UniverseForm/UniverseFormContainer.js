@@ -322,7 +322,9 @@ function mapStateToProps(state, ownProps) {
       enableClientToNodeEncrypt: true,
       enableEncryptionAtRest: false,
       awsArnString: '',
-      selectEncryptionAtRestConfig: null
+      selectEncryptionAtRestConfig: null,
+      diskIops: null,
+      throughput: null
     },
     async: {
       universeName: '',
