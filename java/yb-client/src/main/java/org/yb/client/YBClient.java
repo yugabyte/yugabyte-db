@@ -1278,32 +1278,30 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplication(
+  public AlterXClusterReplicationResponse alterXClusterReplicationAddTables(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToAdd,
+    List<String> sourceTableIDsToAdd) throws Exception {
+    Deferred<AlterXClusterReplicationResponse> d =
+      asyncClient.alterXClusterReplicationAddTables(
+        sourceUniverseUUID, sourceTableIDsToAdd);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterXClusterReplicationResponse alterXClusterReplicationRemoveTables(
+    UUID sourceUniverseUUID,
     List<String> sourceTableIDsToRemove) throws Exception {
-    return alterXClusterReplication(
-      sourceUniverseUUID, sourceTableIDsToAdd, sourceTableIDsToRemove, new ArrayList<>());
+    Deferred<AlterXClusterReplicationResponse> d =
+      asyncClient.alterXClusterReplicationRemoveTables(
+        sourceUniverseUUID, sourceTableIDsToRemove);
+    return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplication(
+  public AlterXClusterReplicationResponse alterXClusterReplicationChangeSourceMasterAddresses(
     UUID sourceUniverseUUID,
-    List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
-    return alterXClusterReplication(
-      sourceUniverseUUID, new ArrayList<>(), new ArrayList<>(), sourceMasterAddresses);
-  }
-
-  public AlterXClusterReplicationResponse alterXClusterReplication(
-    UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToAdd,
-    List<String> sourceTableIDsToRemove,
     List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
     Deferred<AlterXClusterReplicationResponse> d =
-      asyncClient.alterXClusterReplication(
-        sourceUniverseUUID,
-        sourceTableIDsToAdd,
-        sourceTableIDsToRemove,
-        sourceMasterAddresses);
+      asyncClient.alterXClusterReplicationChangeSourceMasterAddresses(
+        sourceUniverseUUID, sourceMasterAddresses);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
