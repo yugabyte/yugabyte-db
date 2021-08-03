@@ -13,7 +13,7 @@ import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
-import { isEnabled, getFeatureState } from '../../../utils/LayoutUtils';
+import { isEnabled } from '../../../utils/LayoutUtils';
 import _ from 'lodash';
 
 import './UniverseConnectModal.scss';
