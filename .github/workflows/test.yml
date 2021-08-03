@@ -22,6 +22,9 @@ jobs:
           # Debian
           - image: debian
 
+          # RHEL
+          - image: rhel
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
