@@ -11,7 +11,7 @@ SELECT * FROM foo1;
 SELECT * FROM foo1, foo2;
 SELECT * FROM foo1, foo2, foo3;
 SELECT * FROM foo1, foo2, foo3, foo4;
-SELECT query, relations from pg_stat_monitor ORDER BY query;
+SELECT query, relations from pg_stat_monitor ORDER BY query collate "C";
 SELECT pg_stat_monitor_reset();
 
 
@@ -31,7 +31,7 @@ SELECT * FROM sch1.foo1;
 SELECT * FROM sch1.foo1, sch2.foo2;
 SELECT * FROM sch1.foo1, sch2.foo2, sch3.foo3;
 SELECT * FROM sch1.foo1, sch2.foo2, sch3.foo3, sch4.foo4;
-SELECT query, relations from pg_stat_monitor ORDER BY query;
+SELECT query, relations from pg_stat_monitor ORDER BY query collate "C";
 SELECT pg_stat_monitor_reset();
 
 SELECT pg_stat_monitor_reset();
@@ -51,7 +51,7 @@ SELECT * FROM v1;
 SELECT * FROM v1,v2;
 SELECT * FROM v1,v2,v3;
 SELECT * FROM v1,v2,v3,v4;
-SELECT query, relations from pg_stat_monitor ORDER BY query;
+SELECT query, relations from pg_stat_monitor ORDER BY query collate "C";
 SELECT pg_stat_monitor_reset();
 
 
