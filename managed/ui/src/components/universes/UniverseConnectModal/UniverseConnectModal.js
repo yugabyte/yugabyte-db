@@ -125,12 +125,6 @@ class UniverseConnectModal extends Component {
         universeDetails: { clusters, communicationPorts }
       } = universeInfo;
 
-      const tlsAvailability = getFeatureState(
-        currentCustomer.data.features,
-        'universes.details.overview.manageEncryption'
-      );
-      const isTLSEnabled = isEnabled(tlsAvailability);
-      const sslModeRequired = ' --sslmode=require';
       const primaryCluster = getPrimaryCluster(clusters);
       const userIntent = primaryCluster && primaryCluster.userIntent;
       const universeId = universeInfo.universeUUID;
@@ -160,11 +154,13 @@ class UniverseConnectModal extends Component {
           </YBCodeBlock>
         </Fragment>
       );
+      const isTLSEnabled = userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt;
       const connectIp = this.state.connectIp || '127.0.0.1';
       const jdbcConnection = `jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`;
-      const jdbcTLSConnection = jdbcConnection + sslModeRequired;
+      
+      const jdbcTLSConnection = `${jdbcConnection} --sslmode=require`;
       const ysqlConnection = 'bin/ysqlsh';
-      const ySqlTLSConnection = ysqlConnection + sslModeRequired;
+      const ySqlTLSConnection = `${ysqlConnection} --sslmode=require`;
       const ycqlConnection = 'bin/ycqlsh';
       const yCqlTLSConnection = `SSL_CERTFILE=<path to ca.crt> ycqlsh --ssl 172.151.37.101 9042`;
 
