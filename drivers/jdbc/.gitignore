@@ -1,3 +1,6 @@
+# Ignore Gradle Wapper
+gradle/wrapper/gradle-wrapper.jar
+
 # Ignore Gradle project-specific cache directory
 .gradle
 
