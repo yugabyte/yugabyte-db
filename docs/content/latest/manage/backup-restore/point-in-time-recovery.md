@@ -121,9 +121,17 @@ This feature is in active development. YSQL and YCQL support different features,
 
 ### YSQL limitations
 
-Currently, you can **restore data only**. The feature doesn't support metadata; in other words, restoring past operations such as CREATE, ALTER, TRUNCATE, and DROP TABLE is unsupported.
+Currently, you can recover from the following YSQL operations:
 
-Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Support for undoing certain metadata operations is forthcoming.
+* Data changes
+* CREATE and DROP TABLE
+* ALTER TABLE (including ADD, DROP, and RENAME COLUMN)
+* CREATE and DROP INDEX
+
+Development for this feature is tracked in [issue 7120](https://github.com/yugabyte/yugabyte-db/issues/7120). Some forthcoming features include:
+
+* Support for other types of ALTER TABLE
+* Handling clusterwide changes such as roles and permissions, tablespaces gracefully
 
 ### YCQL limitations
 
