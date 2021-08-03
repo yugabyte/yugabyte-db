@@ -120,6 +120,14 @@ void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {
   lines->insert(lines->end(), new_lines.begin(), new_lines.end());
 }
 
+void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
+  string copy = boost::erase_first_copy(boost::replace_all_copy(src, " ", ""), "shared_preload_libraries=");
+  copy = boost::trim_copy_if(copy, boost::is_any_of("'\""));
+  vector<string> new_items;
+  boost::split(new_items, copy, boost::is_any_of(","));
+  defaults->insert(defaults->end(), new_items.begin(), new_items.end());
+}
+
 CHECKED_STATUS ReadCSVValues(const string& csv, vector<string>* lines) {
   // Function reads CSV string in the following format:
   // - fields are divided with comma (,)
@@ -349,14 +357,37 @@ Status PgWrapper::Start() {
   }
 
   argv.push_back("-c");
-  // TODO: we should probably load the metrics library in a different way once we let
-  // users change the shared_preload_libraries conf parameter.
+
+  // Gather the default extensions:
+  vector<string> metricsLibs;
   if (FLAGS_pg_stat_statements_enabled) {
-    argv.push_back("shared_preload_libraries=pg_stat_statements,yb_pg_metrics,pgaudit,"
-      "pg_hint_plan");
+    metricsLibs.push_back("pg_stat_statements");
+    metricsLibs.push_back("yb_pg_metrics");
+    metricsLibs.push_back("pgaudit");
+    metricsLibs.push_back("pg_hint_plan");
   } else {
-    argv.push_back("shared_preload_libraries=yb_pg_metrics,pgaudit,pg_hint_plan");
+    metricsLibs.push_back("pg_stat_statements");
+    metricsLibs.push_back("pgaudit");
+    metricsLibs.push_back("pg_hint_plan");
   }
+
+  // Once again parse the pg conf:
+  vector<string> pgConfLines;
+  if (!FLAGS_ysql_pg_conf_csv.empty()) {
+    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &pgConfLines));
+  } else if (!FLAGS_ysql_pg_conf.empty()) {
+    ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &pgConfLines);
+  }
+  
+  // If the user has given any shared_preload_libraries -> merge them in
+  for ( string &value : pgConfLines ) {
+    if (boost::starts_with(value, "shared_preload_libraries")) {
+      MergeSharedPreloadLibraries(value, &metricsLibs);
+    }
+  }
+
+  argv.push_back(string("shared_preload_libraries=").append(boost::join(metricsLibs, ",")));
+
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);
   argv.push_back("-c");
