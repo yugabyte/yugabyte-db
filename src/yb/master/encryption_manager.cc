@@ -137,8 +137,13 @@ CHECKED_STATUS EncryptionManager::FillHeartbeatResponseEncryption(
 }
 
 Status EncryptionManager::GetUniverseKeyRegistry(rpc::ProxyCache* proxy_cache) {
-  std::lock_guard<simple_spinlock> l(universe_key_mutex_);
-  for (const auto& host_port : peers_to_get_universe_key_from_) {
+  decltype(peers_to_get_universe_key_from_) peers_to_get_universe_key_from;
+  {
+    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    peers_to_get_universe_key_from_.swap(peers_to_get_universe_key_from);
+  }
+
+  for (const auto& host_port : peers_to_get_universe_key_from) {
     GetUniverseKeyRegistryRequestPB req;
     auto resp = std::make_shared<GetUniverseKeyRegistryResponsePB>();
     auto rpc = std::make_shared<rpc::RpcController>();
@@ -152,7 +157,6 @@ Status EncryptionManager::GetUniverseKeyRegistry(rpc::ProxyCache* proxy_cache) {
                   host_port));
   }
 
-  peers_to_get_universe_key_from_.clear();
   return Status::OK();
 }
 

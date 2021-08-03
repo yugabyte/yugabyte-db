@@ -337,7 +337,7 @@ ProxyMetricsPtr ProxyCache::GetMetrics(
 
   auto entity = context_->metric_entity();
   auto metrics = entity ? factory(entity) : nullptr;
-  it = metrics_.emplace(service_name, metrics).first;
+  metrics_.emplace(service_name, metrics);
   return metrics;
 }
 
