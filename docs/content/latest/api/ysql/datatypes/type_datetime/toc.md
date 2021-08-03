@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: toc
     parent: api-ysql-datatypes-datetime
-    weight: 99
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---

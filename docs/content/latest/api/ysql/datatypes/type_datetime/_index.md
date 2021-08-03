@@ -15,7 +15,7 @@ showAsideToc: true
 
 YSQL supports the following data types for values that represent a date, a time of day, a date-and-time-of-day pair, or a duration. These data types will be referred to jointly as the _date-time_ data types.
 
-| Data type                                                                  | Purpose                           | Internal format         | Min      | Max        | Resoltion     |
+| Data type                                                                  | Purpose                           | Internal format         | Min      | Max        | Resolution     |
 | -------------------------------------------------------------------------- | --------------------------------- | ----------------------- | -------- | ---------- | ------------- |
 | [date](./date-time-data-types-semantics/type-date/)                        | date moment (wall-clock)          | 4-bytes                 | 4713 BC  | 5874897 AD | 1 day         |
 | [time](./date-time-data-types-semantics/type-time/) [(p)]                  | time moment (wall-clock)          | 8-bytes                 | 00:00:00 | 24:00:00   | 1 microsecond |
