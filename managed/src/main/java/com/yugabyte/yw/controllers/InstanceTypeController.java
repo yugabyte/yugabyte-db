@@ -15,6 +15,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.forms.YWResults.YWError;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -56,6 +57,8 @@ public class InstanceTypeController extends AuthenticatedController {
     this.cloudAPIFactory = cloudAPIFactory;
   }
 
+  @Inject ConfigHelper configHelper;
+
   /**
    * GET endpoint for listing instance types
    *
@@ -78,7 +81,7 @@ public class InstanceTypeController extends AuthenticatedController {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Map<String, InstanceType> instanceTypesMap;
     instanceTypesMap =
-        InstanceType.findByProvider(provider, config)
+        InstanceType.findByProvider(provider, config, configHelper)
             .stream()
             .collect(toMap(InstanceType::getInstanceTypeCode, identity()));
 

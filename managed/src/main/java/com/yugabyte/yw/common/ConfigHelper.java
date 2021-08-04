@@ -4,12 +4,17 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.YugawareProperty;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
@@ -24,6 +29,21 @@ import play.libs.Json;
 
 @Singleton
 public class ConfigHelper {
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
+      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
+  private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
+      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.");
+
+  public List<String> getAWSInstancePrefixesSupported() {
+    if (runtimeConfigFactory.staticApplicationConf().getBoolean("yb.cloud.enabled")) {
+      return CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED;
+    }
+    return AWS_INSTANCE_PREFIXES_SUPPORTED;
+  }
+
   public static final Logger LOG = LoggerFactory.getLogger(ConfigHelper.class);
 
   public enum ConfigType {
