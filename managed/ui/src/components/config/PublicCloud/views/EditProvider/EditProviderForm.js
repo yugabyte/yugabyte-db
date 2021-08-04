@@ -84,7 +84,7 @@ export default class EditProviderForm extends Component {
               type="text"
               label="Name"
               component={YBTextInputWithLabel}
-              isReadOnly={true}
+              isReadOnly={providersInUse.has(uuid)}
             />
             <Field
               name="accountUUID"
@@ -99,7 +99,7 @@ export default class EditProviderForm extends Component {
               type="text"
               label="SSH Key"
               component={YBTextInputWithLabel}
-              isReadOnly={true}
+              isReadOnly={providersInUse.has(uuid)}
             />
             <Field
               name="hostedZoneId"
