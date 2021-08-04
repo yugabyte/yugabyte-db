@@ -804,6 +804,19 @@ public class NodeManager extends DevopsBase {
 
             Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
 
+            // Use case: cloud free tier instances.
+            if (config.getBoolean("yb.cloud.enabled")) {
+              // If low mem instance, configure small boot disk size.
+              if (isLowMemInstanceType(taskParam.instanceType)) {
+                String lowMemBootDiskSizeGB = "8";
+                LOG.info(
+                    "Detected low memory instance type. "
+                        + "Setting up nodes using low boot disk size.");
+                commandArgs.add("--boot_disk_size_gb");
+                commandArgs.add(lowMemBootDiskSizeGB);
+              }
+            }
+
             if (config.hasPath(BOOT_SCRIPT_PATH)) {
               String bootScript = config.getString(BOOT_SCRIPT_PATH);
               commandArgs.add("--boot_script");
@@ -1098,5 +1111,11 @@ public class NodeManager extends DevopsBase {
     commandArgs.add("--node_ip");
     commandArgs.add(nodeIP);
     return commandArgs;
+  }
+
+  private boolean isLowMemInstanceType(String instanceType) {
+    List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2.");
+    String instanceTypePrefix = instanceType.split("\\.")[0] + ".";
+    return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
   }
 }
