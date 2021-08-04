@@ -237,6 +237,9 @@ DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
                  "If true, bypass any checks made to reject remote boostrap requests for post "
                  "split tablets whose parent tablets are still present.");
 
+DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
+                 "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -1433,6 +1436,15 @@ void TabletServiceAdminImpl::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
     return;
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_fail_tablet_split_probability > 0) &&
+      RandomActWithProbability(FLAGS_TEST_fail_tablet_split_probability)) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InvalidArgument,  // Use InvalidArgument to hit IsDefinitelyPermanentError().
+            "Failing tablet split due to FLAGS_TEST_fail_tablet_split_probability"),
+        TabletServerErrorPB::UNKNOWN_ERROR,
+        &context);
   }
   TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
 

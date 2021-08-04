@@ -682,9 +682,15 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTask {
 
 class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
  public:
+  struct Data {
+    const std::string& split_encoded_key;
+    const std::string& split_partition_key;
+  };
+  using DataCallbackType = std::function<void(const Result<Data>&)>;
+
   AsyncGetTabletSplitKey(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      std::function<void(const std::string&, const std::string&)> result_cb);
+      DataCallbackType result_cb);
 
   Type type() const override { return ASYNC_GET_TABLET_SPLIT_KEY; }
 
@@ -697,7 +703,7 @@ class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
 
   tserver::GetSplitKeyRequestPB req_;
   tserver::GetSplitKeyResponsePB resp_;
-  std::function<void(const std::string&, const std::string&)> result_cb_;
+  DataCallbackType result_cb_;
 };
 
 // Sends SplitTabletRequest with provided arguments to the service interface of the leader of the
@@ -707,7 +713,8 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
       const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key);
+      const std::string& split_encoded_key, const std::string& split_partition_key,
+      std::function<void(const Status&)> result_cb);
 
   Type type() const override { return ASYNC_SPLIT_TABLET; }
 
@@ -716,9 +723,11 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  protected:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
 
   tserver::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
+  std::function<void(const Status&)> result_cb_;
 };
 
 } // namespace master

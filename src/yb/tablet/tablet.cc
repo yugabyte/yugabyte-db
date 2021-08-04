@@ -235,7 +235,7 @@ DEFINE_test_flag(bool, docdb_log_write_batches, false,
 DEFINE_test_flag(bool, export_intentdb_metrics, false,
                  "Dump intentsdb statistics to prometheus metrics");
 
-DEFINE_test_flag(bool, pause_before_post_split_compation, false,
+DEFINE_test_flag(bool, pause_before_post_split_compaction, false,
                  "Pause before triggering post split compaction.");
 
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
@@ -3548,7 +3548,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
 }
 
 void Tablet::TriggerPostSplitCompactionSync() {
-  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compaction);
   WARN_WITH_PREFIX_NOT_OK(
       ForceFullRocksDBCompact(), LogPrefix() + "Failed to compact post-split tablet.");
 }
