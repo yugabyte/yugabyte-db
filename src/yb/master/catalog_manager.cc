@@ -2278,8 +2278,8 @@ Status CatalogManager::DoSplitTablet(
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
-  SendSplitTabletRequest(
-      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key);
+  RETURN_NOT_OK(SendSplitTabletRequest(
+      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key));
 
   return Status::OK();
 }
@@ -2311,9 +2311,12 @@ void CatalogManager::SplitTabletWithKey(
   // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
   // if it failed to submit that task. In other words, any failures here are not retriable, and
   // success indicates that an async and automatically retrying task was submitted.
-  WARN_NOT_OK(
-    DoSplitTablet(tablet, split_encoded_key, split_partition_key),
-    Format("Failed to split tablet with GetSplitKey result for tablet: $0", tablet->tablet_id()));
+  auto s = DoSplitTablet(tablet, split_encoded_key, split_partition_key);
+  WARN_NOT_OK(s, Format("Failed to split tablet with GetSplitKey result for tablet: $0",
+                        tablet->tablet_id()));
+  if (!s.ok()) {
+    tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
+  }
 }
 
 Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
@@ -2325,8 +2328,13 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
           << tablet->tablet_id();
   auto call = std::make_shared<AsyncGetTabletSplitKey>(
       master_, AsyncTaskPool(), tablet,
-      [this, tablet](const std::string& split_encoded_key, const std::string& split_partition_key) {
-        SplitTabletWithKey(tablet, split_encoded_key, split_partition_key);
+      [this, tablet](const Result<AsyncGetTabletSplitKey::Data>& result) {
+        if (result.ok()) {
+          SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key);
+        } else {
+          LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
+          tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
+        }
       });
   tablet->table()->AddTask(call);
   return ScheduleTask(call);
@@ -7825,17 +7833,21 @@ void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo
   WARN_NOT_OK(ScheduleTask(call), "Failed to send copartition table request");
 }
 
-void CatalogManager::SendSplitTabletRequest(
+Status CatalogManager::SendSplitTabletRequest(
     const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key) {
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
   auto call = std::make_shared<AsyncSplitTablet>(
-      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key);
+      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key,
+      [this, tablet](const Status& status) {
+        if (!status.ok()) {
+          LOG(WARNING) << "AsyncSplitTablet task failed with status: " << status;
+          tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
+        }
+      });
   tablet->table()->AddTask(call);
-  WARN_NOT_OK(
-      ScheduleTask(call),
-      Format("Failed to send split tablet request for tablet $0", tablet->tablet_id()));
+  return ScheduleTask(call);
 }
 
 void CatalogManager::DeleteTabletReplicas(
@@ -9813,7 +9825,7 @@ void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
                                         tablet_info.may_have_orphaned_post_split_data()};
       tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
       WARN_NOT_OK(
-          tablet_split_manager_.ScheduleSplitIfNeeded(*tablet, ts_uuid, drive_info),
+          tablet_split_manager_.ProcessLiveTablet(*tablet, ts_uuid, drive_info),
           "Failed to process tablet split candidate.");
     }
   }

@@ -34,7 +34,7 @@ class TabletSplitManager {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter, TabletSplitDriverIf* driver);
 
-  CHECKED_STATUS ScheduleSplitIfNeeded(
+  CHECKED_STATUS ProcessLiveTablet(
       const TabletInfo& tablet_info, const TabletServerId& drive_info_ts_uuid,
       const TabletReplicaDriveInfo& drive_info);
 
@@ -42,13 +42,26 @@ class TabletSplitManager {
 
   void Shutdown();
 
+  void RemoveFailedProcessingTabletSplit(const TabletId& tablet_id);
+
  private:
   void ProcessQueuedSplitItems();
+
+  void RemoveParentProcessingTabletIfChildIsDoneSplitting(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) REQUIRES(mutex_);
+
+  CHECKED_STATUS ScheduleSplitIfNeeded(
+      const TabletInfo& tablet_info, const TabletServerId& drive_info_ts_uuid,
+      const TabletReplicaDriveInfo& drive_info) REQUIRES(mutex_);
 
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
 
   std::mutex mutex_;
+  // Use a map to keep track of parent tablets we are currently splitting. We remove a parent
+  // tablet once both of its children have been created and compacted, so the value is used to keep
+  // track of which children are done so far (value starts empty).
+  std::unordered_map<TabletId, TabletId> processing_tablets_to_split_children_ GUARDED_BY(mutex_);
   std::deque<TabletId> candidates_ GUARDED_BY(mutex_);
   std::unique_ptr<BackgroundTask> process_tablet_candidates_task_;
 };
