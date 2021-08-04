@@ -1524,7 +1524,8 @@ Status YBClient::ListLiveTabletServers(
     auto ts = std::make_unique<YBTabletServerPlacementInfo>(
         entry.instance_id().permanent_uuid(),
         DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host(),
-        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary, publicIp);
+        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary,
+        publicIp, entry.registration().common().pg_port());
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();

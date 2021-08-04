@@ -170,7 +170,7 @@ class RpcAndWebServerBase : public RpcServerBase {
   void GetStatusPB(ServerStatusPB* status) const override;
 
   // Centralized method to get the Registration information for either the Master or Tserver.
-  CHECKED_STATUS GetRegistration(
+  virtual CHECKED_STATUS GetRegistration(
       ServerRegistrationPB* reg, RpcOnly rpc_only = RpcOnly::kFalse) const;
 
  protected:

@@ -126,6 +126,7 @@ message ServerRegistrationPB {
   repeated HostPortPB private_rpc_addresses = 1;
   repeated HostPortPB broadcast_addresses = 5;
   repeated HostPortPB http_addresses = 2;
+  optional uint32 pg_port = 6 [default = 5433];
 
   optional CloudInfoPB cloud_info = 3;
   // Placement uuid of the tserver's cluster.

@@ -267,6 +267,12 @@ Status TabletServer::Init() {
   return Status::OK();
 }
 
+Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const {
+  RETURN_NOT_OK(RpcAndWebServerBase::GetRegistration(reg, rpc_only));
+  reg->set_pg_port(pgsql_proxy_bind_address().port());
+  return Status::OK();
+}
+
 Status TabletServer::WaitInited() {
   return tablet_manager_->WaitForAllBootstrapsToFinish();
 }
