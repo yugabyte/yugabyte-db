@@ -37,7 +37,7 @@ Included here are the release notes for all releases in the v2.6 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.6.1.0-b12
+docker pull yugabytedb/yugabyte:2.6.1.0-b13
 ```
 
 ### New features
@@ -53,6 +53,7 @@ docker pull yugabytedb/yugabyte:2.6.1.0-b12
 * [[#4014](https://github.com/yugabyte/yugabyte-db/issues/4014)] YSQL: Indexes on Enum based columns
 * [[#5026](https://github.com/yugabyte/yugabyte-db/issues/5026)] [[#9001](https://github.com/yugabyte/yugabyte-db/issues/9001)] YCQL: Run operations within a transaction block in serial
 * [[#9090](https://github.com/yugabyte/yugabyte-db/issues/9090)] Support gzipped responses in webserver
+* [[#9451](https://github.com/yugabyte/yugabyte-db/issues/9451)] Default AWS EBS volume type changed from GP2 to GP3
 
 #### Platform
 
