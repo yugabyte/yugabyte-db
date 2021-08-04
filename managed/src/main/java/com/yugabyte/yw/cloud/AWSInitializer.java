@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
@@ -50,6 +51,7 @@ import java.util.UUID;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+
 import play.Environment;
 import play.libs.Json;
 import play.mvc.Result;
@@ -60,6 +62,8 @@ public class AWSInitializer extends AbstractInitializer {
   private static final boolean enableVerboseLogging = false;
 
   @Inject Environment environment;
+
+  @Inject ConfigHelper configHelper;
 
   /**
    * Entry point to initialize AWS. This will create the various InstanceTypes and their
@@ -612,7 +616,8 @@ public class AWSInitializer extends AbstractInitializer {
   }
 
   private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
-    return InstanceType.AWS_INSTANCE_PREFIXES_SUPPORTED
+    return configHelper
+        .getAWSInstancePrefixesSupported()
         .stream()
         .anyMatch(productAttributes.getOrDefault("instanceType", "")::startsWith);
   }
