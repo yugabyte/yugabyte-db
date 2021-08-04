@@ -243,6 +243,7 @@ public class InstanceType extends Model {
 
   private static List<InstanceType> populateDefaultsIfEmpty(
       List<InstanceType> entries, Config config, ConfigHelper configHelper) {
+    // For AWS, we would filter and show only supported instance prefixes
     entries =
         entries
             .stream()

@@ -196,6 +196,20 @@ public class InstanceTypeTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGravitonProvider() {
+    when(mockConfigHelper.getAWSInstancePrefixesSupported())
+        .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "m6g."));
+    InstanceType.upsert(defaultProvider.uuid, "t2.medium", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.uuid, "m6g.small", 2, 10.0, defaultDetails);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByProvider(defaultProvider, mockConfig, mockConfigHelper);
+    assertNotNull(instanceTypeList);
+    assertEquals(1, instanceTypeList.size());
+    assertThat(
+        instanceTypeList.get(0).getInstanceTypeCode(), allOf(notNullValue(), equalTo("m6g.small")));
+  }
+
+  @Test
   public void testCreateWithValidMetadata() {
     ObjectNode metaData = Json.newObject();
     metaData.put("numCores", 4);

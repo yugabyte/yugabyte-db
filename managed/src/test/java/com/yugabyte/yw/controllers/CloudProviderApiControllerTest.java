@@ -84,7 +84,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   @Mock Config mockConfig;
   @Mock ConfigHelper mockConfigHelper;
-
   @Mock private play.Configuration appConfig;
 
   Customer customer;
