@@ -74,7 +74,7 @@ public class AppInit {
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
           for (InstanceType instanceType :
-              InstanceType.findByProvider(provider, application.config())) {
+              InstanceType.findByProvider(provider, application.config(), configHelper)) {
             if (instanceType.instanceTypeDetails != null
                 && (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
