@@ -1770,6 +1770,9 @@ begin
   return new;
 end$$ language plpgsql;
 insert into trigger_ddl_table values (1, 42);  -- fail
+NOTICE:  making create index for table "trigger_ddl_table" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
 ERROR:  cannot CREATE INDEX "trigger_ddl_table" because it is being used by active queries in this session
 CONTEXT:  SQL statement "create index on trigger_ddl_table (col2)"
 PL/pgSQL function trigger_ddl_func() line 3 at SQL statement
