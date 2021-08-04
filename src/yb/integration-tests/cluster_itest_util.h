@@ -48,6 +48,7 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/client/client_fwd.h"
 #include "yb/common/entity_ids.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -398,6 +399,7 @@ Status GetTabletLocations(const std::shared_ptr<master::MasterServiceProxy>& mas
 Status GetTableLocations(const std::shared_ptr<master::MasterServiceProxy>& master_proxy,
                          const client::YBTableName& table_name,
                          const MonoDelta& timeout,
+                         RequireTabletsRunning require_tablets_running,
                          master::GetTableLocationsResponsePB* table_locations);
 
 // Wait for the specified number of voters to be reported to the config on the
