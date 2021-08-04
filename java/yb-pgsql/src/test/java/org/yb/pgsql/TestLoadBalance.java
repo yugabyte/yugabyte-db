@@ -53,7 +53,18 @@ public class TestLoadBalance extends BasePgSQLTest {
       String publicIp = rs.getString(8);
       Integer portInMap = hostPorts.get(host);
       AssertionWrappers.assertNotNull(portInMap);
-      AssertionWrappers.assertEquals("port should be equal", 5433, port);
+      HostAndPort hp = HostAndPort.fromParts(host, portInMap);
+      MiniYBDaemon daemon = hostPortsDaemonMap.get(hp);
+      String[] cmds = daemon.getCommandLine();
+      int pg_port = 5433;
+      for (String cmd : cmds) {
+        if (cmd.contains("pgsql_proxy_bind_address")) {
+          int idx = cmd.indexOf(":");
+          pg_port = Integer.parseInt(cmd.substring(idx+1));
+          break;
+        }
+      }
+      AssertionWrappers.assertEquals("port should be equal", pg_port, port);
       AssertionWrappers.assertEquals("primary", node_type);
       AssertionWrappers.assertEquals("connections has been hardcoded to 0", 0, connections);
       AssertionWrappers.assertEquals("cloud1", cloud);
