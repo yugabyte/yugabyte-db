@@ -996,10 +996,12 @@ Status GetTabletLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
 Status GetTableLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
                          const YBTableName& table_name,
                          const MonoDelta& timeout,
+                         const RequireTabletsRunning require_tablets_running,
                          master::GetTableLocationsResponsePB* table_locations) {
   master::GetTableLocationsRequestPB req;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
-  req.set_max_returned_locations(1000);
+  req.set_require_tablets_running(require_tablets_running);
+  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   RETURN_NOT_OK(master_proxy->GetTableLocations(req, table_locations, &rpc));

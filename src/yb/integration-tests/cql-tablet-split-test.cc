@@ -21,6 +21,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
@@ -66,6 +67,15 @@ size_t GetNumActiveTablets(MiniCluster* cluster) {
                       consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
              })
       .size();
+}
+
+Result<size_t> GetNumActiveTablets(
+    ExternalMiniCluster* cluster, const client::YBTableName& table_name, const MonoDelta& timeout,
+    const RequireTabletsRunning require_tablets_running) {
+  master::GetTableLocationsResponsePB resp;
+  RETURN_NOT_OK(itest::GetTableLocations(
+      cluster->GetLeaderMasterProxy(), table_name, timeout, require_tablets_running, &resp));
+  return resp.tablet_locations_size();
 }
 
 } // namespace
@@ -303,7 +313,7 @@ void CqlTabletSplitTest::CompleteSecondaryIndexTest(const int num_splits, const 
         if (!writer_->IsRunning()) {
           return true;
         }
-        if (num_active_tablets > num_wait_for_active_tablets) {
+        if (num_active_tablets >= num_wait_for_active_tablets) {
           return true;
         }
         return false;
@@ -356,39 +366,70 @@ TEST_F(CqlTabletSplitTest, SecondaryIndexWithDrop) {
   }
 }
 
-class CqlTabletSplitTestBatchTimeseries : public CqlTestBase<ExternalMiniCluster> {
+class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
  protected:
   void SetUpFlags() override {
-    mini_cluster_opt_.extra_master_flags.push_back(Format("--yb_num_shards_per_tserver=$0", 1));
-    mini_cluster_opt_.extra_master_flags.push_back(Format(
-        "--tablet_split_size_threshold_bytes=$0", 300_KB));
-    mini_cluster_opt_.extra_tserver_flags.push_back(Format("--db_write_buffer_size=$0", 100_KB));
+    const int64 kSplitThreshold = 64_KB;
+
+    std::vector<std::string> common_flags;
+    common_flags.push_back("--yb_num_shards_per_tserver=1");
+
+    auto& master_flags = mini_cluster_opt_.extra_master_flags;
+    master_flags.push_back(
+        Format("--replication_factor=$0", std::min(num_tablet_servers(), 3)));
+    master_flags.push_back("--enable_automatic_tablet_splitting=true");
+    master_flags.push_back("--tablet_split_low_phase_size_threshold_bytes=0");
+    master_flags.push_back("--tablet_split_high_phase_size_threshold_bytes=0");
+    master_flags.push_back("--tablet_split_low_phase_shard_count_per_node=0");
+    master_flags.push_back("--tablet_split_high_phase_shard_count_per_node=0");
+    // Split as soon as we get tablet to split on master.
+    master_flags.push_back("--process_split_tablet_candidates_interval_msec=1");
+    master_flags.push_back(Format("--tablet_force_split_threshold_bytes=$0", kSplitThreshold));
+
+    auto& tserver_flags = mini_cluster_opt_.extra_tserver_flags;
+    tserver_flags.push_back(Format("--db_write_buffer_size=$0", kSplitThreshold));
+    // Lower SST block size to have multiple entries in index and be able to detect a split key.
+    tserver_flags.push_back(Format(
+        "--db_block_size_bytes=$0", std::min(FLAGS_db_block_size_bytes, kSplitThreshold / 8)));
+
+    for (auto& flag : common_flags) {
+      master_flags.push_back(flag);
+      tserver_flags.push_back(flag);
+    }
   }
 };
 
-struct DataSource {
-  std::string metric_id;
-  uint64_t data_emit_start_ts = 1;
-  uint64_t last_emitted_ts = -1;
+class CqlTabletSplitTestExtRf1 : public CqlTabletSplitTestExt {
+ public:
+  int num_tablet_servers() override { return 1; }
 };
 
-TEST_F(CqlTabletSplitTestBatchTimeseries, Run) {
+struct BatchTimeseriesDataSource {
+  explicit BatchTimeseriesDataSource(const std::string& metric_id_) : metric_id(metric_id_) {}
+
+  const std::string metric_id;
+  const int64_t data_emit_start_ts = 1;
+  std::atomic<int64_t> last_emitted_ts{-1};
+};
+
+CHECKED_STATUS RunBatchTimeSeriesTest(
+    ExternalMiniCluster* cluster, CppCassandraDriver* driver, const int num_splits,
+    const MonoDelta timeout) {
   const auto kWriterThreads = 4;
   const auto kReaderThreads = 4;
   const auto kMinMetricsCount = 10000;
   const auto kMaxMetricsCount = 20000;
   const auto kReadBatchSize = 100;
   const auto kWriteBatchSize = 500;
-  const auto kReadBackDeltaTime = 180;
+  const auto kReadBackDeltaTime = 100;
+  const auto kValueSize = 100;
 
   const auto kMaxWriteErrors = 100;
   const auto kMaxReadErrors = 100;
 
   const auto kTableTtlSeconds = MonoDelta(24h).ToSeconds();
 
-  const auto kRunTime = 200s;
-
-  const auto kTableName = "batch_timeseries_test";
+  const client::YBTableName kTableName(YQL_DATABASE_CQL, "test", "batch_timeseries_test");
 
   std::atomic_int num_reads(0);
   std::atomic_int num_writes(0);
@@ -397,52 +438,62 @@ TEST_F(CqlTabletSplitTestBatchTimeseries, Run) {
 
   Random r(/* seed */ 29383);
   const auto num_metrics = r.Uniform(kMaxMetricsCount - kMinMetricsCount) + kMinMetricsCount;
-  std::vector<DataSource> data_sources;
+  std::vector<std::unique_ptr<BatchTimeseriesDataSource>> data_sources;
   for (int i = 0; i < num_metrics; ++i) {
-    DataSource source{Format("metric-$0", i)};
-    data_sources.push_back(source);
+    data_sources.emplace_back(std::make_unique<BatchTimeseriesDataSource>(Format("metric-$0", i)));
   }
 
-  auto session = CHECK_RESULT(EstablishSession(driver_.get()));
+  auto session = CHECK_RESULT(EstablishSession(driver));
 
-  ASSERT_OK(
+  RETURN_NOT_OK(
       session.ExecuteQuery(Format(
           "CREATE TABLE $0 ("
             "metric_id varchar, "
             "ts bigint, "
             "value varchar, "
             "primary key (metric_id, ts)) "
-            "WITH default_time_to_live = $1", kTableName, kTableTtlSeconds)));
+            "WITH default_time_to_live = $1", kTableName.table_name(), kTableTtlSeconds)));
 
-  auto prepared_write = ASSERT_RESULT(session.Prepare(Format(
-      "INSERT INTO $0 (metric_id, ts, value) VALUES (?, ?, ?)", kTableName)));
+  const auto start_num_active_tablets = VERIFY_RESULT(GetNumActiveTablets(
+      cluster, kTableName, 60s * kTimeMultiplier, RequireTabletsRunning::kTrue));
+  LOG(INFO) << "Number of active tablets at workload start: " << start_num_active_tablets;
 
-  auto prepared_read = ASSERT_RESULT(session.Prepare(Format(
+  auto prepared_write = VERIFY_RESULT(session.Prepare(Format(
+      "INSERT INTO $0 (metric_id, ts, value) VALUES (?, ?, ?)", kTableName.table_name())));
+
+  auto prepared_read = VERIFY_RESULT(session.Prepare(Format(
       "SELECT * from $0 WHERE metric_id = ? AND ts > ? AND ts < ? ORDER BY ts DESC LIMIT ?",
-      kTableName)));
+      kTableName.table_name())));
 
   std::mutex random_mutex;
-  auto get_random_source = [&r, &random_mutex, &data_sources]() {
+  auto get_random_source = [&r, &random_mutex, &data_sources]() -> BatchTimeseriesDataSource* {
     std::lock_guard<decltype(random_mutex)> lock(random_mutex);
     auto index = r.Uniform(data_sources.size());
-    return data_sources.at(index);
+    return data_sources.at(index).get();
   };
 
-  auto get_value = [&r, &random_mutex](int ts) {
-    std::lock_guard<decltype(random_mutex)> lock(random_mutex);
-    return Format("0", r.Next32() + ts);
+  auto get_value = [](int ts, std::string* value) {
+    value->clear();
+    value->append(AsString(ts));
+    const auto suffix_size = value->size() >= kValueSize ? 0 : kValueSize - value->size();
+    while (value->size() < kValueSize) {
+      value->append(Uint16ToHexString(RandomUniformInt<uint16_t>()));
+    }
+    if (suffix_size > 0) {
+      value->resize(kValueSize);
+    }
+    return value;
   };
 
   TestThreadHolder io_threads;
   auto reader = [&, &stop = io_threads.stop_flag()]() -> void {
     while (!stop.load(std::memory_order_acquire)) {
-      std::this_thread::sleep_for(1s * kTimeMultiplier);
-      auto source = get_random_source();
-      if (source.data_emit_start_ts > source.last_emitted_ts) {
+      auto& source = *CHECK_NOTNULL(get_random_source());
+      if (source.last_emitted_ts < source.data_emit_start_ts) {
         continue;
       }
       const int64_t end_ts = source.last_emitted_ts + 1;
-      const int64_t start_ts = end_ts - kReadBackDeltaTime;
+      const int64_t start_ts = std::max(end_ts - kReadBackDeltaTime, source.data_emit_start_ts);
 
       auto stmt = prepared_read.Bind();
       stmt.Bind(0, source.metric_id);
@@ -451,44 +502,51 @@ TEST_F(CqlTabletSplitTestBatchTimeseries, Run) {
       stmt.Bind(3, kReadBatchSize);
       auto status = session.Execute(stmt);
       if (!status.ok()) {
-        LOG(INFO) << "Read failed: " << AsString(status);
+        YB_LOG_EVERY_N_SECS(INFO, 1) << "Read failed: " << AsString(status);
         num_read_errors++;
       } else {
         num_reads += 1;
-        YB_LOG_EVERY_N_SECS(INFO, 5) << "Completed " << num_reads << " reads.";
       }
+      YB_LOG_EVERY_N_SECS(INFO, 5)
+          << "Completed " << num_reads << " reads, read errors: " << num_read_errors;
     }
   };
 
+  std::atomic<bool> stop_writes{false};
   auto writer = [&, &stop = io_threads.stop_flag()]() -> void {
-    while (!stop.load(std::memory_order_acquire)) {
-      auto source = get_random_source();
+    std::string value;
+    // Reserve more bytes, because we fill by 2-byte blocks and might overfill and then
+    // truncate, but don't want reallocation on growth.
+    value.reserve(kValueSize + 1);
+    while (!stop.load(std::memory_order_acquire) && !stop_writes.load(std::memory_order_acquire)) {
+      auto& source = *CHECK_NOTNULL(get_random_source());
 
       if (source.last_emitted_ts == -1) {
         source.last_emitted_ts = source.data_emit_start_ts;
       }
-      int64_t ts = source.last_emitted_ts;
+      auto ts = source.last_emitted_ts.load(std::memory_order_acquire);
       CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
 
       for (int i = 0; i < kWriteBatchSize; ++i) {
         auto stmt = prepared_write.Bind();
         stmt.Bind(0, source.metric_id);
         stmt.Bind(1, ts);
-        stmt.Bind(2, Format("$0", get_value(ts)));
+        get_value(ts, &value);
+        stmt.Bind(2, value);
         batch.Add(&stmt);
         ts++;
       }
 
       auto status = session.ExecuteBatch(batch);
       if (!status.ok()) {
-        LOG(INFO) << "Write failed: " << AsString(status);
+        YB_LOG_EVERY_N_SECS(INFO, 1) << "Write failed: " << AsString(status);
         num_write_errors++;
       } else {
         num_writes += kWriteBatchSize;
-        YB_LOG_EVERY_N_SECS(INFO, 5) << "Completed " << num_writes << " writes.";
         source.last_emitted_ts = ts;
       }
-      std::this_thread::sleep_for(1s * kTimeMultiplier);
+      YB_LOG_EVERY_N_SECS(INFO, 5)
+          << "Completed " << num_writes << " writes, num_write_errors: " << num_write_errors;
     }
   };
 
@@ -499,17 +557,63 @@ TEST_F(CqlTabletSplitTestBatchTimeseries, Run) {
     io_threads.AddThreadFunctor(writer);
   }
 
-  auto stop_time = CoarseMonoClock::Now() + kRunTime;
-  while (
-      CoarseMonoClock::Now() < stop_time &&
-      num_read_errors < kMaxReadErrors &&
-      num_write_errors < kMaxWriteErrors) {
-    std::this_thread::sleep_for(1s);
+  const auto deadline = CoarseMonoClock::Now() + timeout;
+  const auto num_wait_for_active_tablets = start_num_active_tablets + num_splits;
+  size_t num_active_tablets = start_num_active_tablets;
+  while (CoarseMonoClock::Now() < deadline && num_read_errors < kMaxReadErrors &&
+         num_write_errors < kMaxWriteErrors) {
+    // When we get num_wait_for_active_tablets active tablets (not necessarily running), we stop
+    // writes to avoid creating too many post-split tablets and overloading local cluster.
+    // After stopping writes, we continue reads and wait for num_wait_for_active_tablets active
+    // running tablets.
+    auto num_active_tablets_res = GetNumActiveTablets(
+        cluster, kTableName, 10s * kTimeMultiplier,
+        RequireTabletsRunning(stop_writes.load(std::memory_order_acquire)));
+    if (num_active_tablets_res.ok()) {
+      num_active_tablets = *num_active_tablets_res;
+      YB_LOG_EVERY_N_SECS(INFO, 3) << "Number of active tablets: " << num_active_tablets;
+      if (num_active_tablets >= num_wait_for_active_tablets) {
+        if (stop_writes.load(std::memory_order_acquire)) {
+          break;
+        } else {
+          LOG(INFO) << "Stopping writes";
+          stop_writes = true;
+        }
+      }
+    }
+    SleepFor(500ms);
+  }
+  if (CoarseMonoClock::Now() >= deadline) {
+    // Produce a core dump for investigation.
+    for (auto* daemon : cluster->daemons()) {
+      ERROR_NOT_OK(daemon->Kill(SIGSEGV), "Failed to crash process: ");
+    }
   }
 
   io_threads.Stop();
+  LOG(INFO) << "num_reads: " << num_reads;
+  LOG(INFO) << "num_writes: " << num_writes;
+  LOG(INFO) << "num_read_errors: " << num_read_errors;
+  LOG(INFO) << "num_write_errors: " << num_write_errors;
   EXPECT_LE(num_read_errors, kMaxReadErrors);
   EXPECT_LE(num_write_errors, kMaxWriteErrors);
+  SCHECK_GE(
+      num_active_tablets, num_wait_for_active_tablets, IllegalState,
+      Format("Didn't achieve $0 splits", num_splits));
+
+  return Status::OK();
+}
+
+TEST_F_EX(CqlTabletSplitTest, BatchTimeseries, CqlTabletSplitTestExt) {
+  const auto kNumSplits = 20;
+  ASSERT_OK(
+      RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 300s * kTimeMultiplier));
+}
+
+TEST_F_EX(CqlTabletSplitTest, BatchTimeseriesRf1, CqlTabletSplitTestExtRf1) {
+  const auto kNumSplits = 20;
+  ASSERT_OK(
+      RunBatchTimeSeriesTest(cluster_.get(), driver_.get(), kNumSplits, 200s * kTimeMultiplier));
 }
 
 }  // namespace yb

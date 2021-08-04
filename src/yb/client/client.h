@@ -82,7 +82,6 @@
 template<class T> class scoped_refptr;
 
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
-YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
 
 namespace yb {
 

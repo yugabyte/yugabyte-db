@@ -27,14 +27,10 @@
 
 namespace yb {
 
-template <>
-void CqlTestBase<MiniCluster>::SetupClusterOpt() {
-  mini_cluster_opt_.num_tablet_servers = 3;
-}
-
-template <>
-void CqlTestBase<ExternalMiniCluster>::SetupClusterOpt() {
-  mini_cluster_opt_.num_tablet_servers = 3;
+template <class MiniClusterType>
+void CqlTestBase<MiniClusterType>::SetupClusterOpt() {
+  mini_cluster_opt_.num_masters = num_masters();
+  mini_cluster_opt_.num_tablet_servers = num_tablet_servers();
 }
 
 template <>

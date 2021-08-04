@@ -545,12 +545,6 @@ void Batcher::FlushBuffersIfReady() {
       return;
     }
 
-    if (ops_queue_.empty()) {
-      // Nothing to prepare.
-      state_ = BatcherState::kTransactionReady;
-      return;
-    }
-
     state_ = BatcherState::kTransactionPrepare;
   }
 
@@ -581,6 +575,17 @@ void Batcher::FlushBuffersIfReady() {
         }
       }
     }
+  }
+
+  // Checking if ops_queue_ is empty after processing potential errors, because if some operation
+  // tablet lookup failed, ops_queue_ could become empty inside `if (had_errors_) { ... }` block
+  // above.
+  if (ops_queue_.empty()) {
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+
+    // Nothing to prepare.
+    state_ = BatcherState::kTransactionReady;
+    return;
   }
 
   // All operations were added, and tablets for them were resolved.
