@@ -30,6 +30,8 @@
 template <class T>
 class scoped_refptr;
 
+YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
+
 namespace yb {
 namespace client {
 
