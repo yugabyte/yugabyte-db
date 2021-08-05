@@ -92,7 +92,7 @@ Build and install pgAudit:
 ```
 make install USE_PGXS=1 PG_CONFIG=/usr/pgsql-13/bin/pg_config
 ```
-Detailed instructions for testing and development may be found in `test/Vagrantfile`.
+Instructions for testing and development may be found in `test`.
 
 ## Settings
 
