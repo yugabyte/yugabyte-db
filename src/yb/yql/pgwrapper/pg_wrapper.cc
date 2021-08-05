@@ -121,7 +121,8 @@ void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {
 }
 
 void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
-  string copy = boost::erase_first_copy(boost::replace_all_copy(src, " ", ""), "shared_preload_libraries=");
+  string copy = boost::erase_first_copy(boost::replace_all_copy(src, " ", ""),
+    "shared_preload_libraries=");
   copy = boost::trim_copy_if(copy, boost::is_any_of("'\""));
   vector<string> new_items;
   boost::split(new_items, copy, boost::is_any_of(","));
@@ -360,16 +361,12 @@ Status PgWrapper::Start() {
 
   // Gather the default extensions:
   vector<string> metricsLibs;
+  metricsLibs.push_back("pg_stat_statements");
   if (FLAGS_pg_stat_statements_enabled) {
-    metricsLibs.push_back("pg_stat_statements");
     metricsLibs.push_back("yb_pg_metrics");
-    metricsLibs.push_back("pgaudit");
-    metricsLibs.push_back("pg_hint_plan");
-  } else {
-    metricsLibs.push_back("pg_stat_statements");
-    metricsLibs.push_back("pgaudit");
-    metricsLibs.push_back("pg_hint_plan");
   }
+  metricsLibs.push_back("pgaudit");
+  metricsLibs.push_back("pg_hint_plan");
 
   // Once again parse the pg conf:
   vector<string> pgConfLines;
@@ -380,7 +377,7 @@ Status PgWrapper::Start() {
   }
   
   // If the user has given any shared_preload_libraries -> merge them in
-  for ( string &value : pgConfLines ) {
+  for (string &value : pgConfLines) {
     if (boost::starts_with(value, "shared_preload_libraries")) {
       MergeSharedPreloadLibraries(value, &metricsLibs);
     }
