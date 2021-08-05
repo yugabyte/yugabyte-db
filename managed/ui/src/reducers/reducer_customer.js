@@ -230,7 +230,7 @@ export default function (state = INITIAL_STATE, action) {
       return {
         ...state,
         setInitialVal: action.payload
-      }
+      };
     case ADD_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'addConfig', action);
     case EDIT_CUSTOMER_CONFIG:
