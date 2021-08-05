@@ -736,13 +736,20 @@ void Tablet::RegularDbFilesChanged() {
 }
 
 void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
+  if (!transaction_participant_) {
+    return;
+  }
+
   cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+
+  CleanupIntentFiles();
 }
 
 void Tablet::CleanupIntentFiles() {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
   if (!scoped_read_operation.ok() || state_ != State::kOpen || !FLAGS_delete_intents_sst_files ||
       !cleanup_intent_files_token_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Skip";
     return;
   }
 
@@ -753,6 +760,7 @@ void Tablet::CleanupIntentFiles() {
 
 void Tablet::DoCleanupIntentFiles() {
   if (metadata_->is_under_twodc_replication()) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of TwoDC replication";
     return;
   }
   HybridTime best_file_max_ht = HybridTime::kMax;
@@ -762,6 +770,7 @@ void Tablet::DoCleanupIntentFiles() {
   while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
     auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
     if (!scoped_read_operation.ok()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Failed to acquire scoped read operation";
       break;
     }
 
@@ -770,6 +779,9 @@ void Tablet::DoCleanupIntentFiles() {
     files.clear();
     intents_db_->GetLiveFilesMetaData(&files);
     auto min_largest_seq_no = std::numeric_limits<rocksdb::SequenceNumber>::max();
+
+    VLOG_WITH_PREFIX_AND_FUNC(5) << "Files: " << AsString(files);
+
     for (const auto& file : files) {
       if (file.largest.seqno < min_largest_seq_no) {
         min_largest_seq_no = file.largest.seqno;
@@ -785,33 +797,38 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_running_start_ht = transaction_participant_->MinRunningHybridTime();
     if (!min_running_start_ht.is_valid() || min_running_start_ht <= best_file_max_ht) {
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "Cannot delete because of running transactions: " << min_running_start_ht
+          << ", best file max ht: " << best_file_max_ht;
       break;
     }
     if (best_file->name == previous_name) {
-      LOG_WITH_PREFIX(INFO) << "Attempt to delete same file: " << previous_name
-                            << ", stopping cleanup";
+      LOG_WITH_PREFIX_AND_FUNC(INFO)
+          << "Attempt to delete same file: " << previous_name << ", stopping cleanup";
       break;
     }
     previous_name = best_file->name;
 
-    LOG_WITH_PREFIX(INFO)
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "Intents SST file will be deleted: " << best_file->ToString()
         << ", max ht: " << best_file_max_ht << ", min running transaction start ht: "
         << min_running_start_ht;
     auto flush_status = regular_db_->Flush(rocksdb::FlushOptions());
     if (!flush_status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Failed to flush regular db: " << flush_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
       break;
     }
     auto delete_status = intents_db_->DeleteFile(best_file->name);
     if (!delete_status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Failed to delete " << best_file->ToString()
-                               << ", all files " << AsString(files) << ": " << delete_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Failed to delete " << best_file->ToString() << ", all files " << AsString(files)
+          << ": " << delete_status;
       break;
     }
   }
 
   if (best_file_max_ht != HybridTime::kMax) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Wait min running hybrid time: " << best_file_max_ht;
     transaction_participant_->WaitMinRunningHybridTime(best_file_max_ht);
   }
 }
