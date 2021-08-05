@@ -21,7 +21,7 @@ class Footer extends PureComponent {
       <footer>
         <div className="footer-logo-container">
           <YBLogo type="monochrome" />
-          {version && <span> Version: {version}</span>}
+          {version && <span> Platform Version: {version}</span>}
         </div>
         <div className="footer-social-container">
           <a href="https://www.yugabyte.com/slack" target="_blank" rel="noopener noreferrer">
