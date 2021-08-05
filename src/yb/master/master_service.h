@@ -310,6 +310,10 @@ class MasterServiceImpl : public MasterServiceIf,
                               GetUniverseReplicationResponsePB* resp,
                               rpc::RpcContext rpc) override;
 
+  void IsSetupUniverseReplicationDone(const IsSetupUniverseReplicationDoneRequestPB* req,
+                                      IsSetupUniverseReplicationDoneResponsePB* resp,
+                                      rpc::RpcContext rpc) override;
+
   void SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
