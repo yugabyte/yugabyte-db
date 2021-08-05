@@ -548,15 +548,36 @@ NOTICE:  AUDIT: SESSION,3,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
    SET description = 'yada, yada';",<not logged>
 --
 -- Object logged because of:
+--     select (password) on account (in the where clause)
+-- Session logged on all tables because log = read and log_relation = on
+SELECT *
+  FROM account
+ WHERE password = 'HASH2'
+   FOR UPDATE;
+NOTICE:  AUDIT: OBJECT,4,1,READ,SELECT,TABLE,public.account,"SELECT *
+  FROM account
+ WHERE password = 'HASH2'
+   FOR UPDATE;",<not logged>
+NOTICE:  AUDIT: SESSION,4,1,READ,SELECT,TABLE,public.account,"SELECT *
+  FROM account
+ WHERE password = 'HASH2'
+   FOR UPDATE;",<not logged>
+ id | name  | password | description 
+----+-------+----------+-------------
+  1 | user1 | HASH2    | yada, yada
+(1 row)
+
+--
+-- Object logged because of:
 -- select (password) on account (in the where clause)
 -- Session logged on all tables because log = read and log_relation = on
 UPDATE account
    SET description = 'yada, yada'
  where password = 'HASH2';
-NOTICE:  AUDIT: OBJECT,4,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
+NOTICE:  AUDIT: OBJECT,5,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
    SET description = 'yada, yada'
  where password = 'HASH2';",<not logged>
-NOTICE:  AUDIT: SESSION,4,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
+NOTICE:  AUDIT: SESSION,5,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
    SET description = 'yada, yada'
  where password = 'HASH2';",<not logged>
 --
@@ -565,9 +586,9 @@ NOTICE:  AUDIT: SESSION,4,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
 -- Session logged on all tables because log = read and log_relation = on
 UPDATE account
    SET password = 'HASH2';
-NOTICE:  AUDIT: OBJECT,5,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
+NOTICE:  AUDIT: OBJECT,6,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
    SET password = 'HASH2';",<not logged>
-NOTICE:  AUDIT: SESSION,5,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
+NOTICE:  AUDIT: SESSION,6,1,WRITE,UPDATE,TABLE,public.account,"UPDATE account
    SET password = 'HASH2';",<not logged>
 --
 -- Change configuration of user 1 so that full statements are not logged
@@ -1154,8 +1175,12 @@ NOTICE:  AUDIT: SESSION,66,1,WRITE,INSERT,TABLE,public.aaa,"INSERT INTO aaa VALU
 SET pgaudit.log_parameter TO OFF;
 INSERT INTO bbb VALUES (1);
 NOTICE:  AUDIT: SESSION,67,1,WRITE,INSERT,TABLE,public.bbb,INSERT INTO bbb VALUES (1);,<not logged>
-NOTICE:  AUDIT: OBJECT,67,2,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
-NOTICE:  AUDIT: SESSION,67,2,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
+NOTICE:  AUDIT: OBJECT,67,2,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>
+NOTICE:  AUDIT: SESSION,67,2,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>
+NOTICE:  AUDIT: OBJECT,67,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
+NOTICE:  AUDIT: SESSION,67,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
+NOTICE:  AUDIT: OBJECT,67,4,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>
+NOTICE:  AUDIT: SESSION,67,4,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>
 SET pgaudit.log_parameter TO ON;
 DROP TABLE bbb;
 DROP TABLE aaa;
@@ -2337,9 +2362,13 @@ INSERT INTO aaa VALUES (generate_series(1,100));
 NOTICE:  AUDIT: SESSION,120,1,WRITE,INSERT,TABLE,public.aaa,"INSERT INTO aaa VALUES (generate_series(1,100));",<none>,100
 SET pgaudit.log_parameter TO OFF;
 INSERT INTO bbb VALUES (1);
-NOTICE:  AUDIT: OBJECT,121,1,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>,1
-NOTICE:  AUDIT: SESSION,121,1,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>,1
-NOTICE:  AUDIT: SESSION,121,2,WRITE,INSERT,TABLE,public.bbb,INSERT INTO bbb VALUES (1);,<not logged>,1
+NOTICE:  AUDIT: OBJECT,121,1,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>,1
+NOTICE:  AUDIT: SESSION,121,1,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>,1
+NOTICE:  AUDIT: OBJECT,121,2,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>,1
+NOTICE:  AUDIT: SESSION,121,2,READ,SELECT,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",<not logged>,1
+NOTICE:  AUDIT: OBJECT,121,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>,1
+NOTICE:  AUDIT: SESSION,121,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>,1
+NOTICE:  AUDIT: SESSION,121,4,WRITE,INSERT,TABLE,public.bbb,INSERT INTO bbb VALUES (1);,<not logged>,1
 SET pgaudit.log_parameter TO ON;
 DROP TABLE bbb;
 DROP TABLE aaa;

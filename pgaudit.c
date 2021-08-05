@@ -1012,18 +1012,11 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         /*
          * Don't log if the session user is not a member of the current
          * role.  This prevents contents of security definer functions
-         * from being logged.
+         * from being logged and supresses foreign key queries unless the
+         * session user is the owner of the referenced table.
          */
         if (!is_member_of_role(GetSessionUserId(), GetUserId()))
             return;
-
-        /*
-         * Don't log if this is not a true update UPDATE command, e.g. a
-         * SELECT FOR UPDATE used for foreign key lookups.
-         */
-        if (rte->requiredPerms & ACL_UPDATE &&
-            rte->rellockmode < RowExclusiveLock)
-            continue;
 
         /*
          * If we are not logging all-catalog queries (auditLogCatalog is
@@ -1055,7 +1048,9 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         /*
          * We don't have access to the parsetree here, so we have to generate
          * the node type, object type, and command tag by decoding
-         * rte->requiredPerms and rte->relkind.
+         * rte->requiredPerms and rte->relkind. For updates we also check 
+         * rellockmode so that only true UPDATE commands (not
+         * SELECT FOR UPDATE, etc.) are logged as UPDATE.
          */
         if (rte->requiredPerms & ACL_INSERT)
         {
@@ -1063,7 +1058,8 @@ log_select_dml(Oid auditOid, List *rangeTabls)
             auditEventStack->auditEvent.commandTag = T_InsertStmt;
             auditEventStack->auditEvent.command = CMDTAG_INSERT;
         }
-        else if (rte->requiredPerms & ACL_UPDATE)
+        else if (rte->requiredPerms & ACL_UPDATE &&
+                 rte->rellockmode >= RowExclusiveLock)
         {
             auditEventStack->auditEvent.logStmtLevel = LOGSTMT_MOD;
             auditEventStack->auditEvent.commandTag = T_UpdateStmt;
