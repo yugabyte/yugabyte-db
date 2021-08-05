@@ -66,7 +66,7 @@ export default class NodeAction extends Component {
     } else if (actionType === 'SLOW_QUERIES') {
       caption = 'Show Slow Queries';
     } else if (actionType === 'DOWNLOAD_LOGS') {
-      caption = 'Download Logs'
+      caption = 'Download Logs';
     }
     return caption;
   }

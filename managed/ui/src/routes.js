@@ -48,7 +48,7 @@ const redirectToUrl = () => {
   pathToRedirect
     ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
     : browserHistory.push('/');
-}
+};
 
 export const clearCredentials = () => {
   localStorage.removeItem('authToken');
@@ -81,14 +81,14 @@ const autoLogin = (params) => {
   localStorage.setItem('authToken', authToken);
   localStorage.setItem('customerId', customerUUID);
   localStorage.setItem('userId', userUUID);
-  Cookies.set('authToken',authToken)
-  Cookies.set('customerId',customerUUID)
+  Cookies.set('authToken',authToken);
+  Cookies.set('customerId',customerUUID);
   Cookies.set('userId',userUUID);
   browserHistory.replace({
     search: '',
-  })
+  });
   browserHistory.push('/');
-}
+};
 
 /**
  * Checks that url query parameters contains only authToken, customerUUID,
@@ -176,7 +176,7 @@ function validateSession(store, replacePath, callback) {
         localStorage.setItem('userId', userId);
         if (searchParam.get('redirectUrl')) {
           browserHistory.push(searchParam.get('redirectUrl'));
-          searchParam.delete('redirectUrl')
+          searchParam.delete('redirectUrl');
         }
       } else {
         store.dispatch(resetCustomer());

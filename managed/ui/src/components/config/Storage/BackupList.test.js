@@ -51,9 +51,11 @@ describe('Mutliple Backup config', () => {
       selector: 'a'
     }));
 
-    status !== 'Used' ? expect(screen.getAllByText(/Delete Configuration/, {
-      selector: 'a'
-    })) : null;
+    if (status !== 'Used') {
+      expect(screen.getAllByText(/Delete Configuration/, {
+        selector: 'a'
+      }))
+    }
 
     expect(screen.getAllByText(/Show Universes/, {
       selector: 'a'

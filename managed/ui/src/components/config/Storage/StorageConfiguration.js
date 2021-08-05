@@ -271,7 +271,7 @@ class StorageConfiguration extends Component {
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           AWS_HOST_BASE: row.data?.AWS_HOST_BASE
-        }
+        };
         break;
     }
     this.props.setInitialValues(initialVal);
