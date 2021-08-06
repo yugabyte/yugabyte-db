@@ -35,7 +35,7 @@ menu:
         <div class="title">Spring Data YugabyteDB</div>
       </div>
       <div class="body">
-          Use Spring Data YugabyteDB
+          Use Spring Data YugabyteDB with YSQL APIs to build cloud-native applications.
       </div>
     </a>
   </div>
