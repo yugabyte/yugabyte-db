@@ -16,6 +16,7 @@
 #include <cds/init.h> // NOLINT
 
 #include "yb/common/common_flags.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
 
@@ -25,6 +26,9 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
+
+#include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DECLARE_bool(client_suppress_created_logs);
 
@@ -796,6 +800,54 @@ YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
 
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
   return ToYBCStatus(pgapi->OperatorAppendArg(op_handle, arg));
+}
+
+YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
+                            bool is_null, size_t *type_size) {
+
+  if (typeentity == nullptr
+      || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA
+      || !typeentity->allow_for_primary_key) {
+    return YBCStatusNotSupport("");
+  }
+
+  if (typeentity->datum_fixed_size > 0) {
+    *type_size = typeentity->datum_fixed_size;
+    return YBCStatusOK();
+  }
+
+  QLValue val;
+  Status status = pggate::PgValueToPB(typeentity, data, is_null, &val);
+  if (!status.IsOk()) {
+    return ToYBCStatus(status);
+  }
+
+  string key_buf;
+  AppendToKey(val.value(), &key_buf);
+  *type_size = key_buf.size();
+  return YBCStatusOK();
+}
+
+
+YBCStatus YBCAppendDatumToKey(uint64_t data, const YBCPgTypeEntity *typeentity,
+                              bool is_null, char *key_ptr,
+                              size_t *bytes_written) {
+  QLValue val;
+
+  Status status = pggate::PgValueToPB(typeentity, data, is_null, &val);
+  if (!status.IsOk()) {
+    return ToYBCStatus(status);
+  }
+
+  string key_buf;
+  AppendToKey(val.value(), &key_buf);
+  memcpy(key_ptr, key_buf.c_str(), key_buf.size());
+  *bytes_written = key_buf.size();
+  return YBCStatusOK();
+}
+
+uint16_t YBCCompoundHash(const char *key, size_t length) {
+  return YBPartition::HashColumnCompoundValue(string(key, length));
 }
 
 //------------------------------------------------------------------------------------------------
