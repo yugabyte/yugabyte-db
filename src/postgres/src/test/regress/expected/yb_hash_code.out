@@ -1,0 +1,186 @@
+SELECT yb_hash_code(1,2,3);
+ yb_hash_code 
+--------------
+        57262
+(1 row)
+
+SELECT yb_hash_code(1,2,'abc'::text);
+ yb_hash_code 
+--------------
+        33808
+(1 row)
+
+SELECT yb_hash_code('asdf');
+ERROR:  undefined datatype given to yb_hash_code
+SELECT yb_hash_code('{"a": {"b":{"c": "foo"}}}'::jsonb);
+ERROR:  Unsupported datatype given to yb_hash_code
+DETAIL:  Only types supported by HASH key columns are allowed
+HINT:  Use explicit casts to ensure input types are as desired
+CREATE TABLE test_table_int (x INT PRIMARY KEY);
+INSERT INTO test_table_int SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_int;
+ yb_hash_code | x  
+--------------+----
+         2675 |  5
+         4624 |  1
+         7321 | 11
+        14321 | 13
+        15839 | 16
+        16842 | 12
+        18581 | 15
+        20056 |  6
+        21199 |  7
+        23904 |  9
+        28919 | 17
+        29135 | 10
+        31730 | 19
+        40623 |  4
+        41074 | 18
+        49348 |  2
+        50082 |  8
+        52593 | 14
+        64672 |  3
+        65252 | 20
+(20 rows)
+
+DROP TABLE test_table_int;
+CREATE TABLE test_table_real (x REAL PRIMARY KEY);
+INSERT INTO test_table_real SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_real;
+ yb_hash_code | x  
+--------------+----
+         1379 | 17
+         1395 | 14
+         1462 |  1
+         2447 |  4
+        10957 | 13
+        12852 |  8
+        13407 | 16
+        15589 |  7
+        15765 | 18
+        17903 | 12
+        20736 |  6
+        24476 | 19
+        31190 |  5
+        36591 | 20
+        38027 |  3
+        40495 |  2
+        54629 | 10
+        60807 | 15
+        60956 |  9
+        62813 | 11
+(20 rows)
+
+DROP TABLE test_table_real;
+CREATE TABLE test_table_double (x DOUBLE PRECISION PRIMARY KEY);
+INSERT INTO test_table_double SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_double;
+ yb_hash_code | x  
+--------------+----
+         1454 | 19
+         4391 |  1
+         7352 |  4
+        13543 |  6
+        14302 | 20
+        16387 | 13
+        20278 | 12
+        22260 |  9
+        23819 |  5
+        27150 |  3
+        28532 | 11
+        31074 | 18
+        34735 | 15
+        35915 | 10
+        36000 | 17
+        37981 |  8
+        42560 |  7
+        47639 | 16
+        50080 | 14
+        57660 |  2
+(20 rows)
+
+DROP TABLE test_table_double;
+CREATE TABLE test_table_small (x SMALLINT PRIMARY KEY);
+INSERT INTO test_table_small SELECT generate_series(1, 20);
+SELECT yb_hash_code(x), x FROM test_table_small;
+ yb_hash_code | x  
+--------------+----
+         1049 |  4
+         2923 | 14
+        13059 |  1
+        16740 | 13
+        18377 | 20
+        26637 |  2
+        26727 |  7
+        27386 | 11
+        27610 | 15
+        29352 |  3
+        30717 |  8
+        35517 |  5
+        35577 | 16
+        48580 |  6
+        49544 | 19
+        50772 |  9
+        51191 | 12
+        51845 | 18
+        53991 | 10
+        63800 | 17
+(20 rows)
+
+DROP TABLE test_table_small;
+CREATE TABLE test_table_text (x TEXT PRIMARY KEY);
+INSERT INTO test_table_text SELECT generate_series(800001, 800020);
+SELECT yb_hash_code(x), x FROM test_table_text;
+ yb_hash_code |   x    
+--------------+--------
+          887 | 800018
+         3842 | 800012
+         4509 | 800015
+         8102 | 800005
+        13531 | 800013
+        16739 | 800014
+        18864 | 800008
+        20355 | 800010
+        23039 | 800016
+        23917 | 800007
+        29019 | 800002
+        39633 | 800001
+        41202 | 800020
+        42996 | 800003
+        52091 | 800009
+        58508 | 800004
+        59776 | 800019
+        59778 | 800006
+        61648 | 800017
+        64428 | 800011
+(20 rows)
+
+DROP TABLE test_table_text;
+CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');
+SELECT yb_hash_code('sad'::mood);
+ yb_hash_code 
+--------------
+         6308
+(1 row)
+
+SELECT yb_hash_code('happy'::mood);
+ yb_hash_code 
+--------------
+         1243
+(1 row)
+
+CREATE TABLE test_table_mood (x mood, y INT, PRIMARY KEY((x,y) HASH));
+INSERT INTO test_table_mood VALUES ('sad'::mood, 1), ('happy'::mood, 4), 
+('ok'::mood, 4), ('sad'::mood, 34), ('ok'::mood, 23);
+SELECT yb_hash_code(x,y), * FROM test_table_mood;
+ yb_hash_code |   x   | y  
+--------------+-------+----
+         7098 | ok    |  4
+        19471 | ok    | 23
+        43113 | happy |  4
+        46345 | sad   |  1
+        60656 | sad   | 34
+(5 rows)
+
+DROP TABLE test_table_mood;
+DROP TYPE mood;

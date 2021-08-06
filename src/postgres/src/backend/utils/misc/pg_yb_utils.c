@@ -58,6 +58,7 @@
 #include "access/tupdesc.h"
 
 #include "tcop/utility.h"
+#include "utils/datum.h"
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -1403,4 +1404,74 @@ bool IsYBSupportedLibcLocale(const char *localebuf) {
 		return true;
 	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
 		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
+}
+
+Datum
+yb_hash_code(PG_FUNCTION_ARGS)
+{
+	/* Create buffer for hashing */
+	char *arg_buf;
+
+	size_t size = 0;
+	for (int i = 0; i < PG_NARGS(); i++)
+	{
+		Oid	argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+
+		if (unlikely(argtype == UNKNOWNOID))
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+				errmsg("undefined datatype given to yb_hash_code")));
+			PG_RETURN_NULL();
+		}
+
+		size_t typesize;
+		const YBCPgTypeEntity *typeentity =
+				 YBCDataTypeFromOidMod(InvalidAttrNumber, argtype);
+		YBCStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity, 
+							PG_ARGISNULL(i), &typesize);
+		if (unlikely(!YBCStatusIsOK(status))) 
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("Unsupported datatype given to yb_hash_code"),
+				errdetail("Only types supported by HASH key columns are allowed"),
+				errhint("Use explicit casts to ensure input types are as desired")));
+			PG_RETURN_NULL();
+		}
+		size += typesize;
+	}
+
+	arg_buf = alloca(size);
+
+	/* TODO(Tanuj): Look into caching the above buffer */
+
+	char *arg_buf_pos = arg_buf;
+	
+	size_t total_bytes = 0;
+	for (int i = 0; i < PG_NARGS(); i++)
+	{
+		Oid	argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+		const YBCPgTypeEntity *typeentity =
+				 YBCDataTypeFromOidMod(InvalidAttrNumber, argtype);
+		size_t written;
+		YBCStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity, 
+							PG_ARGISNULL(i), arg_buf_pos, &written);
+		if (unlikely(!YBCStatusIsOK(status))) 
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("Unsupported datatype given to yb_hash_code"),
+				errdetail("Only types supported by HASH key columns are allowed"),
+				errhint("Use explicit casts to ensure input types are as desired")));
+			PG_RETURN_NULL();
+		}
+		arg_buf_pos += written;
+
+		total_bytes += written;
+	}
+
+	/* hash the contents of the buffer and return */
+	uint16_t hashed_val = YBCCompoundHash(arg_buf, total_bytes);
+	PG_RETURN_UINT16(hashed_val);
 }
