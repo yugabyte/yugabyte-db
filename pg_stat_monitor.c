@@ -1546,7 +1546,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64        planid = entry->key.planid;
 		uint64        appid = entry->key.appid;
 		unsigned char *buf = pgss_qbuf[bucketid];
-		char 		  *query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
 #if PG_VERSION_NUM < 140000
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
 #else
