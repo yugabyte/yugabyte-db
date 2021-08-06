@@ -41,24 +41,33 @@ DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
 
 namespace {
 
-constexpr uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
-constexpr uint64_t txn_priority_highpri_lower_bound = yb::kHighPriTxnLowerBound;
-
 // Local copies that can be modified.
+uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
+uint64_t txn_priority_highpri_lower_bound = yb::kHighPriTxnLowerBound;
+
 uint64_t txn_priority_regular_upper_bound = yb::kRegularTxnUpperBound;
 uint64_t txn_priority_regular_lower_bound = yb::kRegularTxnLowerBound;
 
-// Converts double value in range 0..1 to uint64_t value in range
-// 0..(txn_priority_highpri_lower_bound - 1)
-uint64_t ConvertBound(double value) {
+// Converts double value in range 0..1 to uint64_t value in range [minValue, maxValue]
+uint64_t ConvertBound(double value, uint64_t minValue, uint64_t maxValue) {
   if (value <= 0.0) {
-    return 0;
+    return minValue;
   }
+
   if (value >= 1.0) {
-    return txn_priority_highpri_lower_bound - 1;
+    return maxValue;
   }
+
   // Have to cast to double to avoid a warning on implicit cast that changes the value.
-  return value * (static_cast<double>(txn_priority_highpri_lower_bound) - 1);
+  return minValue + value * static_cast<double>(maxValue - minValue);
+}
+
+uint64_t ConvertRegularPriorityTxnBound(double value) {
+  return ConvertBound(value, yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound);
+}
+
+uint64_t ConvertHighPriorityTxnBound(double value) {
+  return ConvertBound(value, yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound);
 }
 
 } // namespace
@@ -66,15 +75,21 @@ uint64_t ConvertBound(double value) {
 extern "C" {
 
 void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
-  txn_priority_regular_lower_bound = ConvertBound(newval);
+  txn_priority_regular_lower_bound = ConvertRegularPriorityTxnBound(newval);
+  txn_priority_highpri_lower_bound = ConvertHighPriorityTxnBound(newval);
   // YSQL layer checks (guc.c) should ensure this.
   DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
+  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
+  DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_highpri_lower_bound);
 }
 
 void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
-  txn_priority_regular_upper_bound = ConvertBound(newval);
+  txn_priority_regular_upper_bound = ConvertRegularPriorityTxnBound(newval);
+  txn_priority_highpri_upper_bound = ConvertHighPriorityTxnBound(newval);
   // YSQL layer checks (guc.c) should ensure this.
   DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
+  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
+  DCHECK_LE(txn_priority_regular_upper_bound, txn_priority_highpri_lower_bound);
 }
 
 }

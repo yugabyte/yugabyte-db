@@ -92,16 +92,30 @@ IntentTypeSet GetStrongIntentTypeSet(
     OperationKind operation_kind,
     RowMarkType row_mark) {
   if (IsValidRowMarkType(row_mark)) {
-    // TODO: possibly adjust this when issue #2922 is fixed.
+    // Mapping of postgres locking levels to DocDB intent types is described in details by the
+    // following comment https://github.com/yugabyte/yugabyte-db/issues/1199#issuecomment-501041018
     switch (row_mark) {
-      case RowMarkType::ROW_MARK_EXCLUSIVE: FALLTHROUGH_INTENDED;
-      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
+      case RowMarkType::ROW_MARK_EXCLUSIVE:
+        // FOR UPDATE: strong read + strong write lock on the DocKey,
+        //             as if we're replacing or deleting the entire row in DocDB.
         return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
-        break;
-      case RowMarkType::ROW_MARK_SHARE: FALLTHROUGH_INTENDED;
-      case RowMarkType::ROW_MARK_KEYSHARE:
+      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
+        // FOR NO KEY UPDATE: strong read + weak write lock on the DocKey, as if we're reading
+        //                    the entire row and then writing only a subset of columns in DocDB.
+        return IntentTypeSet({IntentType::kStrongRead, IntentType::kWeakWrite});
+      case RowMarkType::ROW_MARK_SHARE:
+        // FOR SHARE: strong read on the DocKey, as if we're reading the entire row in DocDB.
         return IntentTypeSet({IntentType::kStrongRead});
-        break;
+      case RowMarkType::ROW_MARK_KEYSHARE:
+        // FOR KEY SHARE: weak read lock on the DocKey, preventing the entire row from being
+        //               replaced / deleted, as if we're simply reading some of the column.
+        //               This is the type of locking that is used by foreign keys, so this will
+        //               prevent the referenced row from disappearing. The reason it does not
+        //               conflict with the FOR NO KEY UPDATE above is conceptually the following:
+        //               an operation that reads the entire row and then writes a subset of columns
+        //               (FOR NO KEY UPDATE) does not have to conflict with an operation that could
+        //               be reading a different subset of columns (FOR KEY SHARE).
+        return IntentTypeSet({IntentType::kWeakRead});
       default:
         // We shouldn't get here because other row lock types are disabled at the postgres level.
         LOG(DFATAL) << "Unsupported row lock of type " << RowMarkType_Name(row_mark);

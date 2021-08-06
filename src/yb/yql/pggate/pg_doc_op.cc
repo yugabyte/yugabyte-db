@@ -25,9 +25,11 @@
 
 #include "yb/client/table.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/row_mark.h"
 #include "yb/common/transaction_error.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -346,7 +348,7 @@ PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
 Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SCHECK(pgsql_ops_.empty(),
          IllegalState,
-         "Exec params can't be checked for already created operations");
+         "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   template_op_->mutable_request()->set_return_paging_state(true);
@@ -867,12 +869,12 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
 }
 
 void PgDocReadOp::SetRowMark() {
-  PgsqlReadRequestPB *const req = template_op_->mutable_request();
-
-  if (exec_params_.rowmark < 0) {
-    req->clear_row_mark_type();
+  auto req = template_op_->mutable_request();
+  const auto row_mark_type = GetRowMarkType(&exec_params_);
+  if (IsValidRowMarkType(row_mark_type)) {
+    req->set_row_mark_type(row_mark_type);
   } else {
-    req->set_row_mark_type(static_cast<yb::RowMarkType>(exec_params_.rowmark));
+    req->clear_row_mark_type();
   }
 }
 
