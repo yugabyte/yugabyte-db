@@ -21,13 +21,7 @@ export class AddUserModal extends Component {
       const config = {
         type: 'PASSWORD_POLICY',
         name: 'password policy',
-        data: {
-          minLength: 8,
-          minUppercase: 1,
-          minLowercase: 1,
-          minDigits: 1,
-          minSpecialCharacters: 1
-       }
+        data: this.props.passwordValidationInfo,
       };
       await this.props.createUser(values);
       await this.props.addCustomerConfig(config);
