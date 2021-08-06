@@ -1880,7 +1880,7 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_split_tablet_candidate_processing) = true;
 
   // Randomly fail a percentage of tablet splits to ensure that failed splits get removed.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0.3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = IsTsan() ? 0.1 : 0.2;
 
   // Create a table with kTabletSplitLimit tablets.
   int num_tablets = kTabletSplitLimit;
