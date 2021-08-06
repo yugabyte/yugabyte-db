@@ -45,9 +45,13 @@ ANALYZE collects statistics about the contents of tables in the database, and st
 
 ## Semantics
 
+### VERBOSE
+
+Enable display of progress messages.
+
 ### *table_name*
 
-Specify the table, optionally schema-qualified, to be analyzed.
+Specify the table, optionally schema-qualified, to be analyzed. If not specified, then all regular tables in the current database will be analyzed.
 
 ### *column_name*
 
@@ -55,4 +59,27 @@ Specify the list of columns to be analyzed. If not specified, then all columns o
 
 ## Examples
 
-TBA
+### Analyze single table
+
+```plpgsql
+yugabyte=# ANALYZE some_table;
+ANALYZE
+```
+
+### Analyze some colums of the table
+
+```plpgsql
+yugabyte=# ANALYZE some_table(col1, col3);
+ANALYZE
+```
+
+### Analyze multiple tables verbosely
+
+```plpgsql
+yugabyte=# ANALYZE VERBOSE some_table, other_table;
+INFO:  analyzing "public.some_table"
+INFO:  "some_table": scanned, 3 rows in sample, 3 estimated total rows
+INFO:  analyzing "public.other_table"
+INFO:  "other_table": scanned, 3 rows in sample, 3 estimated total rows
+ANALYZE
+```
