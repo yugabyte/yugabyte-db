@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: spring-cassandra
     parent: spring-framework
-    weight: 578
+    weight: 579
 isTocNested: true
 showAsideToc: true
 ---
@@ -383,8 +383,8 @@ public class Customer {
   @Override
   public String toString() {
     return String.format(
-​    "Customer[id=%d, firstName='%s', lastName='%s']",
-​    id, firstName, lastName);
+    "Customer[id=%d, firstName='%s', lastName='%s']",
+    id, firstName, lastName);
   }
 
  // define getters and setters 
@@ -440,12 +440,12 @@ public class YcqlReactiveDataAccessApplication implements CommandLineRunner {
   CqlSession ycqlSession;
 
   public static void main(String[] args) {
-​   SpringApplication.run(YcqlReactiveDataAccessApplication.class, args);
+    SpringApplication.run(YcqlReactiveDataAccessApplication.class, args);
   }
 
   @Override
   public void run(String... args) throws Exception {
-​   log.info("Creating table");
+    log.info("Creating table");
     ycqlSession.execute("CREATE TABLE IF NOT EXISTS demo.customer (\n" +  
                         " id INT PRIMARY KEY,\n"+ " firstName text,\n" + 
                         " lastName text\n" + ") WITH default_time_to_live = 0\n" + 

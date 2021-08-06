@@ -30,7 +30,7 @@ The following are some of the features included in SDYB YSQL:
 
 For more information, demonstrations, and contribution guidelines, see [Spring Data YugabyteDB GitHub project.](https://github.com/yugabyte/spring-data-yugabytedb/) 
 
-## Dependencies and Compatibility
+## Project Dependencies
 
 The project definition includes the following dependencies:
 
@@ -46,12 +46,6 @@ The project definition includes the following dependencies:
   <version>42.2.7-yb-5.beta.1</version>
 </dependency>
 ```
-
-The following is the compatibility matrix:
-
-| **SDYB** | **YugabyteDB Smart Driver** | **Postgres JDBC Driver** |
-| -------- | --------------------------- | ------------------------ |
-| 2.3.0    | 42.2.7-yb-5.beta.1          | 42.2.7 or later          |
 
 ## Examples
 
@@ -138,4 +132,10 @@ public class YsqlConfig extends AbstractYugabyteJdbcConfiguration {
 
 }
 ```
+
+## Compatibility Matrix
+
+| **SDYB** | **YugabyteDB Smart Driver** | **Postgres JDBC Driver** |
+| -------- | --------------------------- | ------------------------ |
+| 2.3.0    | 42.2.7-yb-5.beta.1          | 42.2.7 or later          |
 
