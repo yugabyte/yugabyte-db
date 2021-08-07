@@ -126,6 +126,18 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
   copy = boost::trim_copy_if(copy, boost::is_any_of("'\""));
   vector<string> new_items;
   boost::split(new_items, copy, boost::is_any_of(","));
+  // remove empty elements, makes it safe to use with empty user
+  // provided shared_preload_libraries, for example,
+  // if the value was provided via environment variable, example:
+  //   --ysql_pg_conf="shared_preload_libraries='$UNSET_VALUE'"
+  // Alternative example:
+  //   --ysql_pg_conf="shared_preload_libraries='$LIB1,$LIB2,#LIB3'"
+  // where any of the libs could undefined.
+  new_items.erase(
+    std::remove_if(new_items.begin(),
+      new_items.end(),
+      [](const std::string& s){return s.empty();}),
+      new_items.end());
   defaults->insert(defaults->end(), new_items.begin(), new_items.end());
 }
 
