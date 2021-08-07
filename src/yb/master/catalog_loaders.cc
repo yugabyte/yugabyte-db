@@ -32,7 +32,6 @@
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_util.h"
-#include "yb/master/permissions_manager.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -426,9 +425,6 @@ Status RedisConfigLoader::Visit(const std::string& key, const SysRedisConfigEntr
 ////////////////////////////////////////////////////////////
 
 Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metadata) {
-  CHECK(!catalog_manager_->permissions_manager()->DoesRoleExistUnlocked(role_name))
-    << "Role already exists: " << role_name;
-
   RoleInfo* const role = new RoleInfo(role_name);
   {
     auto l = role->LockForWrite();

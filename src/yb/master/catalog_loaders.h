@@ -34,6 +34,7 @@
 #define YB_MASTER_CATALOG_LOADERS_H
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog-internal.h"
 
 #include <boost/preprocessor/cat.hpp>
@@ -41,7 +42,7 @@
 namespace yb {
 namespace master {
 
-#define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name) \
+#define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
   class BOOST_PP_CAT(name, Loader) : \
       public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
   public: \
@@ -52,7 +53,7 @@ namespace master {
   private: \
     CHECKED_STATUS Visit( \
         const key_type& key, \
-        const entry_pb_name& metadata) override REQUIRES(catalog_manager_->mutex_); \
+        const entry_pb_name& metadata) override REQUIRES(mutex); \
     \
     CatalogManager *catalog_manager_; \
     \
@@ -82,14 +83,16 @@ namespace master {
 // SysSnapshotEntryPB
 // SysYSQLCatalogConfigEntryPB
 
-DECLARE_LOADER_CLASS(Table,         TableId,     SysTablesEntryPB);
-DECLARE_LOADER_CLASS(Tablet,        TabletId,    SysTabletsEntryPB);
-DECLARE_LOADER_CLASS(Namespace,     NamespaceId, SysNamespaceEntryPB);
-DECLARE_LOADER_CLASS(UDType,        UDTypeId,    SysUDTypeEntryPB);
-DECLARE_LOADER_CLASS(ClusterConfig, std::string, SysClusterConfigEntryPB);
-DECLARE_LOADER_CLASS(RedisConfig,   std::string, SysRedisConfigEntryPB);
-DECLARE_LOADER_CLASS(Role,          RoleName,    SysRoleEntryPB);
-DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB);
+DECLARE_LOADER_CLASS(Table,         TableId,     SysTablesEntryPB,        catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(Tablet,        TabletId,    SysTabletsEntryPB,       catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(Namespace,     NamespaceId, SysNamespaceEntryPB,     catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(UDType,        UDTypeId,    SysUDTypeEntryPB,        catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(ClusterConfig, std::string, SysClusterConfigEntryPB, catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(RedisConfig,   std::string, SysRedisConfigEntryPB,   catalog_manager_->mutex_);
+DECLARE_LOADER_CLASS(Role,       RoleName,    SysRoleEntryPB,
+    catalog_manager_->permissions_manager()->mutex());
+DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB,
+    catalog_manager_->permissions_manager()->mutex());
 
 #undef DECLARE_LOADER_CLASS
 
