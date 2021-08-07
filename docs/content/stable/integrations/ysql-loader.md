@@ -4,7 +4,7 @@ linkTitle: YSQL Loader
 description: YSQL Loader
 aliases:
 menu:
-  latest:
+  stable:
     identifier: ysql-loader
     parent: integrations
     weight: 577
