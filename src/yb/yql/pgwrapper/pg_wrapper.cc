@@ -137,8 +137,8 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
   //
   // Alternative example:
   //
-  //   --ysql_pg_conf="shared_preload_libraries='$LIB1,$LIB2,#LIB3'"
-  // where any of the libs could undefined.
+  //   --ysql_pg_conf="shared_preload_libraries='$LIB1,$LIB2,$LIB3'"
+  // where any of the libs could be undefined.
   new_items.erase(
     std::remove_if(new_items.begin(),
       new_items.end(),
