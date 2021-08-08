@@ -121,16 +121,22 @@ void ReadCommaSeparatedValues(const string& src, vector<string>* lines) {
 }
 
 void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
-  string copy = boost::erase_first_copy(boost::replace_all_copy(src, " ", ""),
-    "shared_preload_libraries=");
+  string copy = boost::replace_all_copy(src, " ", "");
+  copy = boost::erase_first_copy(copy, "shared_preload_libraries");
+  // According to the documentation in postgresql.conf file,
+  // the '=' is optional hence it needs to be handled separate.
+  copy = boost::erase_first_copy(copy, "=");
   copy = boost::trim_copy_if(copy, boost::is_any_of("'\""));
   vector<string> new_items;
   boost::split(new_items, copy, boost::is_any_of(","));
-  // remove empty elements, makes it safe to use with empty user
+  // Remove empty elements, makes it safe to use with empty user
   // provided shared_preload_libraries, for example,
   // if the value was provided via environment variable, example:
+  //
   //   --ysql_pg_conf="shared_preload_libraries='$UNSET_VALUE'"
+  //
   // Alternative example:
+  //
   //   --ysql_pg_conf="shared_preload_libraries='$LIB1,$LIB2,#LIB3'"
   // where any of the libs could undefined.
   new_items.erase(
