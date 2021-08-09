@@ -751,6 +751,74 @@ TEST_F(YbAdminSnapshotScheduleTest, TestVerifyRestorationLogic) {
   }, 30s * kTimeMultiplier, "Wait for table to be deleted"));
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, TestGCHiddenTables) {
+  const auto interval = 15s;
+  const auto retention = 30s;
+  auto schedule_id = ASSERT_RESULT(PrepareQl(interval, retention));
+
+  auto session = client_->NewSession();
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  LOG(INFO) << "Write values";
+  constexpr int kMinKey = 1;
+  constexpr int kMaxKey = 100;
+  for (int i = kMinKey; i <= kMaxKey; ++i) {
+    ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, i, -i));
+  }
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  LOG(INFO) << "Delete table";
+  ASSERT_OK(client_->DeleteTable(client::kTableName));
+
+  ASSERT_NOK(client::kv_table_test::WriteRow(&table_, session, kMinKey, 0));
+
+  LOG(INFO) << "Restore schedule";
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(table_.Open(client::kTableName, client_.get()));
+
+  LOG(INFO) << "Reading rows";
+  auto rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
+  LOG(INFO) << "Rows: " << AsString(rows);
+  ASSERT_EQ(rows.size(), kMaxKey - kMinKey + 1);
+  for (int i = kMinKey; i <= kMaxKey; ++i) {
+    ASSERT_EQ(rows[i], -i);
+  }
+
+  // Wait for snapshot schedule retention time and verify that GC
+  // for the table isn't initiated.
+  SleepFor(2*retention);
+
+  Timestamp time1(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  LOG(INFO) << "Delete table again.";
+  ASSERT_OK(client_->DeleteTable(client::kTableName));
+
+  ASSERT_NOK(client::kv_table_test::WriteRow(&table_, session, kMinKey, 0));
+
+  LOG(INFO) << "Restore schedule again.";
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
+
+  ASSERT_OK(table_.Open(client::kTableName, client_.get()));
+
+  LOG(INFO) << "Reading rows again.";
+  rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
+  LOG(INFO) << "Rows: " << AsString(rows);
+  ASSERT_EQ(rows.size(), kMaxKey - kMinKey + 1);
+  for (int i = kMinKey; i <= kMaxKey; ++i) {
+    ASSERT_EQ(rows[i], -i);
+  }
+
+  // Write and verify the extra row.
+  constexpr int kExtraKey = kMaxKey + 1;
+  ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, kExtraKey, -kExtraKey));
+  auto extra_value = ASSERT_RESULT(client::kv_table_test::SelectRow(&table_, session, kExtraKey));
+  ASSERT_EQ(extra_value, -kExtraKey);
+}
+
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
   virtual std::vector<std::string> ExtraTSFlags() {

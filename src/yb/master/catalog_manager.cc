@@ -1052,6 +1052,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
     RETURN_NOT_OK(Load<RoleLoader>("roles", term));
     RETURN_NOT_OK(Load<SysConfigLoader>("sys config", term));
   }
+  // Clear the hidden tablets vector.
+  hidden_tablets_.clear();
+
   RETURN_NOT_OK(Load<TableLoader>("tables", term));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", term));
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", term));
