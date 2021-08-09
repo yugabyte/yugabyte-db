@@ -42,7 +42,7 @@ public class AlertApiFilter {
       builder.groupTypes(groupTypes);
     }
     if (!CollectionUtils.isEmpty(states)) {
-      builder.targetStates(states);
+      builder.states(states);
     }
     return builder.build();
   }

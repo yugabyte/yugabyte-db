@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.alerts.AlertLabelsProvider;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -47,7 +48,6 @@ import lombok.experimental.Accessors;
 public class Alert extends Model implements AlertLabelsProvider {
 
   public enum State {
-    CREATED("firing"),
     ACTIVE("firing"),
     ACKNOWLEDGED("acknowledged"),
     RESOLVED("resolved");
@@ -64,11 +64,12 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public enum SortBy implements PagedQuery.SortByIF {
+    uuid("uuid"),
     createTime("createTime"),
     severity("severityIndex"),
     name("name"),
     targetName("targetName"),
-    state("targetStateIndex");
+    state("stateIndex");
 
     private final String sortField;
 
@@ -78,6 +79,11 @@ public class Alert extends Model implements AlertLabelsProvider {
 
     public String getSortField() {
       return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.uuid;
     }
   }
 
@@ -128,21 +134,17 @@ public class Alert extends Model implements AlertLabelsProvider {
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert State.", accessMode = READ_ONLY)
-  private State state = State.CREATED;
-
-  @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Target State.", accessMode = READ_ONLY)
-  private State targetState = State.ACTIVE;
+  private State state = State.ACTIVE;
 
   @Transient
   @Formula(
       select =
           "(case"
-              + " when target_state = 'ACTIVE' then 1"
-              + " when target_state = 'ACKNOWLEDGED' then 2"
-              + " when target_state = 'RESOLVED' then 3"
+              + " when state = 'ACTIVE' then 1"
+              + " when state = 'ACKNOWLEDGED' then 2"
+              + " when state = 'RESOLVED' then 3"
               + " else 0 end)")
-  private Integer targetStateIndex;
+  private Integer stateIndex;
 
   @ApiModelProperty(value = "Alert Definition Uuid", accessMode = READ_ONLY)
   private UUID definitionUuid;
@@ -162,7 +164,7 @@ public class Alert extends Model implements AlertLabelsProvider {
 
   @ApiModelProperty(value = "Time of the nex notification attempt.", accessMode = READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  private Date nextNotificationTime;
+  private Date nextNotificationTime = nowWithoutMillis();
 
   @ApiModelProperty(value = "Count of failures to send a notification.", accessMode = READ_ONLY)
   @Column(nullable = false)
@@ -238,7 +240,6 @@ public class Alert extends Model implements AlertLabelsProvider {
       query.eq("customerUUID", filter.getCustomerUuid());
     }
     appendInClause(query, "state", filter.getStates());
-    appendInClause(query, "targetState", filter.getTargetStates());
     appendInClause(query, "definitionUuid", filter.getDefinitionUuids());
     if (filter.getLabel() != null) {
       query

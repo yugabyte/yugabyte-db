@@ -31,7 +31,6 @@ public class AlertFilter {
   Set<UUID> excludeUuids;
   UUID customerUuid;
   Set<Alert.State> states;
-  Set<Alert.State> targetStates;
   Set<UUID> definitionUuids;
   UUID groupUuid;
   Set<AlertDefinitionGroup.Severity> severities;
@@ -58,9 +57,6 @@ public class AlertFilter {
     if (states != null) {
       result.states(states);
     }
-    if (targetStates != null) {
-      result.targetStates(targetStates);
-    }
     if (definitionUuids != null) {
       result.definitionUuids(definitionUuids);
     }
@@ -83,7 +79,6 @@ public class AlertFilter {
     Set<UUID> uuids = new HashSet<>();
     Set<UUID> excludeUuids = new HashSet<>();
     Set<Alert.State> states = EnumSet.noneOf(Alert.State.class);
-    Set<Alert.State> targetStates = EnumSet.noneOf(Alert.State.class);
     Set<UUID> definitionUuids = new HashSet<>();
     Set<AlertDefinitionGroup.Severity> severities = new HashSet<>();
     Set<AlertDefinitionGroup.TargetType> groupTypes = new HashSet<>();
@@ -120,16 +115,6 @@ public class AlertFilter {
 
     public AlertFilterBuilder states(@NonNull Set<Alert.State> states) {
       this.states.addAll(states);
-      return this;
-    }
-
-    public AlertFilterBuilder targetState(@NonNull Alert.State... state) {
-      targetStates.addAll(Arrays.asList(state));
-      return this;
-    }
-
-    public AlertFilterBuilder targetStates(@NonNull Set<Alert.State> states) {
-      this.targetStates.addAll(states);
       return this;
     }
 
