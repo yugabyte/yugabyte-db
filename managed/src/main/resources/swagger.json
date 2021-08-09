@@ -104,7 +104,7 @@
         },
         "notifiedState" : {
           "description" : "Alert state in last sent notification.",
-          "enum" : [ "CREATED", "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
+          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -126,24 +126,18 @@
         },
         "state" : {
           "description" : "Alert State.",
-          "enum" : [ "CREATED", "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
+          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
+        },
+        "stateIndex" : {
+          "format" : "int32",
+          "type" : "integer"
         },
         "targetName" : {
           "description" : "Alert target name.",
           "readOnly" : true,
           "type" : "string"
-        },
-        "targetState" : {
-          "description" : "Target State.",
-          "enum" : [ "CREATED", "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
-          "readOnly" : true,
-          "type" : "string"
-        },
-        "targetStateIndex" : {
-          "format" : "int32",
-          "type" : "integer"
         },
         "uuid" : {
           "description" : "Alert uuid",
@@ -152,7 +146,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "labels", "severityIndex", "targetStateIndex" ],
+      "required" : [ "labels", "severityIndex", "stateIndex" ],
       "type" : "object"
     },
     "Alert Detail" : {
@@ -216,7 +210,7 @@
         },
         "states" : {
           "items" : {
-            "enum" : [ "CREATED", "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
+            "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
             "type" : "string"
           },
           "type" : "array",
@@ -343,7 +337,7 @@
           "type" : "integer"
         },
         "sortBy" : {
-          "enum" : [ "name", "active", "targetType", "createTime" ],
+          "enum" : [ "uuid", "name", "active", "targetType", "createTime" ],
           "type" : "string"
         }
       },
@@ -461,7 +455,7 @@
           "type" : "integer"
         },
         "sortBy" : {
-          "enum" : [ "createTime", "severity", "name", "targetName", "state" ],
+          "enum" : [ "uuid", "createTime", "severity", "name", "targetName", "state" ],
           "type" : "string"
         }
       },

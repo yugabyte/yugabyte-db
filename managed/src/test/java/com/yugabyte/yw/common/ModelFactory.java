@@ -317,7 +317,7 @@ public class ModelFactory {
   }
 
   public static Alert createAlert(Customer customer) {
-    return createAlert(customer, null, null);
+    return createAlert(customer, null, null, null);
   }
 
   public static Alert createAlert(Customer customer, Universe universe) {
@@ -329,7 +329,17 @@ public class ModelFactory {
   }
 
   public static Alert createAlert(
+      Customer customer, AlertDefinition definition, Consumer<Alert> modifier) {
+    return createAlert(customer, null, definition, modifier);
+  }
+
+  public static Alert createAlert(
       Customer customer, Universe universe, AlertDefinition definition) {
+    return createAlert(customer, universe, definition, a -> {});
+  }
+
+  public static Alert createAlert(
+      Customer customer, Universe universe, AlertDefinition definition, Consumer<Alert> modifier) {
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
@@ -359,6 +369,9 @@ public class ModelFactory {
         labelsBuilder.appendTarget(customer);
       }
       alert.setLabels(labelsBuilder.getAlertLabels());
+    }
+    if (modifier != null) {
+      modifier.accept(alert);
     }
     alert.save();
     return alert;

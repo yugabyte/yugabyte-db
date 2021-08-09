@@ -12,6 +12,8 @@ import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.models.paging.AlertPagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
@@ -166,17 +169,13 @@ public class AlertTest extends FakeDBApplication {
     AlertDefinition definition2 = ModelFactory.createAlertDefinition(cust2, universe2);
     Alert alert2 = ModelFactory.createAlert(cust2, definition2);
     alert2.setState(Alert.State.RESOLVED);
-    alert2.setTargetState(Alert.State.RESOLVED);
 
     alertService.save(alert2);
 
     AlertFilter filter = AlertFilter.builder().customerUuid(cust1.getUuid()).build();
     queryAndAssertByFilter(filter, definition);
 
-    filter = AlertFilter.builder().state(Alert.State.CREATED).build();
-    queryAndAssertByFilter(filter, definition);
-
-    filter = AlertFilter.builder().targetState(Alert.State.ACTIVE).build();
+    filter = AlertFilter.builder().state(State.ACTIVE).build();
     queryAndAssertByFilter(filter, definition);
 
     filter =
@@ -197,24 +196,30 @@ public class AlertTest extends FakeDBApplication {
   @Test
   public void testSortBy() {
     AlertDefinition definition = createDefinition();
-    Alert alert1 = ModelFactory.createAlert(cust1, definition);
-    Alert alert2 = ModelFactory.createAlert(cust1, definition);
-    Alert alert3 = ModelFactory.createAlert(cust1, definition);
+    Alert alert1 =
+        ModelFactory.createAlert(
+            cust1, definition, alert -> alert.setUuid(replaceFirstChar(alert.getUuid(), 'a')));
+    Alert alert2 =
+        ModelFactory.createAlert(
+            cust1, definition, alert -> alert.setUuid(replaceFirstChar(alert.getUuid(), 'b')));
+    Alert alert3 =
+        ModelFactory.createAlert(
+            cust1, definition, alert -> alert.setUuid(replaceFirstChar(alert.getUuid(), 'c')));
 
     alert2.setName("Alert 2");
     alert2.setTargetName("Target 3");
     alert2.setGroupType(TargetType.CUSTOMER);
     alert2.setGroupType(TargetType.CUSTOMER);
     alert2.setSeverity(Severity.WARNING);
-    alert2.setTargetState(State.ACKNOWLEDGED);
+    alert2.setState(State.ACKNOWLEDGED);
     alert2.setCreateTime(Date.from(alert1.getCreateTime().toInstant().minusSeconds(5)));
-    alert2.save();
+    alert2.update();
 
     alert3.setName("Alert 3");
     alert3.setTargetName("Target 2");
-    alert3.setTargetState(Alert.State.RESOLVED);
+    alert3.setState(Alert.State.RESOLVED);
     alert3.setCreateTime(Date.from(alert1.getCreateTime().toInstant().minusSeconds(2)));
-    alert3.save();
+    alert3.update();
 
     AlertFilter filter = AlertFilter.builder().build();
     AlertPagedQuery query = new AlertPagedQuery();
@@ -241,7 +246,7 @@ public class AlertTest extends FakeDBApplication {
 
     query.setSortBy(SortBy.severity);
     result = alertService.pagedList(query).getEntities();
-    assertThat(result, contains(alert2, alert3, alert1));
+    assertThat(result, contains(alert2, alert1, alert3));
 
     query.setSortBy(SortBy.state);
     result = alertService.pagedList(query).getEntities();
@@ -259,7 +264,7 @@ public class AlertTest extends FakeDBApplication {
     Alert queriedAlert = alertService.get(alert.getUuid());
 
     assertThat(queriedAlert.getState(), equalTo(Alert.State.ACKNOWLEDGED));
-    assertThat(queriedAlert.getTargetState(), equalTo(Alert.State.ACKNOWLEDGED));
+    assertThat(queriedAlert.getNotifiedState(), equalTo(State.ACKNOWLEDGED));
 
     alertService.markResolved(filter);
     alertService.acknowledge(filter);
@@ -268,7 +273,43 @@ public class AlertTest extends FakeDBApplication {
 
     // Resolved without sending email.
     assertThat(queriedAlert.getState(), equalTo(Alert.State.RESOLVED));
-    assertThat(queriedAlert.getTargetState(), equalTo(Alert.State.RESOLVED));
+    assertThat(queriedAlert.getNotifiedState(), equalTo(State.ACKNOWLEDGED));
+  }
+
+  @Test
+  public void testResolve() {
+    Alert alert = createAlert();
+    alert.setNextNotificationTime(null);
+    alert = alertService.save(alert);
+
+    AlertFilter filter = AlertFilter.builder().uuid(alert.getUuid()).build();
+    alertService.markResolved(filter);
+
+    Alert queriedAlert = alertService.get(alert.getUuid());
+
+    assertThat(queriedAlert.getState(), equalTo(State.RESOLVED));
+    assertThat(queriedAlert.getNextNotificationTime(), notNullValue());
+  }
+
+  @Test
+  public void testResolveAcknowledged() {
+    Alert alert = createAlert();
+    alert.setNextNotificationTime(null);
+    alert = alertService.save(alert);
+
+    AlertFilter filter = AlertFilter.builder().uuid(alert.getUuid()).build();
+
+    alertService.acknowledge(filter);
+
+    Alert queriedAlert = alertService.get(alert.getUuid());
+    assertThat(queriedAlert.getNextNotificationTime(), nullValue());
+
+    alertService.markResolved(filter);
+
+    queriedAlert = alertService.get(alert.getUuid());
+
+    assertThat(queriedAlert.getState(), equalTo(State.RESOLVED));
+    assertThat(queriedAlert.getNextNotificationTime(), nullValue());
   }
 
   private void queryAndAssertByFilter(AlertFilter filter, AlertDefinition definition) {
@@ -382,10 +423,12 @@ public class AlertTest extends FakeDBApplication {
     alert2.setNextNotificationTime(Date.from(new Date().toInstant().minusSeconds(30)));
     alert2.save();
     Alert alert3 = ModelFactory.createAlert(cust1, universe);
+    alert3.setNextNotificationTime(null);
+    alert3.save();
 
     AlertFilter filter =
         AlertFilter.builder()
-            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .state(Alert.State.ACTIVE, Alert.State.RESOLVED)
             .notificationPending(true)
             .build();
     List<Alert> list = alertService.list(filter);
@@ -393,10 +436,16 @@ public class AlertTest extends FakeDBApplication {
 
     filter =
         AlertFilter.builder()
-            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .state(Alert.State.ACTIVE, Alert.State.RESOLVED)
             .notificationPending(false)
             .build();
     list = alertService.list(filter);
     assertThat(list, containsInAnyOrder(alert1, alert3));
+  }
+
+  private UUID replaceFirstChar(UUID uuid, char firstChar) {
+    char[] chars = uuid.toString().toCharArray();
+    chars[0] = firstChar;
+    return UUID.fromString(new String(chars));
   }
 }
