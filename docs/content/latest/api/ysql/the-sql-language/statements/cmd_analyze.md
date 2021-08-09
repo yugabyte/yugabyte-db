@@ -133,7 +133,7 @@ yugabyte=# EXPLAIN select * from test where b = 1;
 ```
 
 {{< note title="Note" >}}
-Yugabyte's query plan nodes (in partiqular sequeential and index scans) were implemented long before we planned to support
+Yugabyte's query plan nodes (in particular sequential and index scans) were implemented long before we planned to support
 the ANALYZE command and statistics, so planner does not make use of statistics besides number of rows when calculating
 execution costs of those nodes.
 {{< /note >}}
