@@ -21,7 +21,7 @@ ANALYZE collects statistics about the contents of tables in the database, and st
 The Yugabyte implementation is based on the framework provided by PostgreSQL, which requires the storage layer to provide random sample of rows of predefined size. The size is calculated based on number of factors, such as data types of included columns.
 
 {{< note title="Note" >}}
-Currently sampling algorithm is not optimized fror a large table. It may take minutes to collect statistics from a table containing several millions rows of data.
+Currently sampling algorithm is not optimized fror a large table. It may take minutes to collect statistics from a table containing several million rows of data.
 {{< /note >}}
 
 {{< note title="Note" >}}
