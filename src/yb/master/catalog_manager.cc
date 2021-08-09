@@ -982,6 +982,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
     ts_desc->set_has_tablet_report(false);
   }
 
+  // Clear the hidden tablets vector.
+  hidden_tablets_.clear();
+
   RETURN_NOT_OK(Load<TableLoader>("tables", term));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", term));
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", term));
