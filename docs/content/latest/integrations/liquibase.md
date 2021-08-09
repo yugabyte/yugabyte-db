@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: liquibase
     parent: integrations
-    weight: 578
+    weight: 650
 isTocNested: true
 showAsideToc: true
 ---
@@ -24,7 +24,7 @@ Before you can start using Liquibase, ensure that you have the following install
 
 - Yugabyte cluster (see [Create a local cluster](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/)). To check status, execute the following command:
 
-  ```shell
+  ```sh
   ./bin/yugabyted status
   ```
 
@@ -64,9 +64,9 @@ You configure Liquibase as follows:
 
   Liquibase uses this file to perform changes on the database schema. This file contains a list of instructions (changesets) that are executed against the database. Note that currently, the following changesets are not supported by Yugabyte: `addUniqueConstraint`, `alterSequence`, `dropPrimaryKey`, `dropUniqueConstraint`, `renameSequence`; in addition, Liquibase Pro changesets have not been tested against YugabyteDB.
 
-  In general, changelog files can be in the `.xml`, `.sql`, `.yaml`, `.json` format.
+  <br>Changelog files can be created as `.xml`, `.sql`, `.yaml`, `.json`.
 
-  Add the following code to the `master-changelog.xml` file:
+  <br>Add the following code to the `master-changelog.xml` file:
 
   ```xml
   <?xml version="1.1" encoding="UTF-8" standalone="no"?>
@@ -93,7 +93,7 @@ You configure Liquibase as follows:
   touch liquibase.properties
   ```
 
-  Add the following code to the `liquibase.properties` file:
+  Add the following to the `liquibase.properties` file:
 
   ```properties
   changeLogFile:master-changelog.xml 
@@ -111,7 +111,7 @@ You configure Liquibase as follows:
 
   When specifying the classpath for the PostgreSQL driver, esure that the version matches the version of the downloaded driver.
 
-  The default username and password is `yugabyte`. Add those to the `liquibase.properties` file:
+  <br>The default username and password is `yugabyte`. Add those to the `liquibase.properties` file:
 
 ## Using Liquibase
 
@@ -131,4 +131,4 @@ Upon successful migration, the following is displayed :
 
 ![img](/images/ee/liquibase.png)
 
-After migration of the first changelog, Liquibase creates a `databasechangelog` table within the database. This table keeps a detailed track of all the changesets that have been successfully completed.
+After migration of the first changelog, among other artifacts Liquibase creates a `databasechangelog` table within the database. This table keeps a detailed track of all the changesets that have been successfully completed.
