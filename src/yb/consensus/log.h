@@ -232,9 +232,9 @@ class Log : public RefCountedThreadSafe<Log> {
     return active_segment_.get();
   }
 
-  // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
-  // entries appended up to this point are available in closed, readable segments. Note that this
-  // assumes there is already a valid active_segment_.
+  // If active segment is not empty, forces the Log to allocate a new segment and roll over.
+  // This can be used to make sure all entries appended up to this point are available in closed,
+  // readable segments. Note that this assumes there is already a valid active_segment_.
   CHECKED_STATUS AllocateSegmentAndRollOver();
 
   // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
@@ -532,6 +532,11 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The current replicated index that CDC has read.  Used for CDC read cache optimization.
   std::atomic<int64_t> cdc_min_replicated_index_{std::numeric_limits<int64_t>::max()};
+
+  std::mutex log_copy_mutex_;
+
+  // Used by GetSegmentsToGCUnlocked() as an anchor.
+  int64_t log_copy_min_index_ GUARDED_BY(state_lock_) = std::numeric_limits<int64_t>::max();
 
   CreateNewSegment create_new_segment_at_start_;
 
