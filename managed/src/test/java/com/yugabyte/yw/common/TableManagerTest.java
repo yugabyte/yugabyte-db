@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,12 +25,16 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -464,6 +469,80 @@ public class TableManagerTest extends FakeDBApplication {
       tableManager.createBackup(params);
       List<String> expectedCommand = getExpectedBackupTableCommand(params, "nfs");
       verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
+    }
+  }
+
+  @Test
+  public void testRestoreS3BackupWithRestoreTimeStamp() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    BackupTableParams backupTableParams =
+        getBackupTableParams(BackupTableParams.ActionType.RESTORE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    Date date = new Date();
+    backupTableParams.restoreTimeStamp = formatter.format(date);
+    Backup.create(testCustomer.uuid, backupTableParams);
+    try {
+      tableManager.createBackup(backupTableParams);
+    } catch (Exception e) {
+      assertNull(e);
+    }
+  }
+
+  @Test
+  public void testRestoreNfsBackupWithRestoreTimeStamp() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    BackupTableParams backupTableParams =
+        getBackupTableParams(BackupTableParams.ActionType.RESTORE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    Date date = new Date();
+    backupTableParams.restoreTimeStamp = formatter.format(date);
+    Backup.create(testCustomer.uuid, backupTableParams);
+    try {
+      tableManager.createBackup(backupTableParams);
+    } catch (Exception e) {
+      assertNull(e);
+    }
+  }
+
+  @Test
+  public void testRestoreGcsBackupWithRestoreTimeStamp() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);
+    BackupTableParams backupTableParams =
+        getBackupTableParams(BackupTableParams.ActionType.RESTORE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    Date date = new Date();
+    backupTableParams.restoreTimeStamp = formatter.format(date);
+    Backup.create(testCustomer.uuid, backupTableParams);
+    try {
+      tableManager.createBackup(backupTableParams);
+    } catch (Exception e) {
+      assertNull(e);
+    }
+  }
+
+  @Test
+  public void testRestoreBackupWithInvalidTimeStamp() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    BackupTableParams backupTableParams =
+        getBackupTableParams(BackupTableParams.ActionType.RESTORE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+    Date date = new Date();
+    backupTableParams.restoreTimeStamp = formatter.format(date);
+    Backup.create(testCustomer.uuid, backupTableParams);
+    try {
+      tableManager.createBackup(backupTableParams);
+    } catch (Exception e) {
+      assertEquals(
+          "Invalid restore timeStamp format, Please provide it in yyyy-MM-dd HH:mm:ss format",
+          e.getMessage());
     }
   }
 
