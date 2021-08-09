@@ -17,7 +17,7 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
-## v2.6.1.0 - August 6, 2021
+## v2.6.1.0 - August 13, 2021
 
 ### Downloads
 
@@ -50,29 +50,29 @@ docker pull yugabytedb/yugabyte:2.6.1.0-b16
 
 #### Core database
 
-* [[#4014](https://github.com/yugabyte/yugabyte-db/issues/4014)] YSQL: Indexes on Enum based columns
-* [[#5026](https://github.com/yugabyte/yugabyte-db/issues/5026)] [[#9001](https://github.com/yugabyte/yugabyte-db/issues/9001)] YCQL: Run operations within a transaction block in serial
-* [[#6470](https://github.com/yugabyte/yugabyte-db/issues/6470)] YSQL: Enable ALTER SCHEMA RENAME
-* [[#8480](https://github.com/yugabyte/yugabyte-db/issues/8480)] Add check for recursive shared lock
-* [[#9090](https://github.com/yugabyte/yugabyte-db/issues/9090)] Support gzipped responses in webserver
-* [[#9451](https://github.com/yugabyte/yugabyte-db/issues/9451)] Default AWS EBS volume type changed from GP2 to GP3
+* [[4014](https://github.com/yugabyte/yugabyte-db/issues/4014)] YSQL: Indexes on Enum based columns
+* [[5026](https://github.com/yugabyte/yugabyte-db/issues/5026)] [[9001](https://github.com/yugabyte/yugabyte-db/issues/9001)] YCQL: Run operations within a transaction block in serial
+* [[6470](https://github.com/yugabyte/yugabyte-db/issues/6470)] YSQL: Enable ALTER SCHEMA RENAME
+* [[8480](https://github.com/yugabyte/yugabyte-db/issues/8480)] Add check for recursive shared lock
+* [[9090](https://github.com/yugabyte/yugabyte-db/issues/9090)] Support gzipped responses in webserver
+* [[9451](https://github.com/yugabyte/yugabyte-db/issues/9451)] Default AWS EBS volume type changed from GP2 to GP3
 
 #### Platform
 
-* [[#6793](https://github.com/yugabyte/yugabyte-db/issues/6793)] [[#7643](https://github.com/yugabyte/yugabyte-db/issues/7643)] [Platform]: Update managed/devops to python3
-* [[#8219](https://github.com/yugabyte/yugabyte-db/issues/8219)] version_metadata.json file is created while compiling the platform, build version added
-* [[#8789](https://github.com/yugabyte/yugabyte-db/issues/8789)] Add support for certificate chaining in platform/yb-client.
-* [[#9103](https://github.com/yugabyte/yugabyte-db/issues/9103)] Platform: Update "preflight_checks.sh" from ping to tcp check.
+* [[6793](https://github.com/yugabyte/yugabyte-db/issues/6793)] [[7643](https://github.com/yugabyte/yugabyte-db/issues/7643)] [Platform]: Update managed/devops to python3
+* [[8219](https://github.com/yugabyte/yugabyte-db/issues/8219)] version_metadata.json file is created while compiling the platform, build version added
+* [[8789](https://github.com/yugabyte/yugabyte-db/issues/8789)] Add support for certificate chaining in platform/yb-client.
+* [[9103](https://github.com/yugabyte/yugabyte-db/issues/9103)] Platform: Update "preflight_checks.sh" from ping to tcp check.
 
 ### Bug fixes
 
 #### Core database
 
-* [[#7509](https://github.com/yugabyte/yugabyte-db/issues/7509)] [[#9345](https://github.com/yugabyte/yugabyte-db/issues/9345)] [YCQL] Add more tests for partial indexes and fix an index inconsistency bug
-* [[#8294](https://github.com/yugabyte/yugabyte-db/issues/8294)] Fix missing conflict when creating row using multiple inserts
-* [[#8592](https://github.com/yugabyte/yugabyte-db/issues/8592)] Check capability before sending graceful cleanup
-* [[#9314](https://github.com/yugabyte/yugabyte-db/issues/9314)] PITR: Cleanup sys catalog snapshots
-* [[#9550](https://github.com/yugabyte/yugabyte-db/issues/9550)] ysql: output NOTICE when CREATE INDEX in txn block
+* [[7509](https://github.com/yugabyte/yugabyte-db/issues/7509)] [[9345](https://github.com/yugabyte/yugabyte-db/issues/9345)] [YCQL] Add more tests for partial indexes and fix an index inconsistency bug
+* [[8294](https://github.com/yugabyte/yugabyte-db/issues/8294)] Fix missing conflict when creating row using multiple inserts
+* [[8592](https://github.com/yugabyte/yugabyte-db/issues/8592)] Check capability before sending graceful cleanup
+* [[9314](https://github.com/yugabyte/yugabyte-db/issues/9314)] PITR: Cleanup sys catalog snapshots
+* [[9550](https://github.com/yugabyte/yugabyte-db/issues/9550)] ysql: output NOTICE when CREATE INDEX in txn block
 
 ## v2.6.0.0 - July 7, 2021
 
