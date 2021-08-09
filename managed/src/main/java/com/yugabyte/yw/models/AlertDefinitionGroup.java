@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -44,6 +45,7 @@ import play.data.validation.Constraints;
 public class AlertDefinitionGroup extends Model {
 
   public enum SortBy implements PagedQuery.SortByIF {
+    uuid("uuid"),
     name("name"),
     active("active"),
     targetType("targetType"),
@@ -57,6 +59,11 @@ public class AlertDefinitionGroup extends Model {
 
     public String getSortField() {
       return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.uuid;
     }
   }
 

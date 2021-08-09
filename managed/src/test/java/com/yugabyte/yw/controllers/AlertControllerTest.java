@@ -793,9 +793,9 @@ public class AlertControllerTest extends FakeDBApplication {
     Alert acknowledged = Json.fromJson(alertsJson, Alert.class);
 
     initial.setState(Alert.State.ACKNOWLEDGED);
-    initial.setTargetState(Alert.State.ACKNOWLEDGED);
     initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());
     initial.setNotifiedState(Alert.State.ACKNOWLEDGED);
+    initial.setNextNotificationTime(null);
     assertThat(acknowledged, equalTo(initial));
   }
 
@@ -818,9 +818,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
     Alert acknowledged = alertService.get(initial.getUuid());
     initial.setState(Alert.State.ACKNOWLEDGED);
-    initial.setTargetState(Alert.State.ACKNOWLEDGED);
     initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());
     initial.setNotifiedState(Alert.State.ACKNOWLEDGED);
+    initial.setNextNotificationTime(null);
     assertThat(acknowledged, equalTo(initial));
   }
 

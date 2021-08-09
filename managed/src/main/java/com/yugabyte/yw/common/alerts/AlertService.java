@@ -112,19 +112,15 @@ public class AlertService {
   @Transactional
   public List<Alert> markResolved(AlertFilter filter) {
     AlertFilter notResolved =
-        filter
-            .toBuilder()
-            .targetState(Alert.State.CREATED, Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
-            .build();
+        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
             .peek(
                 alert -> {
-                  alert.setTargetState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
-                  // Resolve immediately to avoid resolve notifications.
-                  if (alert.getState() == Alert.State.ACKNOWLEDGED) {
-                    alert.setState(Alert.State.RESOLVED);
+                  alert.setState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
+                  if (alert.getNotifiedState() != Alert.State.ACKNOWLEDGED) {
+                    alert.setNextNotificationTime(nowWithoutMillis());
                   }
                 })
             .collect(Collectors.toList());
@@ -133,15 +129,13 @@ public class AlertService {
 
   @Transactional
   public List<Alert> acknowledge(AlertFilter filter) {
-    AlertFilter notResolved =
-        filter.toBuilder().targetState(Alert.State.CREATED, Alert.State.ACTIVE).build();
+    AlertFilter notResolved = filter.toBuilder().state(Alert.State.ACTIVE).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
             .map(
                 alert ->
                     alert
-                        .setTargetState(Alert.State.ACKNOWLEDGED)
                         .setState(Alert.State.ACKNOWLEDGED)
                         .setAcknowledgedTime(nowWithoutMillis())
                         .setNextNotificationTime(null)
@@ -165,7 +159,7 @@ public class AlertService {
 
   public List<Alert> listNotResolved(AlertFilter filter) {
     AlertFilter notResolved =
-        filter.toBuilder().targetState(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
+        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
     return list(notResolved);
   }
 

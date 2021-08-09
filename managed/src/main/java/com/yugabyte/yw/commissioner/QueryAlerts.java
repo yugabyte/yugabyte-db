@@ -132,7 +132,6 @@ public class QueryAlerts {
               "Error querying for alerts: " + e.getMessage());
           log.error("Error querying for alerts alerts", e);
         }
-        transitionAlerts();
         alertManager.sendNotifications();
       } catch (Exception e) {
         log.error("Error processing alerts", e);
@@ -196,7 +195,7 @@ public class QueryAlerts {
       AlertFilter alertFilter =
           AlertFilter.builder()
               .definitionUuids(definitionUuids)
-              .targetState(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
+              .state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
               .build();
       Map<AlertKey, Alert> existingAlertsByKey =
           alertService
@@ -266,21 +265,6 @@ public class QueryAlerts {
     metricService.setMetric(
         metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_RESOLVED_ALERTS),
         resolved.size());
-  }
-
-  private void transitionAlerts() {
-    AlertFilter toSendRaisedFilter =
-        AlertFilter.builder()
-            .state(Alert.State.CREATED)
-            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
-            .build();
-    List<Alert> toSendRaisedAlerts = alertService.list(toSendRaisedFilter);
-    toSendRaisedAlerts.forEach(alert -> alertManager.transitionAlert(alert));
-
-    AlertFilter toSendResolvedFilter =
-        AlertFilter.builder().state(Alert.State.ACTIVE).targetState(Alert.State.RESOLVED).build();
-    List<Alert> toSendResolvedAlerts = alertService.list(toSendResolvedFilter);
-    toSendResolvedAlerts.forEach(alert -> alertManager.transitionAlert(alert));
   }
 
   private String getCustomerUuid(AlertData alertData) {

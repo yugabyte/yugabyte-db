@@ -310,6 +310,9 @@ public class CommonUtils {
     } else {
       query.orderBy().asc(pagedQuery.getSortBy().getSortField());
     }
+    if (pagedQuery.getSortBy() != pagedQuery.getSortBy().getOrderField()) {
+      query.orderBy().asc(pagedQuery.getSortBy().getOrderField().getSortField());
+    }
     query.setFirstRow(pagedQuery.getOffset());
     query.setMaxRows(pagedQuery.getLimit() + 1);
     PagedList<E> pagedList = query.findPagedList();
