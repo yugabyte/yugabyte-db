@@ -70,6 +70,8 @@
 
 using namespace std::literals;
 
+DEFINE_uint64(rpc_read_buffer_size, 0,
+              "RPC connection read buffer size. 0 to auto detect.");
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
 DECLARE_int32(socket_receive_buffer_size);
@@ -99,7 +101,7 @@ const Status& ServiceUnavailableError() {
 // This implementation is slightly preferable to the built-in one since
 // it uses a FATAL log message instead of printing to stderr, which might
 // not end up anywhere useful in a daemonized context.
-void LibevSysErr(const char* msg) throw() {
+void LibevSysErr(const char* msg) noexcept {
   PLOG(FATAL) << "LibEV fatal error: " << msg;
 }
 
@@ -109,6 +111,11 @@ void DoInitLibEv() {
 
 bool HasReactorStartedClosing(ReactorState state) {
   return state == ReactorState::kClosing || state == ReactorState::kClosed;
+}
+
+int32_t PatchReceiveBufferSize(int32_t receive_buffer_size) {
+  return std::max<int32_t>(
+      64_KB, FLAGS_rpc_read_buffer_size ? FLAGS_rpc_read_buffer_size : receive_buffer_size);
 }
 
 } // anonymous namespace
@@ -566,18 +573,19 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
                 "Set receive buffer size failed: ");
   }
 
-  auto receive_buffer_size = VERIFY_RESULT(sock.GetReceiveBufferSize());
+  auto receive_buffer_size = PatchReceiveBufferSize(VERIFY_RESULT(sock.GetReceiveBufferSize()));
 
-  auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
   auto stream = VERIFY_RESULT(CreateStream(
       messenger_->stream_factories_, conn_id.protocol(),
-      StreamCreateData{
+      StreamCreateData {
         .remote = conn_id.remote(),
         .remote_hostname = hostname,
         .socket = &sock,
+        .receive_buffer_size = receive_buffer_size,
         .mem_tracker = messenger_->connection_context_factory_->buffer_tracker(),
         .metric_entity = messenger_->metric_entity(),
       }));
+  auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
@@ -878,9 +886,10 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // ------------------------------------------------------------------------------------------------
 
 void Reactor::RegisterInboundSocket(
-    Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
-    const MemTrackerPtr& mem_tracker) {
+    Socket *socket, int32_t receive_buffer_size, const Endpoint& remote,
+    const ConnectionContextFactoryPtr& factory) {
   VLOG_WITH_PREFIX(3) << "New inbound connection to " << remote;
+  receive_buffer_size = PatchReceiveBufferSize(receive_buffer_size);
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
@@ -888,7 +897,8 @@ void Reactor::RegisterInboundSocket(
         .remote = remote,
         .remote_hostname = std::string(),
         .socket = socket,
-        .mem_tracker = mem_tracker,
+        .receive_buffer_size = receive_buffer_size,
+        .mem_tracker = factory->buffer_tracker(),
         .metric_entity = messenger_->metric_entity()
       });
   if (!stream.ok()) {
@@ -899,7 +909,7 @@ void Reactor::RegisterInboundSocket(
                                            std::move(*stream),
                                            ConnectionDirection::SERVER,
                                            &messenger()->rpc_metrics(),
-                                           std::move(connection_context));
+                                           factory->Create(receive_buffer_size));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);
   }, SOURCE_LOCATION());

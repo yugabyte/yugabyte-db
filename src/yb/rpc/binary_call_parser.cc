@@ -116,6 +116,7 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
       }
 
       MemTracker* blocking_mem_tracker = nullptr;
+      LOG(INFO) << "Root consumption: " << MemTracker::GetRootTracker()->consumption();
       if (buffer_tracker_->TryConsume(call_data_size, &blocking_mem_tracker)) {
         call_data_consumption_ = ScopedTrackedConsumption(
             buffer_tracker_, call_data_size, AlreadyConsumed::kTrue);
