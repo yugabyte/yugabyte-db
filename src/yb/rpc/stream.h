@@ -63,6 +63,8 @@ class StreamReadBuffer {
   // entry of vector returned by PrepareAppend.
   virtual void Consume(size_t count, const Slice& prepend) = 0;
 
+  virtual size_t DataAvailable() = 0;
+
   // Render this buffer to string.
   virtual std::string ToString() const = 0;
 
@@ -80,7 +82,7 @@ class StreamContext {
   // Called by underlying stream when stream has been connected (Stream::IsConnected() became true).
   virtual void Connected() = 0;
 
-  virtual Result<size_t> ProcessReceived() = 0;
+  virtual Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full) = 0;
   virtual StreamReadBuffer& ReadBuffer() = 0;
 
  protected:
@@ -145,6 +147,7 @@ struct StreamCreateData {
   Endpoint remote;
   const std::string& remote_hostname;
   Socket* socket;
+  int32_t receive_buffer_size;
   std::shared_ptr<MemTracker> mem_tracker;
   scoped_refptr<MetricEntity> metric_entity;
 };

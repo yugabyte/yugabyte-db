@@ -286,9 +286,9 @@ void Connection::ParseReceived() {
   stream_->ParseReceived();
 }
 
-Result<size_t> Connection::ProcessReceived() {
+Result<size_t> Connection::ProcessReceived(ReadBufferFull read_buffer_full) {
   auto result = context_->ProcessCalls(
-      shared_from_this(), ReadBuffer().AppendedVecs(), ReadBufferFull(ReadBuffer().Full()));
+      shared_from_this(), ReadBuffer().AppendedVecs(), read_buffer_full);
   VLOG_WITH_PREFIX(4) << "context_->ProcessCalls result: " << AsString(result);
   if (PREDICT_FALSE(!result.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();

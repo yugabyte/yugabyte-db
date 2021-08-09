@@ -402,7 +402,7 @@ Result<bool> TcpStream::TryProcessReceived() {
     return false;
   }
 
-  auto result = VERIFY_RESULT(context_->ProcessReceived());
+  auto result = VERIFY_RESULT(context_->ProcessReceived(ReadBufferFull(read_buffer.Full())));
   DVLOG_WITH_PREFIX(5) << "context_->ProcessReceived result: " << AsString(result);
 
   LOG_IF(DFATAL, inbound_bytes_to_skip_ != 0)

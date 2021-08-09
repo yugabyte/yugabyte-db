@@ -546,8 +546,7 @@ void Messenger::RegisterInboundSocket(
 
   int idx = num_connections_accepted_.fetch_add(1) % num_connections_to_server_;
   Reactor *reactor = RemoteToReactor(remote, idx);
-  reactor->RegisterInboundSocket(
-      new_socket, remote, factory->Create(*receive_buffer_size), factory->buffer_tracker());
+  reactor->RegisterInboundSocket(new_socket, *receive_buffer_size, remote, factory);
 }
 
 Messenger::Messenger(const MessengerBuilder &bld)

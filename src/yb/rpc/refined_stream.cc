@@ -16,6 +16,7 @@
 #include "yb/rpc/rpc_util.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
 
 namespace yb {
@@ -137,7 +138,7 @@ StreamReadBuffer& RefinedStream::ReadBuffer() {
   return state_ != RefinedStreamState::kDisabled ? read_buffer_ : context_->ReadBuffer();
 }
 
-Result<size_t> RefinedStream::ProcessReceived() {
+Result<size_t> RefinedStream::ProcessReceived(ReadBufferFull read_buffer_full) {
   switch (state_) {
     case RefinedStreamState::kInitial: {
       RETURN_NOT_OK(refiner_->ProcessHeader());
@@ -145,11 +146,11 @@ Result<size_t> RefinedStream::ProcessReceived() {
         // Received data was not enough to check stream header.
         return 0;
       }
-      return ProcessReceived();
+      return ProcessReceived(read_buffer_full);
     }
 
     case RefinedStreamState::kDisabled:
-      return context_->ProcessReceived();
+      return context_->ProcessReceived(read_buffer_full);
 
     case RefinedStreamState::kHandshake:
       return Handshake();
@@ -246,6 +247,8 @@ class SkipStreamReadBuffer : public StreamReadBuffer {
   explicit SkipStreamReadBuffer(const Slice& out, size_t skip_len)
       : out_(out), wpos_(out_.mutable_data()), skip_len_(skip_len) {}
 
+  size_t DataAvailable() override { return 0; }
+
   bool ReadyToRead() override { return false; }
 
   bool Empty() override { return true; }
@@ -293,6 +296,8 @@ class SkipStreamReadBuffer : public StreamReadBuffer {
 Result<size_t> RefinedStream::Read() {
   auto& out_buffer = context_->ReadBuffer();
   for (;;) {
+    auto data_available_before_reading = read_buffer_.DataAvailable();
+
     if (upper_stream_bytes_to_skip_ > 0) {
       auto global_skip_buffer = GetGlobalSkipBuffer();
       do {
@@ -308,15 +313,15 @@ Result<size_t> RefinedStream::Read() {
     }
 
     if (upper_stream_bytes_to_skip_ == 0) {
-      RETURN_NOT_OK(refiner_->Read(&out_buffer));
+      auto read_buffer_full = VERIFY_RESULT(refiner_->Read(&out_buffer));
       if (out_buffer.ReadyToRead()) {
-        auto temp = VERIFY_RESULT(context_->ProcessReceived());
+        auto temp = VERIFY_RESULT(context_->ProcessReceived(read_buffer_full));
         upper_stream_bytes_to_skip_ = temp;
         VLOG_IF_WITH_PREFIX(3, temp != 0) << "Skip: " << upper_stream_bytes_to_skip_;
       }
     }
 
-    if (read_buffer_.Empty()) {
+    if (read_buffer_.Empty() || read_buffer_.DataAvailable() == data_available_before_reading) {
       break;
     }
   }
@@ -332,14 +337,9 @@ RefinedStreamFactory::RefinedStreamFactory(
 }
 
 std::unique_ptr<Stream> RefinedStreamFactory::Create(const StreamCreateData& data) {
-  auto receive_buffer_size = data.socket->GetReceiveBufferSize();
-  if (!receive_buffer_size.ok()) {
-    LOG(WARNING) << "Refined stream failure: " << receive_buffer_size.status();
-    receive_buffer_size = 256_KB;
-  }
-  auto lower_stream = lower_layer_factory_->Create(data);
   return std::make_unique<RefinedStream>(
-      std::move(lower_stream), refiner_factory_(data), *receive_buffer_size, buffer_tracker_);
+      lower_layer_factory_->Create(data), refiner_factory_(data), data.receive_buffer_size,
+      buffer_tracker_);
 }
 
 }  // namespace rpc

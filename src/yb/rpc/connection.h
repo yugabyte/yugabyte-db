@@ -199,7 +199,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   void Transferred(const OutboundDataPtr& data, const Status& status) override;
   void Destroy(const Status& status) override;
-  Result<size_t> ProcessReceived() override;
+  Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full) override;
   void Connected() override;
   StreamReadBuffer& ReadBuffer() override;
 

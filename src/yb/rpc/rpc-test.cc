@@ -40,11 +40,15 @@
 #include <unordered_map>
 
 #include <boost/ptr_container/ptr_vector.hpp>
+
 #include <gtest/gtest.h>
+#include <gtest/gtest-param-test.h>
 
 #if defined(TCMALLOC_ENABLED)
 #include <gperftools/heap-profiler.h>
 #endif
+
+#include <lz4.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
@@ -72,15 +76,16 @@ METRIC_DECLARE_counter(rpcs_timed_out_early_in_queue);
 DEFINE_int32(rpc_test_connection_keepalive_num_iterations, 1,
   "Number of iterations in TestRpc.TestConnectionKeepalive");
 
-DECLARE_uint64(rpc_connection_timeout_ms);
-DECLARE_int32(num_connections_to_server);
-DECLARE_bool(enable_rpc_keepalive);
-DECLARE_int64(memory_limit_hard_bytes);
-DECLARE_int32(rpc_throttle_threshold_bytes);
 DECLARE_bool(TEST_pause_calculator_echo_request);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
-DECLARE_string(vmodule);
+DECLARE_bool(enable_rpc_keepalive);
+DECLARE_int32(num_connections_to_server);
+DECLARE_int32(rpc_throttle_threshold_bytes);
 DECLARE_int32(stream_compression_algo);
+DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_string(vmodule);
+DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_uint64(rpc_read_buffer_size);
 
 using namespace std::chrono_literals;
 using std::string;
@@ -1013,7 +1018,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
   }
   LOG(INFO) << n_calls << " calls sent.";
 
-  ASSERT_OK(log_waiter.WaitFor(kTimeToWaitForOom));
+  auto wait_status = log_waiter.WaitFor(kTimeToWaitForOom);
 
   SetAtomicFlag(false, &FLAGS_TEST_pause_calculator_echo_request);
   LOG(INFO) << "Resumed call function.";
@@ -1033,10 +1038,12 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
   controllers.clear();
   req.clear_data();
 
+  ASSERT_OK(wait_status);
+
   LOG(INFO) << DumpMemoryUsage();
   {
     constexpr auto target_memory_consumption = kMemoryLimitHardBytes * 0.6;
-    const auto wait_status = LoggedWaitFor(
+    wait_status = LoggedWaitFor(
         [] {
 #if defined(TCMALLOC_ENABLED)
           // Don't rely on root mem tracker consumption, since it includes memory released by
@@ -1146,6 +1153,11 @@ TEST_F(TestRpcSecure, BigOp) {
   RunSecureTest(&TestBigOp);
 }
 
+TEST_F(TestRpcSecure, BigOpWithSmallBuffer) {
+  FLAGS_rpc_read_buffer_size = 128;
+  RunSecureTest(&TestBigOp);
+}
+
 void TestManyOps(CalculatorServiceProxy* proxy) {
   for (int i = 0; i != RegularBuildVsSanitizers(1000, 100); ++i) {
     RpcController controller;
@@ -1192,10 +1204,10 @@ TEST_F(TestRpcSecure, CantAllocateReadBuffer) {
   RunSecureTest(&TestCantAllocateReadBuffer, SetupServerForTestCantAllocateReadBuffer());
 }
 
-class TestRpcCompression : public RpcTestBase {
+class TestRpcCompression : public RpcTestBase, public testing::WithParamInterface<int> {
  public:
   void SetUp() override {
-    FLAGS_stream_compression_algo = 1;
+    FLAGS_stream_compression_algo = GetParam();
     RpcTestBase::SetUp();
   }
 
@@ -1219,23 +1231,28 @@ class TestRpcCompression : public RpcTestBase {
   }
 };
 
-TEST_F(TestRpcCompression, GZip) {
+TEST_P(TestRpcCompression, Simple) {
   RunCompressionTest(&TestSimple);
 }
 
-TEST_F(TestRpcCompression, BigOp) {
+TEST_P(TestRpcCompression, BigOp) {
   RunCompressionTest(&TestBigOp);
 }
 
-TEST_F(TestRpcCompression, ManyOps) {
+TEST_P(TestRpcCompression, BigOpWithSmallBuffer) {
+  FLAGS_rpc_read_buffer_size = 128;
+  RunCompressionTest(&TestBigOp);
+}
+
+TEST_P(TestRpcCompression, ManyOps) {
   RunCompressionTest(&TestManyOps);
 }
 
-TEST_F(TestRpcCompression, ConcurrentOps) {
+TEST_P(TestRpcCompression, ConcurrentOps) {
   RunCompressionTest(&TestConcurrentOps);
 }
 
-TEST_F(TestRpcCompression, CantAllocateReadBuffer) {
+TEST_P(TestRpcCompression, CantAllocateReadBuffer) {
   RunCompressionTest(&TestCantAllocateReadBuffer, SetupServerForTestCantAllocateReadBuffer());
 }
 
@@ -1264,9 +1281,9 @@ void TestCompression(CalculatorServiceProxy* proxy, const MetricEntityPtr& metri
       LOG(INFO) << "Sent: " << sent << ", received: " << received;
 
       ASSERT_GT(sent, 10); // Check that metric even work.
-      ASSERT_LE(sent, kStringLen / 10); // Check that compression work.
+      ASSERT_LE(sent, kStringLen / 5); // Check that compression work.
       ASSERT_GT(received, 10); // Check that metric even work.
-      ASSERT_LE(received, kStringLen / 10); // Check that compression work.
+      ASSERT_LE(received, kStringLen / 5); // Check that compression work.
       break;
     }
 
@@ -1275,11 +1292,22 @@ void TestCompression(CalculatorServiceProxy* proxy, const MetricEntityPtr& metri
   }
 }
 
-TEST_F(TestRpcCompression, Compression) {
+TEST_P(TestRpcCompression, Compression) {
   RunCompressionTest([this](CalculatorServiceProxy* proxy) {
     TestCompression(proxy, metric_entity());
   });
 }
+
+std::string CompressionName(const testing::TestParamInfo<int>& info) {
+  switch (info.param) {
+    case 1: return "Zlib";
+    case 2: return "Snappy";
+    case 3: return "LZ4";
+  }
+  return Format("Unknown compression $0", info.param);
+}
+
+INSTANTIATE_TEST_CASE_P(, TestRpcCompression, testing::Range(1, 4), CompressionName);
 
 class TestRpcSecureCompression : public TestRpcSecure {
  public:
@@ -1313,6 +1341,11 @@ TEST_F(TestRpcSecureCompression, Simple) {
 }
 
 TEST_F(TestRpcSecureCompression, BigOp) {
+  RunSecureCompressionTest(&TestBigOp);
+}
+
+TEST_F(TestRpcSecureCompression, BigOpWithSmallBuffer) {
+  FLAGS_rpc_read_buffer_size = 128;
   RunSecureCompressionTest(&TestBigOp);
 }
 

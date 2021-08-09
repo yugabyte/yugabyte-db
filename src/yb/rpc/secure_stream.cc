@@ -377,7 +377,7 @@ class SecureRefiner : public StreamRefiner {
 
   CHECKED_STATUS Send(OutboundDataPtr data) override;
   CHECKED_STATUS ProcessHeader() override;
-  CHECKED_STATUS Read(StreamReadBuffer* out) override;
+  Result<ReadBufferFull> Read(StreamReadBuffer* out) override;
 
   std::string ToString() const override {
     return "SECURE";
@@ -484,7 +484,7 @@ Status SecureRefiner::ProcessHeader() {
 // > 0 - number of bytes actually read.
 // = 0 - in case of SSL_ERROR_WANT_READ.
 // Status with network error - in case of other errors.
-Status SecureRefiner::Read(StreamReadBuffer* out) {
+Result<ReadBufferFull> SecureRefiner::Read(StreamReadBuffer* out) {
   DecryptReceived();
   auto total = 0;
   auto iovecs = VERIFY_RESULT(out->PrepareAppend());
@@ -514,7 +514,7 @@ Status SecureRefiner::Read(StreamReadBuffer* out) {
     }
   }
   out->DataAppended(total);
-  return Status::OK();
+  return ReadBufferFull(out->Full());
 }
 
 void SecureRefiner::DecryptReceived() {
