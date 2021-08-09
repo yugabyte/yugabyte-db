@@ -36,6 +36,7 @@
 #include <mutex>
 #include <thread>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/thread/shared_mutex.hpp>
 
 #include "yb/common/wire_protocol.h"
@@ -163,7 +164,8 @@ static bool ValidateLogsToRetain(const char* flagname, int value) {
 static bool dummy = google::RegisterFlagValidator(
     &FLAGS_log_min_segments_to_retain, &ValidateLogsToRetain);
 
-static const char kSegmentPlaceholderFileTemplate[] = ".tmp.newsegmentXXXXXX";
+static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
+static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
 
 namespace yb {
 namespace log {
@@ -936,6 +938,12 @@ Status Log::Sync() {
 }
 
 Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
+  // For the lifetime of a Log::CopyTo call, log_copy_min_index_ may be set to something
+  // other than std::numeric_limits<int64_t>::max(). This value will correspond to the
+  // minimum op_idx which is currently being copied and must be retained. In order to
+  // avoid concurrently deleting those ops, we bump min_op_idx here to be at-least as
+  // low as log_copy_min_index_.
+  min_op_idx = std::min(log_copy_min_index_, min_op_idx);
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
@@ -1114,7 +1122,8 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
     *num_gced = 0;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
       LOG_WITH_PREFIX(INFO) << "Deleting log segment in path: " << segment->path()
-                            << " (GCed ops < " << min_op_idx << ")";
+                            << " (GCed ops < " << segment->footer().max_replicate_index() + 1
+                            << ")";
       RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
       (*num_gced)++;
 
@@ -1282,37 +1291,74 @@ Status Log::FlushIndex() {
 }
 
 Status Log::CopyTo(const std::string& dest_wal_dir) {
+  // We mainly need log_copy_mutex_ to simplify managing of log_copy_min_index_.
+  std::lock_guard<decltype(log_copy_mutex_)> log_copy_lock(log_copy_mutex_);
+  auto se = ScopeExit([this]() {
+    std::lock_guard<percpu_rwlock> l(state_lock_);
+    log_copy_min_index_ = std::numeric_limits<int64_t>::max();
+  });
+
+  // Rollover current active segment if it is not empty.
+  RETURN_NOT_OK(AllocateSegmentAndRollOver());
+
+  SegmentSequence segments;
+  {
+    std::lock_guard<percpu_rwlock> l(state_lock_);
+    SCHECK_EQ(log_state_, kLogWriting, IllegalState, "Invalid log state");
+
+    RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
+
+    // We skip the last snapshot segment because it might be mutable and is either:
+    // 1) A segment that was empty when we tried to rollover at the beginning of the
+    // function.
+    // 2) A segment that was created after calling AllocateSegmentAndRollOver above (or
+    // created even after by concurrent operations).
+    // In both cases segments in snapshot prior to the last one contain all operations that
+    // were present in log before calling Log::CopyTo and not yet GCed.
+    segments.pop_back();
+    // At this point all segments in `segments` are closed and immutable.
+
+    // Looking for first non-empty segment.
+    auto it =
+        std::find_if(segments.begin(), segments.end(), [](const ReadableLogSegmentPtr& segment) {
+          // Check whether segment is not empty.
+          return segment->readable_up_to() > segment->first_entry_offset();
+        });
+    if (it != segments.end()) {
+      // We've found first non-empty segment to copy, set an anchor for Log GC.
+      log_copy_min_index_ = VERIFY_RESULT((*it)->ReadFirstEntryMetadata()).op_id.index;
+    }
+  }
+
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
                         Format("Failed to create tablet WAL dir $0", dest_wal_dir));
-  // Make sure log segments we have so far are immutable, so we can hardlink them instead of
-  // copying.
-  if (active_segment_ && footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
-    // If active log segment has entries - close it and rollover to next one, so this one become
-    // immutable. If active log segment empty - we will just skip it.
-    RETURN_NOT_OK(AllocateSegmentAndRollOver());
-  }
+
   RETURN_NOT_OK(log_index_->Flush());
 
   auto* const env = options_.env;
-  const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
 
-  boost::optional<std::string> active_segment_filename = active_segment_
-      ? boost::make_optional(FsManager::GetWalSegmentFileName(active_segment_sequence_number_))
-      : boost::none;
+  {
+    for (const auto& segment : segments) {
+      const auto sequence_number = segment->header().sequence_number();
+      const auto file_name = FsManager::GetWalSegmentFileName(sequence_number);
+      const auto src_path = JoinPathSegments(wal_dir_, file_name);
+      SCHECK_EQ(src_path, segment->path(), InternalError, "Log segment path does not match");
+      const auto dest_path = JoinPathSegments(dest_wal_dir, file_name);
+
+      RETURN_NOT_OK(env->LinkFile(src_path, dest_path));
+      VLOG_WITH_PREFIX(1) << Format("Hard linked $0 to $1", src_path, dest_path);
+    }
+  }
+
+  const auto files = VERIFY_RESULT(env->GetChildren(wal_dir_, ExcludeDots::kTrue));
 
   for (const auto& file : files) {
     const auto src_path = JoinPathSegments(wal_dir_, file);
     const auto dest_path = JoinPathSegments(dest_wal_dir, file);
 
-    // Segment files except the active one are immutable, so we can use hardlinks.
-    if (file == active_segment_filename) {
-      // Skip active segment file, because we've just rolled over to it and it is empty and not
-      // closed.
-      continue;
-    } else if (FsManager::IsWalSegmentFileName(file)) {
-      RETURN_NOT_OK(env->LinkFile(src_path, dest_path));
-      VLOG_WITH_PREFIX(1) << Format("Hard linked $0 to $1", src_path, dest_path);
-    } else {
+    if (FsManager::IsWalSegmentFileName(file)) {
+      // Already processed above.
+    } else if (!boost::starts_with(file, kSegmentPlaceholderFilePrefix)) {
       RETURN_NOT_OK_PREPEND(
           CopyFile(env, src_path, dest_path),
           Format("Failed to copy file $0 to $1", src_path, dest_path));
