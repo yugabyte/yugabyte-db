@@ -67,7 +67,7 @@ yugabyte=# ANALYZE some_table;
 ANALYZE
 ```
 
-### Analyze some colums of the table
+### Analyze some columns of the table
 
 ```plpgsql
 yugabyte=# ANALYZE some_table(col1, col3);
