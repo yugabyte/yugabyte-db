@@ -167,7 +167,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
 
   // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
-  FLAGS_use_private_ip = "cloud";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "cloud";
 
   // This dictates the RF of newly created tables.
   SetAtomicFlag(options_.num_tablet_servers >= 3 ? 3 : 1, &FLAGS_replication_factor);
