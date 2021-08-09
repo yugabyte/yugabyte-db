@@ -64,6 +64,9 @@ Specify the list of columns to be analyzed. If not specified, then all columns o
 
 ```plpgsql
 yugabyte=# ANALYZE some_table;
+```
+
+```output
 ANALYZE
 ```
 
@@ -71,6 +74,9 @@ ANALYZE
 
 ```plpgsql
 yugabyte=# ANALYZE some_table(col1, col3);
+```
+
+```output
 ANALYZE
 ```
 
@@ -78,6 +84,9 @@ ANALYZE
 
 ```plpgsql
 yugabyte=# ANALYZE VERBOSE some_table, other_table;
+```
+
+```output
 INFO:  analyzing "public.some_table"
 INFO:  "some_table": scanned, 3 rows in sample, 3 estimated total rows
 INFO:  analyzing "public.other_table"
