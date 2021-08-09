@@ -89,6 +89,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Is table backup errors ignored")
   public Boolean ignoreErrors = false;
 
+  @ApiModelProperty(value = "Restore TimeStamp")
+  public String restoreTimeStamp = null;
+
   @JsonIgnore
   public Set<String> getTableNames() {
     Set<String> tableNames = new HashSet<>();

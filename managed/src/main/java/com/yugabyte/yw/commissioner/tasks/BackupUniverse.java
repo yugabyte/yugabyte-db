@@ -124,6 +124,7 @@ public class BackupUniverse extends UniverseTaskBase {
           restoreKeysParams.universeUUID = taskParams().universeUUID;
           restoreKeysParams.storageConfigUUID = taskParams().storageConfigUUID;
           restoreKeysParams.kmsConfigUUID = taskParams().kmsConfigUUID;
+          restoreKeysParams.restoreTimeStamp = taskParams().restoreTimeStamp;
           restoreKeysParams.actionType = BackupTableParams.ActionType.RESTORE_KEYS;
           createTableBackupTask(restoreKeysParams).setSubTaskGroupType(groupType);
 

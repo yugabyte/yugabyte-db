@@ -43,6 +43,9 @@ export default class RestoreBackup extends Component {
         payload.keyspace = values.restoreToKeyspace;
       }
 
+      if (values.restoreTimeStamp !== initialValues.restoreTimeStamp) {
+        payload.restoreTimeStamp = values.restoreTimeStamp.trim();
+      }
       if (_.get(values, 'kmsConfigUUID.value.length', 0) > 0) {
         payload['kmsConfigUUID'] = values.kmsConfigUUID.value;
       }
@@ -71,7 +74,8 @@ export default class RestoreBackup extends Component {
       universeList,
       storageConfigs,
       currentUniverse,
-      cloud
+      cloud,
+      featureFlags
     } = this.props;
 
     // If the backup information is not provided, most likely we are trying to load the backup
@@ -82,6 +86,7 @@ export default class RestoreBackup extends Component {
       restoreToUniverseUUID: Yup.string().required('Restore To Universe is Required'),
       restoreToKeyspace: Yup.string().nullable(),
       restoreToTableName: Yup.string().nullable(),
+      restoreTimeStamp: Yup.string().nullable(),
       storageConfigUUID: Yup.string().required('Storage Config is Required'),
       storageLocation: Yup.string()
         .nullable()
@@ -114,6 +119,11 @@ export default class RestoreBackup extends Component {
         ];
       }
     }
+
+    // fetch the provider of pimary cluster for current universe.
+    let currentUniverseCloud = currentUniverse.data.universeDetails.clusters.filter(
+      (cluster) => cluster.clusterType === 'PRIMARY'
+    )[0].userIntent.providerType;
 
     const kmsConfigList = cloud.authConfig.data.map((config) => {
       const labelName = config.metadata.provider + ' - ' + config.metadata.name;
@@ -203,6 +213,11 @@ export default class RestoreBackup extends Component {
             disabled={isMultiTableBackup}
             label={'Table'}
           />
+          {currentUniverseCloud === 'aws' &&
+            (featureFlags.test?.addRestoreTimeStamp ||
+              featureFlags.released?.addRestoreTimeStamp) && (
+              <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
+            )}
           <Field name="parallelism" component={YBFormInput} label={'Parallel Threads'} />
           <Field
             name="kmsConfigUUID"

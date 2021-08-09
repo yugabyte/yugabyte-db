@@ -1037,6 +1037,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "restoreTimeStamp" : {
+          "description" : "Restore TimeStamp",
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
           "format" : "uuid",
@@ -2324,6 +2328,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "restoreTimeStamp" : {
+          "description" : "Restore TimeStamp",
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
           "format" : "uuid",
@@ -2513,6 +2521,10 @@
           "description" : "The number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
+        },
+        "restoreTimeStamp" : {
+          "description" : "Restore TimeStamp",
+          "type" : "string"
         },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
