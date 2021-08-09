@@ -37,7 +37,7 @@ Included here are the release notes for all releases in the v2.6 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.6.1.0-b14
+docker pull yugabytedb/yugabyte:2.6.1.0-b16
 ```
 
 ### New features
@@ -52,6 +52,7 @@ docker pull yugabytedb/yugabyte:2.6.1.0-b14
 
 * [[#4014](https://github.com/yugabyte/yugabyte-db/issues/4014)] YSQL: Indexes on Enum based columns
 * [[#5026](https://github.com/yugabyte/yugabyte-db/issues/5026)] [[#9001](https://github.com/yugabyte/yugabyte-db/issues/9001)] YCQL: Run operations within a transaction block in serial
+* [[#6470](https://github.com/yugabyte/yugabyte-db/issues/6470)] YSQL: Enable ALTER SCHEMA RENAME
 * [[#8480](https://github.com/yugabyte/yugabyte-db/issues/8480)] Add check for recursive shared lock
 * [[#9090](https://github.com/yugabyte/yugabyte-db/issues/9090)] Support gzipped responses in webserver
 * [[#9451](https://github.com/yugabyte/yugabyte-db/issues/9451)] Default AWS EBS volume type changed from GP2 to GP3
@@ -71,6 +72,7 @@ docker pull yugabytedb/yugabyte:2.6.1.0-b14
 * [[#8294](https://github.com/yugabyte/yugabyte-db/issues/8294)] Fix missing conflict when creating row using multiple inserts
 * [[#8592](https://github.com/yugabyte/yugabyte-db/issues/8592)] Check capability before sending graceful cleanup
 * [[#9314](https://github.com/yugabyte/yugabyte-db/issues/9314)] PITR: Cleanup sys catalog snapshots
+* [[#9550](https://github.com/yugabyte/yugabyte-db/issues/9550)] ysql: output NOTICE when CREATE INDEX in txn block
 
 ## v2.6.0.0 - July 7, 2021
 
