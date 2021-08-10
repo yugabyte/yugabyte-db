@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.io.File;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -328,5 +329,15 @@ public class UtilTest extends FakeDBApplication {
     assertEquals("", Util.removeEnclosingDoubleQuotes(""));
     // Null string
     assertNull(Util.removeEnclosingDoubleQuotes(null));
+  }
+
+  @Test
+  public void testDeleteDirectory() {
+    File folder = new File("certificates");
+    folder.mkdir();
+    new File("certificates/ca.cert");
+    new File("certificates/cb.cert");
+    Util.deleteDirectory(folder);
+    assertFalse(folder.exists());
   }
 }

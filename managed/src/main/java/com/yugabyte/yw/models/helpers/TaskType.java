@@ -246,7 +246,9 @@ public enum TaskType {
   AlterXClusterReplicationChangeMasterAddresses(
       "subtasks.AlterXClusterReplicationChangeMasterAddresses"),
 
-  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive");
+  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive"),
+
+  DeleteCertificate("subtasks.DeleteCertificate");
 
   private String relativeClassPath;
 

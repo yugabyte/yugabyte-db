@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.AlertRoute;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
@@ -35,7 +36,11 @@ import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -416,5 +421,15 @@ public class ModelFactory {
     EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
     return keyService.createAuthConfig(customerUUID, "Test KMS Configuration", authConfig);
+  }
+
+  /*
+   * CertificateInfo creation helpers.
+   */
+  public static CertificateInfo createCertificateInfo(
+      UUID customerUUID, String certificate, CertificateInfo.Type certType)
+      throws IOException, NoSuchAlgorithmException {
+    return CertificateInfo.create(
+        UUID.randomUUID(), customerUUID, "test", new Date(), new Date(), "", certificate, certType);
   }
 }
