@@ -504,7 +504,11 @@ public class UniverseCRUDHandler {
   }
 
   public UUID destroy(
-      Customer customer, Universe universe, boolean isForceDelete, boolean isDeleteBackups) {
+      Customer customer,
+      Universe universe,
+      boolean isForceDelete,
+      boolean isDeleteBackups,
+      boolean isDeleteAssociatedCerts) {
     LOG.info(
         "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.uuid,
@@ -519,6 +523,7 @@ public class UniverseCRUDHandler {
     taskParams.customerUUID = customer.uuid;
     taskParams.isForceDelete = isForceDelete;
     taskParams.isDeleteBackups = isDeleteBackups;
+    taskParams.isDeleteAssociatedCerts = isDeleteAssociatedCerts;
     // Submit the task to destroy the universe.
     TaskType taskType = TaskType.DestroyUniverse;
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
