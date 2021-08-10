@@ -600,6 +600,11 @@ CHECKED_STATUS SetRangePartitionBounds(const YBPgsqlReadOp& op,
   return Status::OK();
 }
 
+std::string ResponseSuffix(const PgsqlResponsePB& response) {
+  const auto str = response.ShortDebugString();
+  return str.empty() ? std::string() : (", response: " + str);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -651,8 +656,7 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
-  return "PGSQL_WRITE " + write_request_->ShortDebugString() +
-         ", response: " + response().ShortDebugString();
+  return "PGSQL_WRITE " + write_request_->ShortDebugString() + ResponseSuffix(response());
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
@@ -729,7 +733,7 @@ std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::DeepCopy() {
 }
 
 std::string YBPgsqlReadOp::ToString() const {
-  return "PGSQL_READ " + read_request_->DebugString();
+  return "PGSQL_READ " + read_request_->ShortDebugString() + ResponseSuffix(response());
 }
 
 void YBPgsqlReadOp::SetHashCode(const uint16_t hash_code) {
