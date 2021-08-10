@@ -107,24 +107,59 @@ ANALYZE
 
 ### Analyze affects query plans
 
-In the absence of statistics, the optimizer uses hard-coded defaults, such as 1000 for the number of rows in the table.
-After ANALYZE number of rows is accurate.
+This example demonstrates how statistics affect the optimizer.
+
+Let's create a new table...
+
+```sql
+yugabyte=# CREATE TABLE test(a int primary key, b int);
+```
 
 ```output
-yugabyte=# CREATE TABLE test(a int primary key, b int);
 CREATE TABLE
+```
+
+... and populate it.
+
+```sql
 yugabyte=# INSERT INTO test VALUES (1, 1), (2, 2), (3, 3);
+```
+
+```output
 INSERT 0 3
+```
+
+In the absence of statistics, the optimizer uses hard-coded defaults, such as 1000 for the number of rows in the table.
+
+```sql
 yugabyte=# EXPLAIN select * from test where b = 1;
+```
+
+```output
                        QUERY PLAN
 ---------------------------------------------------------
  Seq Scan on test  (cost=0.00..102.50 rows=1000 width=8)
    Filter: (b = 1)
 (2 rows)
+```
 
+Now run the ANALYZE command to collect statistics.
+
+```sql
 yugabyte=# ANALYZE test;
+```
+
+```output
 ANALYZE
+```
+
+After ANALYZE number of rows is accurate.
+
+```sql
 yugabyte=# EXPLAIN select * from test where b = 1;
+```
+
+```output
                      QUERY PLAN
 ----------------------------------------------------
  Seq Scan on test  (cost=0.00..0.31 rows=3 width=8)
@@ -132,6 +167,8 @@ yugabyte=# EXPLAIN select * from test where b = 1;
 (2 rows)
 ```
 
+Once the optimizer has better idea about data in the tables, it is able to create better performing query plans.
+
 {{< note title="Note" >}}
-The query planner uses only the number of rows when calculating execution costs of _query plan nodes_ (in particular, sequential and index scans).
+The query planner currently uses only the number of rows when calculating execution costs of the sequential and index scans.
 {{< /note >}}
