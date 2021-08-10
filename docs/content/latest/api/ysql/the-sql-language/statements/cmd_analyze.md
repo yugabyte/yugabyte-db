@@ -16,17 +16,17 @@ showAsideToc: true
 
 ## Synopsis
 
-ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog. Subsequently, the query planner uses these statistics to help determine the most efficient execution plans for queries.
+ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog. These statistics help the query planner to determine the most efficient execution plans for queries.
 
-The Yugabyte implementation is based on the framework provided by PostgreSQL, which requires the storage layer to provide random sample of rows of predefined size. The size is calculated based on number of factors, such as data types of included columns.
+The YugabyteDB implementation is based on the framework provided by PostgreSQL, which requires the storage layer to provide a random sample of rows of a predefined size. The size is calculated based on a number of factors, such as the included columns' data types.
 
 {{< note title="Note" >}}
-Currently sampling algorithm is not optimized fror a large table. It may take minutes to collect statistics from a table containing several million rows of data.
+The sampling algorithm is not currently optimized for large tables. It may take several minutes to collect statistics from a table containing millions of rows of data.
 {{< /note >}}
 
 {{< note title="Note" >}}
-Currently Yugabyte doesn't run a background job to analyzing the tables like PostgreSQL's autovacuum.
-To collect or update statistics the ANALYZE command should be explicitly executed.
+Currently, YugabyteDB doesn't run a background job like PostgreSQL's autovacuum to analyze the tables.
+To collect or update statistics, run the ANALYZE command manually.
 {{< /note >}}
 
 ## Syntax
@@ -63,15 +63,15 @@ Enable display of progress messages.
 
 ### *table_name*
 
-Specify the table, optionally schema-qualified, to be analyzed. If not specified, then all regular tables in the current database will be analyzed.
+Table name to be analyzed; may be schema-qualified. Optional. Omit to analyze all regular tables in the current database.
 
 ### *column_name*
 
-Specify the list of columns to be analyzed. If not specified, then all columns of the table will be analyzed.
+List of columns to be analyzed. Optional. Omit to analyze all columns of the table.
 
 ## Examples
 
-### Analyze single table
+### Analyze a single table
 
 ```plpgsql
 yugabyte=# ANALYZE some_table;
@@ -81,7 +81,7 @@ yugabyte=# ANALYZE some_table;
 ANALYZE
 ```
 
-### Analyze some columns of the table
+### Analyze specific columns
 
 ```plpgsql
 yugabyte=# ANALYZE some_table(col1, col3);
@@ -107,7 +107,7 @@ ANALYZE
 
 ### Analyze affects query plans
 
-In the absence of the statistics optimizer uses hard-coded defaults, such us 1000 for the number of rows in the table.
+In the absence of statistics, the optimizer uses hard-coded defaults, such as 1000 for the number of rows in the table.
 After ANALYZE number of rows is accurate.
 
 ```output
@@ -133,7 +133,5 @@ yugabyte=# EXPLAIN select * from test where b = 1;
 ```
 
 {{< note title="Note" >}}
-Yugabyte's query plan nodes (in particular sequential and index scans) were implemented long before we planned to support
-the ANALYZE command and statistics, so planner does not make use of statistics besides number of rows when calculating
-execution costs of those nodes.
+The query planner uses only the number of rows when calculating execution costs of _query plan nodes_ (in particular, sequential and index scans).
 {{< /note >}}
