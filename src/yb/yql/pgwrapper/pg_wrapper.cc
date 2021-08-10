@@ -411,6 +411,7 @@ Status PgWrapper::Start() {
   }
 
   pg_proc_.emplace(postgres_executable, argv);
+  pg_proc_->SetEnv("LD_LIBRARY_PATH", "/home/yb/postgres/lib:/home/yb/lib/yb-thirdparty");
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
   pg_proc_->SetParentDeathSignal(SIGINT);
