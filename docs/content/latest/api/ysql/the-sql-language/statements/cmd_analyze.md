@@ -8,8 +8,6 @@ menu:
   latest:
     identifier: cmd_analyze
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/cmd_analyze/
 isTocNested: true
 showAsideToc: true
 ---
