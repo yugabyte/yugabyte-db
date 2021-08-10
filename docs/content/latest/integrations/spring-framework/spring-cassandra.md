@@ -1,18 +1,18 @@
 ---
-title: Spring Support for YugabyteDB
-linkTitle: Spring Framework
-description: Spring Support for YugabyteDB
+title: Spring Data Cassandra
+linkTitle: Spring Data Cassandra
+description: Spring Data Cassandra
 aliases:
 menu:
   latest:
-    identifier: spring
-    parent: integrations
-    weight: 578
+    identifier: spring-cassandra
+    parent: spring-framework
+    weight: 579
 isTocNested: true
 showAsideToc: true
 ---
 
-This document describes the Spring Framework support for YugabyteDB.
+This document describes how to use Spring Data Cassandra and reactive Spring Data Cassandra with YCQL.
 
 ## Spring Data Cassandra and YCQL
 
@@ -25,7 +25,7 @@ The following is a non-exhaustive list of supported features:
 - Build repositories based on common Spring Data interfaces.
 - Synchronous, reactive, and asynchronous YCQL operations.
 
-### Spring Data Cassandra Dependencies
+### Project Dependencies
 
 Spring Data Cassandra projects are bundled with the Apache Cassandra Java driver. To enhance performance, it is recommended to replace this driver with the Yugabyte Java driver for YCQL.
 
@@ -101,7 +101,7 @@ Yugabyte Java driver for YCQL provides support for single hop fetch which enable
 
 ### Sample Spring Boot Project
 
-A sample Spring boot project is available at <https://github.com/yugabyte/spring-ycql-demo>. The following steps show how to incrementally build a Spring boot application using Spring Data Cassandra and YCQL.
+A sample Spring boot project is available at <https://github.com/yugabyte/spring-ycql-demo>. The following steps demonstrate how to incrementally build a Spring boot application using Spring Data Cassandra and YCQL.
 
 #### Use Spring Initializer
 
@@ -299,9 +299,9 @@ YCQL API is compatible with Spring Data reactive repositories for Apache Cassand
 
 Using Spring WebFlux and Spring Data reactive repositories, you can implement fully reactive Spring Microservices with YCQL API.
 
-### Spring Data Reactive Cassandra Dependencies
+### Project Dependencies
 
-Spring Data Reactive Cassandra projects are bundled with the Apache Cassandra Java driver. To enhance performance, it is recommended to replace this driver with Yugabyte Java driver for YCQL, as follows:
+Reactive Spring Data Cassandra projects are bundled with the Apache Cassandra Java driver. To enhance performance, it is recommended to replace this driver with Yugabyte Java driver for YCQL, as follows:
 
 ```xml
 <dependency>
@@ -383,8 +383,8 @@ public class Customer {
   @Override
   public String toString() {
     return String.format(
-​    "Customer[id=%d, firstName='%s', lastName='%s']",
-​    id, firstName, lastName);
+    "Customer[id=%d, firstName='%s', lastName='%s']",
+    id, firstName, lastName);
   }
 
  // define getters and setters 
@@ -440,12 +440,12 @@ public class YcqlReactiveDataAccessApplication implements CommandLineRunner {
   CqlSession ycqlSession;
 
   public static void main(String[] args) {
-​   SpringApplication.run(YcqlReactiveDataAccessApplication.class, args);
+    SpringApplication.run(YcqlReactiveDataAccessApplication.class, args);
   }
 
   @Override
   public void run(String... args) throws Exception {
-​   log.info("Creating table");
+    log.info("Creating table");
     ycqlSession.execute("CREATE TABLE IF NOT EXISTS demo.customer (\n" +  
                         " id INT PRIMARY KEY,\n"+ " firstName text,\n" + 
                         " lastName text\n" + ") WITH default_time_to_live = 0\n" + 
