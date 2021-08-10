@@ -26,9 +26,11 @@ import json
 
 SUBSCRIPTION_ID = os.environ.get("AZURE_SUBSCRIPTION_ID")
 RESOURCE_GROUP = os.environ.get("AZURE_RG")
-SUBNET_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/virtualNetworks/{}/subnets/{}"
-NSG_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/networkSecurityGroups/{}"
-VNET_ID_FORMAT_STRING = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network/virtualNetworks/{}"
+
+NETWORK_PROVIDER_BASE_PATH = "/subscriptions/{}/resourceGroups/{}/providers/Microsoft.Network"
+SUBNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}/subnets/{}"
+NSG_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/networkSecurityGroups/{}"
+VNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}"
 AZURE_SKU_FORMAT = {"premium_lrs": "Premium_LRS",
                     "standardssd_lrs": "StandardSSD_LRS",
                     "ultrassd_lrs": "UltraSSD_LRS"}
@@ -36,13 +38,19 @@ YUGABYTE_VNET_PREFIX = "yugabyte-vnet-{}"
 YUGABYTE_SUBNET_PREFIX = "yugabyte-subnet-{}"
 YUGABYTE_SG_PREFIX = "yugabyte-sg-{}"
 YUGABYTE_PEERING_FORMAT = "yugabyte-peering-{}-{}"
-RESOURCE_SKU_URL = "https://management.azure.com/subscriptions/{}/providers/Microsoft.Compute/skus".format(SUBSCRIPTION_ID)
-GALLERY_IMAGE_ID_REGEX = re.compile("/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)/providers/Microsoft.Compute/galleries/(?P<gallery_name>[^/]*)/images/(?P<image_definition_name>[^/]*)/versions/(?P<version_id>[^/]*)")
+RESOURCE_SKU_URL = "https://management.azure.com/subscriptions/{}/providers" \
+    "/Microsoft.Compute/skus".format(SUBSCRIPTION_ID)
+GALLERY_IMAGE_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups"
+    "/(?P<resource_group>[^/]*)/providers/Microsoft.Compute/galleries/(?P<gallery_name>[^/]*)"
+    "/images/(?P<image_definition_name>[^/]*)/versions/(?P<version_id>[^/]*)")
 VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
     "serviceFamily eq 'Compute' " \
     "and serviceName eq 'Virtual Machines' and priceType eq 'Consumption' " \
     "and armRegionName eq '{}'"
-PRIVATE_DNS_ZONE_ID_REGEX = re.compile("/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
+PRIVATE_DNS_ZONE_ID_REGEX = re.compile(
+    "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
+    "/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
 
 
 def get_credentials():
@@ -713,8 +721,9 @@ class AzureCloudAdmin():
 
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
+        zone_full = "{}-{}".format(region, zone) if zone is not None else region
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
-                "zone": "{}-{}".format(region, zone), "name": vm.name, "ip_name": ip_name,
+                "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name}
 
