@@ -9402,7 +9402,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER SERVER name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER SERVER");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_FOREIGN_SERVER;
 					n->object = (Node *) makeString($3);
