@@ -101,7 +101,7 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-You need to grant access to this ServiceAccount using ClusterRoles and Roles as well as ClusterRoelBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
+You need to grant access to this ServiceAccount using ClusterRoles and Roles as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
 Ensure that you have replaced the `namespace` from the commands with the correct namespace of the previously created ServiceAccount.
 
 The tasks you can perform depend on your access level.
