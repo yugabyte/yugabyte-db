@@ -8171,7 +8171,9 @@ index_including_params:	index_elem						{ $$ = list_make1($1); }
 			| index_including_params ',' index_elem		{ $$ = lappend($1, $3); }
 		;
 
-opt_collate: COLLATE any_name						{ $$ = $2; }
+opt_collate: COLLATE any_name						{
+					parser_ybc_not_support(@1, "CREATE INDEX COLLATE");
+                                                      $$ = $2; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
