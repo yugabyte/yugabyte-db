@@ -20,14 +20,19 @@ GET     /universes/:uniUUID/proxy/*proxyUrl           com.yugabyte.yw.controller
 ###################################################################################################
 # Swagger Json
 ###################################################################################################
+# dynamic, unsorted:
 + nocsrf
-GET     /swagger.json           controllers.ApiHelpController.getResources
+GET     /dynamic_swagger.json           controllers.ApiHelpController.getResources
+# static, sorted:
++ nocsrf
+GET     /swagger.json                    com.yugabyte.yw.controllers.YWApiSpec.getStaticSwaggerSpec
 
 ###################################################################################################
 # Swagger UI
 ###################################################################################################
-GET     /docs/              controllers.Assets.at(path="/public/swagger-ui",file="index.html")
-GET     /docs/swagger.json  controllers.ApiHelpController.getResources
+GET     /docs/                      controllers.Assets.at(path="/public/swagger-ui",file="index.html")
+GET     /docs/swagger.json          com.yugabyte.yw.controllers.YWApiSpec.getStaticSwaggerSpec
+GET     /docs/dynamic_swagger.json  controllers.ApiHelpController.getResources
 GET     /docs/*file         controllers.Assets.at(path="/public/swagger-ui",file)
 
 ###################################################################################################

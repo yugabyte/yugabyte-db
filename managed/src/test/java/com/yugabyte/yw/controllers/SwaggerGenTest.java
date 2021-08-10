@@ -76,7 +76,7 @@ public class SwaggerGenTest extends FakeDBApplication {
   }
 
   private String getSwaggerSpec() throws JsonProcessingException {
-    Result result = route(Helpers.fakeRequest("GET", "/docs/swagger.json"));
+    Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
     return sort(contentAsString(result, mat));
   }
 
