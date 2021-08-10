@@ -34,11 +34,11 @@ For more information, demonstrations, and contribution guidelines, see [Spring D
 
 The project definition includes the following dependencies:
 
-```properties
+```xml
 <dependency>
     <groupId>com.yugabyte</groupId>
     <artifactId>spring-data-yugabytedb-ysql</artifactId>
-    <version>2.3.0</version>
+    <version>2.3.0-RC1.b5</version>
 </dependency>
 <dependency>
   <groupId>com.yugabyte</groupId>
@@ -132,6 +132,8 @@ public class YsqlConfig extends AbstractYugabyteJdbcConfiguration {
 
 }
 ```
+
+For additional information and examples, see [ SDYB example](https://github.com/yugabyte/spring-data-yugabytedb-example).
 
 ## Compatibility Matrix
 
