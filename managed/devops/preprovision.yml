@@ -41,6 +41,9 @@
     - name: Gather package facts
       package_facts:
     - name: Install policycoreutils-python
+      module_defaults:
+        yum:
+          lock_timeout: 600
       package:
         name: policycoreutils-python
         state: present

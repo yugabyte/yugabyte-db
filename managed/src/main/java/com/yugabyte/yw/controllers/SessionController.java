@@ -495,6 +495,7 @@ public class SessionController extends Controller {
               return ApiResponse.error(BAD_REQUEST, r.getStatusText());
             }
           } catch (Exception e) {
+            LOG.error("Error proxying request: " + requestUrl, e);
             return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
           }
         },
