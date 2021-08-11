@@ -88,4 +88,14 @@ public class CustomerConfigTest extends FakeDBApplication {
     assertEquals(1, data.size());
     assertEquals(ImmutableMap.of("foo", "bar"), data);
   }
+
+  @Test
+  public void testDeleteStorageConfigWithoutBackupAndSchedule() {
+    CustomerConfig cc = createData(defaultCustomer);
+    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    assertNotNull(fc);
+    fc.delete();
+    fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    assertNull(fc);
+  }
 }
