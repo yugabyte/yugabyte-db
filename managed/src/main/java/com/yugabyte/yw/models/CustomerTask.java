@@ -58,6 +58,9 @@ public class CustomerTask extends Model {
     @EnumValue("Backup")
     Backup(false),
 
+    @EnumValue("Customer Configuration")
+    CustomerConfiguration(false),
+
     @EnumValue("KMS Configuration")
     KMSConfiguration(false),
 
