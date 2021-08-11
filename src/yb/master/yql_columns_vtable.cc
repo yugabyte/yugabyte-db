@@ -94,7 +94,9 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
       QLRow &row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always regular for regular columns)
-      RETURN_NOT_OK(SetColumnValue(kKind, "regular", &row));
+      const ColumnSchema& column = schema.column(i);
+      string kind = column.is_static() ? "static" : "regular";
+      RETURN_NOT_OK(SetColumnValue(kKind, kind, &row));
       RETURN_NOT_OK(SetColumnValue(kPosition, -1, &row));
     }
   }
