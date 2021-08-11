@@ -27,7 +27,7 @@ public class AlertRouteTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    receiver = ModelFactory.createEmailReceiver(defaultCustomer, "Test AlertReceiver");
+    receiver = ModelFactory.createEmailReceiver(defaultCustomer.getUuid(), "Test AlertReceiver");
   }
 
   @Test

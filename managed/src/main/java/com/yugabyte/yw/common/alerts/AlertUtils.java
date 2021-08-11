@@ -110,11 +110,4 @@ public class AlertUtils {
     JsonTypeName an = clz.getDeclaredAnnotation(JsonTypeName.class);
     return an.value();
   }
-
-  public static void validate(AlertReceiver receiver) throws YWValidateException {
-    if (receiver.getParams() == null) {
-      throw new YWValidateException("Incorrect parameters in AlertReceiver.");
-    }
-    receiver.getParams().validate();
-  }
 }

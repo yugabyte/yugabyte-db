@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.models.Users.Role;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -11,6 +9,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -32,6 +31,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -377,11 +377,23 @@ public class ModelFactory {
     return alert;
   }
 
-  public static AlertReceiver createEmailReceiver(Customer customer, String name) {
+  public static AlertReceiver createAlertReceiver(
+      UUID customerUUID, String name, AlertReceiverParams params) {
+    AlertReceiver receiver =
+        new AlertReceiver()
+            .generateUUID()
+            .setCustomerUUID(customerUUID)
+            .setName(name)
+            .setParams(params);
+    receiver.save();
+    return receiver;
+  }
+
+  public static AlertReceiver createEmailReceiver(UUID customerUUID, String name) {
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = EmailFixtures.createSmtpData();
-    return AlertReceiver.create(customer.uuid, name, params);
+    return createAlertReceiver(customerUUID, name, params);
   }
 
   public static AlertRoute createAlertRoute(

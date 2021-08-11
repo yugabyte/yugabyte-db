@@ -33,8 +33,13 @@ public class AlertRouteService {
 
   private final AlertDefinitionGroupService alertDefinitionGroupService;
 
+  private final AlertReceiverService alertReceiverService;
+
   @Inject
-  public AlertRouteService(AlertDefinitionGroupService alertDefinitionGroupService) {
+  public AlertRouteService(
+      AlertReceiverService alertReceiverService,
+      AlertDefinitionGroupService alertDefinitionGroupService) {
+    this.alertReceiverService = alertReceiverService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
   }
 
@@ -91,6 +96,11 @@ public class AlertRouteService {
           "Can't set the alert route as non-default. Make another route as default at first.");
     }
 
+    AlertRoute valueWithSameName = get(route.getCustomerUUID(), route.getName());
+    if ((valueWithSameName != null) && !route.getUuid().equals(valueWithSameName.getUuid())) {
+      throw new YWServiceException(BAD_REQUEST, "Alert route with such name already exists.");
+    }
+
     AlertRoute defaultRoute = getDefaultRoute(route.getCustomerUUID());
     route.save();
 
@@ -107,6 +117,13 @@ public class AlertRouteService {
     return route;
   }
 
+  private AlertRoute get(UUID customerUUID, String routeName) {
+    return AlertRoute.createQuery()
+        .eq("customerUUID", customerUUID)
+        .eq("name", routeName)
+        .findOne();
+  }
+
   public AlertRoute get(UUID customerUUID, UUID routeUUID) {
     return AlertRoute.get(customerUUID, routeUUID);
   }
@@ -120,13 +137,13 @@ public class AlertRouteService {
   }
 
   public List<AlertRoute> listByCustomer(UUID customerUUID) {
-    return AlertRoute.createQuery().eq("customer_uuid", customerUUID).findList();
+    return AlertRoute.createQuery().eq("customerUUID", customerUUID).findList();
   }
 
   public AlertRoute getDefaultRoute(UUID customerUUID) {
     return AlertRoute.createQuery()
-        .eq("customer_uuid", customerUUID)
-        .eq("default_route", true)
+        .eq("customerUUID", customerUUID)
+        .eq("defaultRoute", true)
         .findOne();
   }
 
@@ -144,7 +161,11 @@ public class AlertRouteService {
     defaultParams.defaultSmtpSettings = true;
     defaultParams.defaultRecipients = true;
     AlertReceiver defaultReceiver =
-        AlertReceiver.create(customerUUID, "Default Receiver", defaultParams);
+        new AlertReceiver()
+            .setCustomerUUID(customerUUID)
+            .setName("Default Receiver")
+            .setParams(defaultParams);
+    defaultReceiver = alertReceiverService.save(defaultReceiver);
 
     AlertRoute route =
         new AlertRoute()

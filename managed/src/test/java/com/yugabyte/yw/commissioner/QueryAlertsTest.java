@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.MetricService;
@@ -90,6 +91,7 @@ public class QueryAlertsTest extends FakeDBApplication {
   private AlertDefinitionGroupService alertDefinitionGroupService;
   private AlertDefinitionService alertDefinitionService;
   private AlertService alertService;
+  private AlertReceiverService alertReceiverService;
   private AlertRouteService alertRouteService;
   private AlertManager alertManager;
 
@@ -109,12 +111,14 @@ public class QueryAlertsTest extends FakeDBApplication {
     alertDefinitionService = new AlertDefinitionService(alertService);
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(alertDefinitionService, configFactory);
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    alertReceiverService = new AlertReceiverService();
+    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
     alertManager =
         new AlertManager(
             emailHelper,
             alertService,
             alertDefinitionGroupService,
+            alertReceiverService,
             alertRouteService,
             receiversManager,
             metricService);

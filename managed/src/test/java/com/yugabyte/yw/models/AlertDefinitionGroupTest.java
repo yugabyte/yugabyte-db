@@ -52,7 +52,8 @@ public class AlertDefinitionGroupTest extends FakeDBApplication {
         ModelFactory.createAlertRoute(
             customer.getUuid(),
             "My Route",
-            Collections.singletonList(ModelFactory.createEmailReceiver(customer, "Test receiver")));
+            Collections.singletonList(
+                ModelFactory.createEmailReceiver(customer.getUuid(), "Test receiver")));
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
