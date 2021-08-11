@@ -168,7 +168,7 @@ class CDCServiceImpl : public CDCServiceIf {
   OpId GetMinAppliedCheckpointForTablet(const std::string& tablet_id,
                                         const std::shared_ptr<client::YBSession>& session);
 
-  void UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index);
+  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index);
 
   // Update metrics async_replication_sent_lag_micros and async_replication_committed_lag_micros.
   // Called periodically default 1s.
