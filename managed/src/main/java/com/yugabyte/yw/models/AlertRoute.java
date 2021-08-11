@@ -99,7 +99,7 @@ public class AlertRoute extends Model {
   }
 
   public static AlertRoute get(UUID customerUUID, UUID routeUUID) {
-    return createQuery().idEq(routeUUID).eq("customer_uuid", customerUUID).findOne();
+    return createQuery().idEq(routeUUID).eq("customerUUID", customerUUID).findOne();
   }
 
   public static ExpressionList<AlertRoute> createQuery() {
