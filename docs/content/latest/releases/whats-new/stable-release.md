@@ -37,7 +37,7 @@ Included here are the release notes for all releases in the v2.6 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.6.1.0-b16
+docker pull yugabytedb/yugabyte:2.6.1.0-b18
 ```
 
 ### New features
@@ -61,6 +61,7 @@ docker pull yugabytedb/yugabyte:2.6.1.0-b16
 
 * [[6793](https://github.com/yugabyte/yugabyte-db/issues/6793)] [[7643](https://github.com/yugabyte/yugabyte-db/issues/7643)] [Platform]: Update managed/devops to python3
 * [[8219](https://github.com/yugabyte/yugabyte-db/issues/8219)] version_metadata.json file is created while compiling the platform, build version added
+* [[8757](https://github.com/yugabyte/yugabyte-db/issues/8757)] xCluster Replication: Make setting up replication synchronous
 * [[8789](https://github.com/yugabyte/yugabyte-db/issues/8789)] Add support for certificate chaining in platform/yb-client.
 * [[9103](https://github.com/yugabyte/yugabyte-db/issues/9103)] Platform: Update "preflight_checks.sh" from ping to tcp check.
 
