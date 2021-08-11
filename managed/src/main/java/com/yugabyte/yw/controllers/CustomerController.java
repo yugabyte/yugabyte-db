@@ -109,15 +109,11 @@ public class CustomerController extends AuthenticatedController {
       response = CustomerDetailsData.class,
       nickname = "CustomerDetail")
   public Result index(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
-      return status(BAD_REQUEST, responseJson);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     ObjectNode responseJson = (ObjectNode) Json.toJson(customer);
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
+    // TODO: get rid of this
     if (config != null) {
       responseJson.set("alertingData", config.getData());
     } else {
@@ -270,6 +266,7 @@ public class CustomerController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Upsert features of customer by UUID",
+      hidden = true,
       responseContainer = "Map",
       response = Object.class)
   @ApiImplicitParams({

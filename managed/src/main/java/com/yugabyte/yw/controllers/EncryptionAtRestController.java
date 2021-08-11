@@ -164,6 +164,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return YWResults.withRawData(kmsConfig);
   }
 
+  // TODO: Cleanup raw json
   @ApiOperation(value = "List KMS config", response = Object.class, responseContainer = "List")
   public Result listKMSConfigs(UUID customerUUID) {
     LOG.info(String.format("Listing KMS configurations for customer %s", customerUUID.toString()));
@@ -186,7 +187,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
                         "in_use", EncryptionAtRestUtil.configInUse(configModel.configUUID));
                     metadata.put(
                         "universeDetails",
-                        EncryptionAtRestUtil.getUniverses(configModel.configUUID));
+                        Json.toJson(EncryptionAtRestUtil.getUniverses(configModel.configUUID)));
                     metadata.put("name", configModel.name);
                     result.put("credentials", CommonUtils.maskConfig(credentials));
                     result.put("metadata", metadata);
