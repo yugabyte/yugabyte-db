@@ -1,7 +1,7 @@
 ---
 title: Flyway
 linkTitle: Flyway
-description: Using Flyway
+description: Using Flyway with YugabyteDB
 aliases:
 menu:
   latest:
@@ -12,229 +12,99 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Presto](https://prestosql.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
+Flyway provides the means to manage schema changes to a YugabyteDB database, among others. 
 
-This document describes how to set up Presto to query YugabyteDB's YCQL tables.
+As a first step towards a better integration with Flyway to manage changes to your database schema (also called schema migration) for YugabyteDB instances, we have added the YugabyteDB-specific implementation of the Flyway APIs to Flyway community project.
 
-## 1. Start local cluster
+## Prerequisites
 
-Follow [Quick start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's Cassandra-compatible API, as [documented](../../quick-start/explore/ycql/) so that you can confirm that you have a Cassandra-compatible service running on `localhost:9042`. Ensure that you have created the keyspace and table, and inserted sample data as described there.
+Before you can start using Flyway, ensure that you have the following installed and configured:
 
-## 2. Download and configure Presto
+- YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
 
-Detailed steps are documented [here](https://prestosql.io/docs/current/installation/deployment.html).
-The following are the minimal setup steps for getting started:
+- Yugabyte cluster (see [Create a local cluster](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/)). 
 
-```sh
-$ wget https://repo1.maven.org/maven2/io/prestosql/presto-server/309/presto-server-309.tar.gz
+- Flyway community edition version 7.11.2 or later (see [Download Flyway](https://flywaydb.org/download)).
+
+- Connection details in the Flyway configuration file `conf/flyway.conf`. Append the following at the end of the file, replacing `flyway.url` with the URL of your running YugabyteDB cluster:
+
+  ```properties
+  flyway.url=jdbc:postgresql://localhost:5433/yugabyte
+  flyway.user=yugabyte
+  flyway.password=yugabyte
+  ```
+
+## Migrating schema
+
+Flyway allows you to specify migrations using either SQL or Java.
+
+{{< note title="Note" >}}
+
+By default, Flyway runs migrations inside a transaction. In case of failures, the transaction is rolled back (see [Flyway Transactions](https://flywaydb.org/documentation/concepts/migrations.html#transactions)). Since YugabyteDB does not currently support DDLs inside a user-initiated transaction (instead, it runs a DDL inside an implicit transaction), you may need to manually revert the DDL changes when you see a message about failed migrations “Please restore backups and roll back database and code”.
+
+{{< /note >}}
+
+### How to use SQL
+
+You can specify migrations as SQL statements in `.sql` files that are placed in the `<FLYWAY_INSTALL_DIR>/sql/` directory by default. You can change the location of these files by placing them in a different directory and then editing the `flyway.locations` property in the `flyway.conf` file accordingly.
+
+To migrate schema using SQL, perform the following:
+
+- Create migration SQL scripts under the `sql/` directory, as shown in the following example using the `motorcycle_manufacturers` table:
+
+  ```sql
+  $ cat sql/V1__Create_motorcycle_manufacturers_table.sql
+  CREATE TABLE motorcycle_manufacturers (
+    manufacturer_id SERIAL PRIMARY KEY,
+    manufacturer_name VARCHAR(50) NOT NULL
+  );
+  
+  $ cat V2__Insert_into_motorcycle_manufacturers.sql
+  INSERT INTO motorcycle_manufacturers (manufacturer_id, manufacturer_name) 
+  VALUES (default, 'Harley-Davidson'), (default, 'Yamaha');
+  ```
+
+- Run migrations by executing the following command:
+
+  ```shell
+  $ ./flyway migrate
+  ```
+
+### How to use Java
+
+You can define Flyway migrations as Java classes by extending the `BaseJavaMigration` class and overriding the `migrate()` method.
+
+The following example shows how to use Java to add a column called `hq_address` to the `motorcycle_manufacturers` table:
+
+```java
+package db.migration;
+
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
+import java.sql.Statement;
+
+public class V3__AddHQAdress extends BaseJavaMigration {
+
+  public void migrate(Context context) throws Exception {
+    try (Statement alter = context.getConnection().createStatement()) {
+      alter.execute("ALTER TABLE motorcycle_manufacturers 
+                    ADD COLUMN hq_address VARCHAR(50)");
+    }                   
+  }
+}
 ```
 
-```sh
-$ tar xvf presto-server-309.tar.gz
+To check the state of the database and run the migration, execute the following commands:
+
+```shell
+$ ./flyway info
 ```
 
-```sh
-$ cd presto-server-309
+```shell
+$ ./flyway migrate
 ```
 
-### Create the “etc”, “etc/catalog”, and “data” directory inside the installation directory
 
-```sh
-$ mkdir etc
-```
 
-```sh
-$ mkdir etc/catalog
-```
 
-```sh
-$ mkdir data
-```
 
-### Create node.properties file - replace &lt;username&gt; below
-
-```sh
-$ cat > etc/node.properties
-```
-
-```cfg
-node.environment=test
-node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
-node.data-dir=/Users/<username>/presto-server-309/data
-```
-
-Press Ctrl-D after you have pasted the file contents.
-
-### Create jvm.config file
-
-```sh
-$ cat > etc/jvm.config
-```
-
-```cfg
--server
--Xmx6G
--XX:+UseG1GC
--XX:G1HeapRegionSize=32M
--XX:+UseGCOverheadLimit
--XX:+ExplicitGCInvokesConcurrent
--XX:+HeapDumpOnOutOfMemoryError
--XX:+ExitOnOutOfMemoryError
-```
-
-Press Ctrl-D after you have pasted the file contents.
-
-### Create config.properties file
-
-```sh
-$ cat > etc/config.properties
-```
-
-```cfg
-coordinator=true
-node-scheduler.include-coordinator=true
-http-server.http.port=8080
-query.max-memory=4GB
-query.max-memory-per-node=1GB
-discovery-server.enabled=true
-discovery.uri=http://localhost:8080
-```
-
-Press Ctrl-D after you have pasted the file contents.
-
-### Create log.properties file
-
-```sh
-$ cat > etc/log.properties
-```
-
-```cfg
-io.prestosql=INFO
-```
-
-Press Ctrl-D after you have pasted the file contents.
-
-### Configure Cassandra connector to YugabyteDB
-
-Create the Cassandra catalog properties file in `etc/catalog` directory.
-Detailed instructions are [here](https://prestosql.io/docs/current/connector/cassandra.html).
-
-```sh
-$ cat > etc/catalog/cassandra.properties
-```
-
-```cfg
-connector.name=cassandra
-cassandra.contact-points=127.0.0.1
-```
-
-Press Ctrl-D after you have pasted the file contents.
-
-## 3. Download Presto CLI
-
-```sh
-$ cd ~/presto-server-309/bin
-```
-
-```sh
-$ wget https://repo1.maven.org/maven2/io/prestosql/presto-cli/309/presto-cli-309-executable.jar
-```
-
-Rename the JAR file to `presto`. It is meant to be a self-running binary.
-
-```sh
-$ mv presto-cli-309-executable.jar presto && chmod +x presto
-```
-
-## 4. Launch Presto server
-
-```sh
-$ cd ~/presto-server-309
-```
-
-To run in foreground mode:
-
-```sh
-$ ./bin/launcher run
-```
-
-To run in background mode:
-
-```sh
-$ ./bin/launcher start
-```
-
-## 5. Test Presto queries
-
-Use the presto CLI to run ad-hoc queries:
-
-```sh
-$ ./bin/presto --server localhost:8080 --catalog cassandra --schema default
-```
-
-Start using `myapp`:
-
-```sql
-presto:default> use myapp;
-```
-
-```output
-USE
-```
-
-Show the tables available:
-
-```sql
-presto:myapp> show tables;
-```
-
-```output
- Table
--------
- stock_market
-(1 row)
-```
-
-Describe a particular table:
-
-```sql
-presto:myapp> describe stock_market;
-```
-
-```output
-    Column     |  Type   | Extra | Comment 
----------------+---------+-------+---------
- stock_symbol  | varchar |       |         
- ts            | varchar |       |         
- current_price | real    |       |         
-(3 rows)
-```
-
-### Query with filter
-
-```sql
-presto:myapp> select * from stock_market where stock_symbol = 'AAPL';
-```
-
-```output
- stock_symbol |         ts          | current_price 
---------------+---------------------+---------------
- AAPL         | 2017-10-26 09:00:00 |        157.41 
- AAPL         | 2017-10-26 10:00:00 |         157.0 
-(2 rows)
-```
-
-### Query with aggregates
-
-```sql
-presto:myapp> select stock_symbol, avg(current_price) from stock_market group by stock_symbol;
-```
-
-```output
- stock_symbol |  _col1  
---------------+---------
- GOOG         | 972.235 
- AAPL         | 157.205 
- FB           | 170.365 
-(3 rows)
-```
