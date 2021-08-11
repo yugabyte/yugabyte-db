@@ -29,6 +29,9 @@ Before you can start using Liquibase, ensure that you have the following install
   ```
 
 - Liquibase (see [Download Liquibase](https://www.liquibase.org/download)). For information on how to extract the package and configure Liquibase, see [Configuring Liquibase](configuring-liquibase).
+
+- Liquibase-YugabyteDB extension JAR (access [liquibase-yugabytedb repository](https://github.com/liquibase/liquibase-yugabytedb) and download the latest `liquibase-yugabytedb-.jar`). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
+
 - PostgreSQL JDBC driver (see [Download PostgreSQL JDBC driver](https://jdbc.postgresql.org/download.html)). The driver must be located in the `/lib` sub-directory of the directory to which you extracted Liquibase.
 
 ## Configuring Liquibase
@@ -43,7 +46,7 @@ You configure Liquibase as follows:
 
 - Add the Liquibase path as an environment variable on your local computer by executing the following command:
 
-- ```bash
+  ```bash
   echo "export PATH=$PATH:/<full-path>/liquibase-<version>" >> ~/.bash_profile
   
   source ~/.bash_profile
@@ -66,7 +69,7 @@ You configure Liquibase as follows:
 
   <br>Changelog files can be created as `.xml`, `.sql`, `.yaml`, `.json`.
 
-  <br>Add the following code to the `master-changelog.xml` file:
+  <br><br>Add the following code to the `master-changelog.xml` file:
 
   ```xml
   <?xml version="1.1" encoding="UTF-8" standalone="no"?>
@@ -97,21 +100,21 @@ You configure Liquibase as follows:
 
   ```properties
   changeLogFile:master-changelog.xml 
-  url: jdbc:postgresql://localhost:5433/<your_database_name>
+  url: jdbc:postgresql://localhost:5433/yugabyte
   username: yugabyte 
   password: yugabyte
-  classpath: <full-path-to-postgres-jar>/postgresql-42.2.8.jar
+  classpath: <relative-path-to-postgres-jar>/postgresql-42.2.8.jar:<relative-path-to-liquibase-yugabytedb-<version>-jar>/liquibase-yugabytedb-<version>.jar
   ```
 
-  When using the YugabyteDB on-premises and specifying the URL, enter your IP address or host name, and then include the port followed by the database name, as per the following format: 
+  Defining the classpath is necessary if you have placed the JAR files in a folder other than `/lib`. For more information, see [Creating and configuring the liquibase.properties file](https://docs.liquibase.com/workflows/liquibase-community/creating-config-properties.html).
 
+  <br>When using the YugabyteDB on-premises and specifying the URL, enter your IP address or host name, and then include the port followed by the database name, as per the following format: 
+  
   ```
   jdbc:postgresql://<IP_OR_HOSTNAME>:<PORT>/<DATABASE>
   ```
-
-  When specifying the classpath for the PostgreSQL driver, esure that the version matches the version of the downloaded driver.
-
-  <br>The default username and password is `yugabyte`. Add those to the `liquibase.properties` file:
+  
+  When specifying the classpath for the PostgreSQL driver, esure that the version matches the version of the downloaded driver.  <br>The default username and password is `yugabyte`. 
 
 ## Using Liquibase
 
