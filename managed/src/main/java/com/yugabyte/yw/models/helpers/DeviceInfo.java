@@ -30,7 +30,7 @@ public class DeviceInfo {
 
   // Name of storage class (if specified)
   @ApiModelProperty(value = "Name of storage class")
-  public String storageClass = "standard";
+  public String storageClass = "";
 
   // Comma separated list of mount points for the devices in each instance (if specified).
   @ApiModelProperty(value = "Comma separated list of mount points for the devices in each instance")
