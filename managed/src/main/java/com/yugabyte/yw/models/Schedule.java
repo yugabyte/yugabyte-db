@@ -80,7 +80,10 @@ public class Schedule extends Model {
     return frequency;
   }
 
-  @ApiModelProperty(value = "Schedule task params", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Schedule task params",
+      accessMode = READ_WRITE,
+      dataType = "com.yugabyte.yw.commissioner.tasks.MultiTableBackup$Params")
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
@@ -120,11 +123,6 @@ public class Schedule extends Model {
   }
 
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
-
-  public static Schedule create(
-      UUID customerUUID, ITaskParams params, TaskType taskType, long frequency) {
-    return create(customerUUID, params, taskType, frequency, null);
-  }
 
   public static Schedule create(
       UUID customerUUID,

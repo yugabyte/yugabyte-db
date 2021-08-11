@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,6 +43,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
+  @ApiModel("MultiTableBackupParams")
   public static class Params extends BackupTableParams {
     public UUID customerUUID;
     public List<UUID> tableUUIDList = new ArrayList<>();

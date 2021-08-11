@@ -149,43 +149,6 @@
       "required" : [ "labels", "severityIndex", "stateIndex" ],
       "type" : "object"
     },
-    "Alert Detail" : {
-      "description" : "Alerts associated with customers",
-      "properties" : {
-        "alertingEmail" : {
-          "description" : "Alert email id",
-          "example" : "test@gmail.com",
-          "type" : "string"
-        },
-        "checkIntervalMs" : {
-          "description" : "Alert interval",
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "enableClockSkew" : {
-          "description" : "Is Clock skew is enabled",
-          "type" : "boolean"
-        },
-        "reportBackupFailures" : {
-          "description" : "Is alert needed for backup failure",
-          "type" : "boolean"
-        },
-        "reportOnlyErrors" : {
-          "description" : "Is alert is just for error",
-          "type" : "boolean"
-        },
-        "sendAlertsToYb" : {
-          "description" : "Is alert has sent to YB",
-          "type" : "boolean"
-        },
-        "statusUpdateIntervalMs" : {
-          "description" : "Status update of alert interval",
-          "format" : "int64",
-          "type" : "integer"
-        }
-      },
-      "type" : "object"
-    },
     "AlertApiFilter" : {
       "properties" : {
         "groupTypes" : {
@@ -522,7 +485,7 @@
             "type" : "array"
           },
           "smtpData" : {
-            "$ref" : "#/definitions/Smtp Data"
+            "$ref" : "#/definitions/SmtpData"
           }
         },
         "required" : [ "defaultRecipients", "defaultSmtpSettings", "recipients", "smtpData" ],
@@ -624,51 +587,41 @@
       "required" : [ "defaultRoute", "name", "receivers" ],
       "type" : "object"
     },
-    "Alerts" : {
+    "AlertingData" : {
       "description" : "Alerts associated with customers",
       "properties" : {
-        "alertingData" : {
-          "$ref" : "#/definitions/Alert Detail"
-        },
-        "callhomeLevel" : {
-          "type" : "string"
-        },
-        "code" : {
-          "description" : "Alert code",
-          "type" : "string"
-        },
-        "confirmPassword" : {
-          "description" : "Email password",
-          "example" : "XurenRknsc",
-          "type" : "string"
-        },
-        "email" : {
-          "description" : "Alert email",
+        "alertingEmail" : {
+          "description" : "Alert email id",
           "example" : "test@gmail.com",
           "type" : "string"
         },
-        "features" : {
-          "additionalProperties" : {
-            "type" : "object"
-          },
-          "description" : "Feature",
-          "type" : "object"
+        "checkIntervalMs" : {
+          "description" : "Alert interval",
+          "format" : "int64",
+          "type" : "integer"
         },
-        "name" : {
-          "description" : "Alert name",
-          "example" : "Test alert",
-          "type" : "string"
+        "enableClockSkew" : {
+          "description" : "Is Clock skew is enabled",
+          "type" : "boolean"
         },
-        "password" : {
-          "description" : "Email password",
-          "example" : "XurenRknsc",
-          "type" : "string"
+        "reportBackupFailures" : {
+          "description" : "Is alert needed for backup failure",
+          "type" : "boolean"
         },
-        "smtpData" : {
-          "$ref" : "#/definitions/Smtp Data"
+        "reportOnlyErrors" : {
+          "description" : "Is alert is just for error",
+          "type" : "boolean"
+        },
+        "sendAlertsToYb" : {
+          "description" : "Is alert has sent to YB",
+          "type" : "boolean"
+        },
+        "statusUpdateIntervalMs" : {
+          "description" : "Status update of alert interval",
+          "format" : "int64",
+          "type" : "integer"
         }
       },
-      "required" : [ "alertingData", "callhomeLevel", "smtpData" ],
       "type" : "object"
     },
     "AsyncReplicationConfig" : {
@@ -719,6 +672,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "payload" : {
+          "description" : "Audit uuid",
+          "readOnly" : true,
+          "type" : "object"
+        },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",
@@ -737,25 +695,6 @@
         }
       },
       "required" : [ "auditID", "timestamp" ],
-      "type" : "object"
-    },
-    "Availability Zones" : {
-      "description" : "Availability Zones.",
-      "properties" : {
-        "code" : {
-          "description" : "Az code",
-          "type" : "string"
-        },
-        "name" : {
-          "description" : "Az name",
-          "type" : "string"
-        },
-        "subnet" : {
-          "description" : "Az subnet",
-          "type" : "string"
-        }
-      },
-      "required" : [ "code", "name" ],
       "type" : "object"
     },
     "AvailabilityZone" : {
@@ -796,12 +735,31 @@
       "required" : [ "name" ],
       "type" : "object"
     },
+    "AvailabilityZoneData" : {
+      "description" : "Availability Zones.",
+      "properties" : {
+        "code" : {
+          "description" : "Az code",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Az name",
+          "type" : "string"
+        },
+        "subnet" : {
+          "description" : "Az subnet",
+          "type" : "string"
+        }
+      },
+      "required" : [ "code", "name" ],
+      "type" : "object"
+    },
     "AvailabilityZoneFormData" : {
       "properties" : {
         "availabilityZones" : {
           "description" : "Availability zones",
           "items" : {
-            "$ref" : "#/definitions/Availability Zones"
+            "$ref" : "#/definitions/AvailabilityZoneData"
           },
           "type" : "array"
         }
@@ -813,7 +771,7 @@
       "description" : "Backup with a status, expiry and backup configs",
       "properties" : {
         "backupInfo" : {
-          "$ref" : "#/definitions/Backup table params",
+          "$ref" : "#/definitions/BackupTableParams",
           "description" : "Details of the backup"
         },
         "backupUUID" : {
@@ -862,7 +820,7 @@
       "required" : [ "createTime", "updateTime" ],
       "type" : "object"
     },
-    "Backup table params" : {
+    "BackupTableParams" : {
       "description" : "Backup table params",
       "properties" : {
         "actionType" : {
@@ -873,7 +831,7 @@
         "backupList" : {
           "description" : "Backups",
           "items" : {
-            "$ref" : "#/definitions/Backup table params"
+            "$ref" : "#/definitions/BackupTableParams"
           },
           "type" : "array"
         },
@@ -892,7 +850,7 @@
           "type" : "string"
         },
         "communicationPorts" : {
-          "$ref" : "#/definitions/Communication ports",
+          "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
         "cronExpression" : {
@@ -905,7 +863,7 @@
           "type" : "string"
         },
         "deviceInfo" : {
-          "$ref" : "#/definitions/Device info",
+          "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
         "enableVerboseLogs" : {
@@ -913,7 +871,7 @@
           "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
-          "$ref" : "#/definitions/Encryption at rest config",
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
         },
         "errorString" : {
@@ -926,7 +884,7 @@
           "type" : "integer"
         },
         "extraDependencies" : {
-          "$ref" : "#/definitions/Extra dependencies",
+          "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
         "firstTry" : {
@@ -949,7 +907,7 @@
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
-            "$ref" : "#/definitions/Node details"
+            "$ref" : "#/definitions/NodeDetails"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -1044,7 +1002,7 @@
       "required" : [ "actionType", "storageConfigUUID" ],
       "type" : "object"
     },
-    "Bulk import params" : {
+    "BulkImportParams" : {
       "description" : "Bulk import params",
       "properties" : {
         "cmkArn" : {
@@ -1052,15 +1010,15 @@
           "type" : "string"
         },
         "communicationPorts" : {
-          "$ref" : "#/definitions/Communication ports",
+          "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
         "deviceInfo" : {
-          "$ref" : "#/definitions/Device info",
+          "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
         "encryptionAtRestConfig" : {
-          "$ref" : "#/definitions/Encryption at rest config",
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
         },
         "errorString" : {
@@ -1073,7 +1031,7 @@
           "type" : "integer"
         },
         "extraDependencies" : {
-          "$ref" : "#/definitions/Extra dependencies",
+          "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
         "firstTry" : {
@@ -1092,7 +1050,7 @@
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
-            "$ref" : "#/definitions/Node details"
+            "$ref" : "#/definitions/NodeDetails"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -1210,6 +1168,14 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "universeDetails" : {
+          "description" : "Associated universe details of the Certificate",
+          "items" : {
+            "$ref" : "#/definitions/UniverseDetailSubset"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
         "uuid" : {
           "description" : "Certificate uuid",
           "format" : "uuid",
@@ -1270,7 +1236,7 @@
       "required" : [ "certExpiry", "certStart", "username" ],
       "type" : "object"
     },
-    "Cloud specific info" : {
+    "CloudSpecificInfo" : {
       "description" : "Cloud specific information",
       "properties" : {
         "assignPublicIP" : {
@@ -1324,7 +1290,38 @@
       },
       "type" : "object"
     },
-    "Column details" : {
+    "Cluster" : {
+      "properties" : {
+        "clusterType" : {
+          "enum" : [ "PRIMARY", "ASYNC" ],
+          "type" : "string"
+        },
+        "index" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "placementInfo" : {
+          "$ref" : "#/definitions/PlacementInfo"
+        },
+        "regions" : {
+          "items" : {
+            "$ref" : "#/definitions/Region"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "userIntent" : {
+          "$ref" : "#/definitions/UserIntent"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "clusterType", "index", "placementInfo", "userIntent", "uuid" ],
+      "type" : "object"
+    },
+    "ColumnDetails" : {
       "description" : "Column details",
       "properties" : {
         "columnOrder" : {
@@ -1367,7 +1364,7 @@
       },
       "type" : "object"
     },
-    "Communication ports" : {
+    "CommunicationPorts" : {
       "description" : "Communication ports",
       "properties" : {
         "masterHttpPort" : {
@@ -1428,7 +1425,7 @@
       },
       "type" : "object"
     },
-    "Configs entry" : {
+    "ConfigEntry" : {
       "description" : "Configs entry",
       "properties" : {
         "inherited" : {
@@ -1539,7 +1536,54 @@
       "required" : [ "code", "name" ],
       "type" : "object"
     },
-    "Customer Config" : {
+    "CustomerAlertData" : {
+      "description" : "Alerts associated with customers",
+      "properties" : {
+        "alertingData" : {
+          "$ref" : "#/definitions/AlertingData"
+        },
+        "callhomeLevel" : {
+          "type" : "string"
+        },
+        "code" : {
+          "description" : "Alert code",
+          "type" : "string"
+        },
+        "confirmPassword" : {
+          "description" : "Email password",
+          "example" : "XurenRknsc",
+          "type" : "string"
+        },
+        "email" : {
+          "description" : "Alert email",
+          "example" : "test@gmail.com",
+          "type" : "string"
+        },
+        "features" : {
+          "additionalProperties" : {
+            "type" : "object"
+          },
+          "description" : "Feature",
+          "type" : "object"
+        },
+        "name" : {
+          "description" : "Alert name",
+          "example" : "Test alert",
+          "type" : "string"
+        },
+        "password" : {
+          "description" : "Email password",
+          "example" : "XurenRknsc",
+          "type" : "string"
+        },
+        "smtpData" : {
+          "$ref" : "#/definitions/SmtpData"
+        }
+      },
+      "required" : [ "alertingData", "callhomeLevel", "smtpData" ],
+      "type" : "object"
+    },
+    "CustomerConfig" : {
       "description" : "Customers Configuration",
       "properties" : {
         "configName" : {
@@ -1559,6 +1603,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "data" : {
+          "description" : "Configuration data",
+          "example" : "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}",
+          "type" : "object"
+        },
         "inUse" : {
           "description" : "True if there is an in use reference to the object",
           "type" : "boolean"
@@ -1573,15 +1622,24 @@
           "enum" : [ "STORAGE", "ALERTS", "CALLHOME", "PASSWORD_POLICY", "OTHER" ],
           "example" : "STORAGE",
           "type" : "string"
+        },
+        "universeDetails" : {
+          "description" : "Universe details",
+          "example" : "{\"name\": \"jd-aws-21-6-21-test4\"}",
+          "items" : {
+            "$ref" : "#/definitions/UniverseDetailSubset"
+          },
+          "type" : "array"
         }
       },
+      "required" : [ "data" ],
       "type" : "object"
     },
-    "Customer Detail" : {
+    "CustomerDetailsData" : {
       "description" : "Customers features and Universe UUID.",
       "properties" : {
         "alertingData" : {
-          "$ref" : "#/definitions/Alert Detail",
+          "$ref" : "#/definitions/AlertingData",
           "description" : "Alerts",
           "readOnly" : true
         },
@@ -1615,7 +1673,7 @@
           "type" : "string"
         },
         "smtpData" : {
-          "$ref" : "#/definitions/Smtp Data",
+          "$ref" : "#/definitions/SmtpData",
           "description" : "SMTP",
           "readOnly" : true
         },
@@ -1638,7 +1696,19 @@
       "required" : [ "code", "name" ],
       "type" : "object"
     },
-    "Customer Task Data" : {
+    "CustomerLoginFormData" : {
+      "properties" : {
+        "email" : {
+          "type" : "string"
+        },
+        "password" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "email", "password" ],
+      "type" : "object"
+    },
+    "CustomerTaskData" : {
       "description" : "Customer Task data",
       "properties" : {
         "completionTime" : {
@@ -1692,19 +1762,7 @@
       },
       "type" : "object"
     },
-    "CustomerLoginFormData" : {
-      "properties" : {
-        "email" : {
-          "type" : "string"
-        },
-        "password" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "email", "password" ],
-      "type" : "object"
-    },
-    "Device info" : {
+    "DeviceInfo" : {
       "description" : "Device information",
       "properties" : {
         "diskIops" : {
@@ -1758,7 +1816,7 @@
       "required" : [ "config", "hostedZoneId" ],
       "type" : "object"
     },
-    "Encryption at rest config" : {
+    "EncryptionAtRestConfig" : {
       "description" : "Encryption at rest config",
       "properties" : {
         "encryptionAtRestEnabled" : {
@@ -1783,7 +1841,7 @@
       },
       "type" : "object"
     },
-    "Extra dependencies" : {
+    "ExtraDependencies" : {
       "description" : "Extra dependencies",
       "properties" : {
         "installNodeExporter" : {
@@ -1791,23 +1849,6 @@
           "type" : "boolean"
         }
       },
-      "type" : "object"
-    },
-    "FeatureUpdateFormData" : {
-      "type" : "object"
-    },
-    "Generic error response from Yugawware Platform API" : {
-      "properties" : {
-        "error" : {
-          "description" : "User visible unstructurred error message",
-          "example" : "There was a problem creating universe",
-          "type" : "string"
-        },
-        "success" : {
-          "type" : "boolean"
-        }
-      },
-      "required" : [ "success" ],
       "type" : "object"
     },
     "ImportUniverseFormData" : {
@@ -2010,7 +2051,7 @@
     "MasterNode" : {
       "properties" : {
         "cloudInfo" : {
-          "$ref" : "#/definitions/Cloud specific info"
+          "$ref" : "#/definitions/CloudSpecificInfo"
         },
         "masterRpcPort" : {
           "format" : "int32",
@@ -2032,7 +2073,7 @@
       "required" : [ "masters" ],
       "type" : "object"
     },
-    "Metrics" : {
+    "MetricQueryParams" : {
       "description" : "Metrics details",
       "properties" : {
         "end" : {
@@ -2064,8 +2105,7 @@
       "required" : [ "metrics", "start" ],
       "type" : "object"
     },
-    "Multi table backup request params" : {
-      "description" : "Backup table params",
+    "MultiTableBackupParams" : {
       "properties" : {
         "actionType" : {
           "description" : "Action type",
@@ -2075,7 +2115,7 @@
         "backupList" : {
           "description" : "Backups",
           "items" : {
-            "$ref" : "#/definitions/Backup table params"
+            "$ref" : "#/definitions/BackupTableParams"
           },
           "type" : "array"
         },
@@ -2094,7 +2134,7 @@
           "type" : "string"
         },
         "communicationPorts" : {
-          "$ref" : "#/definitions/Communication ports",
+          "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
         "cronExpression" : {
@@ -2102,7 +2142,6 @@
           "type" : "string"
         },
         "customerUUID" : {
-          "description" : "Customer UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -2112,7 +2151,7 @@
           "type" : "string"
         },
         "deviceInfo" : {
-          "$ref" : "#/definitions/Device info",
+          "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
         "enableVerboseLogs" : {
@@ -2120,7 +2159,7 @@
           "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
-          "$ref" : "#/definitions/Encryption at rest config",
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
         },
         "errorString" : {
@@ -2133,7 +2172,7 @@
           "type" : "integer"
         },
         "extraDependencies" : {
-          "$ref" : "#/definitions/Extra dependencies",
+          "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
         "firstTry" : {
@@ -2156,7 +2195,193 @@
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
-            "$ref" : "#/definitions/Node details"
+            "$ref" : "#/definitions/NodeDetails"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "parallelism" : {
+          "description" : "The number of concurrent commands to run on nodes over SSH",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "scheduleUUID" : {
+          "description" : "Schedule UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "schedulingFrequency" : {
+          "description" : "Frequency for running the backup in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "sourceAsyncReplicationRelationships" : {
+          "description" : "Async replication relationships as the source universe",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "sse" : {
+          "description" : "Is SSE",
+          "type" : "boolean"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "storageLocation" : {
+          "description" : "Storage location",
+          "type" : "string"
+        },
+        "tableName" : {
+          "description" : "Table name",
+          "type" : "string"
+        },
+        "tableNameList" : {
+          "description" : "Tables",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "tableUUID" : {
+          "description" : "Table UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "tableUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "targetAsyncReplicationRelationships" : {
+          "description" : "Async replication relationships as the target universe",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time in millisecs before deleting the backup from the storage",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "transactionalBackup" : {
+          "description" : "Is backup be transactional across tables",
+          "type" : "boolean"
+        },
+        "universeUUID" : {
+          "description" : "Associate universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "actionType", "customerUUID", "storageConfigUUID", "tableUUIDList" ],
+      "type" : "object"
+    },
+    "MultiTableBackupRequestParams" : {
+      "description" : "Backup table params",
+      "properties" : {
+        "actionType" : {
+          "description" : "Action type",
+          "enum" : [ "CREATE", "RESTORE", "RESTORE_KEYS", "DELETE" ],
+          "type" : "string"
+        },
+        "backupList" : {
+          "description" : "Backups",
+          "items" : {
+            "$ref" : "#/definitions/BackupTableParams"
+          },
+          "type" : "array"
+        },
+        "backupType" : {
+          "description" : "Backup type",
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
+        "backupUuid" : {
+          "description" : "Backup UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "cronExpression" : {
+          "description" : "Cron expression in case a recurring backup",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "enableVerboseLogs" : {
+          "description" : "Is verbose logging is enable",
+          "type" : "boolean"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "firstTry" : {
+          "description" : "Whether this task has been tried before or not",
+          "type" : "boolean"
+        },
+        "ignoreErrors" : {
+          "description" : "Is table backup errors ignored",
+          "type" : "boolean"
+        },
+        "keyspace" : {
+          "description" : "Key space",
+          "type" : "string"
+        },
+        "kmsConfigUUID" : {
+          "description" : "KMS config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "nodeDetailsSet" : {
+          "description" : "Node details",
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -2251,7 +2476,17 @@
       "required" : [ "actionType", "storageConfigUUID" ],
       "type" : "object"
     },
-    "Node details" : {
+    "NodeActionFormData" : {
+      "properties" : {
+        "nodeAction" : {
+          "enum" : [ "ADD", "REMOVE", "START", "STOP", "DELETE", "QUERY", "RELEASE", "START_MASTER" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "nodeAction" ],
+      "type" : "object"
+    },
+    "NodeDetails" : {
       "description" : "Node details",
       "properties" : {
         "azUuid" : {
@@ -2260,7 +2495,7 @@
           "type" : "string"
         },
         "cloudInfo" : {
-          "$ref" : "#/definitions/Cloud specific info",
+          "$ref" : "#/definitions/CloudSpecificInfo",
           "description" : "Cloud information"
         },
         "cronsActive" : {
@@ -2373,14 +2608,134 @@
       },
       "type" : "object"
     },
-    "NodeActionFormData" : {
+    "NodeDetailsResp" : {
       "properties" : {
-        "nodeAction" : {
-          "enum" : [ "ADD", "REMOVE", "START", "STOP", "DELETE", "QUERY", "RELEASE", "START_MASTER" ],
+        "allowedActions" : {
+          "items" : {
+            "enum" : [ "ADD", "REMOVE", "START", "STOP", "DELETE", "QUERY", "RELEASE", "START_MASTER" ],
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "azUuid" : {
+          "description" : "Az UUID",
+          "format" : "uuid",
           "type" : "string"
+        },
+        "cloudInfo" : {
+          "$ref" : "#/definitions/CloudSpecificInfo",
+          "description" : "Cloud information"
+        },
+        "cronsActive" : {
+          "description" : "True if cronjobs were properly configured for this node",
+          "type" : "boolean"
+        },
+        "isMaster" : {
+          "description" : "True if this node is a master",
+          "type" : "boolean"
+        },
+        "isRedisServer" : {
+          "description" : "True if this node is a redis server",
+          "type" : "boolean"
+        },
+        "isTserver" : {
+          "description" : "True if this node is a tserver",
+          "type" : "boolean"
+        },
+        "isYqlServer" : {
+          "description" : "True if this node is a Yql",
+          "type" : "boolean"
+        },
+        "isYsqlServer" : {
+          "description" : "True if this node is a Ysql",
+          "type" : "boolean"
+        },
+        "machineImage" : {
+          "description" : "Machine image",
+          "type" : "string"
+        },
+        "masterHttpPort" : {
+          "description" : "Master HTTP port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "masterRpcPort" : {
+          "description" : "Master RCP port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeExporterPort" : {
+          "description" : "Node exporter port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeIdx" : {
+          "description" : "Node id",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeName" : {
+          "description" : "Node name",
+          "type" : "string"
+        },
+        "nodeUuid" : {
+          "description" : "Node UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "placementUuid" : {
+          "description" : "Placement UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "redisServerHttpPort" : {
+          "description" : "Redis HTTP port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "redisServerRpcPort" : {
+          "description" : "Redis RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "state" : {
+          "description" : "Node state",
+          "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing" ],
+          "type" : "string"
+        },
+        "tserverHttpPort" : {
+          "description" : "Tserver HTTP port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "tserverRpcPort" : {
+          "description" : "Tserver RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "yqlServerHttpPort" : {
+          "description" : "Yql HTTP port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "yqlServerRpcPort" : {
+          "description" : "Yql RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "ysqlServerHttpPort" : {
+          "description" : "Ysql HTTP port",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "ysqlServerRpcPort" : {
+          "description" : "Ysql RPC port",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
-      "required" : [ "nodeAction" ],
       "type" : "object"
     },
     "NodeInstance" : {
@@ -2481,6 +2836,86 @@
         }
       },
       "required" : [ "nodes" ],
+      "type" : "object"
+    },
+    "PlacementAZ" : {
+      "properties" : {
+        "isAffinitized" : {
+          "type" : "boolean"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "numNodesInAZ" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "replicationFactor" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "subnet" : {
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "isAffinitized", "name", "numNodesInAZ", "replicationFactor", "subnet", "uuid" ],
+      "type" : "object"
+    },
+    "PlacementCloud" : {
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "regionList" : {
+          "items" : {
+            "$ref" : "#/definitions/PlacementRegion"
+          },
+          "type" : "array"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "code", "regionList", "uuid" ],
+      "type" : "object"
+    },
+    "PlacementInfo" : {
+      "properties" : {
+        "cloudList" : {
+          "items" : {
+            "$ref" : "#/definitions/PlacementCloud"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "cloudList" ],
+      "type" : "object"
+    },
+    "PlacementRegion" : {
+      "properties" : {
+        "azList" : {
+          "items" : {
+            "$ref" : "#/definitions/PlacementAZ"
+          },
+          "type" : "array"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "azList", "code", "name", "uuid" ],
       "type" : "object"
     },
     "Provider" : {
@@ -2712,7 +3147,16 @@
       "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
       "type" : "object"
     },
-    "Release data" : {
+    "ReleaseFormData" : {
+      "properties" : {
+        "version" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "version" ],
+      "type" : "object"
+    },
+    "ReleaseMetadata" : {
       "description" : "Release data",
       "properties" : {
         "chartPath" : {
@@ -2743,22 +3187,13 @@
       },
       "type" : "object"
     },
-    "ReleaseFormData" : {
-      "properties" : {
-        "version" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "version" ],
-      "type" : "object"
-    },
-    "Runtime config data" : {
+    "RuntimeConfigData" : {
       "description" : "Runtime config data",
       "properties" : {
         "scopedConfigList" : {
           "description" : "list of scoped config",
           "items" : {
-            "$ref" : "#/definitions/Scoped config"
+            "$ref" : "#/definitions/ScopedConfig"
           },
           "type" : "array"
         }
@@ -2801,6 +3236,10 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "taskParams" : {
+          "$ref" : "#/definitions/MultiTableBackupParams",
+          "description" : "Schedule task params"
+        },
         "taskType" : {
           "description" : "Type of the task to be schedules",
           "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion" ],
@@ -2809,13 +3248,13 @@
       },
       "type" : "object"
     },
-    "Scoped config" : {
+    "ScopedConfig" : {
       "description" : "Scoped config",
       "properties" : {
         "configEntries" : {
           "description" : "List of configs",
           "items" : {
-            "$ref" : "#/definitions/Configs entry"
+            "$ref" : "#/definitions/ConfigEntry"
           },
           "type" : "array"
         },
@@ -2836,7 +3275,7 @@
       },
       "type" : "object"
     },
-    "Smtp Data" : {
+    "SmtpData" : {
       "description" : "Customers SMTP data.",
       "properties" : {
         "emailFrom" : {
@@ -2878,13 +3317,96 @@
       },
       "type" : "object"
     },
-    "Table details" : {
+    "TableDefinitionTaskParams" : {
+      "properties" : {
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "firstTry" : {
+          "description" : "Whether this task has been tried before or not",
+          "type" : "boolean"
+        },
+        "nodeDetailsSet" : {
+          "description" : "Node details",
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "sourceAsyncReplicationRelationships" : {
+          "description" : "Async replication relationships as the source universe",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "tableDetails" : {
+          "$ref" : "#/definitions/TableDetails"
+        },
+        "tableType" : {
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
+        "tableUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "targetAsyncReplicationRelationships" : {
+          "description" : "Async replication relationships as the target universe",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "universeUUID" : {
+          "description" : "Associate universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "tableDetails", "tableType", "tableUUID" ],
+      "type" : "object"
+    },
+    "TableDetails" : {
       "description" : "Table details",
       "properties" : {
         "columns" : {
           "description" : "Details of the columns that make up the table",
           "items" : {
-            "$ref" : "#/definitions/Column details"
+            "$ref" : "#/definitions/ColumnDetails"
           },
           "type" : "array"
         },
@@ -2951,23 +3473,46 @@
       },
       "type" : "object"
     },
-    "Universe task" : {
-      "description" : "Universe task",
+    "UniverseDefinitionTaskParams" : {
       "properties" : {
+        "allowInsecure" : {
+          "type" : "boolean"
+        },
+        "backupInProgress" : {
+          "type" : "boolean"
+        },
+        "capability" : {
+          "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
+          "type" : "string"
+        },
+        "clientRootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "clusters" : {
+          "items" : {
+            "$ref" : "#/definitions/Cluster"
+          },
+          "type" : "array"
+        },
         "cmkArn" : {
           "description" : "Amazon Resource Name (ARN) of the CMK",
           "type" : "string"
         },
         "communicationPorts" : {
-          "$ref" : "#/definitions/Communication ports",
+          "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "currentClusterType" : {
+          "enum" : [ "PRIMARY", "ASYNC" ],
+          "type" : "string"
+        },
         "deviceInfo" : {
-          "$ref" : "#/definitions/Device info",
+          "$ref" : "#/definitions/DeviceInfo",
           "description" : "Device information"
         },
         "encryptionAtRestConfig" : {
-          "$ref" : "#/definitions/Encryption at rest config",
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
           "description" : "Encryption at rest configation"
         },
         "errorString" : {
@@ -2980,17 +3525,28 @@
           "type" : "integer"
         },
         "extraDependencies" : {
-          "$ref" : "#/definitions/Extra dependencies",
+          "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
         "firstTry" : {
           "description" : "Whether this task has been tried before or not",
           "type" : "boolean"
         },
+        "importedState" : {
+          "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
+          "type" : "string"
+        },
+        "itestS3PackagePath" : {
+          "type" : "string"
+        },
+        "nextClusterIndex" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
-            "$ref" : "#/definitions/Node details"
+            "$ref" : "#/definitions/NodeDetails"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -2998,6 +3554,25 @@
         "nodeExporterUser" : {
           "description" : "Node exporter user",
           "type" : "string"
+        },
+        "nodePrefix" : {
+          "type" : "string"
+        },
+        "remotePackagePath" : {
+          "type" : "string"
+        },
+        "resetAZConfig" : {
+          "type" : "boolean"
+        },
+        "rootAndClientRootCASame" : {
+          "type" : "boolean"
+        },
+        "rootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "setTxnTableWaitCountFlag" : {
+          "type" : "boolean"
         },
         "sourceAsyncReplicationRelationships" : {
           "description" : "Async replication relationships as the source universe",
@@ -3007,16 +3582,143 @@
           "readOnly" : true,
           "type" : "array"
         },
-        "tableDetails" : {
-          "$ref" : "#/definitions/Table details"
+        "targetAsyncReplicationRelationships" : {
+          "description" : "Async replication relationships as the target universe",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
         },
-        "tableType" : {
-          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
-          "type" : "string"
+        "universePaused" : {
+          "type" : "boolean"
         },
-        "tableUUID" : {
+        "universeUUID" : {
+          "description" : "Associate universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "userAZSelected" : {
+          "type" : "boolean"
+        }
+      },
+      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
+      "type" : "object"
+    },
+    "UniverseDefinitionTaskParamsResp" : {
+      "properties" : {
+        "allowInsecure" : {
+          "type" : "boolean"
+        },
+        "backupInProgress" : {
+          "type" : "boolean"
+        },
+        "capability" : {
+          "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
+          "type" : "string"
+        },
+        "clientRootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "clusters" : {
+          "items" : {
+            "$ref" : "#/definitions/Cluster"
+          },
+          "type" : "array"
+        },
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "currentClusterType" : {
+          "enum" : [ "PRIMARY", "ASYNC" ],
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "firstTry" : {
+          "description" : "Whether this task has been tried before or not",
+          "type" : "boolean"
+        },
+        "importedState" : {
+          "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
+          "type" : "string"
+        },
+        "itestS3PackagePath" : {
+          "type" : "string"
+        },
+        "nextClusterIndex" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeDetailsSet" : {
+          "items" : {
+            "$ref" : "#/definitions/NodeDetailsResp"
+          },
+          "readOnly" : true,
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "nodePrefix" : {
+          "type" : "string"
+        },
+        "remotePackagePath" : {
+          "type" : "string"
+        },
+        "resetAZConfig" : {
+          "type" : "boolean"
+        },
+        "rootAndClientRootCASame" : {
+          "type" : "boolean"
+        },
+        "rootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "setTxnTableWaitCountFlag" : {
+          "type" : "boolean"
+        },
+        "sourceAsyncReplicationRelationships" : {
+          "description" : "Async replication relationships as the source universe",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
         },
         "targetAsyncReplicationRelationships" : {
           "description" : "Async replication relationships as the target universe",
@@ -3026,17 +3728,55 @@
           "readOnly" : true,
           "type" : "array"
         },
+        "universePaused" : {
+          "type" : "boolean"
+        },
         "universeUUID" : {
           "description" : "Associate universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "userAZSelected" : {
+          "type" : "boolean"
         }
       },
-      "required" : [ "tableDetails", "tableType", "tableUUID" ],
+      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
       "type" : "object"
     },
-    "UniverseResource" : {
-      "description" : "Universe Resource",
+    "UniverseDetailSubset" : {
+      "description" : "A small subset of universe information",
+      "properties" : {
+        "creationDate" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "creationDate", "name", "universePaused", "updateInProgress", "updateSucceeded", "uuid" ],
+      "type" : "object"
+    },
+    "UniverseResourceDetails" : {
       "properties" : {
         "azList" : {
           "description" : "Azs",
@@ -3115,11 +3855,8 @@
           "type" : "number"
         },
         "resources" : {
-          "additionalProperties" : {
-            "type" : "object"
-          },
-          "description" : "Universe Resources",
-          "type" : "object"
+          "$ref" : "#/definitions/UniverseResourceDetails",
+          "description" : "Universe Resources"
         },
         "sampleAppCommandTxt" : {
           "description" : "Sample command",
@@ -3138,11 +3875,8 @@
           "type" : "object"
         },
         "universeDetails" : {
-          "additionalProperties" : {
-            "type" : "object"
-          },
-          "description" : "Universe Details",
-          "type" : "object"
+          "$ref" : "#/definitions/UniverseDefinitionTaskParamsResp",
+          "description" : "Universe Details"
         },
         "universeUUID" : {
           "description" : "Universe UUID",
@@ -3157,7 +3891,109 @@
       },
       "type" : "object"
     },
-    "User Register" : {
+    "UserIntent" : {
+      "properties" : {
+        "accessKeyCode" : {
+          "type" : "string"
+        },
+        "assignPublicIP" : {
+          "type" : "boolean"
+        },
+        "awsArnString" : {
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "enableClientToNodeEncrypt" : {
+          "type" : "boolean"
+        },
+        "enableExposingService" : {
+          "enum" : [ "NONE", "EXPOSED", "UNEXPOSED" ],
+          "type" : "string"
+        },
+        "enableIPV6" : {
+          "type" : "boolean"
+        },
+        "enableNodeToNodeEncrypt" : {
+          "type" : "boolean"
+        },
+        "enableVolumeEncryption" : {
+          "type" : "boolean"
+        },
+        "enableYEDIS" : {
+          "type" : "boolean"
+        },
+        "enableYSQL" : {
+          "type" : "boolean"
+        },
+        "instanceTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "instanceType" : {
+          "type" : "string"
+        },
+        "masterGFlags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "numNodes" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "preferredRegion" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "provider" : {
+          "type" : "string"
+        },
+        "providerType" : {
+          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ],
+          "type" : "string"
+        },
+        "regionList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "replicationFactor" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "tserverGFlags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "universeName" : {
+          "type" : "string"
+        },
+        "useHostname" : {
+          "type" : "boolean"
+        },
+        "useSystemd" : {
+          "type" : "boolean"
+        },
+        "useTimeSync" : {
+          "type" : "boolean"
+        },
+        "ybSoftwareVersion" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "accessKeyCode", "assignPublicIP", "awsArnString", "deviceInfo", "enableClientToNodeEncrypt", "enableExposingService", "enableIPV6", "enableNodeToNodeEncrypt", "enableVolumeEncryption", "enableYEDIS", "enableYSQL", "instanceTags", "instanceType", "masterGFlags", "numNodes", "preferredRegion", "provider", "providerType", "regionList", "replicationFactor", "tserverGFlags", "universeName", "useHostname", "useSystemd", "useTimeSync", "ybSoftwareVersion" ],
+      "type" : "object"
+    },
+    "UserRegistrationData" : {
       "description" : "User registration data",
       "properties" : {
         "confirmPassword" : {
@@ -3254,6 +4090,21 @@
         }
       },
       "required" : [ "mountPath", "volumeSizeGB", "volumeType" ],
+      "type" : "object"
+    },
+    "YWError" : {
+      "description" : "Generic error response from Yugawware Platform API",
+      "properties" : {
+        "error" : {
+          "description" : "User visible unstructurred error message",
+          "example" : "There was a problem creating universe",
+          "type" : "string"
+        },
+        "success" : {
+          "type" : "boolean"
+        }
+      },
+      "required" : [ "success" ],
       "type" : "object"
     },
     "YWResults" : {
@@ -3415,7 +4266,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Customer Detail"
+              "$ref" : "#/definitions/CustomerDetailsData"
             }
           }
         },
@@ -3440,7 +4291,7 @@
           "name" : "Customer",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Alerts"
+            "$ref" : "#/definitions/CustomerAlertData"
           }
         } ],
         "responses" : {
@@ -4304,7 +5155,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the regions",
             "schema" : {
-              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+              "$ref" : "#/definitions/YWError"
             }
           }
         },
@@ -4468,8 +5319,11 @@
           "type" : "string"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
           }
         },
         "security" : [ {
@@ -4527,7 +5381,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/Customer Config"
+                "$ref" : "#/definitions/CustomerConfig"
               },
               "type" : "array"
             }
@@ -4561,7 +5415,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Customer Config"
+              "$ref" : "#/definitions/CustomerConfig"
             }
           }
         },
@@ -4631,7 +5485,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Customer Config"
+              "$ref" : "#/definitions/CustomerConfig"
             }
           }
         },
@@ -4658,7 +5512,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/UniverseResource"
+                "$ref" : "#/definitions/UniverseResourceDetails"
               },
               "type" : "array"
             }
@@ -4669,43 +5523,6 @@
         } ],
         "summary" : "list universe cost for all universes",
         "tags" : [ "UniverseInfo" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/features" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "upsertFeatures",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "description" : "Feature to be upserted",
-          "in" : "body",
-          "name" : "Feature",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/FeatureUpdateFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Upsert features of customer by UUID",
-        "tags" : [ "Customer" ]
       }
     },
     "/api/v1/customers/{cUUID}/host_info" : {
@@ -4886,7 +5703,7 @@
           "name" : "Metrics",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Metrics"
+            "$ref" : "#/definitions/MetricQueryParams"
           }
         } ],
         "responses" : {
@@ -5316,7 +6133,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
-              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+              "$ref" : "#/definitions/YWError"
             }
           }
         },
@@ -5536,7 +6353,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the regions",
             "schema" : {
-              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+              "$ref" : "#/definitions/YWError"
             }
           }
         },
@@ -5903,7 +6720,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Release data"
+              "$ref" : "#/definitions/ReleaseMetadata"
             }
           }
         },
@@ -5929,7 +6746,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Runtime config data"
+              "$ref" : "#/definitions/RuntimeConfigData"
             }
           }
         },
@@ -5967,7 +6784,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Runtime config data"
+              "$ref" : "#/definitions/RuntimeConfigData"
             }
           }
         },
@@ -6352,7 +7169,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/Customer Task Data"
+                "$ref" : "#/definitions/CustomerTaskData"
               },
               "type" : "array"
             }
@@ -6530,7 +7347,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
-              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+              "$ref" : "#/definitions/YWError"
             }
           }
         },
@@ -6563,7 +7380,7 @@
           "name" : "backup",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Backup table params"
+            "$ref" : "#/definitions/BackupTableParams"
           }
         } ],
         "responses" : {
@@ -6617,7 +7434,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
-              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+              "$ref" : "#/definitions/YWError"
             }
           }
         },
@@ -6681,7 +7498,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UniverseResource"
+              "$ref" : "#/definitions/UniverseResourceDetails"
             }
           }
         },
@@ -7039,7 +7856,7 @@
           "name" : "Table backup",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Multi table backup request params"
+            "$ref" : "#/definitions/MultiTableBackupRequestParams"
           }
         } ],
         "responses" : {
@@ -7174,7 +7991,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Generic error response from Yugawware Platform API"
+              "$ref" : "#/definitions/YWError"
             }
           }
         },
@@ -7433,7 +8250,7 @@
           "name" : "Table",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Universe task"
+            "$ref" : "#/definitions/TableDefinitionTaskParams"
           }
         } ],
         "responses" : {
@@ -7514,7 +8331,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Universe task"
+              "$ref" : "#/definitions/TableDefinitionTaskParams"
             }
           }
         },
@@ -7592,7 +8409,7 @@
           "name" : "Bulk import",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Bulk import params"
+            "$ref" : "#/definitions/BulkImportParams"
           }
         } ],
         "responses" : {
@@ -7638,7 +8455,7 @@
           "name" : "Backup",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Backup table params"
+            "$ref" : "#/definitions/BackupTableParams"
           }
         } ],
         "responses" : {
@@ -7979,7 +8796,7 @@
           "name" : "User",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/User Register"
+            "$ref" : "#/definitions/UserRegistrationData"
           }
         } ],
         "responses" : {
@@ -8151,7 +8968,7 @@
           "name" : "Users",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/User Register"
+            "$ref" : "#/definitions/UserRegistrationData"
           }
         } ],
         "responses" : {
