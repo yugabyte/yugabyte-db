@@ -7,7 +7,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.UUID;
 
-@ApiModel(value = "Customer Task Data", description = "Customer Task data")
+@ApiModel(value = "CustomerTaskData", description = "Customer Task data")
 public class CustomerTaskFormData {
 
   @ApiModelProperty(value = "Customer Task UUID")
