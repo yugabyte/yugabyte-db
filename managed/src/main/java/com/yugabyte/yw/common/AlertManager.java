@@ -76,49 +76,6 @@ public class AlertManager {
     this.metricService = metricService;
   }
 
-  @VisibleForTesting
-  void scheduleAlertNotification(Alert alert) {
-    if ((alert.getNextNotificationTime() == null)
-        && (alert.getState() != State.ACKNOWLEDGED)
-        && (alert.getNotifiedState() != State.ACKNOWLEDGED)) {
-      alert.setNextNotificationTime(new Date());
-    }
-  }
-
-  /**
-   * A method to run a state transition for a given alert
-   *
-   * @param alert the alert to transition states on
-   * @return the alert in a new state
-   */
-  public Alert transitionAlert(Alert alert) {
-    try {
-      switch (alert.getState()) {
-        case CREATED:
-          log.info("Transitioning alert {} to active", alert.getUuid());
-          alert.setState(Alert.State.ACTIVE);
-          scheduleAlertNotification(alert);
-          break;
-        case ACTIVE:
-          log.info("Transitioning alert {} to resolved (with email)", alert.getUuid());
-          alert.setState(Alert.State.RESOLVED);
-          scheduleAlertNotification(alert);
-          break;
-        default:
-          log.warn(
-              "Unexpected alert state {} during notification for alert {}",
-              alert.getState().name(),
-              alert.getUuid());
-      }
-
-      alert.save();
-    } catch (Exception e) {
-      log.error("Error transitioning alert state for alert {}", alert.getUuid(), e);
-    }
-
-    return alert;
-  }
-
   private Optional<AlertRoute> getRouteByAlert(Alert alert) {
     String groupUuid = alert.getLabelValue(KnownAlertLabels.GROUP_UUID);
     if (groupUuid == null) {
@@ -152,8 +109,7 @@ public class AlertManager {
         // For now using fixed delay before the notification repeat. Later the behavior
         // can be adjusted using an amount of failed attempts (using progressive value).
         alert.setNextNotificationTime(
-            Date.from(
-                new Date().toInstant().plusSeconds(NOTIFICATION_REPEAT_AFTER_FAILURE_IN_SECS)));
+            nowPlusWithoutMillis(NOTIFICATION_REPEAT_AFTER_FAILURE_IN_SECS, ChronoUnit.SECONDS));
         log.trace(
             "Next time to send notification for alert {} is {}",
             alert.getUuid(),
@@ -180,7 +136,7 @@ public class AlertManager {
   public void sendNotifications() {
     AlertFilter filter =
         AlertFilter.builder()
-            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .state(Alert.State.ACTIVE, Alert.State.RESOLVED)
             .notificationPending(true)
             .build();
     List<Alert> toNotify = alertService.list(filter);

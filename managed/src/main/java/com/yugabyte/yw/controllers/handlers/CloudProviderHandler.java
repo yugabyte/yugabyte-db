@@ -100,7 +100,7 @@ public class CloudProviderHandler {
       accessKey.delete();
     }
     NodeInstance.deleteByProvider(provider.uuid);
-    InstanceType.deleteInstanceTypesForProvider(provider, config);
+    InstanceType.deleteInstanceTypesForProvider(provider, config, configHelper);
     provider.delete();
   }
 

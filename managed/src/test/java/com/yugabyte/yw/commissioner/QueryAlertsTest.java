@@ -245,10 +245,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     List<Alert> alerts = alertService.list(alertFilter);
 
     Alert expectedAlert =
-        createAlert(raisedTime)
-            .setUuid(alert.getUuid())
-            .setState(Alert.State.ACTIVE)
-            .setTargetState(Alert.State.ACTIVE);
+        createAlert(raisedTime).setUuid(alert.getUuid()).setState(Alert.State.ACTIVE);
     copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
 
@@ -281,7 +278,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
     Alert alert = createAlert(raisedTime);
-    alert.setTargetState(Alert.State.RESOLVED);
+    alert.setState(Alert.State.RESOLVED);
     alertService.save(alert);
 
     queryAlerts.scheduleRunner();
@@ -326,7 +323,6 @@ public class QueryAlertsTest extends FakeDBApplication {
         createAlert(raisedTime)
             .setUuid(alert.getUuid())
             .setState(Alert.State.RESOLVED)
-            .setTargetState(Alert.State.RESOLVED)
             .setResolvedTime(alerts.get(0).getResolvedTime());
     copyNotificationFields(expectedAlert, alerts.get(0));
     assertThat(alerts, contains(expectedAlert));
@@ -354,7 +350,6 @@ public class QueryAlertsTest extends FakeDBApplication {
         .setName("Clock Skew Alert")
         .setMessage("Clock Skew Alert for universe Test is firing")
         .setState(Alert.State.ACTIVE)
-        .setTargetState(Alert.State.ACTIVE)
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, customer.getUuid().toString())
         .setLabel(KnownAlertLabels.DEFINITION_UUID, definition.getUuid().toString())
         .setLabel(KnownAlertLabels.GROUP_UUID, definition.getGroupUUID().toString())

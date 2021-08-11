@@ -94,12 +94,14 @@ set(YRPC_SRCS
     ${RPC_SRCS_EXTENSIONS})
 
 set(YRPC_LIBS
+  gutil
+  libev
+  lz4
   redis_protocol_proto
   rpc_header_proto
   rpc_introspection_proto
+  snappy
   yb_util
-  gutil
-  libev
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
 

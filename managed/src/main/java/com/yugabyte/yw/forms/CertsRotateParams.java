@@ -2,9 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -18,24 +17,32 @@ import play.mvc.Http.Status;
 @JsonDeserialize(converter = CertsRotateParams.Converter.class)
 public class CertsRotateParams extends UpgradeTaskParams {
 
-  // The certificate that needs to be used.
-  public UUID certUUID = null;
-  // If the root certificate needs to be rotated.
-  public boolean rotateRoot = false;
-
-  public CertsRotateParams() {}
-
-  @JsonCreator
-  public CertsRotateParams(@JsonProperty(value = "certUUID", required = true) UUID certUUID) {
-    this.certUUID = certUUID;
+  public enum CertRotationType {
+    None,
+    ServerCert,
+    RootCert
   }
+
+  // If null, no upgrade will be performed on rootCA
+  public UUID rootCA = null;
+  // If null, no upgrade will be performed on clientRootCA
+  public UUID clientRootCA = null;
+  // if null, existing value will be used
+  public Boolean rootAndClientRootCASame = null;
+
+  @JsonIgnore public CertRotationType rootCARotationType = CertRotationType.None;
+  @JsonIgnore public CertRotationType clientRootCARotationType = CertRotationType.None;
 
   @Override
   public void verifyParams(Universe universe) {
+    // Validate request params on different constraints based on current universe state.
+    // Update rootCA, clientRootCA and rootAndClientRootCASame to their desired final state.
+    // Decide what kind of upgrade needs to be done on rootCA and clientRootCA.
+
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    CertificateInfo cert = CertificateInfo.get(certUUID);
-    UUID rootCA = universe.getUniverseDetails().rootCA;
-    CertificateInfo rootCert = CertificateInfo.get(rootCA);
+    UUID currentRootCA = universe.getUniverseDetails().rootCA;
+    UUID currentClientRootCA = universe.getUniverseDetails().clientRootCA;
+    boolean currentRootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
 
     super.verifyParams(universe);
 
@@ -43,33 +50,172 @@ public class CertsRotateParams extends UpgradeTaskParams {
       throw new YWServiceException(Status.BAD_REQUEST, "Cert upgrade cannot be non restart.");
     }
 
-    if (!userIntent.providerType.equals(CloudType.onprem)) {
-      throw new YWServiceException(Status.BAD_REQUEST, "Certs can only be rotated for onprem.");
+    // Make sure rootCA and clientRootCA respects the rootAndClientRootCASame property
+    if (rootAndClientRootCASame != null
+        && rootCA != null
+        && clientRootCA != null
+        && rootAndClientRootCASame != rootCA.equals(clientRootCA)) {
+      throw new YWServiceException(
+          Status.BAD_REQUEST,
+          "rootCA and clientRootCA values should follow rootAndClientRootCASame property.");
     }
 
-    if (certUUID == null) {
-      throw new YWServiceException(Status.BAD_REQUEST, "CertUUID cannot be null");
+    // rootAndClientRootCASame is optional in request, if not present follow the existing flag
+    if (rootAndClientRootCASame == null) {
+      rootAndClientRootCASame = currentRootAndClientRootCASame;
     }
 
-    if (cert == null) {
-      throw new YWServiceException(Status.BAD_REQUEST, "Certificate not present: " + certUUID);
+    boolean isRootCARequired =
+        CertificateHelper.isRootCARequired(
+            userIntent.enableNodeToNodeEncrypt,
+            userIntent.enableClientToNodeEncrypt,
+            rootAndClientRootCASame);
+    boolean isClientRootCARequired =
+        CertificateHelper.isClientRootCARequired(
+            userIntent.enableNodeToNodeEncrypt,
+            userIntent.enableClientToNodeEncrypt,
+            rootAndClientRootCASame);
+
+    // User cannot upgrade rootCA when there is no need for rootCA in the universe
+    if (!isRootCARequired && rootCA != null && !rootCA.equals(currentRootCA)) {
+      throw new YWServiceException(
+          Status.BAD_REQUEST,
+          "rootCA is not required with the current TLS parameters and cannot upgrade.");
     }
 
-    if (cert.certType != CertificateInfo.Type.CustomCertHostPath
-        || rootCert.certType != CertificateInfo.Type.CustomCertHostPath) {
-      throw new YWServiceException(Status.BAD_REQUEST, "Only custom certs can be rotated.");
+    // User cannot upgrade clientRootCA when there is no need for clientRootCA in the universe
+    if (!isClientRootCARequired
+        && clientRootCA != null
+        && !clientRootCA.equals(currentClientRootCA)) {
+      throw new YWServiceException(
+          Status.BAD_REQUEST,
+          "clientRootCA is not required with the current TLS parameters and cannot upgrade.");
     }
 
-    if (rootCA.equals(certUUID)) {
-      throw new YWServiceException(Status.BAD_REQUEST, "Cluster already has the same cert.");
+    // Consider this case:
+    // node-to-node: true, client-to-node: true, rootAndClientRootCASame: true
+    // Initial state: rootCA: UUID, clientRootCA: null
+    // Request: { rootCA: UUID, clientRootCA: null, rootAndClientRootCASame: false }
+    // This is invalid request because clientRootCA is null currently and
+    // user is trying to update rootAndClientRootCASame without setting clientRootCA
+    if (isClientRootCARequired && currentClientRootCA == null && clientRootCA == null) {
+      throw new YWServiceException(
+          Status.BAD_REQUEST,
+          "clientRootCA is required with the current TLS parameters and cannot upgrade.");
     }
 
-    if (!rotateRoot && CertificateHelper.areCertsDiff(rootCA, certUUID)) {
-      throw new YWServiceException(Status.BAD_REQUEST, "CA certificates cannot be different.");
+    if (rootCA != null && !rootCA.equals(currentRootCA)) {
+      // When the request comes to this block, this is when actual upgrade on rootCA
+      // needs to be done. Now check on what kind of upgrade it is, RootCert or ServerCert
+      CertificateInfo rootCert = CertificateInfo.get(rootCA);
+      if (rootCert == null) {
+        throw new YWServiceException(Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+      }
+
+      switch (rootCert.certType) {
+        case SelfSigned:
+          rootCARotationType = CertRotationType.RootCert;
+          break;
+        case CustomCertHostPath:
+          if (!userIntent.providerType.equals(CloudType.onprem)) {
+            throw new YWServiceException(
+                Status.BAD_REQUEST,
+                "Certs of type CustomCertHostPath can only be used for on-prem universes.");
+          }
+          if (rootCert.getCustomCertInfo() == null) {
+            throw new YWServiceException(
+                Status.BAD_REQUEST,
+                String.format(
+                    "The certificate %s needs info. Update the cert and retry.", rootCert.label));
+          }
+          if (currentRootCA != null && !CertificateHelper.areCertsDiff(currentRootCA, rootCA)) {
+            rootCARotationType = CertRotationType.ServerCert;
+          } else {
+            rootCARotationType = CertRotationType.RootCert;
+          }
+          break;
+        case CustomServerCert:
+          throw new YWServiceException(
+              Status.BAD_REQUEST, "rootCA cannot be of type CustomServerCert.");
+      }
+    } else {
+      // Consider this case:
+      // node-to-node: false, client-to-node: true, rootAndClientRootCASame: true
+      // Initial state: rootCA: UUID, clientRootCA: null
+      // Request: { rootCA: null, clientRootCA: UUID, rootAndClientRootCASame: false }
+      // Final state: rootCA: null, clientRootCA: UUID
+      // In order to handle these kind of cases, resetting rootCA is necessary
+      rootCA = null;
+      if (isRootCARequired) {
+        rootCA = currentRootCA;
+      }
     }
 
-    if (CertificateHelper.arePathsSame(rootCA, certUUID)) {
-      throw new YWServiceException(Status.BAD_REQUEST, "The node cert/key paths cannot be same.");
+    if (clientRootCA != null && !clientRootCA.equals(currentClientRootCA)) {
+      // When the request comes to this block, this is when actual upgrade on clientRootCA
+      // needs to be done. Now check on what kind of upgrade it is, RootCert or ServerCert
+      CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
+      if (clientRootCert == null) {
+        throw new YWServiceException(Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+      }
+
+      switch (clientRootCert.certType) {
+        case SelfSigned:
+          clientRootCARotationType = CertRotationType.RootCert;
+          break;
+        case CustomCertHostPath:
+          if (!userIntent.providerType.equals(CloudType.onprem)) {
+            throw new YWServiceException(
+                Status.BAD_REQUEST,
+                "Certs of type CustomCertHostPath can only be used for on-prem universes.");
+          }
+          if (clientRootCert.getCustomCertInfo() == null) {
+            throw new YWServiceException(
+                Status.BAD_REQUEST,
+                String.format(
+                    "The certificate %s needs info. Update the cert and retry.",
+                    clientRootCert.label));
+          }
+          if (currentClientRootCA != null
+              && !CertificateHelper.areCertsDiff(currentClientRootCA, clientRootCA)) {
+            clientRootCARotationType = CertRotationType.ServerCert;
+          } else {
+            clientRootCARotationType = CertRotationType.RootCert;
+          }
+          break;
+        case CustomServerCert:
+          if (clientRootCert.getCustomServerCertInfo() == null) {
+            throw new YWServiceException(
+                Status.BAD_REQUEST,
+                String.format(
+                    "The certificate %s needs info. Update the cert and retry.",
+                    clientRootCert.label));
+          }
+          if (currentClientRootCA != null
+              && !CertificateHelper.areCertsDiff(currentClientRootCA, clientRootCA)) {
+            clientRootCARotationType = CertRotationType.ServerCert;
+          } else {
+            clientRootCARotationType = CertRotationType.RootCert;
+          }
+          break;
+      }
+    } else {
+      // Consider this case:
+      // node-to-node: false, client-to-node: true, rootAndClientRootCASame: false
+      // Initial state: rootCA: null, clientRootCA: UUID
+      // Request: { rootCA: UUID, clientRootCA: null, rootAndClientRootCASame: true }
+      // Final state: rootCA: UUID, clientRootCA: null
+      // In order to handle these kind of cases, resetting clientRootCA is necessary
+      clientRootCA = null;
+      if (isClientRootCARequired) {
+        clientRootCA = currentClientRootCA;
+      }
+    }
+
+    // When there is no upgrade needs to be done, fail the request
+    if (rootCARotationType == CertRotationType.None
+        && clientRootCARotationType == CertRotationType.None) {
+      throw new YWServiceException(Status.BAD_REQUEST, "No changes in rootCA or clientRootCA.");
     }
   }
 

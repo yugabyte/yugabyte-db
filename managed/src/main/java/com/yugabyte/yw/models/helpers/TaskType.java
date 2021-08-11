@@ -73,6 +73,8 @@ public enum TaskType {
 
   PersistResizeNode("subtasks.PersistResizeNode"),
 
+  PersistSystemdUpgrade("subtasks.PersistSystemdUpgrade"),
+
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
@@ -218,6 +220,8 @@ public enum TaskType {
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
+
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
 
   AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
 

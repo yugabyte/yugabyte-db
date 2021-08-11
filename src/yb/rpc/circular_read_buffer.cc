@@ -89,6 +89,10 @@ bool CircularReadBuffer::Full() {
   return size_ == capacity_;
 }
 
+size_t CircularReadBuffer::DataAvailable() {
+  return size_;
+}
+
 void CircularReadBuffer::Consume(size_t count, const Slice& prepend) {
   pos_ += count;
   if (pos_ >= capacity_) {

@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import java.io.Serializable;
+import java.util.Objects;
 import java.util.UUID;
 import javax.persistence.Embeddable;
 import javax.persistence.Entity;
@@ -16,9 +17,8 @@ public class AccessKeyId implements Serializable {
   public boolean equals(Object object) {
     if (object instanceof AccessKeyId) {
       AccessKeyId key = (AccessKeyId) object;
-      if (this.keyCode == key.keyCode && this.providerUUID == key.providerUUID) {
-        return true;
-      }
+      return Objects.equals(this.keyCode, key.keyCode)
+          && Objects.equals(this.providerUUID, key.providerUUID);
     }
     return false;
   }

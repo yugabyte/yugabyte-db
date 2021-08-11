@@ -15,10 +15,12 @@
 
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/table.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/row_mark.h"
 #include "yb/docdb/primitive_value.h"
 
 namespace yb {
@@ -214,23 +216,44 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
 
 //--------------------------------------------------------------------------------------------------
 
+bool PgDmlRead::IsConcreteRowRead() const {
+  // Operation reads a concrete row at least one of the following conditions is met:
+  // - ybctid is explicitly bound
+  // - ybctid is used implicitly by using secondary index
+  // - all hash and range key components are bound (Note: each key component can be bound only once)
+  return doc_op_ && bind_desc_ &&
+         (ybctid_bind_ ||
+          (secondary_index_query_ && secondary_index_query_->has_doc_op()) ||
+          (bind_desc_->num_key_columns() ==
+              (read_req_->partition_column_values_size() + read_req_->range_column_values_size())));
+}
+
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   // Set column references in protobuf and whether query is aggregate.
   SetColumnRefs();
 
-  // Initialize doc operator.
-  if (doc_op_) {
-    RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
-  }
-
+  const auto row_mark_type = GetRowMarkType(exec_params);
   if (doc_op_ &&
       !secondary_index_query_ &&
-      exec_params &&
-      (exec_params->rowmark > -1) &&
+      IsValidRowMarkType(row_mark_type) &&
       CanBuildYbctidsFromPrimaryBinds()) {
-    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids());
+    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params));
   } else {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
+    if (doc_op_) {
+      if (row_mark_type == RowMarkType::ROW_MARK_KEYSHARE && !IsConcreteRowRead()) {
+        // ROW_MARK_KEYSHARE creates a weak read intent on DocDB side. As a result it is only
+        // applicable when the read operation reads a concrete row (by using ybctid or by specifying
+        // all primary key columns). In case some columns of the primary key are not specified,
+        // a strong read intent is required to prevent rows from being deleted by another
+        // transaction. For this purpose ROW_MARK_KEYSHARE must be replaced with ROW_MARK_SHARE.
+        auto actual_exec_params = *exec_params;
+        actual_exec_params.rowmark = RowMarkType::ROW_MARK_SHARE;
+        RETURN_NOT_OK(doc_op_->ExecuteInit(&actual_exec_params));
+      } else {
+        RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
+      }
+    }
   }
 
   // First, process the secondary index request.
@@ -411,7 +434,7 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
   return Status::OK();
 }
 
-Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
+Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params) {
   const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
   std::vector<Slice> ybctidsAsSlice;
   for (const auto& ybctid : ybctids) {
@@ -421,6 +444,7 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
   read_req_->clear_partition_column_values();
   read_req_->clear_range_column_values();
   read_req_->set_unknown_ybctid_allowed(true);
+  RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
   return doc_op_->PopulateDmlByYbctidOps(&ybctidsAsSlice);
 }
 

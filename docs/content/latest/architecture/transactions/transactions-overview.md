@@ -37,7 +37,7 @@ YugabyteDB uses **Hybrid Logical Clocks (HLCs)**. HLCs solve the problem by comb
 
 Each node in a YugabyteDB cluster first computes its HLC. HLC is represented as a (physical time component, logical component) tuple. HLCs generated on any node are strictly monotonic, and are compared as a tuple. When comparing two HLCs, the physical time component takes precedence over the logical component.
 
-* **Physical time component:** YugabyteDB uses the physical clock (`CLOCK_REALTIME` in Linux) of a node to initialize the physical time component of its HLC. Once initialized, the physical time component can only get updated to a higher value. A monotonic clock is used since it represents the time elapsed since some arbitrary, fixed point in the past and guarantees that the time source is strictly linearly increasing.
+* **Physical time component:** YugabyteDB uses the physical clock (`CLOCK_REALTIME` in Linux) of a node to initialize the physical time component of its HLC. Once initialized, the physical time component can only get updated to a higher value.
 
 * **Logical component:** For a given physical time component, the logical component of the HLC is a monotonically increasing number that provides ordering of events happening within that same physical time. This is initially set to 0. If the physical time component gets updated at any point, the logical component is reset to 0.
 
