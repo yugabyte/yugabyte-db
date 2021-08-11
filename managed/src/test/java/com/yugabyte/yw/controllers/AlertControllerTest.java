@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -110,6 +111,7 @@ public class AlertControllerTest extends FakeDBApplication {
   private AlertService alertService;
   private AlertDefinitionService alertDefinitionService;
   private AlertDefinitionGroupService alertDefinitionGroupService;
+  private AlertReceiverService alertReceiverService;
   private AlertRouteService alertRouteService;
 
   private AlertDefinitionGroup alertDefinitionGroup;
@@ -129,7 +131,8 @@ public class AlertControllerTest extends FakeDBApplication {
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    alertReceiverService = new AlertReceiverService();
+    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
     alertDefinitionGroup = ModelFactory.createAlertDefinitionGroup(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertDefinitionGroup);
 
@@ -309,7 +312,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken,
                     data));
     AssertHelper.assertBadRequest(
-        result, "Unable to update alert receiver: Slack parameters: username is empty.");
+        result, "Unable to create/update alert receiver: Slack parameters: username is empty.");
   }
 
   @Test
@@ -421,12 +424,12 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private ObjectNode getAlertRouteJson(boolean isDefault) {
     AlertReceiver receiver1 =
-        AlertReceiver.create(
+        ModelFactory.createAlertReceiver(
             customer.getUuid(),
             getAlertReceiverName(),
             AlertUtils.createParamsInstance(TargetType.Email));
     AlertReceiver receiver2 =
-        AlertReceiver.create(
+        ModelFactory.createAlertReceiver(
             customer.getUuid(),
             getAlertReceiverName(),
             AlertUtils.createParamsInstance(TargetType.Slack));
@@ -449,7 +452,7 @@ public class AlertControllerTest extends FakeDBApplication {
       List<AlertReceiver> receivers =
           receiverUUIDs
               .stream()
-              .map(uuid -> AlertReceiver.getOrBadRequest(customer.getUuid(), uuid))
+              .map(uuid -> alertReceiverService.getOrBadRequest(customer.getUuid(), uuid))
               .collect(Collectors.toList());
 
       AlertRoute route = new AlertRoute();
