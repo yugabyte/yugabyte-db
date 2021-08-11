@@ -409,57 +409,6 @@ TEST_P(CDCServiceTest, TestCreateCDCStream) {
   ASSERT_EQ(table_id, table_.table()->id());
 }
 
-TEST_P(CDCServiceTest, TestBootstrapProducer) {
-  constexpr int kNRows = 100;
-  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
-      &client_->proxy_cache(),
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
-
-  std::string tablet_id;
-  GetTablet(&tablet_id);
-
-  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
-  for (int i = 0; i < kNRows; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
-  }
-
-  BootstrapProducerRequestPB req;
-  BootstrapProducerResponsePB resp;
-  req.add_table_ids(table_.table()->id());
-  rpc::RpcController rpc;
-  cdc_proxy_->BootstrapProducer(req, &resp, &rpc);
-  ASSERT_FALSE(resp.has_error());
-
-  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
-
-  string bootstrap_id = resp.cdc_bootstrap_ids(0);
-
-  // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
-  // id was inserted.
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client_.get()));
-  ASSERT_EQ(1, boost::size(client::TableRange(table)));
-  int nrows = 0;
-  for (const auto& row : client::TableRange(table)) {
-    nrows++;
-    string stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    ASSERT_EQ(stream_id, bootstrap_id);
-
-    string checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    auto s = OpId::FromString(checkpoint);
-    ASSERT_OK(s);
-    OpId op_id = *s;
-    // When no writes are present, the checkpoint's index is 1. Plus one for the ALTER WAL RETENTION
-    // TIME that we issue when cdc is enabled on a table.
-    ASSERT_EQ(op_id.index, 2 + kNRows);
-  }
-
-  // This table only has one tablet.
-  ASSERT_EQ(nrows, 1);
-}
-
 TEST_P(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
   // Set default WAL retention time to 10 hours.
   FLAGS_cdc_wal_retention_time_secs = 36000;
@@ -1411,6 +1360,65 @@ class CDCServiceTestDurableMinReplicatedIndex : public CDCServiceTest {
 
 INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestDurableMinReplicatedIndex,
                         ::testing::Bool());
+
+TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
+  constexpr int kNRows = 100;
+  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+      &client_->proxy_cache(),
+      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+  for (int i = 0; i < kNRows; i++) {
+    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
+  }
+
+  BootstrapProducerRequestPB req;
+  BootstrapProducerResponsePB resp;
+  req.add_table_ids(table_.table()->id());
+  rpc::RpcController rpc;
+  cdc_proxy_->BootstrapProducer(req, &resp, &rpc);
+  ASSERT_FALSE(resp.has_error());
+
+  ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
+
+  string bootstrap_id = resp.cdc_bootstrap_ids(0);
+
+  // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
+  // id was inserted.
+  client::TableHandle table;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table.Open(cdc_state_table, client_.get()));
+  ASSERT_EQ(1, boost::size(client::TableRange(table)));
+  int nrows = 0;
+  for (const auto& row : client::TableRange(table)) {
+    nrows++;
+    string stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    ASSERT_EQ(stream_id, bootstrap_id);
+
+    string checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
+    auto s = OpId::FromString(checkpoint);
+    ASSERT_OK(s);
+    OpId op_id = *s;
+    // When no writes are present, the checkpoint's index is 1. Plus one for the ALTER WAL RETENTION
+    // TIME that we issue when cdc is enabled on a table.
+    ASSERT_EQ(op_id.index, 2 + kNRows);
+  }
+
+  // This table only has one tablet.
+  ASSERT_EQ(nrows, 1);
+
+  // Ensure that cdc_min_replicated_index is set to the correct value after Bootstrap.
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  ASSERT_TRUE(cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id,
+              &tablet_peer));
+
+  auto latest_opid = tablet_peer->log()->GetLatestEntryOpId();
+  WaitForCDCIndex(tablet_peer, latest_opid.index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+}
 
 TEST_P(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDurable) {
   CDCStreamId stream_id;
