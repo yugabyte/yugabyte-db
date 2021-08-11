@@ -17,7 +17,7 @@ public class AvailabilityZoneFormData {
   @ApiModelProperty(value = "Availability zones", required = true)
   public List<AvailabilityZoneData> availabilityZones;
 
-  @ApiModel(value = "Availability Zones", description = "Availability Zones.")
+  @ApiModel(description = "Availability Zones.")
   public static class AvailabilityZoneData {
     @Constraints.Required()
     @ApiModelProperty(value = "Az code", required = true)

@@ -9,7 +9,7 @@ import java.util.Set;
 import org.yb.ColumnSchema;
 import org.yb.Type;
 
-@ApiModel(value = "Column details", description = "Column details")
+@ApiModel(description = "Column details")
 public class ColumnDetails {
 
   // The relative position for this column in the table and in CQL commands

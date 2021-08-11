@@ -1,6 +1,5 @@
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CertificateDetails;
@@ -131,7 +130,8 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withData(result);
   }
 
-  @ApiOperation(value = "get root certificate", response = JsonNode.class)
+  // TODO: cleanup raw json
+  @ApiOperation(value = "get root certificate", response = Object.class)
   public Result getRootCert(UUID customerUUID, UUID rootCA) {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo.getOrBadRequest(rootCA, customerUUID);

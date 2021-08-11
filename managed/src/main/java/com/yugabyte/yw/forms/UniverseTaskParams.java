@@ -18,10 +18,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import play.data.validation.Constraints;
 
-@ApiModel(value = "Universe task", description = "Universe task")
 public class UniverseTaskParams extends AbstractTaskParams {
 
-  @ApiModel(value = "Encryption at rest config", description = "Encryption at rest config")
+  @ApiModel(description = "Encryption at rest config")
   public static class EncryptionAtRestConfig {
     public enum OpType {
       @EnumValue("ENABLE")
@@ -70,7 +69,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
     }
   }
 
-  @ApiModel(value = "Communication ports", description = "Communication ports")
+  @ApiModel(description = "Communication ports")
   public static class CommunicationPorts {
     public CommunicationPorts() {
       // Set default port values.
@@ -151,7 +150,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
     }
   }
 
-  @ApiModel(value = "Extra dependencies", description = "Extra dependencies")
+  @ApiModel(description = "Extra dependencies")
   public static class ExtraDependencies {
     // Flag to install node_exporter on nodes.
     @ApiModelProperty(value = "Is install node exporter required")

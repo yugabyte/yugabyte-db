@@ -9,8 +9,9 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import io.ebean.Finder;
@@ -21,6 +22,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -336,7 +338,7 @@ public class CertificateInfo extends Model {
     return true;
   }
 
-  @Transient private Boolean inUse = null;
+  @VisibleForTesting @Transient Boolean inUse = null;
 
   @ApiModelProperty(
       value = "Indicates whether the Certificate is in use or not",
@@ -354,22 +356,22 @@ public class CertificateInfo extends Model {
     this.inUse = inUse;
   }
 
-  @Transient private ArrayNode universeDetails = null;
+  @VisibleForTesting @Transient List<UniverseDetailSubset> universeDetailSubsets = null;
 
   @ApiModelProperty(
       value = "Associated universe details of the Certificate",
       accessMode = READ_ONLY)
-  public ArrayNode getUniverseDetails() {
-    if (universeDetails == null) {
+  public List<UniverseDetailSubset> getUniverseDetails() {
+    if (universeDetailSubsets == null) {
       Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
       return Util.getUniverseDetails(universes);
     } else {
-      return universeDetails;
+      return universeDetailSubsets;
     }
   }
 
-  public void setUniverseDetails(ArrayNode universeDetails) {
-    this.universeDetails = universeDetails;
+  public void setUniverseDetails(List<UniverseDetailSubset> universeDetailSubsets) {
+    this.universeDetailSubsets = universeDetailSubsets;
   }
 
   public static void populateUniverseData(
@@ -409,7 +411,7 @@ public class CertificateInfo extends Model {
                 Util.getUniverseDetails(certificateUniverseMap.get(certificateInfo.uuid)));
           } else {
             certificateInfo.setInUse(false);
-            certificateInfo.setUniverseDetails(Json.newArray());
+            certificateInfo.setUniverseDetails(new ArrayList<>());
           }
         });
   }

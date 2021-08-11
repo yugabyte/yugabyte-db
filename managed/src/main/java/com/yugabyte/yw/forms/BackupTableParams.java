@@ -12,7 +12,7 @@ import java.util.UUID;
 import org.yb.Common.TableType;
 import play.data.validation.Constraints;
 
-@ApiModel(value = "Backup table params", description = "Backup table params")
+@ApiModel(description = "Backup table params")
 public class BackupTableParams extends TableManagerParams {
   public enum ActionType {
     CREATE,

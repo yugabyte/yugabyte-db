@@ -6,7 +6,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Objects;
 
-@ApiModel(value = "Smtp Data", description = "Customers SMTP data.")
+@ApiModel(description = "Customers SMTP data.")
 public class SmtpData {
   @ApiModelProperty(value = "SMTP server", example = "smtp.gmail.com")
   public String smtpServer = null;

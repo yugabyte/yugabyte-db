@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 /** This class will be used by Customer details API. */
-@ApiModel(value = "Customer Detail", description = "Customers features and Universe UUID.")
+@ApiModel(description = "Customers features and Universe UUID.")
 public class CustomerDetailsData {
 
   @ApiModelProperty(value = "User uuid", accessMode = READ_ONLY)
@@ -32,7 +32,7 @@ public class CustomerDetailsData {
       accessMode = READ_ONLY)
   public Date creationDate;
 
-  @ApiModelProperty(value = "Features", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   public JsonNode features;
 
   @ApiModelProperty(

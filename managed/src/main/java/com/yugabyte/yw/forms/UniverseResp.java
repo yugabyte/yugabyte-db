@@ -54,10 +54,10 @@ public class UniverseResp {
   @ApiModelProperty(value = "DNS name")
   public final String dnsName;
 
-  @ApiModelProperty(value = "Universe Resources", dataType = "java.util.Map")
+  @ApiModelProperty(value = "Universe Resources")
   public final UniverseResourceDetails resources;
 
-  @ApiModelProperty(value = "Universe Details", dataType = "java.util.Map")
+  @ApiModelProperty(value = "Universe Details")
   public final UniverseDefinitionTaskParamsResp universeDetails;
 
   @ApiModelProperty(value = "Universe config")

@@ -9,7 +9,7 @@ import java.util.Map;
 import play.data.validation.Constraints;
 
 /** This class will be used by the API and UI Form Elements to validate constraints are met */
-@ApiModel(value = "Alerts", description = "Alerts associated with customers")
+@ApiModel(value = "CustomerAlertData", description = "Alerts associated with customers")
 public class AlertingFormData {
   @Constraints.MaxLength(15)
   @ApiModelProperty(value = "Alert code")
@@ -30,7 +30,7 @@ public class AlertingFormData {
   @ApiModelProperty(value = "Feature")
   public Map features;
 
-  @ApiModel(value = "Alert Detail", description = "Alerts associated with customers")
+  @ApiModel(description = "Alerts associated with customers")
   public static class AlertingData {
     @Constraints.Email
     @Constraints.MinLength(5)

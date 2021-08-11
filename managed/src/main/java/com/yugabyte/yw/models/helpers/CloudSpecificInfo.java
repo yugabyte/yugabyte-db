@@ -11,7 +11,7 @@ import io.swagger.annotations.ApiModelProperty;
  * <p>NOTE: the names of fields in this class MUST correspond to the output field names of the
  * script 'yb_inventory.py' which is in the 'devops' repository.
  */
-@ApiModel(value = "Cloud specific info", description = "Cloud specific information")
+@ApiModel(description = "Cloud specific information")
 public class CloudSpecificInfo {
   // The private ip address
   @ApiModelProperty(value = "Private IP")

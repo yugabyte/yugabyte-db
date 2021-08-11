@@ -13,7 +13,7 @@ import java.util.Map;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
 
-@ApiModel(value = "Table details", description = "Table details")
+@ApiModel(description = "Table details")
 public class TableDetails {
 
   // The name of the table.

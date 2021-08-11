@@ -251,7 +251,7 @@ public class ModelFactory {
     params.setKeyspace("foo");
     params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
-    return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000);
+    return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000, null);
   }
 
   public static CustomerConfig setCallhomeLevel(Customer customer, String level) {

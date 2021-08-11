@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.UUID;
 import play.mvc.Http;
 
-@ApiModel(value = "Runtime config data", description = "Runtime config data")
+@ApiModel(value = "RuntimeConfigData", description = "Runtime config data")
 public class RuntimeConfigFormData {
 
   @ApiModelProperty(value = "list of scoped config")
@@ -42,7 +42,7 @@ public class RuntimeConfigFormData {
     scopedConfigList.add(new ScopedConfig(type, uuid, true));
   }
 
-  @ApiModel(value = "Scoped config", description = "Scoped config")
+  @ApiModel(description = "Scoped config")
   public static class ScopedConfig {
     @ApiModelProperty(value = "Scope type")
     public final ScopeType type;
@@ -95,7 +95,7 @@ public class RuntimeConfigFormData {
     }
   }
 
-  @ApiModel(value = "Configs entry", description = "Configs entry")
+  @ApiModel(description = "Configs entry")
   public static class ConfigEntry {
     /**
      * When includeInherited is true; we will return inherited entries. For example a key may not be

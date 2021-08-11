@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.UUID;
 
 /** This class will be used by Table controller createMultiTableBackup API. */
-@ApiModel(value = "Multi table backup request params", description = "Backup table params")
+@ApiModel(description = "Backup table params")
 public class MultiTableBackupRequestParams extends BackupTableParams {
 
   @ApiModelProperty(value = "Customer UUID")

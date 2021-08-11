@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.YWServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
-@ApiModel(value = "Device info", description = "Device information")
+@ApiModel(description = "Device information")
 public class DeviceInfo {
 
   // The size of each volume in each instance (if specified).

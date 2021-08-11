@@ -120,7 +120,7 @@ public class Users extends Model {
   private String apiToken;
 
   @Column(nullable = true, columnDefinition = "TEXT")
-  @ApiModelProperty(value = "Features", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
   // The role of the user.

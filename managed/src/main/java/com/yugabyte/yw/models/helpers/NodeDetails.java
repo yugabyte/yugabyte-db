@@ -21,7 +21,7 @@ import java.util.UUID;
 
 /** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(ignoreUnknown = true)
-@ApiModel(value = "Node details", description = "Node details")
+@ApiModel(description = "Node details")
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node id")
