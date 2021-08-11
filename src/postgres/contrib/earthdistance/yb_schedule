@@ -1,0 +1,3 @@
+# contrib/earthdistance/yb_schedule
+
+test: yb_pg_earthdistance
