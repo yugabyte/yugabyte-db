@@ -48,12 +48,12 @@
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.6.0-yb-6</version>
+      <version>4.6.0-yb-9</version>
     </dependency>
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-query-builder</artifactId>
-      <version>4.6.0-yb-6</version>
+      <version>4.6.0-yb-9</version>
     </dependency>
     <dependency>
       <groupId>net.jpountz.lz4</groupId>
@@ -91,6 +91,11 @@
         <groupId>com.yugabyte.spark</groupId>
         <artifactId>spark-cassandra-connector_2.12</artifactId>
         <version>3.0-yb-4</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-handler</artifactId>
+        <version>4.1.60.Final</version>
       </dependency>
     <dependency>
       <groupId>commons-io</groupId>
