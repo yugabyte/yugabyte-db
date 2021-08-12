@@ -549,6 +549,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Sends a SIGCONT signal to the daemon.
   CHECKED_STATUS Resume();
 
+  CHECKED_STATUS Kill(int signal);
+
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 

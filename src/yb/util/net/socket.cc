@@ -171,11 +171,7 @@ int Socket::GetFd() const {
   return fd_;
 }
 
-bool Socket::IsTemporarySocketError(const Status& status) {
-  if (!status.IsNetworkError()) {
-    return false;
-  }
-  auto err = Errno(status);
+bool IsTemporarySocketError(int err) {
   return err == EAGAIN || err == EWOULDBLOCK || err == EINTR || err == EINPROGRESS;
 }
 
@@ -359,6 +355,10 @@ Status Socket::Accept(Socket *new_conn, Endpoint* remote, int flags) {
 #else
   new_conn->Reset(::accept(fd_, temp.data(), &olen));
   if (new_conn->GetFd() < 0) {
+    if (IsTemporarySocketError(errno)) {
+      static const Status try_accept_again = STATUS(TryAgain, "Accept not yet ready");
+      return try_accept_again;
+    }
     return STATUS(NetworkError, "accept(2) error", Errno(errno));
   }
   RETURN_NOT_OK(new_conn->SetNonBlocking(flags & FLAG_NONBLOCKING));
@@ -392,6 +392,10 @@ Status Socket::Connect(const Endpoint& remote) {
 
   DCHECK_GE(fd_, 0);
   if (::connect(fd_, remote.data(), remote.size()) < 0) {
+    if (IsTemporarySocketError(errno)) {
+      static const Status try_connect_again = STATUS(TryAgain, "Connect not yet ready");
+      return try_connect_again;
+    }
     return STATUS(NetworkError, "connect(2) error", Errno(errno));
   }
   return Status::OK();
@@ -440,6 +444,10 @@ Status Socket::Writev(const struct ::iovec *iov, int iov_len,
   msg.msg_iovlen = iov_len;
   int res = ::sendmsg(fd_, &msg, MSG_NOSIGNAL);
   if (PREDICT_FALSE(res < 0)) {
+    if (IsTemporarySocketError(errno)) {
+      static const Status try_write_again = STATUS(TryAgain, "Write not yet ready");
+      return try_write_again;
+    }
     return STATUS(NetworkError, "sendmsg error", Errno(errno));
   }
 
@@ -512,6 +520,10 @@ Result<int32_t> Socket::Recv(uint8_t* buf, int32_t amt) {
     if (res == 0) {
       return STATUS(NetworkError, "Recv() got EOF from remote", Slice(), Errno(ESHUTDOWN));
     }
+    if (IsTemporarySocketError(errno)) {
+      static const Status try_recv_again = STATUS(TryAgain, "Recv not yet ready");
+      return try_recv_again;
+    }
     return STATUS(NetworkError, "Recv error", Errno(errno));
   }
   return res;
@@ -533,6 +545,10 @@ Result<int32_t> Socket::Recvv(IoVecs* vecs) {
   if (PREDICT_FALSE(res <= 0)) {
     if (res == 0) {
       return STATUS(NetworkError, "recvmsg got EOF from remote", Slice(), Errno(ESHUTDOWN));
+    }
+    if (IsTemporarySocketError(errno)) {
+      static const Status try_recv_again = STATUS(TryAgain, "Recv not yet ready");
+      return try_recv_again;
     }
     return STATUS(NetworkError, "recvmsg error", Errno(errno));
   }
@@ -582,8 +598,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
       // to me (mbautin). http://man7.org/linux/man-pages/man2/recv.2.html says that EAGAIN and
       // EWOULDBLOCK could be used interchangeably, and these could happen on a nonblocking socket
       // that no data is available on. I think we should just retry in that case.
-      Errno err(recv_res.status());
-      if (err == EINTR || err == EAGAIN) {
+      if (recv_res.status().IsTryAgain()) {
         continue;
       }
       return recv_res.status().CloneAndPrepend("BlockingRecv error");

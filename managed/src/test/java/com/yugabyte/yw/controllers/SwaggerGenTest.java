@@ -67,16 +67,16 @@ public class SwaggerGenTest extends FakeDBApplication {
           fileWriter.write(actualSwaggerSpec);
         }
         fail(
-            "=============================================================================="
-                + "Run $sbt swaggerGen\n  The new swagger spec written to:"
+            "==============================================================================\n"
+                + "Run $sbt swaggerGen\n  The new swagger spec written to:\n"
                 + outFile.getAbsolutePath()
-                + "==============================================================================");
+                + "\n==========================================================================\n");
       }
     }
   }
 
   private String getSwaggerSpec() throws JsonProcessingException {
-    Result result = route(Helpers.fakeRequest("GET", "/docs/swagger.json"));
+    Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
     return sort(contentAsString(result, mat));
   }
 

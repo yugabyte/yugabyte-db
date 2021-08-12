@@ -940,6 +940,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     int modifiedCount = Ebean.execute(update);
     assertEquals(modifiedCount, 1);
 
+    when(mockConfigHelper.getAWSInstancePrefixesSupported())
+        .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
+
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
 
@@ -2164,7 +2167,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    if (!rootAndClientRootCASame && clientToNode)
+      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     else assertNull(universe.getUniverseDetails().clientRootCA);
     assertEquals(
         nodeToNode,
@@ -2293,7 +2297,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    if (!rootAndClientRootCASame && clientToNode)
+      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     else assertNull(universe.getUniverseDetails().clientRootCA);
     assertEquals(
         nodeToNode,

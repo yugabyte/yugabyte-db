@@ -82,6 +82,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
 
   bool IsDdlMode() const { return ddl_session_.get() != nullptr; }

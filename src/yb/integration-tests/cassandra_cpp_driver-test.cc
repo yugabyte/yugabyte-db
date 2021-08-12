@@ -1750,13 +1750,13 @@ TEST_F_EX(
       // Retry.
       result = GetTableSize(&session_, "test_table");
     }
-    const int64_t main_table_size = ASSERT_RESULT(result);
+    const int64_t main_table_size = *result;
     result = GetTableSize(&session_, "test_table_index_by_v");
 
     ASSERT_EQ(main_table_size, 2);
     if (is_index_created) {
       // This is to demonstrate issue #5811.  These statements should not fail.
-      const int64_t index_table_size = ASSERT_RESULT(result);
+      const int64_t index_table_size = ASSERT_RESULT(std::move(result));
       ASSERT_EQ(index_table_size, 1);
       // Since the main table has two rows while the index has one row, the index is inconsistent.
       ASSERT_TRUE(false) << "index was created and is inconsistent with its indexed table";

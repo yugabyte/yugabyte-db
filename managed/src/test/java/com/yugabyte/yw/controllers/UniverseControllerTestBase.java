@@ -10,10 +10,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -47,6 +43,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.io.IOException;
@@ -71,6 +68,9 @@ import play.libs.Json;
 import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 import play.test.WithApplication;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 
 public class UniverseControllerTestBase extends WithApplication {
   protected static Commissioner mockCommissioner;
@@ -98,6 +98,7 @@ public class UniverseControllerTestBase extends WithApplication {
   protected PlayCacheSessionStore mockSessionStore;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected Config mockRuntimeConfig;
+  protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
 
   @Override
@@ -118,6 +119,7 @@ public class UniverseControllerTestBase extends WithApplication {
     mockRuntimeConfig = mock(Config.class);
     mockReleaseManager = mock(ReleaseManager.class);
     healthChecker = mock(HealthChecker.class);
+    mockQueryHelper = mock(QueryHelper.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
@@ -143,6 +145,7 @@ public class UniverseControllerTestBase extends WithApplication {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockRuntimeConfig)))
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
+        .overrides(bind(QueryHelper.class).toInstance(mockQueryHelper))
         .build();
   }
 

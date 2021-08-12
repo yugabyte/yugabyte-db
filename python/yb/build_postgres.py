@@ -537,15 +537,18 @@ class PostgresBuilder(YbBuildToolBase):
             ]
             git_version = self.get_git_version()
             if git_version and git_version >= semantic_version.Version('1.9.0'):
-                # Git version 1.9.0 allows specifying negative pathspec.  Use it to exclude changes
-                # to regress test files not needed for build.
+                # Git version 1.8.5 allows specifying glob pathspec, and Git version 1.9.0 allows
+                # specifying negative pathspec.  Use them to exclude changes to regress test files
+                # not needed for build.
                 pathspec.extend([
-                    ':(exclude)src/postgres/src/test/regress/*_schedule',
-                    ':(exclude)src/postgres/src/test/regress/data',
-                    ':(exclude)src/postgres/src/test/regress/expected',
-                    ':(exclude)src/postgres/src/test/regress/input',
-                    ':(exclude)src/postgres/src/test/regress/output',
-                    ':(exclude)src/postgres/src/test/regress/sql',
+                    ':(glob,exclude)src/postgres/**/*_schedule',
+                    ':(glob,exclude)src/postgres/**/data/*.csv',
+                    ':(glob,exclude)src/postgres/**/data/*.data',
+                    ':(glob,exclude)src/postgres/**/expected/*.out',
+                    ':(glob,exclude)src/postgres/**/input/*.source',
+                    ':(glob,exclude)src/postgres/**/output/*.source',
+                    ':(glob,exclude)src/postgres/**/specs/*.spec',
+                    ':(glob,exclude)src/postgres/**/sql/*.sql',
                 ])
             # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
@@ -557,7 +560,7 @@ class PostgresBuilder(YbBuildToolBase):
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
             "git_commit_sha1=%s" % git_hash,
-            "git_diff_sha256=%s" % hashlib.sha256(git_diff),
+            "git_diff_sha256=%s" % hashlib.sha256(git_diff).hexdigest(),
             ])
 
         if include_env_vars:

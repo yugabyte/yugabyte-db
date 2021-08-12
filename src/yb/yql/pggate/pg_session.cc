@@ -56,6 +56,8 @@ DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
+DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
+
 namespace yb {
 namespace pggate {
 
@@ -672,7 +674,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
     // Try one more time.
     result = LoadTable(oid);
   }
-  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(result);
+  auto t = VERIFY_RESULT(std::move(result));
 
   auto psql_write(t->NewPgsqlInsert());
 
@@ -822,7 +824,7 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
     return Status::OK();
   }
 
-  PgTableDesc::ScopedRefPtr t = CHECK_RESULT(r);
+  auto t = std::move(*r);
   if (t == nullptr) {
     return Status::OK();
   }
@@ -1213,11 +1215,13 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
         Slice(),
         PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
   } else {
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests || FLAGS_ysql_log_failed_docdb_requests)) {
+      LOG(INFO) << "Operation failed: " << op.ToString();
+    }
     s = STATUS(QLError, op.response().error_message(), Slice(),
                PgsqlError(pg_error_code));
   }
-  s = s.CloneAndAddErrorCode(TransactionError(txn_error_code));
-  return s;
+  return s.CloneAndAddErrorCode(TransactionError(txn_error_code));
 }
 
 Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
@@ -1243,6 +1247,7 @@ Status PgSession::ListTabletServers(YBCServerDescriptor **servers, int *numofser
       const char *zoneC = YBCPAllocStdString(zone);
       const char *publicIpC = YBCPAllocStdString(publicIp);
       servers[i] = reinterpret_cast<YBCServerDescriptor *>(YBCPAlloc(sizeof(YBCServerDescriptor)));
+      servers[i]->pgPort = tablet_servers[i]->pg_port();
       servers[i]->host = hostC;
       servers[i]->cloud = cloudC;
       servers[i]->region = regionC;
@@ -1283,10 +1288,12 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackSubTransaction(SubTransactionId id) {
-  // TODO(savepoints) -- update client-side aborted subtransaction bitset
   // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
   // eventually send this metadata.
-  return Status::OK();
+  // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
+  // SubTransactionMetadata.
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RollbackSubTransaction(id);
 }
 
 }  // namespace pggate

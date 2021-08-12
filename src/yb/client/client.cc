@@ -803,9 +803,10 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& source_namespace_id,
                                             const boost::optional<uint32_t>& next_pg_oid,
                                             const bool colocated) {
-  Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
-                                                         : NamespaceExists(namespace_name));
-  if (VERIFY_RESULT(namespace_exists)) {
+  const auto namespace_exists = VERIFY_RESULT(
+      !namespace_id.empty() ? NamespaceIdExists(namespace_id)
+                            : NamespaceExists(namespace_name));
+  if (namespace_exists) {
     // Verify that the namespace we found is running so that, once this request returns,
     // the client can send operations without receiving a "namespace not found" error.
     return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, namespace_id,
@@ -1523,7 +1524,8 @@ Status YBClient::ListLiveTabletServers(
     auto ts = std::make_unique<YBTabletServerPlacementInfo>(
         entry.instance_id().permanent_uuid(),
         DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host(),
-        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary, publicIp);
+        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary,
+        publicIp, entry.registration().common().pg_port());
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();

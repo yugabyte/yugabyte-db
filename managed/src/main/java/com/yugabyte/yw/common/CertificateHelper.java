@@ -8,6 +8,9 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -548,22 +551,76 @@ public class CertificateHelper {
     }
   }
 
+  public static boolean isRootCARequired(UniverseDefinitionTaskParams taskParams) {
+    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+    return isRootCARequired(
+        userIntent.enableNodeToNodeEncrypt,
+        userIntent.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
+  }
+
   public static boolean isRootCARequired(AnsibleConfigureServers.Params taskParams) {
-    return taskParams.enableNodeToNodeEncrypt
-        || (taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt);
+    return isRootCARequired(
+        taskParams.enableNodeToNodeEncrypt,
+        taskParams.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
   }
 
   public static boolean isRootCARequired(UniverseSetTlsParams.Params taskParams) {
-    return taskParams.enableNodeToNodeEncrypt
-        || (taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt);
+    return isRootCARequired(
+        taskParams.enableNodeToNodeEncrypt,
+        taskParams.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
+  }
+
+  public static boolean isRootCARequired(TlsToggleParams taskParams) {
+    return isRootCARequired(
+        taskParams.enableNodeToNodeEncrypt,
+        taskParams.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
+  }
+
+  public static boolean isRootCARequired(
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      boolean rootAndClientRootCASame) {
+    return enableNodeToNodeEncrypt || (rootAndClientRootCASame && enableClientToNodeEncrypt);
+  }
+
+  public static boolean isClientRootCARequired(UniverseDefinitionTaskParams taskParams) {
+    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+    return isClientRootCARequired(
+        userIntent.enableNodeToNodeEncrypt,
+        userIntent.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
   }
 
   public static boolean isClientRootCARequired(AnsibleConfigureServers.Params taskParams) {
-    return !taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt;
+    return isClientRootCARequired(
+        taskParams.enableNodeToNodeEncrypt,
+        taskParams.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
   }
 
   public static boolean isClientRootCARequired(UniverseSetTlsParams.Params taskParams) {
-    return !taskParams.rootAndClientRootCASame && taskParams.enableClientToNodeEncrypt;
+    return isClientRootCARequired(
+        taskParams.enableNodeToNodeEncrypt,
+        taskParams.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
+  }
+
+  public static boolean isClientRootCARequired(TlsToggleParams taskParams) {
+    return isClientRootCARequired(
+        taskParams.enableNodeToNodeEncrypt,
+        taskParams.enableClientToNodeEncrypt,
+        taskParams.rootAndClientRootCASame);
+  }
+
+  public static boolean isClientRootCARequired(
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      boolean rootAndClientRootCASame) {
+    return !rootAndClientRootCASame && enableClientToNodeEncrypt;
   }
 
   public static void writeKeyFileContentToKeyPath(PrivateKey keyContent, String keyPath) {

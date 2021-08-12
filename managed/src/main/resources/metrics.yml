@@ -270,9 +270,9 @@ system_load_over_time:
       type: "date"
     yaxis:
       alias:
-        "node_load1": "Small"
-        "node_load5": "Medium"
-        "node_load15": "Large"
+        "node_load1": "1 minute"
+        "node_load5": "5 minutes"
+        "node_load15": "15 minutes"
 
 disk_bytes_per_second_per_node:
   metric: ""

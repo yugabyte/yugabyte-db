@@ -1696,3 +1696,141 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	YBCPgDeleteStatement(ybc_stmt);
 	return tuple;
 }
+
+/*
+ * ANALYZE support: take random sample of a YB table data
+ */
+
+YbSample
+ybBeginSample(Relation rel, int targrows)
+{
+	ReservoirStateData rstate;
+	Oid dboid = YBCGetDatabaseOid(rel);
+	Oid relid = RelationGetRelid(rel);
+	TupleDesc tupdesc = RelationGetDescr(rel);
+	YbSample ybSample = (YbSample) palloc0(sizeof(YbSampleData));
+	ybSample->relation = rel;
+	ybSample->targrows = targrows;
+	ybSample->liverows = 0;
+	ybSample->deadrows = 0;
+
+	/*
+	 * Create new sampler command
+	 */
+	HandleYBStatus(YBCPgNewSample(dboid, relid, targrows, &ybSample->handle));
+
+	/*
+	 * Set up the scan targets. We need to return all "real" columns.
+	 */
+	if (RelationGetForm(ybSample->relation)->relhasoids)
+	{
+		YBCPgTypeAttrs type_attrs = { 0 };
+		YBCPgExpr	expr = YBCNewColumnRef(ybSample->handle,
+										   ObjectIdAttributeNumber,
+										   InvalidOid,
+										   &type_attrs);
+		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
+	}
+	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
+		YBCPgTypeAttrs type_attrs = { att->atttypmod };
+		YBCPgExpr   expr = YBCNewColumnRef(ybSample->handle,
+										   attnum,
+										   att->atttypid,
+										   &type_attrs);
+		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
+	}
+
+	/*
+	 * Initialize sampler random state
+	 */
+	reservoir_init_selection_state(&rstate, targrows);
+	HandleYBStatus(YBCPgInitRandomState(ybSample->handle,
+										rstate.W,
+										SamplerRandomStateToUint64(rstate.randstate)));
+
+	return ybSample;
+}
+
+/*
+ * Sequentially scan next block of YB table and select rows for the sample.
+ * Block is a sequence of rows from one partition, up to specific number of
+ * rows or the end of the partition.
+ * Algorithm selects every scanned row until targrows are selected, then it
+ * select random rows, with decreasing probability, to replace one of the
+ * previously selected rows.
+ * The IDs of selected rows are stored in the internal buffer (reservoir).
+ * Scan ends and function returns false if one of two is true:
+ *  - end of the table is reached
+ *  or
+ *  - targrows are selected and end of a table partition is reached.
+ */
+bool
+ybSampleNextBlock(YbSample ybSample)
+{
+	bool has_more;
+	HandleYBStatus(YBCPgSampleNextBlock(ybSample->handle, &has_more));
+	return has_more;
+}
+
+/*
+ * Fetch the rows selected for the sample into pre-allocated buffer.
+ * Return number of rows fetched.
+ */
+int
+ybFetchSample(YbSample ybSample, HeapTuple *rows)
+{
+	Oid relid = RelationGetRelid(ybSample->relation);
+	TupleDesc	tupdesc = RelationGetDescr(ybSample->relation);
+	Datum	   *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool	   *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	int 		numrows;
+
+	/*
+	 * Execute equivalent of
+	 *   SELECT * FROM table WHERE ybctid IN [yctid0, ybctid1, ...];
+	 */
+	HandleYBStatus(YBCPgExecSample(ybSample->handle));
+	/*
+	 * Retrieve liverows and deadrows counters.
+	 * TODO: count deadrows
+	 */
+	HandleYBStatus(YBCPgGetEstimatedRowCount(ybSample->handle,
+											 &ybSample->liverows,
+											 &ybSample->deadrows));
+
+	for (numrows = 0; numrows < ybSample->targrows; numrows++)
+	{
+		bool has_data = false;
+		YBCPgSysColumns syscols;
+
+		/* Fetch one row. */
+		HandleYBStatus(YBCPgDmlFetch(ybSample->handle,
+									 tupdesc->natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (!has_data)
+			break;
+
+		/* Make a heap tuple in current memory context */
+		rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
+		if (syscols.oid != InvalidOid)
+		{
+			HeapTupleSetOid(rows[numrows], syscols.oid);
+		}
+		if (syscols.ybctid != NULL)
+		{
+			rows[numrows]->t_ybctid = PointerGetDatum(syscols.ybctid);
+		}
+		rows[numrows]->t_tableOid = relid;
+	}
+	pfree(values);
+	pfree(nulls);
+	/* Close the DocDB statement */
+	YBCPgDeleteStatement(ybSample->handle);
+	return numrows;
+}

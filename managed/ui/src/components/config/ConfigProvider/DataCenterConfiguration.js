@@ -89,7 +89,7 @@ class DataCenterConfiguration extends Component {
       ? 'cloud'
       : 'backup';
     const activeTab = tab || defaultTab;
-    let defaultConfig = section || "s3";
+    const defaultConfig = section || "s3";
 
     return (
       <div>

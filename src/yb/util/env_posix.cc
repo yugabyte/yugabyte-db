@@ -1434,6 +1434,10 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  bool IsEncrypted() const override {
+    return file_factory_->IsEncrypted();
+  }
+
  private:
   // std::unique_ptr Deleter implementation for fts_close
   struct FtsCloser {
@@ -1556,6 +1560,10 @@ class PosixFileFactory : public FileFactory {
   Result<uint64_t> GetFileSize(const std::string& fname) override {
     return GetFileStat(
         fname, "PosixEnv::GetFileSize", [](const struct stat& sbuf) { return sbuf.st_size; });
+  }
+
+  bool IsEncrypted() const override {
+    return false;
   }
 
  private:

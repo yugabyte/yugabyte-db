@@ -110,6 +110,8 @@ lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console settin
 
 lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
+lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
+
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
 // ------------------------------------------------------------------------------------------------
@@ -284,6 +286,33 @@ versionGenerate := {
   status
 }
 
+compileJavaGenClient := {
+  val buildType = sys.env.get("BUILD_TYPE").getOrElse("release")
+  val status = Process("mvn install", new File(baseDirectory.value + "/client/java/generated")).!
+  status
+}
+
+// Generate a Java API client.
+lazy val javagen = project.in(file("client/java"))
+  .settings(
+    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiGeneratorName := "java",
+    openApiOutputDir := "client/java/generated",
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/java/openapi-java-config.json",
+
+  )
+
+// Generate a Python API client.
+lazy val pythongen = project.in(file("client/python"))
+  .settings(
+    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiGeneratorName := "python",
+    openApiOutputDir := "client/python/generated",
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/python/openapi-python-config.json"
+  )
+
 packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
 
 runPlatformTask := {
@@ -302,7 +331,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.4-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -382,12 +411,13 @@ val swaggerGen: TaskKey[Unit] = taskKey[Unit](
 swaggerGen := Def.taskDyn {
   // Consider generating this only in managedResources
   val file = (resourceDirectory in Compile).value / "swagger.json"
-  Def.task {
+  Def.sequential(
     (runMain in Test)
-      .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file")
-      .value
-    // TODO: Generate client libraries
-  }
+      .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
+    (javagen / openApiGenerate),
+    compileJavaGenClient,
+    (pythongen / openApiGenerate)
+  )
 }.value
 
 // TODO: Should we trigger swagger gen on compile??

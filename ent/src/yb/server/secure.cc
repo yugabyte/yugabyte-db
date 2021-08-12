@@ -109,6 +109,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     SecureContextType type, rpc::MessengerBuilder* builder) {
   auto use = type == SecureContextType::kInternal ? FLAGS_use_node_to_node_encryption
                                                   : FLAGS_use_client_to_server_encryption;
+  LOG(INFO) << __func__ << ": " << type << ", " << use;
   if (!use) {
     ApplyCompressedStream(builder, rpc::TcpStream::Factory());
     return nullptr;

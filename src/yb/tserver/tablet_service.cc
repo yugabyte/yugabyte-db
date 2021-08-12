@@ -237,6 +237,9 @@ DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
                  "If true, bypass any checks made to reject remote boostrap requests for post "
                  "split tablets whose parent tablets are still present.");
 
+DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
+                 "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -957,12 +960,9 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 
-#define VERIFY_RESULT_OR_RETURN(expr) \
-  __extension__ ({ \
-    auto&& __result = (expr); \
-    if (!__result.ok()) { return; } \
-    std::move(*__result); \
-  })
+#define VERIFY_RESULT_OR_RETURN(expr) RESULT_CHECKER_HELPER( \
+    expr, \
+    if (!__result.ok()) { return; });
 
 void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           UpdateTransactionResponsePB* resp,
@@ -1436,6 +1436,15 @@ void TabletServiceAdminImpl::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
     return;
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_fail_tablet_split_probability > 0) &&
+      RandomActWithProbability(FLAGS_TEST_fail_tablet_split_probability)) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InvalidArgument,  // Use InvalidArgument to hit IsDefinitelyPermanentError().
+            "Failing tablet split due to FLAGS_TEST_fail_tablet_split_probability"),
+        TabletServerErrorPB::UNKNOWN_ERROR,
+        &context);
   }
   TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
 
@@ -2074,7 +2083,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
     auto* write_batch = write_req.mutable_write_batch();
     auto status = leader_peer.peer->tablet()->CreateReadIntents(
-        req->transaction(), req->ql_batch(), req->pgsql_batch(), write_batch);
+        req->transaction(), req->subtransaction(), req->ql_batch(), req->pgsql_batch(),
+        write_batch);
     if (!status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), status, &read_context->context);
       return;
@@ -2321,7 +2331,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
           read_context->context.GetClientDeadline(), read_time,
           !read_context->allow_retry /* is_explicit_request_read_time */, pgsql_read_req,
-          read_context->req->transaction(), &result, &num_rows_read));
+          read_context->req->transaction(), read_context->req->subtransaction(), &result,
+          &num_rows_read));
 
       total_num_rows_read += num_rows_read;
 

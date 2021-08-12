@@ -216,7 +216,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      * Check if instance tags are same as the passed in cluster.
      *
      * @param cluster another cluster to check against.
-     * @return true if the tag maps are same for aws provider, false otherwise.
+     * @return true if the tag maps are same for aws provider, false otherwise. This is because
+     *     modify tags not implemented in devops for any cloud other than AWS.
      */
     public boolean areTagsSame(Cluster cluster) {
       if (cluster == null) {
@@ -232,7 +233,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
 
       // Check if Provider supports instance tags and the instance tags match.
-      if (!Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)
+      if (!Provider.InstanceTagsModificationEnabledProviders.contains(userIntent.providerType)
           || userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
         return true;
       }
@@ -374,6 +375,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // setup and will be in-place of privateIP
     public boolean useHostname = false;
 
+    public boolean useSystemd = false;
+
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
@@ -427,6 +430,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
+      newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
@@ -454,7 +458,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
-          && useTimeSync == other.useTimeSync) {
+          && useTimeSync == other.useTimeSync
+          && useSystemd == other.useSystemd) {
         return true;
       }
       return false;

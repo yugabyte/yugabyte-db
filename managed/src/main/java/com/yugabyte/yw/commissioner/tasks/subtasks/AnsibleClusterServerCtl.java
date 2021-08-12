@@ -14,6 +14,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.models.Universe;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -31,6 +33,9 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public String command;
     public int sleepAfterCmdMills = 0;
     public boolean isForceDelete = false;
+
+    // Systemd vs Cron Option (Default: Cron)
+    public boolean useSystemd = false;
   }
 
   @Override
@@ -54,6 +59,9 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
   public void run() {
     try {
       // Execute the ansible command.
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      taskParams().useSystemd =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
       ShellResponse response =
           getNodeManager().nodeCommand(NodeManager.NodeCommandType.Control, taskParams());
       processShellResponse(response);

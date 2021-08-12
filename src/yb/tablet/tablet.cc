@@ -216,7 +216,7 @@ DEFINE_bool(cleanup_intents_sst_files, true,
 
 DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "Max amount of time we can wait for active transactions to abort on a tablet "
-             "after DDL (ie. DROP TABLE) is executed. This deadline is same as "
+             "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
              "unresponsive_ts_rpc_timeout_ms");
 
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
@@ -235,7 +235,7 @@ DEFINE_test_flag(bool, docdb_log_write_batches, false,
 DEFINE_test_flag(bool, export_intentdb_metrics, false,
                  "Dump intentsdb statistics to prometheus metrics");
 
-DEFINE_test_flag(bool, pause_before_post_split_compation, false,
+DEFINE_test_flag(bool, pause_before_post_split_compaction, false,
                  "Pause before triggering post split compaction.");
 
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
@@ -282,7 +282,6 @@ using yb::docdb::InitMarkerBehavior;
 namespace yb {
 namespace tablet {
 
-using yb::MaintenanceManager;
 using consensus::MaximumOpId;
 using log::LogAnchorRegistry;
 using strings::Substitute;
@@ -737,13 +736,20 @@ void Tablet::RegularDbFilesChanged() {
 }
 
 void Tablet::SetCleanupPool(ThreadPool* thread_pool) {
+  if (!transaction_participant_) {
+    return;
+  }
+
   cleanup_intent_files_token_ = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+
+  CleanupIntentFiles();
 }
 
 void Tablet::CleanupIntentFiles() {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
   if (!scoped_read_operation.ok() || state_ != State::kOpen || !FLAGS_delete_intents_sst_files ||
       !cleanup_intent_files_token_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Skip";
     return;
   }
 
@@ -754,6 +760,7 @@ void Tablet::CleanupIntentFiles() {
 
 void Tablet::DoCleanupIntentFiles() {
   if (metadata_->is_under_twodc_replication()) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Exit because of TwoDC replication";
     return;
   }
   HybridTime best_file_max_ht = HybridTime::kMax;
@@ -763,6 +770,7 @@ void Tablet::DoCleanupIntentFiles() {
   while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
     auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
     if (!scoped_read_operation.ok()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Failed to acquire scoped read operation";
       break;
     }
 
@@ -771,6 +779,9 @@ void Tablet::DoCleanupIntentFiles() {
     files.clear();
     intents_db_->GetLiveFilesMetaData(&files);
     auto min_largest_seq_no = std::numeric_limits<rocksdb::SequenceNumber>::max();
+
+    VLOG_WITH_PREFIX_AND_FUNC(5) << "Files: " << AsString(files);
+
     for (const auto& file : files) {
       if (file.largest.seqno < min_largest_seq_no) {
         min_largest_seq_no = file.largest.seqno;
@@ -786,33 +797,38 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_running_start_ht = transaction_participant_->MinRunningHybridTime();
     if (!min_running_start_ht.is_valid() || min_running_start_ht <= best_file_max_ht) {
+      VLOG_WITH_PREFIX_AND_FUNC(4)
+          << "Cannot delete because of running transactions: " << min_running_start_ht
+          << ", best file max ht: " << best_file_max_ht;
       break;
     }
     if (best_file->name == previous_name) {
-      LOG_WITH_PREFIX(INFO) << "Attempt to delete same file: " << previous_name
-                            << ", stopping cleanup";
+      LOG_WITH_PREFIX_AND_FUNC(INFO)
+          << "Attempt to delete same file: " << previous_name << ", stopping cleanup";
       break;
     }
     previous_name = best_file->name;
 
-    LOG_WITH_PREFIX(INFO)
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "Intents SST file will be deleted: " << best_file->ToString()
         << ", max ht: " << best_file_max_ht << ", min running transaction start ht: "
         << min_running_start_ht;
     auto flush_status = regular_db_->Flush(rocksdb::FlushOptions());
     if (!flush_status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Failed to flush regular db: " << flush_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
       break;
     }
     auto delete_status = intents_db_->DeleteFile(best_file->name);
     if (!delete_status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Failed to delete " << best_file->ToString()
-                               << ", all files " << AsString(files) << ": " << delete_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Failed to delete " << best_file->ToString() << ", all files " << AsString(files)
+          << ": " << delete_status;
       break;
     }
   }
 
   if (best_file_max_ht != HybridTime::kMax) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Wait min running hybrid time: " << best_file_max_ht;
     transaction_participant_->WaitMinRunningHybridTime(best_file_max_ht);
   }
 }
@@ -1043,8 +1059,9 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto mapped_projection = std::make_unique<Schema>();
   RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
 
-  auto txn_op_ctx = CreateTransactionOperationContext(
-      boost::none, schema.table_properties().is_ysql_catalog_table());
+  auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
+      /* transaction_id */ boost::none,
+      schema.table_properties().is_ysql_catalog_table()));
   const auto read_time = read_hybrid_time
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
@@ -1426,7 +1443,8 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
   Result<TransactionOperationContextOpt> txn_op_ctx =
       CreateTransactionOperationContext(
           operation->request()->write_batch().transaction(),
-          /* is_ysql_catalog_table */ false);
+          /* is_ysql_catalog_table */ false,
+          operation->request()->write_batch().subtransaction());
   if (!txn_op_ctx.ok()) {
     WriteOperation::StartSynchronization(std::move(operation), txn_op_ctx.status());
     return;
@@ -1656,6 +1674,7 @@ Status Tablet::HandlePgsqlReadRequest(
     bool is_explicit_request_read_time,
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
+    const SubTransactionMetadataPB& subtransaction_metadata,
     PgsqlReadRequestResult* result,
     size_t* num_rows_read) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
@@ -1680,7 +1699,8 @@ Status Tablet::HandlePgsqlReadRequest(
   Result<TransactionOperationContextOpt> txn_op_ctx =
       CreateTransactionOperationContext(
           transaction_metadata,
-          table_info->schema.table_properties().is_ysql_catalog_table());
+          table_info->schema.table_properties().is_ysql_catalog_table(),
+          subtransaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
@@ -1810,8 +1830,8 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
         // Use the value of is_ysql_catalog_table from the first operation in the batch.
         txn_op_ctx = CreateTransactionOperationContext(
             operation->request()->write_batch().transaction(),
-            // TODO(savepoints) -- mask aborted subtransactions.
-            table_info->schema.table_properties().is_ysql_catalog_table());
+            table_info->schema.table_properties().is_ysql_catalog_table(),
+            operation->request()->write_batch().subtransaction());
         RETURN_NOT_OK(txn_op_ctx);
       }
       auto write_op = std::make_unique<PgsqlWriteOperation>(table_info->schema, *txn_op_ctx);
@@ -2104,62 +2124,91 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   RSTATUS_DCHECK(key_schema.KeyEquals(*DCHECK_NOTNULL(operation->schema())), InvalidArgument,
                  "Schema keys cannot be altered");
 
-  // Abortable read/write operations could be long and they shouldn't access metadata_ without
-  // locks, so no need to wait for them here.
-  auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
-  RETURN_NOT_OK(op_pause);
+  {
+    // Abortable read/write operations could be long and they shouldn't access metadata_ without
+    // locks, so no need to wait for them here.
+    auto op_pause = PauseReadWriteOperations(Abortable::kFalse);
+    RETURN_NOT_OK(op_pause);
 
-  // If the current version >= new version, there is nothing to do.
-  if (current_table_info->schema_version >= operation->schema_version()) {
-    LOG_WITH_PREFIX(INFO)
-        << "Already running schema version " << current_table_info->schema_version
-        << " got alter request for version " << operation->schema_version();
-    return Status::OK();
+    // If the current version >= new version, there is nothing to do.
+    if (current_table_info->schema_version >= operation->schema_version()) {
+      LOG_WITH_PREFIX(INFO)
+          << "Already running schema version " << current_table_info->schema_version
+          << " got alter request for version " << operation->schema_version();
+      return Status::OK();
+    }
+
+    LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema.ToString()
+                          << " version " << current_table_info->schema_version
+                          << " to " << operation->schema()->ToString()
+                          << " version " << operation->schema_version();
+
+    // Find out which columns have been deleted in this schema change, and add them to metadata.
+    vector<DeletedColumn> deleted_cols;
+    for (const auto& col : current_table_info->schema.column_ids()) {
+      if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
+        deleted_cols.emplace_back(col, clock_->Now());
+        LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
+      }
+    }
+
+    metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
+                        operation->schema_version(), current_table_info->table_id);
+    if (operation->has_new_table_name()) {
+      metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
+      if (table_metrics_entity_) {
+        table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+        table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+      }
+      if (tablet_metrics_entity_) {
+        tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
+        tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+      }
+    }
+
+    // Clear old index table metadata cache.
+    ResetYBMetaDataCache();
+
+    // Create transaction manager and index table metadata cache for secondary index update.
+    if (!operation->index_map().empty()) {
+      if (current_table_info->schema.table_properties().is_transactional() &&
+          !transaction_manager_) {
+        transaction_manager_.emplace(client_future_.get(),
+                                     scoped_refptr<server::Clock>(clock_),
+                                     local_tablet_filter_);
+      }
+      CreateNewYBMetaDataCache();
+    }
+
+    // Flush the updated schema metadata to disk.
+    RETURN_NOT_OK(metadata_->Flush());
   }
 
-  LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema.ToString()
-                        << " version " << current_table_info->schema_version
-                        << " to " << operation->schema()->ToString()
-                        << " version " << operation->schema_version();
-
-  // Find out which columns have been deleted in this schema change, and add them to metadata.
-  vector<DeletedColumn> deleted_cols;
-  for (const auto& col : current_table_info->schema.column_ids()) {
-    if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
-      deleted_cols.emplace_back(col, clock_->Now());
-      LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
+  Status status = Status::OK();
+  // After schema is flushed on disk, any incoming query will encounter 'Schema version mismatch'.
+  // Thus it is okay to proceed with transaction abort after the write operation resumes.
+  if (operation->request()->should_abort_active_txns()) {
+    DCHECK(table_type_ == TableType::PGSQL_TABLE_TYPE);
+    DCHECK(operation->request()->has_transaction_id());
+    if (transaction_participant() == nullptr) {
+      LOG(ERROR) << "Transaction participant is not available for tablet " << tablet_id();
+      return STATUS(IllegalState, "Transaction participant is null for tablet " + tablet_id());
+    }
+    HybridTime max_cutoff = HybridTime::kMax;
+    CoarseTimePoint deadline = CoarseMonoClock::Now() +
+        MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+    auto txn_id = VERIFY_RESULT(
+       TransactionId::FromString(operation->request()->transaction_id()));
+    LOG_WITH_PREFIX(INFO) << "Aborting transactions that started prior to " << max_cutoff
+                          << " for tablet id " << tablet_id()
+                          << " excluding transaction with id " << txn_id;
+    status = transaction_participant()->StopActiveTxnsPriorTo(max_cutoff, deadline, &txn_id);
+    if (!status.ok()) {
+      LOG(ERROR) << "Aborting transactions failed for tablet " << tablet_id();
     }
   }
 
-  metadata_->SetSchema(*operation->schema(), operation->index_map(), deleted_cols,
-                       operation->schema_version(), current_table_info->table_id);
-  if (operation->has_new_table_name()) {
-    metadata_->SetTableName(current_table_info->namespace_name, operation->new_table_name());
-    if (table_metrics_entity_) {
-      table_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
-      table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-    }
-    if (tablet_metrics_entity_) {
-      tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name());
-      tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-    }
-  }
-
-  // Clear old index table metadata cache.
-  ResetYBMetaDataCache();
-
-  // Create transaction manager and index table metadata cache for secondary index update.
-  if (!operation->index_map().empty()) {
-    if (current_table_info->schema.table_properties().is_transactional() && !transaction_manager_) {
-      transaction_manager_.emplace(client_future_.get(),
-                                   scoped_refptr<server::Clock>(clock_),
-                                   local_tablet_filter_);
-    }
-    CreateNewYBMetaDataCache();
-  }
-
-  // Flush the updated schema metadata to disk.
-  return metadata_->Flush();
+  return status;
 }
 
 Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
@@ -3310,7 +3359,8 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 
 Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata,
-    bool is_ysql_catalog_table) const {
+    bool is_ysql_catalog_table,
+    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
   if (!txns_enabled_)
     return boost::none;
 
@@ -3318,15 +3368,18 @@ Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext
     Result<TransactionId> txn_id = FullyDecodeTransactionId(
         transaction_metadata.transaction_id());
     RETURN_NOT_OK(txn_id);
-    return CreateTransactionOperationContext(boost::make_optional(*txn_id), is_ysql_catalog_table);
+    return CreateTransactionOperationContext(
+        boost::make_optional(*txn_id), is_ysql_catalog_table, subtransaction_metadata);
   } else {
-    return CreateTransactionOperationContext(boost::none, is_ysql_catalog_table);
+    return CreateTransactionOperationContext(
+        /* transaction_id */ boost::none, is_ysql_catalog_table, subtransaction_metadata);
   }
 }
 
-TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
+Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
     const boost::optional<TransactionId>& transaction_id,
-    bool is_ysql_catalog_table) const {
+    bool is_ysql_catalog_table,
+    const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
   if (!txns_enabled_) {
     return boost::none;
   }
@@ -3346,17 +3399,24 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
     return boost::none;
   }
 
-  return TransactionOperationContext(*txn_id, transaction_participant());
+  if (!subtransaction_metadata) {
+    return TransactionOperationContext(*txn_id, transaction_participant());
+  }
+
+  auto subtxn = VERIFY_RESULT(SubTransactionMetadata::FromPB(*subtransaction_metadata));
+  return TransactionOperationContext(*txn_id, std::move(subtxn), transaction_participant());
 }
 
 Status Tablet::CreateReadIntents(
     const TransactionMetadataPB& transaction_metadata,
+    const SubTransactionMetadataPB& subtransaction_metadata,
     const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
     const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
     docdb::KeyValueWriteBatchPB* write_batch) {
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       transaction_metadata,
-      /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_));
+      /* is_ysql_catalog_table */ pgsql_batch.size() > 0 && is_sys_catalog_,
+      subtransaction_metadata));
 
   for (const auto& ql_read : ql_batch) {
     docdb::QLReadOperation doc_op(ql_read, txn_op_ctx);
@@ -3505,7 +3565,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
 }
 
 void Tablet::TriggerPostSplitCompactionSync() {
-  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compation);
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compaction);
   WARN_WITH_PREFIX_NOT_OK(
       ForceFullRocksDBCompact(), LogPrefix() + "Failed to compact post-split tablet.");
 }

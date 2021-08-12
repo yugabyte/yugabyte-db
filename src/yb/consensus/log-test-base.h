@@ -53,7 +53,6 @@
 #include "yb/server/clock.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/metadata.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/env_util.h"
 #include "yb/util/metrics.h"
@@ -61,8 +60,6 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/stopwatch.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/doc_key.h"
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -81,14 +78,6 @@ using consensus::MakeOpIdPB;
 using server::Clock;
 
 using tserver::WriteRequestPB;
-
-using tablet::Tablet;
-
-using docdb::KeyValuePairPB;
-using docdb::SubDocKey;
-using docdb::DocKey;
-using docdb::PrimitiveValue;
-using docdb::ValueType;
 
 const char* kTestNamespace = "test-ns";
 const char* kTestTable = "test-log-table";

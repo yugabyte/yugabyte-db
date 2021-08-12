@@ -70,7 +70,7 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
             server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
             ssh_keys, boot_script=args.boot_script,
-            auto_delete_boot_disk=args.auto_delete_boot_disk)
+            auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags)
 
 
 class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
@@ -104,7 +104,7 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
 
     def create_master_volume(self, args):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
-        res = self.cloud.get_admin().create_disk(args.zone, body={
+        res = self.cloud.get_admin().create_disk(args.zone, args.instance_tags, body={
             "name": name,
             "sizeGb": args.boot_disk_size_gb,
             "sourceImage": args.machine_image})
