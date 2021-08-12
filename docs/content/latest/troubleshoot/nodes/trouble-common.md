@@ -47,3 +47,16 @@ org.postgresql.util.PSQLException: ERROR: Catalog Version Mismatch: A DDL occurr
 A DML query in YSQL may touch multiple servers, and each server has a Catalog Version which is used to track schema changes. When a DDL statement runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
 
 In these cases, the database aborts the query and returns a `40001` PostgreSQL error code. Errors with this code can be safely retried from the client side. 
+
+
+## Snapshot too old: When running ysql_dump
+
+When running an `ysql_dump` command that takes too long to complete, you may get the following error:
+
+```output
+Snapshot too old: Snapshot too old. Read point: { physical: 1628678717824559 }, earliest read time allowed: { physical: 1628679675271006 }, delta (usec): 957446447: kSnapshotTooOld
+```
+
+When the command takes a long time to be processed, a compaction may have occurred and has deleted some rows at the snapshot the dump was started on. 
+For large backups, we recommend using [distributed snapshots](../../../manage/backup-restore/snapshot-ysql), which are more efficient and faster. 
+If you really need to use ysql_dump, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver#timestamp-history-retention-interval-sec) gflag in yb-tserver and retry.
