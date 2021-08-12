@@ -64,5 +64,5 @@ However, if your purpose is only to write brand-new application code, and if you
 - **[The plain timestamp and timestamptz data types](./date-time-data-types-semantics/type-timestamp/)**
 - **[Sensitivity of converting between timestamptz and plain timestamp to the UTC offset](./timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/)**
 - **[Sensitivity of timestamptz-interval arithmetic to the current timezone](./timezones/timezone-sensitive-operations/timestamptz-interval-day-arithmetic/)**
-- **[Recommended practise for specifying the UTC offset](./timezones/recommendation/)**
+- **[Recommended practice for specifying the UTC offset](./timezones/recommendation/)**
 - **[Custom domain types for specializing the native interval functionality](./date-time-data-types-semantics/type-interval/custom-interval-domains/)**

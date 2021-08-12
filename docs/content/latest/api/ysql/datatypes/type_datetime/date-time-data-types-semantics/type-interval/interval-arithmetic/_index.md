@@ -29,7 +29,7 @@ This section uses the term "moment" as an umbrella for a _timestamptz_ value, a 
 
   - And _second_ [The moment-interval overloads of the "+" and "-" operators](#the-moment-interval-overloads-of-the-and-operators) to produce a new moment of the same data type.
 
-You need to understand the notions that the section [Two ways of conceiving of time: calendar-time and clock-time](../../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time) addresses in order to understand the code and the explanations in this page's child page [The moment-_interval_ overloads of the "+" and "-" operators for _timestamptz_, _timestamp_, and _time_](./moment-interval-overloads-of-plus-and-minus/). The notions help you understand how the semantic rules of the native [moment-moment overloads of the "-" operator for timestamptz, timestamp, and time](./moment-moment-overloads-of-minus/) are ultimately confusing and therefore unhelpful—and why you should therefore adopt the practises that the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) explains. The distinction between _clock-time-semantics_ and _calendar-time-semantics_ is only implicitly relevant for the notions that the sections [The interval-interval overload of the "=" operator](#the-interval-interval-overload-of-the-operator) and [Interval-only addition/subtraction and multiplication/division](#interval-only-addition-subtraction-and-multiplication-division) explain.
+You need to understand the notions that the section [Two ways of conceiving of time: calendar-time and clock-time](../../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time) addresses in order to understand the code and the explanations in this page's child page [The moment-_interval_ overloads of the "+" and "-" operators for _timestamptz_, _timestamp_, and _time_](./moment-interval-overloads-of-plus-and-minus/). The notions help you understand how the semantic rules of the native [moment-moment overloads of the "-" operator for timestamptz, timestamp, and time](./moment-moment-overloads-of-minus/) are ultimately confusing and therefore unhelpful—and why you should therefore adopt the practices that the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) explains. The distinction between _clock-time-semantics_ and _calendar-time-semantics_ is only implicitly relevant for the notions that the sections [The interval-interval overload of the "=" operator](#the-interval-interval-overload-of-the-operator) and [Interval-only addition/subtraction and multiplication/division](#interval-only-addition-subtraction-and-multiplication-division) explain.
 
 The PostgreSQL documentation does not carefully specify the semantics of _interval_ arithmetic. This page and its children aim to specify the operations in terms of the individual fields of the [internal representation](../interval-representation/).
 
@@ -87,7 +87,7 @@ This is the result:
  2 mons 2 days
 ```
 
-This is consistent with the assumed model. And it shows that a practise that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-interval_ addition or subtraction. 
+This is consistent with the assumed model. And it shows that a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-interval_ addition or subtraction. 
 
 ### The interval-number overloads of the "*" and "/" operators
 
@@ -141,12 +141,12 @@ select ('1 mon 30 days 03:21:36'::interval = '1 mon 29 days 27:21:36'::interval)
 
 The result is _true_. The section [Multiplying or dividing an _interval_ value by a number](./interval-number-multiplication/) simulates and tests the model for how this works in PL/pgSQL code, and examines this unexpected outcome closely.
 
-One thing, at least, is clear: a practise that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-number_ multiplication or division. Moreover, the semantics of these operations is not documented and cannot be reliably determined by empirical investigation. The outcomes must, therefore, be considered to be unpredictable.
+One thing, at least, is clear: a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-number_ multiplication or division. Moreover, the semantics of these operations is not documented and cannot be reliably determined by empirical investigation. The outcomes must, therefore, be considered to be unpredictable.
 
 ## Recommendation
 
 {{< tip title="Avoid native interval-interval addition/subtraction and interval-number multiplication/division." >}}
-Yugabyte recommends that you avoid performing operations whose results can easily thwart an adopted principle for good practise and especially that you avoid operations whose outcomes  must be considered to be unpredictable. It recommends that instead you adopt the practise that the section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) explains. Doing this will let you perform the addition, subtraction, multiplication, and division operations that are unsafe with native _interval_ values in a controlled fashion that brings safety.
+Yugabyte recommends that you avoid performing operations whose results can easily thwart an adopted principle for good practice and especially that you avoid operations whose outcomes  must be considered to be unpredictable. It recommends that instead you adopt the practice that the section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) explains. Doing this will let you perform the addition, subtraction, multiplication, and division operations that are unsafe with native _interval_ values in a controlled fashion that brings safety.
 {{< /tip >}}
 
 ## Moment-interval arithmetic

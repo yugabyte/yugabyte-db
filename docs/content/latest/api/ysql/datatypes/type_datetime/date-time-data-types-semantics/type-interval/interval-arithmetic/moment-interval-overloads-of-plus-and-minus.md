@@ -254,7 +254,7 @@ Notice that the date for the third result, _9-April_, is different from that for
 You might be tempted to speculate about priority rules for how the fields of a hybrid _interval_ value are acted on. Don't do this. The PostgreSQL documentation doesn't state the rules and application code that used hybrid _interval_ values would be hard to understand and likely, therefore, to be unreliable.
 
 {{< tip title="Avoid arithmetic that uses hybrid interval values." >}}
-Yugabyte recommends that you avoid creating and using _hybrid interval_ values; rather, you should adopt the practise that the section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) explains.
+Yugabyte recommends that you avoid creating and using _hybrid interval_ values; rather, you should adopt the practice that the section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) explains.
 {{< /tip >}}
 
 ## The semantics for the moment-interval overloads of "+" and "-" for pure seconds interval values

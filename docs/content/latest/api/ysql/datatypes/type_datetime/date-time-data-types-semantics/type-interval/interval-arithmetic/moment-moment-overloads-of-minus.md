@@ -76,7 +76,7 @@ These rules are explained in the section [The moment-_interval_ overloads of the
 However, when you have a hybrid _dd_ and _mm_ _interval_ value, you need also to understand the priority rule: in which order are the different variations of addition/subtraction semantics done?
 
 {{< tip title="Avoid arithmetic that uses hybrid 'interval' semantics." >}}
-Yugabyte staff members have discussed this carefully and believe that the attempt to understand and memorize these rules is counterproductive—and therefore foolish. Rather, you should decide which of the three kinds of semantics your application needs and arrange that you produce only pure, rather than hybrid, _interval_ values. Yugabyte recommends, therefore, that  you adopt the practise that the section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) explains.
+Yugabyte staff members have discussed this carefully and believe that the attempt to understand and memorize these rules is counterproductive—and therefore foolish. Rather, you should decide which of the three kinds of semantics your application needs and arrange that you produce only pure, rather than hybrid, _interval_ values. Yugabyte recommends, therefore, that  you adopt the practice that the section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) explains.
 {{< /tip >}}
 
 The section _"The moment-interval overloads of the "+" and "-" operators for timestamptz, timestamp, and time"_, [here](../moment-interval-overloads-of-plus-and-minus/#hybrid-interval-arithmetic-is-dangerous) emphasizes the dangers of hybrid _interval_ arithmetic. 

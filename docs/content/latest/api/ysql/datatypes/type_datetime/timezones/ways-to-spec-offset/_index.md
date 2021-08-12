@@ -16,7 +16,7 @@ showAsideToc: true
 The  _UTC offset_ is, ultimately, expressed as an [_interval_](../../date-time-data-types-semantics/type-interval/) value. It can be specified in various different ways as this page explains.
 
 {{< tip title="Yugabyte recommends using only a timezone name or an explicit 'interval' value to specify the 'UTC offset'." >}}
-See the section [Recommended practise for specifying the _UTC offset_](../recommendation/). It presents a sufficient way to achieve all the functionality that you could need while protecting you from the many opportunities to go wrong brought by using the native functionality with no constraints.
+See the section [Recommended practice for specifying the _UTC offset_](../recommendation/). It presents a sufficient way to achieve all the functionality that you could need while protecting you from the many opportunities to go wrong brought by using the native functionality with no constraints.
 {{< /tip >}}
 
 ### Directly as an interval value

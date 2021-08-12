@@ -329,7 +329,7 @@ However, the _[name, abbrev]_ tuple _does_ uniquely identify a _utc_offset_ valu
 
 You might be tempted to write _PDT_ and _PST_ in the example above in place of _-07:00_ and _-08:00_. That would work, in this specific use, but it won't work reliably in general because the abbreviations are looked up internally in _pg_timezone_abbrevs.abbrev_. But such abbreviations are never looked up in _pg_timezone_names.abbrev_. However, some abbreviations are found _only_ in  _pg_timezone_names.abbrev_. This can confuse the application programmer and lead, in some unfortunate circumstances, even to wrong results. The complex rules in this space are explained in the section [Rules for resolving a string that's intended to identify a _UTC offset_](../../timezones/ways-to-spec-offset/name-res-rules/).
 
-Yugabyte recommends that you program defensively to avoid these pitfalls and follow the approach described in the section [Recommended practise for specifying the _UTC offset_](../../timezones/recommendation/).
+Yugabyte recommends that you program defensively to avoid these pitfalls and follow the approach described in the section [Recommended practice for specifying the _UTC offset_](../../timezones/recommendation/).
 {{< /tip >}}
 
 ## Demonstrating the rule for displaying a timestamptz value in a timezone-sensitive way
@@ -410,7 +410,7 @@ The demonstration that follows is designed like this:
       report_line(z, ts_plain, ts_with_tz);
       ```
 
-- Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practise to do this for any settings that your programs need, temporarily, to change.)
+- Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practice to do this for any settings that your programs need, temporarily, to change.)
 
 ### The demonstration
 
