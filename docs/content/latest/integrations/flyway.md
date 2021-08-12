@@ -52,14 +52,22 @@ To migrate schema using SQL, perform the following:
 
 - Create migration SQL scripts under the `sql/` directory, as shown in the following example using the `motorcycle_manufacturers` table:
 
+  ```plsql
+  cat sql/Create_motorcycle_manufacturers_table.sql
+  ```
+
   ```sql
-  $ cat sql/V1__Create_motorcycle_manufacturers_table.sql
   CREATE TABLE motorcycle_manufacturers (
     manufacturer_id SERIAL PRIMARY KEY,
     manufacturer_name VARCHAR(50) NOT NULL
   );
-  
-  $ cat V2__Insert_into_motorcycle_manufacturers.sql
+  ```
+
+  ```plsql
+  cat V2__Insert_into_motorcycle_manufacturers.sql
+  ```
+
+  ```sql
   INSERT INTO motorcycle_manufacturers (manufacturer_id, manufacturer_name) 
   VALUES (default, 'Harley-Davidson'), (default, 'Yamaha');
   ```
@@ -67,7 +75,7 @@ To migrate schema using SQL, perform the following:
 - Run migrations by executing the following command:
 
   ```shell
-  $ ./flyway migrate
+   ./flyway migrate
   ```
 
 ### How to use Java
@@ -97,11 +105,11 @@ public class V3__AddHQAdress extends BaseJavaMigration {
 To check the state of the database and run the migration, execute the following commands:
 
 ```shell
-$ ./flyway info
+ ./flyway info
 ```
 
 ```shell
-$ ./flyway migrate
+ ./flyway migrate
 ```
 
 
