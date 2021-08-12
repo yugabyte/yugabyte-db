@@ -231,7 +231,7 @@ $ helm repo add yugabytedb https://charts.yugabyte.com
 
 Now, make sure that you get the latest update from the `charts` repository by running the following `helm` command:
 
-```sg
+```sh
 $ helm repo update
 ```
 
@@ -246,7 +246,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```
 NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte 2.7.0         2.7.0.0-b17 YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace
