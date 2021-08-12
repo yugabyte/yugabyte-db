@@ -708,6 +708,49 @@ TEST_F(YbAdminSnapshotScheduleTest, AlterTable) {
   }
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, TestVerifyRestorationLogic) {
+  const auto kKeys = Range(10);
+
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table (key, value) VALUES ($0, 'A')", key)));
+  }
+
+  ASSERT_OK(conn.ExecuteQuery("DROP TABLE test_table"));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table1 (key INT PRIMARY KEY)"));
+
+  for (auto key : kKeys) {
+    ASSERT_OK(conn.ExecuteQuery(Format(
+        "INSERT INTO test_table1 (key) VALUES ($0)", key)));
+  }
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Reconnect because of caching issues with YCQL.
+  conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_NOK(conn.ExecuteQuery("SELECT * from test_table"));
+
+  ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+    auto res = conn.ExecuteQuery("SELECT * from test_table1");
+    if (res.ok()) {
+      return false;
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Wait for table to be deleted"));
+}
+
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
   virtual std::vector<std::string> ExtraTSFlags() {

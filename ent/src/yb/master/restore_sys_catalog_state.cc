@@ -70,6 +70,13 @@ CHECKED_STATUS ApplyWriteRequest(
   return operation.Apply(apply_data);
 }
 
+bool TableDeleted(const SysTablesEntryPB& table) {
+  return table.state() == SysTablesEntryPB::DELETED ||
+         table.state() == SysTablesEntryPB::DELETING ||
+         table.hide_state() == SysTablesEntryPB::HIDING ||
+         table.hide_state() == SysTablesEntryPB::HIDDEN;
+}
+
 template <class PB>
 struct GetEntryType;
 
@@ -97,7 +104,6 @@ void RestoreSysCatalogState::AddRestoringEntry(
   entry.set_id(id);
   pb_util::SerializeToString(pb, buffer);
   entry.set_data(buffer->data(), buffer->size());
-  restoration_.non_system_objects_to_restore.emplace(id, type);
 }
 
 Status RestoreSysCatalogState::Process() {
@@ -153,13 +159,15 @@ template <class ProcessEntry>
 Status RestoreSysCatalogState::DetermineEntries(
     const Objects& objects, bool is_restoration_objects, const ProcessEntry& process_entry) {
   std::unordered_set<NamespaceId> restored_namespaces;
+  std::unordered_set<NamespaceId> non_deleted_restored_namespaces;
   std::unordered_set<TableId> restored_tables;
+  std::unordered_set<TableId> non_deleted_restored_tables;
   faststring buffer;
   for (const auto& id_and_metadata : objects.tables) {
     VLOG_WITH_FUNC(3) << "Checking: " << id_and_metadata.first << ", "
                       << id_and_metadata.second.ShortDebugString();
 
-    bool match;
+    bool match, deleted;
     if (id_and_metadata.second.has_index_info()) {
       auto it = objects.tables.find(id_and_metadata.second.index_info().indexed_table_id());
       if (it == objects.tables.end()) {
@@ -169,9 +177,11 @@ Status RestoreSysCatalogState::DetermineEntries(
             id_and_metadata.second.name());
       }
       match = VERIFY_RESULT(objects.MatchTable(restoration_.filter, it->first, it->second));
+      deleted = TableDeleted(it->second);
     } else {
       match = VERIFY_RESULT(objects.MatchTable(
           restoration_.filter, id_and_metadata.first, id_and_metadata.second));
+      deleted = TableDeleted(id_and_metadata.second);
     }
     if (!match) {
       continue;
@@ -192,6 +202,24 @@ Status RestoreSysCatalogState::DetermineEntries(
       }
       continue;
     }
+    if (is_restoration_objects && !deleted) {
+      auto type = GetEntryType<SysTablesEntryPB>::value;
+      restoration_.non_system_objects_to_restore.emplace(id_and_metadata.first, type);
+
+      if (non_deleted_restored_namespaces.insert(id_and_metadata.second.namespace_id()).second) {
+        auto namespace_it = objects.namespaces.find(id_and_metadata.second.namespace_id());
+        if (namespace_it == objects.namespaces.end()) {
+          return STATUS_FORMAT(
+              NotFound, "Namespace $0 not found for table $1",
+              id_and_metadata.second.namespace_id(),
+              id_and_metadata.first, id_and_metadata.second.name());
+        }
+        auto type = GetEntryType<SysNamespaceEntryPB>::value;
+        restoration_.non_system_objects_to_restore.emplace(namespace_it->first, type);
+      }
+
+      non_deleted_restored_tables.insert(id_and_metadata.first);
+    }
     if (restored_namespaces.insert(id_and_metadata.second.namespace_id()).second) {
       auto namespace_it = objects.namespaces.find(id_and_metadata.second.namespace_id());
       if (namespace_it == objects.namespaces.end()) {
@@ -209,6 +237,10 @@ Status RestoreSysCatalogState::DetermineEntries(
   for (const auto& id_and_metadata : objects.tablets) {
     if (restored_tables.count(id_and_metadata.second.table_id()) == 0) {
       continue;
+    }
+    if (non_deleted_restored_tables.count(id_and_metadata.second.table_id()) != 0) {
+      auto type = GetEntryType<SysTabletsEntryPB>::value;
+      restoration_.non_system_objects_to_restore.emplace(id_and_metadata.first, type);
     }
     process_entry(id_and_metadata, &buffer);
     VLOG(2) << "Tablet to restore: " << id_and_metadata.first << ", "
