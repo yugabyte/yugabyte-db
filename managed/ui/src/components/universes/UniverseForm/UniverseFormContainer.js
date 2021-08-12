@@ -237,6 +237,8 @@ const formFieldNames = [
   'async.enableYEDIS',
   'async.enableNodeToNodeEncrypt',
   'async.enableClientToNodeEncrypt',
+  'async.diskIops',
+  'async.throughput',
   'async.mountPoints',
   'masterGFlags',
   'tserverGFlags',
@@ -249,8 +251,8 @@ function getFormData(currentUniverse, formType, clusterType) {
     universeDetails: { clusters, encryptionAtRestConfig, rootCA }
   } = currentUniverse.data;
   const cluster = getClusterByType(clusters, clusterType);
-  const data = {};
   if (isDefinedNotNull(cluster)) {
+    const data = {};
     const userIntent = cluster.userIntent;
     data[clusterType] = {};
     data[clusterType].universeName = currentUniverse.data.name;
@@ -295,8 +297,9 @@ function getFormData(currentUniverse, formType, clusterType) {
       data[clusterType].enableEncryptionAtRest = encryptionAtRestConfig.encryptionAtRestEnabled;
       data[clusterType].selectEncryptionAtRestConfig = encryptionAtRestConfig.kmsConfigUUID;
     }
+    return data;
   }
-  return data;
+  return null;
 }
 
 function mapStateToProps(state, ownProps) {
@@ -337,7 +340,9 @@ function mapStateToProps(state, ownProps) {
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
       enableNodeToNodeEncrypt: true,
-      enableClientToNodeEncrypt: true
+      enableClientToNodeEncrypt: true,
+      diskIops: null,
+      throughput: null
     }
   };
 
@@ -348,7 +353,7 @@ function mapStateToProps(state, ownProps) {
       currentUniverse,
       ownProps.type,
       ownProps.type === 'Async' ? 'async' : 'primary'
-    );
+    ) ?? data;
   }
 
   const selector = formValueSelector('UniverseForm');
