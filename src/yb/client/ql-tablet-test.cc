@@ -80,6 +80,7 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(TEST_backfill_sabotage_frequency);
 
 namespace yb {
 namespace client {
@@ -147,13 +148,18 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return client::CreateReadOp(key, table, kValueColumn);
   }
 
-  void CreateTable(const YBTableName& table_name, TableHandle* table, int num_tablets = 0) {
+  void CreateTable(const YBTableName& table_name, TableHandle* table, int num_tablets = 0, bool transactional = false) {
     YBSchemaBuilder builder;
     builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
     builder.AddColumn(kValueColumn)->Type(INT32);
 
     if (num_tablets == 0) {
       num_tablets = CalcNumTablets(3);
+    }
+    if (transactional) {
+      TableProperties table_properties;
+      table_properties.SetTransactional(true);
+      builder.SetTableProperties(table_properties);
     }
     ASSERT_OK(table->Create(table_name, num_tablets, client_.get(), &builder));
   }
@@ -184,8 +190,9 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     }
   }
 
-  CHECKED_STATUS WaitSync(int begin, int end, const TableHandle& table) {
-    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+  typedef std::pair<std::vector<std::string>, std::unordered_set<std::string>> TabletIdsAndReplicas;
+
+  Result<TabletIdsAndReplicas> GetTabletIdsAndReplicas(const TableHandle& table) {
     std::vector<std::string> tablet_ids;
     std::unordered_set<std::string> replicas;
 
@@ -202,6 +209,15 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
         replicas.insert(it->first);
       }
     }
+    return TabletIdsAndReplicas(tablet_ids, replicas);
+  }
+
+  CHECKED_STATUS WaitSync(int begin, int end, const TableHandle& table) {
+    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+    TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
+    std::vector<std::string> tablet_ids = info.first;
+    std::unordered_set<std::string> replicas = info.second;
+    
     for (const auto& replica : replicas) {
       RETURN_NOT_OK(DoWaitSync(deadline, tablet_ids, replica, begin, end, table));
     }
@@ -288,6 +304,65 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Wait(condition, deadline, "Waiting for replication");
   }
 
+  CHECKED_STATUS VerifyConsistency(int begin, int end, const TableHandle& table, int expected_rows_mismatched = 0) {
+    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+    TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
+    std::vector<std::string> tablet_ids = info.first;
+    std::unordered_set<std::string> replicas = info.second;
+    
+    for (const auto& replica : replicas) {
+      RETURN_NOT_OK(DoVerify(deadline, tablet_ids, replica, begin, end, table, expected_rows_mismatched));
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS DoVerify(const MonoTime& deadline,
+                          const std::vector<std::string>& tablet_ids, 
+                          const std::string& replica,
+                          const int begin,
+                          const int end,
+                          const TableHandle& table,
+                          const int expected_rows_mismatched) {
+    auto tserver = cluster_->find_tablet_server(replica);
+    if (!tserver) {
+      return STATUS_FORMAT(NotFound, "Tablet server for $0 not found", replica);
+    }
+    auto endpoint = tserver->server()->rpc_server()->GetBoundAddresses().front();
+    auto proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+        &tserver->server()->proxy_cache(), HostPort::FromBoundEndpoint(endpoint));
+
+    for (const string& tablet_id : tablet_ids) {
+      tserver::VerifyTableRowRangeRequestPB req;
+      tserver::VerifyTableRowRangeResponsePB resp;
+
+      req.set_tablet_id(tablet_id);
+      req.set_num_rows(end - begin + 1);
+      req.clear_start_key(); // empty string indicates start scan from start
+      // read_time: if left empty, the safe time retrieved will be used instead
+
+      rpc::RpcController controller;
+      controller.set_timeout(MonoDelta::FromSeconds(5));
+      proxy->VerifyTableRowRange(req, &resp, &controller);        
+        
+      if (resp.consistency_stats().size() == 0) {
+        return STATUS_FORMAT(NotFound,
+                             "Individual index consistency state missing for table $0.",
+                             table.table()->id());
+      }
+      for (auto it = resp.consistency_stats().begin(); it != resp.consistency_stats().end(); it++) {
+        if (it->second != expected_rows_mismatched) {
+          return STATUS_FORMAT(Corruption,
+                               "Incorrect number of rows reported to be dropped for index $0 built on table $1:"
+                               "found $2 rows reported when $3 rows mismatched was expected.",
+                               it->first, table.table()->id(), it->second, expected_rows_mismatched);
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
+
   CHECKED_STATUS Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
     EXPECT_OK(cluster_->FlushTablets());
@@ -373,6 +448,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
   void TestDeletePartialKey(int num_range_keys_in_delete);
 
+  void CreateAndVerifyIndexConsistency(int expected_number_rows_mismatched);
+
   TableHandle table1_;
   TableHandle table2_;
 };
@@ -434,6 +511,29 @@ TEST_F(QLTabletTest, OverlappedImport) {
   FillTable(0, kTotalKeys, table1_);
   FillTable(kTotalKeys, 2 * kTotalKeys, table2_);
   ASSERT_NOK(Import());
+}
+
+
+void QLTabletTest::CreateAndVerifyIndexConsistency(int expected_number_rows_mismatched) {
+  CreateTable(kTable1Name, &table1_, 1, true); 
+  FillTable(0, kTotalKeys, table1_);
+
+  TableHandle index_table;
+  kv_table_test::CreateIndex(yb::client::Transactional::kTrue, 1, false, table1_, client_.get(), &index_table);
+
+  ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+      kTable1Name, index_table.name(), INDEX_PERM_READ_WRITE_AND_DELETE, 100ms /* max_wait */));
+  ASSERT_OK(VerifyConsistency(0, kTotalKeys - 1, table1_, expected_number_rows_mismatched));
+}
+
+TEST_F(QLTabletTest, VerifyIndexRange) {
+  CreateAndVerifyIndexConsistency(0);
+}
+
+TEST_F(QLTabletTest, VerifyIndexRangeWithInconsistentTable) {
+  FLAGS_TEST_backfill_sabotage_frequency = 10;
+  const int kRowsDropped = kTotalKeys / FLAGS_TEST_backfill_sabotage_frequency;
+  CreateAndVerifyIndexConsistency(kRowsDropped);
 }
 
 // Test expected number of tablets for transactions table - added for #2293.

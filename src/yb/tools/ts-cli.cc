@@ -84,6 +84,7 @@ using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
 
 const char* const kListTabletsOp = "list_tablets";
+const char* const kVerifyTabletOp = "verify_tablet";
 const char* const kAreTabletsRunningOp = "are_tablets_running";
 const char* const kIsServerReadyOp = "is_server_ready";
 const char* const kSetFlagOp = "set_flag";
@@ -199,6 +200,13 @@ class TsAdminClient {
   // Flush or compact a given tablet on a given tablet server.
   // If 'tablet_id' is empty string, flush or compact all tablets.
   Status FlushTablets(const std::string& tablet_id, bool is_compaction);
+
+  // Verify the given tablet against its indexes
+  // Assume the tablet belongs to a main table
+  Status VerifyTablet(const std::string& tablet_id, 
+                      const std::vector<string>& index_ids,
+                      const string& start_key,
+                      const int num_rows);
 
  private:
   std::string addr_;
@@ -320,6 +328,36 @@ Status TsAdminClient::RefreshFlags() {
   rpc.set_timeout(timeout_);
 
   return generic_proxy_->RefreshFlags(req, &resp, &rpc);
+}
+
+Status TsAdminClient::VerifyTablet(const std::string& tablet_id, 
+                                   const std::vector<string>& index_ids,
+                                   const string& start_key,
+                                   const int num_rows) {
+  tserver::VerifyTableRowRangeRequestPB req;
+  tserver::VerifyTableRowRangeResponsePB resp;
+
+  req.set_tablet_id(tablet_id);
+  req.set_start_key("");
+  req.set_num_rows(num_rows);
+  for (const std::string& str : index_ids) {
+    req.add_index_ids(str);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  RETURN_NOT_OK(ts_proxy_->VerifyTableRowRange(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  
+  std::cout << "Reporting VerifyJob stats." << std::endl;
+  for (auto it = resp.consistency_stats().begin(); it != resp.consistency_stats().end(); it++) {
+    std::cout << "VerifyJob found " << it->second << " mismatched rows for index " << it->first << std::endl; 
+  }
+  
+  return Status::OK();
 }
 
 Status TsAdminClient::GetTabletSchema(const std::string& tablet_id,
@@ -496,7 +534,8 @@ void SetUsage(const char* argv0) {
       << "  " << kFlushTabletOp << " <tablet_id>\n"
       << "  " << kFlushAllTabletsOp << "\n"
       << "  " << kCompactTabletOp << " <tablet_id>\n"
-      << "  " << kCompactAllTabletsOp << "\n";
+      << "  " << kCompactAllTabletsOp << "\n"
+      << "  " << kVerifyTabletOp << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -556,6 +595,20 @@ static int TsCliMain(int argc, char** argv) {
                 << std::endl;
       std::cout << "Schema: " << schema.ToString() << std::endl;
     }
+  } else if (op == kVerifyTabletOp) {
+    string tablet_id = argv[2];
+    int num_indexes = std::stoi(argv[3]);
+    std::vector<string> index_ids;
+    for (int i = 0; i < num_indexes; i++) {
+      index_ids.push_back(argv[4 + i]);
+    }
+    string start_key = argv[num_indexes + 4];
+    int num_rows = std::stoi(argv[num_indexes + 5]);
+    
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.VerifyTablet(tablet_id, index_ids, start_key, num_rows),
+        "Unable to verify tablet " + tablet_id);
+    
   } else if (op == kAreTabletsRunningOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
