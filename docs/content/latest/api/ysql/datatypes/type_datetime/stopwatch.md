@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
-    weight: 80
+    weight: 90
 isTocNested: true
 showAsideToc: true
 ---
@@ -464,7 +464,7 @@ select extract(epoch from clock_timestamp())::text as s0
 \echo :stopwatch_s0
 ```
 
-Create a new _double precision_ overload for the function _stopwatch_reading() to return the elapsed time like this:
+Create a new _double precision_ overload for the function _stopwatch_reading()_ to return the elapsed time like this:
 
 ```plpgsql
 drop function if exists stopwatch_reading(double precision) cascade;
