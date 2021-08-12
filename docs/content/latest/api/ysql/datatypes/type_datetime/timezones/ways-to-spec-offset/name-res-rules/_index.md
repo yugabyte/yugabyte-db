@@ -59,7 +59,7 @@ This table summarises [Rule 2](./rule-3/), [Rule 3](./rule-3/), and [Rule 4](./r
          (select timezone('Europe/Amsterdam', '2021-06-02 12:00:00'::timestamp))
        )::text;
 ```
-You usually see the _operator syntax_ in blog posts and the like. But there are good reasons to prefer the _function syntax_ in industrial strength application code. The section [Recommended practise for specifying the _UTC offset_](../../recommendation/) explains why and encourages you to use the overloads of the _timezone()_ built-in function only via the user-defined wrapper function [_at_timezone()_](../../recommendation/#the-at-timezone-function-overloads).
+You usually see the _operator syntax_ in blog posts and the like. But there are good reasons to prefer the _function syntax_ in industrial strength application code. The section [Recommended practice for specifying the _UTC offset_](../../recommendation/) explains why and encourages you to use the overloads of the _timezone()_ built-in function only via the user-defined wrapper function [_at_timezone()_](../../recommendation/#the-at-timezone-function-overloads).
 
 **Note 3:**  This row applies for both the _::timestamptz_ typecast of a _text_ literal and the invocation of the _make_timestamptz()_ built-in function:
 

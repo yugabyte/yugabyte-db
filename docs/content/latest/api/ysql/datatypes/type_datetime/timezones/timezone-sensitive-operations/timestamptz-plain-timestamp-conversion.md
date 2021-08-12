@@ -102,7 +102,7 @@ The demonstration that follows is designed like this:
 
   - According to the choice for _at_utc:_ _either_ the timezone is set to _UTC;_ _or_ it is simply left at what the loop iterand, _z_, set it to. Then these values are formatted as a _text_ line using the _to_char()_ built-in function: _ts_plain_, _ts_with_tz_1_, _ts_with_tz_, and _ts_plain_1_. The row is labeled with the value of the loop iterand, _z_.
 
-- Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practise to do this for any settings that your programs need, temporarily, to change.) 
+- Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practice to do this for any settings that your programs need, temporarily, to change.) 
 
 ## The demonstration
 
