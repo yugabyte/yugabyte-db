@@ -44,7 +44,7 @@ public class YWResults {
     return Results.ok(Json.toJson(data));
   }
 
-  @ApiModel("Generic error response from Yugawware Platform API")
+  @ApiModel(description = "Generic error response from Yugawware Platform API")
   public static class YWError {
     public boolean success = false;
 

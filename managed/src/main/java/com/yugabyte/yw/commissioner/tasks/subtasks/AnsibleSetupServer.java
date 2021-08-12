@@ -53,6 +53,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
 
     // Systemd vs Cron Option (Default: Cron)
     public boolean useSystemd = false;
+
+    // For cron to systemd upgrades
+    public boolean isSystemdUpgrade = false;
   }
 
   @Override

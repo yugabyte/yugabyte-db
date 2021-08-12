@@ -56,6 +56,8 @@ DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
+DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
+
 namespace yb {
 namespace pggate {
 
@@ -1213,11 +1215,13 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
         Slice(),
         PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
   } else {
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests || FLAGS_ysql_log_failed_docdb_requests)) {
+      LOG(INFO) << "Operation failed: " << op.ToString();
+    }
     s = STATUS(QLError, op.response().error_message(), Slice(),
                PgsqlError(pg_error_code));
   }
-  s = s.CloneAndAddErrorCode(TransactionError(txn_error_code));
-  return s;
+  return s.CloneAndAddErrorCode(TransactionError(txn_error_code));
 }
 
 Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
