@@ -99,7 +99,7 @@ The following output should appear:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-The next step is to grant access to this ServiceAccount using ClusterRoles/Roles and ClusterRoelBindings/RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
+The next step is to grant access to this ServiceAccount using ClusterRoles/Roles and ClusterRoleBindings/RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
 Follow any one of the following steps depending on your requirements.
 
 **Notes**
