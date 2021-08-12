@@ -72,7 +72,8 @@ class RestoreSysCatalogState {
 
   // Determine entries that should be restored. I.e. apply filter and serialize.
   template <class ProcessEntry>
-  CHECKED_STATUS DetermineEntries(const Objects& objects, const ProcessEntry& process_entry);
+  CHECKED_STATUS DetermineEntries(const Objects& objects, bool is_restoration_objects,
+                                  const ProcessEntry& process_entry);
 
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
