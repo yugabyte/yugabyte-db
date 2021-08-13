@@ -153,15 +153,15 @@ class NODISCARD_CLASS Result {
     return *new (this) Result(std::move(value));
   }
 
-  explicit operator bool() const {
+  MUST_USE_RESULT explicit operator bool() const {
     return ok();
   }
 
-  bool operator!() const {
+  MUST_USE_RESULT bool operator!() const {
     return !ok();
   }
 
-  bool ok() const {
+  MUST_USE_RESULT bool ok() const {
 #ifndef NDEBUG
     ANNOTATE_IGNORE_WRITES_BEGIN();
     success_checked_ = true;
