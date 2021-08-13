@@ -47,3 +47,21 @@ org.postgresql.util.PSQLException: ERROR: Catalog Version Mismatch: A DDL occurr
 A DML query in YSQL may touch multiple servers, and each server has a Catalog Version which is used to track schema changes. When a DDL statement runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
 
 In these cases, the database aborts the query and returns a `40001` PostgreSQL error code. Errors with this code can be safely retried from the client side. 
+
+## Not able to perform operations using yb-admin after enabling encryption at transit
+
+After configuring [encryption at transit](../../../secure/tls-encryption) for yugabyte cluster, you may get the following error when trying to use `yb-admin`:
+
+```output
+./bin/yb-admin -master_addresses <master-addresses> list_all_masters
+```
+```output
+Unable to establish connection to leader master at [MASTERIP1:7100,MASTERIP2:7100,MASTERIP3:7100].
+Please verify the addresses.\n\n: Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100], num_attempts: 338)
+passed its deadline 79595.999s (passed: 60.038s): Network error (yb/util/net/socket.cc:535):
+recvmsg got EOF from remote (system error 108)\nTimed out (yb/rpc/rpc.cc:211):
+Unable to establish connection to leader master at [MASTERIP1:7100,MASTERIP2:7100,MASTERIP3:7100].
+Please verify the addresses.\n\n: Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100]
+```
+
+The solution is to pass the location of your certificates directory via `--certs_dir_name` on the `yb-admin` command. Then it will function as expected.
