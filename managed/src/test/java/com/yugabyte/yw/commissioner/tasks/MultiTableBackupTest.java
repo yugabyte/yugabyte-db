@@ -29,8 +29,6 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common.TableType;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -107,17 +105,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     mockSchemaResponse2 = mock(GetTableSchemaResponse.class);
     mockSchemaResponse3 = mock(GetTableSchemaResponse.class);
     mockSchemaResponse4 = mock(GetTableSchemaResponse.class);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     mockClient = mock(YBClient.class);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
-    } catch (Exception e) {
-    }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
