@@ -9,7 +9,7 @@
  */
 package com.yugabyte.yw.forms.filters;
 
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import java.util.Set;
@@ -25,7 +25,7 @@ public class AlertDefinitionGroupApiFilter {
   private String name;
   private Boolean active;
   private AlertDefinitionGroup.TargetType targetType;
-  private AlertDefinitionTemplate template;
+  private AlertTemplate template;
   private UUID routeUuid;
 
   public AlertDefinitionGroupFilter toFilter() {

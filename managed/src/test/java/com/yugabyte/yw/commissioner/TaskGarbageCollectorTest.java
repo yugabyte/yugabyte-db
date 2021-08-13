@@ -2,15 +2,13 @@ package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.CUSTOMER_TASK_METRIC_NAME;
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.CUSTOMER_UUID_LABEL;
-import static com.yugabyte.yw.commissioner.TaskGarbageCollector.EXPORT_PROM_METRIC;
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.NUM_TASK_GC_ERRORS;
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.NUM_TASK_GC_RUNS;
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.TASK_INFO_METRIC_NAME;
 import static com.yugabyte.yw.commissioner.TaskGarbageCollector.YB_TASK_GC_GC_CHECK_INTERVAL;
+import static io.prometheus.client.CollectorRegistry.defaultRegistry;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
@@ -22,7 +20,6 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import io.prometheus.client.CollectorRegistry;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.UUID;
@@ -44,18 +41,18 @@ public class TaskGarbageCollectorTest extends TestCase {
       Double expectedCustomerTaskGC,
       Double expectedTaskInfoGC) {
     assertEquals(
-        expectedNumRuns, testRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_RUNS)));
+        expectedNumRuns, defaultRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_RUNS)));
     assertEquals(
-        expectedErrors, testRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_ERRORS)));
+        expectedErrors, defaultRegistry.getSampleValue(getTotalCounterName(NUM_TASK_GC_ERRORS)));
     assertEquals(
         expectedCustomerTaskGC,
-        testRegistry.getSampleValue(
+        defaultRegistry.getSampleValue(
             getTotalCounterName(CUSTOMER_TASK_METRIC_NAME),
             new String[] {CUSTOMER_UUID_LABEL},
             new String[] {customerUuid.toString()}));
     assertEquals(
         expectedTaskInfoGC,
-        testRegistry.getSampleValue(
+        defaultRegistry.getSampleValue(
             getTotalCounterName(TASK_INFO_METRIC_NAME),
             new String[] {CUSTOMER_UUID_LABEL},
             new String[] {customerUuid.toString()}));
@@ -75,46 +72,29 @@ public class TaskGarbageCollectorTest extends TestCase {
 
   @Mock CustomerTask mockCustomerTask;
 
-  CollectorRegistry testRegistry;
+  private TaskGarbageCollector taskGarbageCollector;
 
   @Before
   public void setUp() {
-    EXPORT_PROM_METRIC = true;
-    testRegistry = new CollectorRegistry();
     when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(mockAppConfig);
-  }
-
-  @Test
-  public void testIgnorePromError() {
-    CollectorRegistry mockCollectorRegistry = mock(CollectorRegistry.class);
-    doThrow(IllegalArgumentException.class).when(mockCollectorRegistry).register(any());
-    new TaskGarbageCollector(
-        mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, mockCollectorRegistry);
-  }
-
-  @Test
-  public void testDefaultProm() {
     when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
-    new TaskGarbageCollector(mockActorSystem, mockRuntimeConfigFactory, mockExecutionContext);
+    taskGarbageCollector =
+        new TaskGarbageCollector(mockActorSystem, mockRuntimeConfigFactory, mockExecutionContext);
+    defaultRegistry.clear();
+    TaskGarbageCollector.registerMetrics();
   }
 
   @Test
   public void testStart_disabled() {
     when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL)).thenReturn(Duration.ZERO);
-    TaskGarbageCollector gc =
-        new TaskGarbageCollector(
-            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
-    gc.start();
+    taskGarbageCollector.start();
     verifyZeroInteractions(mockScheduler);
   }
 
   @Test
   public void testStart_enabled() {
     when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL)).thenReturn(Duration.ofDays(1));
-    TaskGarbageCollector gc =
-        new TaskGarbageCollector(
-            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
-    gc.start();
+    taskGarbageCollector.start();
     verify(mockScheduler, times(1))
         .schedule(eq(Duration.ZERO), eq(Duration.ofDays(1)), any(), eq(mockExecutionContext));
   }
@@ -123,10 +103,7 @@ public class TaskGarbageCollectorTest extends TestCase {
   public void testPurge_noneStale() {
     UUID customerUuid = UUID.randomUUID();
 
-    TaskGarbageCollector gc =
-        new TaskGarbageCollector(
-            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
-    gc.purgeStaleTasks(mockCustomer, Collections.emptyList());
+    taskGarbageCollector.purgeStaleTasks(mockCustomer, Collections.emptyList());
 
     checkCounters(customerUuid, 1.0, 0.0, null, null);
   }
@@ -138,10 +115,7 @@ public class TaskGarbageCollectorTest extends TestCase {
     // Pretend we deleted 5 rows in all:
     when(mockCustomerTask.cascadeDeleteCompleted()).thenReturn(5);
 
-    TaskGarbageCollector gc =
-        new TaskGarbageCollector(
-            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
-    gc.purgeStaleTasks(mockCustomer, Collections.singletonList(mockCustomerTask));
+    taskGarbageCollector.purgeStaleTasks(mockCustomer, Collections.singletonList(mockCustomerTask));
 
     checkCounters(customerUuid, 1.0, 0.0, 1.0, 4.0);
   }
@@ -154,10 +128,7 @@ public class TaskGarbageCollectorTest extends TestCase {
     // Pretend we deleted 5 rows in all:
     when(mockCustomerTask.cascadeDeleteCompleted()).thenReturn(0);
 
-    TaskGarbageCollector gc =
-        new TaskGarbageCollector(
-            mockScheduler, mockRuntimeConfigFactory, mockExecutionContext, testRegistry);
-    gc.purgeStaleTasks(mockCustomer, Collections.singletonList(mockCustomerTask));
+    taskGarbageCollector.purgeStaleTasks(mockCustomer, Collections.singletonList(mockCustomerTask));
 
     checkCounters(customerUuid, 1.0, 1.0, null, null);
   }

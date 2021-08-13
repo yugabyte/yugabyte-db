@@ -9,6 +9,7 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.common.Util.doubleToString;
 import static com.yugabyte.yw.models.AlertDefinitionGroup.createQueryByFilter;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
@@ -17,8 +18,9 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.alerts.impl.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
@@ -39,6 +41,7 @@ import io.ebean.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,6 +60,8 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 @Slf4j
 public class AlertDefinitionGroupService {
+
+  private static final int MAX_NAME_LENGTH = 1000;
 
   private final AlertDefinitionService alertDefinitionService;
   private final RuntimeConfigFactory runtimeConfigFactory;
@@ -196,6 +201,10 @@ public class AlertDefinitionGroupService {
     if (StringUtils.isEmpty(group.getName())) {
       throw new YWServiceException(BAD_REQUEST, "Name field is mandatory");
     }
+    if (group.getName().length() > MAX_NAME_LENGTH) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Name field can't be longer than " + MAX_NAME_LENGTH + " characters");
+    }
     if (group.getTargetType() == null) {
       throw new YWServiceException(BAD_REQUEST, "Target type field is mandatory");
     }
@@ -207,8 +216,33 @@ public class AlertDefinitionGroupService {
       throw new YWServiceException(
           BAD_REQUEST, "Should select either all entries or particular UUIDs as target");
     }
+    if (!CollectionUtils.isEmpty(target.getUuids())) {
+      switch (group.getTargetType()) {
+        case UNIVERSE:
+          Set<UUID> existingUuids =
+              Universe.getAllWithoutResources(group.getTarget().getUuids())
+                  .stream()
+                  .map(Universe::getUniverseUUID)
+                  .collect(Collectors.toSet());
+          Set<UUID> missingUuids = new HashSet<>(group.getTarget().getUuids());
+          missingUuids.removeAll(existingUuids);
+          if (!missingUuids.isEmpty()) {
+            throw new YWServiceException(
+                BAD_REQUEST,
+                "Universe(s) missing for uuid(s) "
+                    + missingUuids.stream().map(UUID::toString).collect(Collectors.joining(", ")));
+          }
+          break;
+        default:
+          throw new YWServiceException(
+              BAD_REQUEST, group.getTargetType().name() + " group can't have target uuids");
+      }
+    }
     if (group.getTemplate() == null) {
       throw new YWServiceException(BAD_REQUEST, "Template field is mandatory");
+    }
+    if (group.getTemplate().getTargetType() != group.getTargetType()) {
+      throw new YWServiceException(BAD_REQUEST, "Target type should be consistent with template");
     }
     if (MapUtils.isEmpty(group.getThresholds())) {
       throw new YWServiceException(BAD_REQUEST, "Query thresholds are mandatory");
@@ -224,6 +258,33 @@ public class AlertDefinitionGroupService {
     if (group.getThresholdUnit() != group.getTemplate().getDefaultThresholdUnit()) {
       throw new YWServiceException(
           BAD_REQUEST, "Can't set threshold unit incompatible with alert definition template");
+    }
+    group
+        .getThresholds()
+        .values()
+        .forEach(
+            threshold -> {
+              if (threshold.getCondition() == null) {
+                throw new YWServiceException(BAD_REQUEST, "Threshold condition is mandatory");
+              }
+              if (threshold.getThreshold() == null) {
+                throw new YWServiceException(BAD_REQUEST, "Threshold value is mandatory");
+              }
+              if (threshold.getThreshold() < group.getTemplate().getThresholdMinValue()) {
+                throw new YWServiceException(
+                    BAD_REQUEST,
+                    "Threshold value can't be less than "
+                        + doubleToString(group.getTemplate().getThresholdMinValue()));
+              }
+              if (threshold.getThreshold() > group.getTemplate().getThresholdMaxValue()) {
+                throw new YWServiceException(
+                    BAD_REQUEST,
+                    "Threshold value can't be greater than "
+                        + doubleToString(group.getTemplate().getThresholdMaxValue()));
+              }
+            });
+    if (group.getDurationSec() == null || group.getDurationSec() < 0) {
+      throw new YWServiceException(BAD_REQUEST, "Duration can't be less than 0");
     }
     if (before != null) {
       if (!group.getCustomerUUID().equals(before.getCustomerUUID())) {
@@ -389,34 +450,40 @@ public class AlertDefinitionGroupService {
     }
   }
 
-  public AlertDefinitionGroup createGroupFromTemplate(
-      Customer customer, AlertDefinitionTemplate template) {
-    return new AlertDefinitionGroup()
-        .setCustomerUUID(customer.getUuid())
-        .setName(template.getName())
-        .setDescription(template.getDescription())
-        .setTargetType(template.getTargetType())
-        .setTarget(new AlertDefinitionGroupTarget().setAll(true))
-        .setThresholds(
-            template
-                .getDefaultThresholdMap()
-                .entrySet()
-                .stream()
-                .collect(
-                    Collectors.toMap(
-                        Map.Entry::getKey,
-                        e ->
-                            new AlertDefinitionGroupThreshold()
-                                .setCondition(template.getDefaultThresholdCondition())
-                                .setThreshold(
-                                    e.getValue().isParamName()
-                                        ? runtimeConfigFactory
-                                            .globalRuntimeConf()
-                                            .getDouble(e.getValue().getParamName())
-                                        : e.getValue().getThreshold()))))
-        .setThresholdUnit(template.getDefaultThresholdUnit())
-        .setTemplate(template)
-        .setDurationSec(template.getDefaultDurationSec());
+  public AlertDefinitionTemplate createDefinitionTemplate(
+      Customer customer, AlertTemplate template) {
+    AlertDefinitionGroup group =
+        new AlertDefinitionGroup()
+            .setCustomerUUID(customer.getUuid())
+            .setName(template.getName())
+            .setDescription(template.getDescription())
+            .setTargetType(template.getTargetType())
+            .setTarget(new AlertDefinitionGroupTarget().setAll(true))
+            .setThresholds(
+                template
+                    .getDefaultThresholdMap()
+                    .entrySet()
+                    .stream()
+                    .collect(
+                        Collectors.toMap(
+                            Map.Entry::getKey,
+                            e ->
+                                new AlertDefinitionGroupThreshold()
+                                    .setCondition(template.getDefaultThresholdCondition())
+                                    .setThreshold(
+                                        e.getValue().isParamName()
+                                            ? runtimeConfigFactory
+                                                .globalRuntimeConf()
+                                                .getDouble(e.getValue().getParamName())
+                                            : e.getValue().getThreshold()))))
+            .setThresholdUnit(template.getDefaultThresholdUnit())
+            .setTemplate(template)
+            .setDurationSec(template.getDefaultDurationSec());
+    return new AlertDefinitionTemplate()
+        .setDefaultGroup(group)
+        .setThresholdMinValue(template.getThresholdMinValue())
+        .setThresholdMaxValue(template.getThresholdMaxValue())
+        .setThresholdInteger(template.getDefaultThresholdUnit().isInteger());
   }
 
   private AlertDefinition createEmptyDefinition(AlertDefinitionGroup group) {
