@@ -222,7 +222,7 @@ $ helm history yb-demo -n yb-demo
 
 ```sh
 REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION     
-1         Tue Apr 21 17:29:01 2020  deployed  2.7.0      2.7.0.0-b17  Install complete
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.7.0      2.7.0.0-b17  Install complete
 ```
 
 ## Connect using YugabyteDB shells
