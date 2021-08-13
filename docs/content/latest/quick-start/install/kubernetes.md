@@ -64,7 +64,7 @@ showAsideToc: true
 
 ## Start Kubernetes
 
-- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. We recommend starting minkube with at least 8GB RAM, 4 CPUs and 40GB disk as shown below.
+- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. We recommend starting minikube with at least 8GB RAM, 4 CPUs and 40GB disk as shown below.
 
     ```sh
     $ minikube start --kubernetes-version v1.18.20 --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
