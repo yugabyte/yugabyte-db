@@ -14,6 +14,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pg_system_attr.h"
@@ -1406,8 +1407,8 @@ void PgApiImpl::SetTimeout(const int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
-void PgApiImpl::ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers) {
-  pg_session_->ListTabletServers(tablet_servers, numofservers).ok();
+Result<client::YBClient::TabletServersInfo> PgApiImpl::ListTabletServers() {
+  return pg_session_->ListTabletServers();
 }
 
 } // namespace pggate

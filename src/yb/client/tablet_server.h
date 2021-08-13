@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <string>
 #ifndef YB_CLIENT_TABLET_SERVER_H
 #define YB_CLIENT_TABLET_SERVER_H
 

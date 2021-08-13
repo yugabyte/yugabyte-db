@@ -267,6 +267,8 @@ class YBClientBuilder {
 // This class is thread-safe.
 class YBClient {
  public:
+  using TabletServersInfo = std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>>;
+
   ~YBClient();
 
   std::unique_ptr<YBTableCreator> NewTableCreator();
@@ -562,9 +564,8 @@ class YBClient {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
-  CHECKED_STATUS ListLiveTabletServers(
-      std::vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers,
-      bool primary_only = false);
+  CHECKED_STATUS ListLiveTabletServers(TabletServersInfo* tablet_servers,
+                                       bool primary_only = false);
 
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,

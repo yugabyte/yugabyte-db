@@ -1490,8 +1490,7 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
   return Status::OK();
 }
 
-Status YBClient::ListLiveTabletServers(
-    vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers, bool primary_only) {
+Status YBClient::ListLiveTabletServers(TabletServersInfo* tablet_servers, bool primary_only) {
   ListLiveTabletServersRequestPB req;
   if (primary_only) req.set_primary_only(true);
   ListLiveTabletServersResponsePB resp;
@@ -1504,6 +1503,12 @@ Status YBClient::ListLiveTabletServers(
     std::string region = "";
     std::string zone = "";
     int broadcast_sz = entry.registration().common().broadcast_addresses().size();
+    int private_ip_addresses_sz = entry.registration().common().private_rpc_addresses().size();
+
+    const auto privateIp =
+        private_ip_addresses_sz > 0
+            ? entry.registration().common().private_rpc_addresses().Get(0).host()
+            : DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host();
 
     std::string publicIp = "";
     if (broadcast_sz > 0) {
@@ -1522,8 +1527,7 @@ Status YBClient::ListLiveTabletServers(
     }
 
     auto ts = std::make_unique<YBTabletServerPlacementInfo>(
-        entry.instance_id().permanent_uuid(),
-        DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host(),
+        entry.instance_id().permanent_uuid(), privateIp,
         entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary,
         publicIp, entry.registration().common().pg_port());
     tablet_servers->push_back(std::move(ts));
