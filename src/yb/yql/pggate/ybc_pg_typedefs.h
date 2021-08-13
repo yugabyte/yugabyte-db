@@ -274,8 +274,8 @@ typedef struct PgServerDescriptor {
   const char *cloud;
   const char *region;
   const char *zone;
-  bool isPrimary;
   const char *publicIp;
+  bool isPrimary;
   uint16_t pgPort;
 } YBCServerDescriptor;
 

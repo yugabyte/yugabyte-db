@@ -15,6 +15,8 @@
 
 #include <cds/init.h> // NOLINT
 
+#include "yb/client/tablet_server.h"
+
 #include "yb/common/common_flags.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
@@ -1021,8 +1023,31 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   pgapi->SetTimeout(timeout_ms);
 }
 
-void YBCGetTabletServerHosts(YBCServerDescriptor **servers, int * count) {
-  pgapi->ListTabletServers(servers, count);
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, int *count) {
+  const auto result = pgapi->ListTabletServers();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto &servers_info = result.get();
+  *count = servers_info.size();
+  *servers = NULL;
+  if (!servers_info.empty()) {
+    *servers = static_cast<YBCServerDescriptor *>(
+        YBCPAlloc(sizeof(YBCServerDescriptor) * servers_info.size()));
+    YBCServerDescriptor *dest = *servers;
+    for (const auto &info : servers_info) {
+      new (dest) YBCServerDescriptor{
+          .host = YBCPAllocStdString(info->hostname()),
+          .cloud = YBCPAllocStdString(info->cloud()),
+          .region = YBCPAllocStdString(info->region()),
+          .zone = YBCPAllocStdString(info->zone()),
+          .publicIp = YBCPAllocStdString(info->publicIp()),
+          .isPrimary = info->isPrimary(),
+          .pgPort = info->pg_port()};
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
 }
 
 //------------------------------------------------------------------------------------------------
