@@ -33,9 +33,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
@@ -51,14 +50,13 @@ import java.util.UUID;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
-
 import play.Environment;
 import play.libs.Json;
-import play.mvc.Result;
 
 // TODO: move pricing data fetch to ybcloud.
 @Singleton
 public class AWSInitializer extends AbstractInitializer {
+
   private static final boolean enableVerboseLogging = false;
 
   @Inject Environment environment;
@@ -71,77 +69,71 @@ public class AWSInitializer extends AbstractInitializer {
    *
    * @param customerUUID UUID of the Customer.
    * @param providerUUID UUID of the Customer's configured AWS.
-   * @return A response result that can be returned to the user to indicate success/failure.
    */
   @Override
-  public Result initialize(UUID customerUUID, UUID providerUUID) {
-    try {
-      Provider provider = Provider.get(customerUUID, providerUUID);
-      InitializationContext context = new InitializationContext(provider);
+  public void initialize(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    InitializationContext context = new InitializationContext(provider);
 
-      LOG.info("Initializing AWS instance type and pricing info.");
-      LOG.info("This operation may take a few minutes...");
-      // Get the price Json object stored locally at conf/aws_pricing.
-      for (Region region : provider.regions) {
-        JsonNode regionJson = null;
+    LOG.info("Initializing AWS instance type and pricing info.");
+    LOG.info("This operation may take a few minutes...");
+    // Get the price Json object stored locally at conf/aws_pricing.
+    for (Region region : provider.regions) {
+      JsonNode regionJson = null;
 
-        String pricingFileName = "aws_pricing/" + region.code + ".tar.gz";
-        try (InputStream pricingStream = environment.resourceAsStream(pricingFileName);
-            GzipCompressorInputStream gzipStream = new GzipCompressorInputStream(pricingStream);
-            TarArchiveInputStream regionStream = new TarArchiveInputStream(gzipStream)) {
-          TarArchiveEntry currentEntry;
-          boolean pricingFileFound = false;
-          while ((currentEntry = regionStream.getNextTarEntry()) != null) {
-            if (currentEntry.getName().equals(region.code)) {
-              pricingFileFound = true;
-              break;
-            } else {
-              LOG.warn("Unexpected file in pricing archive {}", currentEntry.getName());
-            }
+      String pricingFileName = "aws_pricing/" + region.code + ".tar.gz";
+      try (InputStream pricingStream = environment.resourceAsStream(pricingFileName);
+          GzipCompressorInputStream gzipStream = new GzipCompressorInputStream(pricingStream);
+          TarArchiveInputStream regionStream = new TarArchiveInputStream(gzipStream)) {
+        TarArchiveEntry currentEntry;
+        boolean pricingFileFound = false;
+        while ((currentEntry = regionStream.getNextTarEntry()) != null) {
+          if (currentEntry.getName().equals(region.code)) {
+            pricingFileFound = true;
+            break;
+          } else {
+            LOG.warn("Unexpected file in pricing archive {}", currentEntry.getName());
           }
-          if (!pricingFileFound) {
-            LOG.error("Failed to get region pricing file from {}", pricingFileName);
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to get region pricing file");
-          }
-          ObjectMapper mapper = new ObjectMapper();
-          regionJson = mapper.readTree(regionStream);
-        } catch (IOException e) {
-          LOG.error("Failed to parse region metadata from region {}", region.code);
-          return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
         }
-
-        // The products sub-document has the list of EC2 products along with the SKU, its format is:
-        //    {
-        //      ...
-        //      "products" : {
-        //        <productDetailsJson, which is a list of product details>
-        //      }
-        //    }
-        JsonNode productDetailsListJson = regionJson.get("products");
-
-        // The "terms" or price details json object has the following format:
-        //  "terms" : {
-        //    "OnDemand" : {
-        //      <onDemandJson, which is a list of price details objects>
-        //    }
-        //  }
-        JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
-
-        storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
-        storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
-        parseProductDetailsList(context, productDetailsListJson);
-
-        // Create the instance types.
-        storeInstanceTypeInfoToDB(context);
-        LOG.info("Successfully stored pricing info for region {}", region.code);
+        if (!pricingFileFound) {
+          LOG.error("Failed to get region pricing file from {}", pricingFileName);
+          throw new YWServiceException(INTERNAL_SERVER_ERROR, "Failed to get region pricing file");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        regionJson = mapper.readTree(regionStream);
+      } catch (IOException e) {
+        LOG.error("Failed to parse region metadata from region {}", region.code);
+        throw new YWServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failed to parse region metadata from region " + region.code + ". " + e.getMessage());
       }
-      LOG.info("Successfully finished parsing pricing info.");
-    } catch (Exception e) {
-      LOG.error("AWS initialize failed", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
 
-    return YWResults.YWSuccess.withMessage("AWS Initialized.");
+      // The products sub-document has the list of EC2 products along with the SKU, its format is:
+      //    {
+      //      ...
+      //      "products" : {
+      //        <productDetailsJson, which is a list of product details>
+      //      }
+      //    }
+      JsonNode productDetailsListJson = regionJson.get("products");
+
+      // The "terms" or price details json object has the following format:
+      //  "terms" : {
+      //    "OnDemand" : {
+      //      <onDemandJson, which is a list of price details objects>
+      //    }
+      //  }
+      JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
+
+      storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
+      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
+      parseProductDetailsList(context, productDetailsListJson);
+
+      // Create the instance types.
+      storeInstanceTypeInfoToDB(context);
+      LOG.info("Successfully stored pricing info for region {}", region.code);
+    }
+    LOG.info("Successfully finished parsing pricing info.");
   }
 
   /**
@@ -494,7 +486,7 @@ public class AWSInitializer extends AbstractInitializer {
     Provider provider = context.provider;
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetInstanceTypeDetailsForProvider(provider.uuid);
-    String instanceTypeCode = null;
+    String instanceTypeCode;
 
     for (Map<String, String> productAttrs : context.availableInstances) {
       // Get the instance type.

@@ -2020,34 +2020,6 @@
       "required" : [ "airGapInstall", "installNodeExporter", "nodeExporterPort", "nodeExporterUser", "passwordlessSudoAccess", "privateKey", "provisionInstanceScript", "publicKey", "skipProvisioning", "sshPort", "sshUser", "vaultFile", "vaultPasswordFile" ],
       "type" : "object"
     },
-    "KubernetesProviderFormData" : {
-      "properties" : {
-        "code" : {
-          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ],
-          "type" : "string"
-        },
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "region" : {
-          "type" : "string"
-        },
-        "regionList" : {
-          "items" : {
-            "$ref" : "#/definitions/RegionData"
-          },
-          "type" : "array"
-        }
-      },
-      "required" : [ "code", "config", "name", "region", "regionList" ],
-      "type" : "object"
-    },
     "MasterNode" : {
       "properties" : {
         "cloudInfo" : {
@@ -3022,9 +2994,6 @@
           },
           "type" : "object"
         },
-        "details" : {
-          "$ref" : "#/definitions/RegionDetails"
-        },
         "latitude" : {
           "description" : "Latitude of this region",
           "example" : 37.22,
@@ -3068,51 +3037,7 @@
           "type" : "array"
         }
       },
-      "required" : [ "details", "securityGroupId", "vnetName", "zones" ],
-      "type" : "object"
-    },
-    "RegionData" : {
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "latitude" : {
-          "format" : "double",
-          "type" : "number"
-        },
-        "longitude" : {
-          "format" : "double",
-          "type" : "number"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "zoneList" : {
-          "items" : {
-            "$ref" : "#/definitions/ZoneData"
-          },
-          "type" : "array"
-        }
-      },
-      "required" : [ "code", "config", "latitude", "longitude", "name", "zoneList" ],
-      "type" : "object"
-    },
-    "RegionDetails" : {
-      "properties" : {
-        "sg_id" : {
-          "type" : "string"
-        },
-        "vnet" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "sg_id", "vnet" ],
+      "required" : [ "securityGroupId", "vnetName", "zones" ],
       "type" : "object"
     },
     "RegionFormData" : {
@@ -3242,7 +3167,7 @@
         },
         "taskType" : {
           "description" : "Type of the task to be schedules",
-          "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion" ],
+          "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "CreateXClusterReplication", "DeleteXClusterReplication", "EditXClusterReplication", "PauseOrResumeXClusterReplication", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion", "AlterXClusterReplicationAddTables", "AlterXClusterReplicationRemoveTables", "AlterXClusterReplicationChangeMasterAddresses", "XClusterReplicationSetActive" ],
           "type" : "string"
         }
       },
@@ -4140,24 +4065,6 @@
           "type" : "string"
         }
       },
-      "type" : "object"
-    },
-    "ZoneData" : {
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "name" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "code", "config", "name" ],
       "type" : "object"
     }
   },
@@ -5782,7 +5689,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "listProvider",
-        "tags" : [ "Provider1" ]
+        "tags" : [ "Provider" ]
       },
       "post" : {
         "description" : "",
@@ -5813,38 +5720,23 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "createProvider",
-        "tags" : [ "Provider1" ]
+        "tags" : [ "Provider" ]
       }
     },
-    "/api/v1/customers/{cUUID}/providers/kubernetes" : {
-      "post" : {
-        "operationId" : "createKubernetes",
+    "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
+      "delete" : {
+        "description" : "This endpoint we are using only for deleting provider for integration test purpose.",
+        "operationId" : "delete",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "Provider" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/suggested_kubernetes_config" : {
-      "get" : {
-        "description" : " Performs discovery of region, zones, pull secret, storageClass when running inside a Kubernetes cluster. Returns the discovered information as a JSON, which is similar to the one which is passed to the createKubernetes method.",
-        "operationId" : "getSuggestedKubernetesConfigs",
-        "parameters" : [ {
+        }, {
           "format" : "uuid",
           "in" : "path",
-          "name" : "cUUID",
+          "name" : "pUUID",
           "required" : true,
           "type" : "string"
         } ],
@@ -5852,14 +5744,14 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/KubernetesProviderFormData"
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getSuggestedKubernetesConfigs",
+        "summary" : "deleteProvider",
         "tags" : [ "Provider" ]
       }
     },
@@ -5997,33 +5889,6 @@
         "tags" : [ "AccessKey" ]
       }
     },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
-      "post" : {
-        "operationId" : "bootstrap",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "Provider" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
       "put" : {
         "description" : "",
@@ -6061,35 +5926,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "editProvider",
-        "tags" : [ "Provider" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/initialize" : {
-      "get" : {
-        "description" : "Refresh Provider pricing info",
-        "operationId" : "initialize",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "refreshPricing",
         "tags" : [ "Provider" ]
       }
     },
@@ -6321,6 +6157,35 @@
         } ],
         "summary" : "List of node instances by provider",
         "tags" : [ "Node Instances" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/refresh_pricing" : {
+      "put" : {
+        "description" : "Refresh Provider pricing info",
+        "operationId" : "refreshPricing",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "refreshPricing",
+        "tags" : [ "Provider" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions" : {
@@ -9416,8 +9281,6 @@
     "name" : "Node Instances"
   }, {
     "name" : "Provider"
-  }, {
-    "name" : "Provider1"
   }, {
     "name" : "Region"
   }, {

@@ -10,14 +10,8 @@
 
 package com.yugabyte.yw.cloud;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
@@ -31,7 +25,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 import play.libs.Json;
-import play.mvc.Result;
 
 @Singleton
 public class AZUInitializer extends AbstractInitializer {
@@ -63,51 +56,36 @@ public class AZUInitializer extends AbstractInitializer {
    *
    * @param customerUUID UUID of the Customer.
    * @param providerUUID UUID of the Customer's configured AZU.
-   * @return A response result that can be returned to the user to indicate success/failure.
    */
   @Override
-  public Result initialize(UUID customerUUID, UUID providerUUID) {
-    try {
-      // Validate input
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
-      Provider provider = Provider.get(customerUUID, providerUUID);
-      if (provider == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-      }
-      InitializationContext context = new InitializationContext(provider);
+  public void initialize(UUID customerUUID, UUID providerUUID) {
+    // Validate input
+    Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    InitializationContext context = new InitializationContext(provider);
 
-      List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
-      Common.CloudType cloudType = Common.CloudType.valueOf(provider.code);
+    List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
 
-      JsonNode instanceTypes =
-          cloudQueryHelper.getInstanceTypes(
-              regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
+    JsonNode instanceTypes =
+        cloudQueryHelper.getInstanceTypes(
+            regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
 
-      Iterator<String> itr = instanceTypes.fieldNames();
+    Iterator<String> itr = instanceTypes.fieldNames();
 
-      while (itr.hasNext()) {
+    while (itr.hasNext()) {
 
-        String instanceTypeCode = itr.next();
-        JsonNode instanceTypeToDetailsMap = instanceTypes.get(instanceTypeCode);
+      String instanceTypeCode = itr.next();
+      JsonNode instanceTypeToDetailsMap = instanceTypes.get(instanceTypeCode);
 
-        InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createAZUDefault();
+      InstanceTypeDetails instanceTypeDetails = InstanceTypeDetails.createAZUDefault();
 
-        InstanceType.upsert(
-            provider.uuid,
-            instanceTypeCode,
-            instanceTypeToDetailsMap.get("numCores").asInt(),
-            instanceTypeToDetailsMap.get("memSizeGb").asDouble(),
-            instanceTypeDetails);
-        storeInstancePriceComponents(context, instanceTypeCode, instanceTypeToDetailsMap);
-      }
-    } catch (Exception e) {
-      LOG.error("Azure Initialize failed", e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      InstanceType.upsert(
+          provider.uuid,
+          instanceTypeCode,
+          instanceTypeToDetailsMap.get("numCores").asInt(),
+          instanceTypeToDetailsMap.get("memSizeGb").asDouble(),
+          instanceTypeDetails);
+      storeInstancePriceComponents(context, instanceTypeCode, instanceTypeToDetailsMap);
     }
-
-    return YWResults.YWSuccess.withMessage("Azure Initialized");
   }
 }

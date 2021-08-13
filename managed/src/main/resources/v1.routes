@@ -29,28 +29,35 @@ GET     /prometheus_metrics                                                    c
 GET     /customers/:cUUID/regions                                              com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)
 
 # These methods are handled by new Provider API controller
-POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.create(cUUID: java.util.UUID)
-GET     /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.list(cUUID: java.util.UUID)
-DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /customers/:cUUID/providers                            com.yugabyte.yw.controllers.CloudProviderApiController.create(cUUID: java.util.UUID)
+GET     /customers/:cUUID/providers                            com.yugabyte.yw.controllers.CloudProviderApiController.list(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/providers/:pUUID                     com.yugabyte.yw.controllers.CloudProviderApiController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
+PUT     /customers/:cUUID/providers/:pUUID/edit                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID)
+PUT     /customers/:cUUID/providers/:pUUID/refresh_pricing     com.yugabyte.yw.controllers.CloudProviderApiController.refreshPricing(cUUID: java.util.UUID, pUUID: java.util.UUID)
 
-GET     /customers/:cUUID/providers/:pUUID/initialize                          com.yugabyte.yw.controllers.CloudProviderController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
-POST    /customers/:cUUID/providers/ui                                            com.yugabyte.yw.controllers.CloudProviderController.create(cUUID: java.util.UUID)
-POST    /customers/:cUUID/providers/kubernetes                                 com.yugabyte.yw.controllers.CloudProviderController.createKubernetes(cUUID: java.util.UUID)
-GET     /customers/:cUUID/providers/suggested_kubernetes_config                com.yugabyte.yw.controllers.CloudProviderController.getSuggestedKubernetesConfigs(cUUID: java.util.UUID)
-POST    /customers/:cUUID/providers/:pUUID/bootstrap                           com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
-POST    /customers/:cUUID/providers/:pUUID/cleanup                             com.yugabyte.yw.controllers.CloudProviderController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)
-PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID)
+# Start UI only
+POST    /customers/:cUUID/providers/ui                                         com.yugabyte.yw.controllers.CloudProviderUiOnlyController.create(cUUID: java.util.UUID)
+POST    /customers/:cUUID/providers/kubernetes                                 com.yugabyte.yw.controllers.CloudProviderUiOnlyController.createKubernetes(cUUID: java.util.UUID)
+GET     /customers/:cUUID/providers/suggested_kubernetes_config                com.yugabyte.yw.controllers.CloudProviderUiOnlyController.getSuggestedKubernetesConfigs(cUUID: java.util.UUID)
+POST    /customers/:cUUID/providers/:pUUID/bootstrap                           com.yugabyte.yw.controllers.CloudProviderUiOnlyController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /customers/:cUUID/providers/:pUUID/cleanup                             com.yugabyte.yw.controllers.CloudProviderUiOnlyController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /customers/:cUUID/providers/setup_docker                               com.yugabyte.yw.controllers.CloudProviderUiOnlyController.setupDocker(cUUID: java.util.UUID)
+# ui only alias for refresh pricing. Deprecated because uses GET for state mutating method and now getting audited:
+GET     /customers/:cUUID/providers/:pUUID/initialize                          com.yugabyte.yw.controllers.CloudProviderUiOnlyController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
+# End Start UI only
+
 GET     /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID                      com.yugabyte.yw.controllers.RegionController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
 GET     /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID)
+
 GET     /customers/:cUUID/providers/:pUUID/instance_types/:code                com.yugabyte.yw.controllers.InstanceTypeController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, code: String)
 GET     /customers/:cUUID/providers/:pUUID/instance_types                      com.yugabyte.yw.controllers.InstanceTypeController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, zone: java.util.List[String] ?= java.util.Collections.emptyList())
 POST    /customers/:cUUID/providers/:pUUID/instance_types                      com.yugabyte.yw.controllers.InstanceTypeController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID/instance_types/:code                com.yugabyte.yw.controllers.InstanceTypeController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, code: String)
-POST    /customers/:cUUID/providers/setup_docker                               com.yugabyte.yw.controllers.CloudProviderController.setupDocker(cUUID: java.util.UUID)
+
 POST    /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.create(cUUID: java.util.UUID)
 GET     /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.list(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.edit(cUUID: java.util.UUID, configUUID: java.util.UUID)

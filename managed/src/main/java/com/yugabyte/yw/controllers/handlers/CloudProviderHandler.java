@@ -24,7 +24,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.AZUInitializer;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -61,6 +64,7 @@ import play.Environment;
 import play.libs.Json;
 
 public class CloudProviderHandler {
+
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
@@ -85,6 +89,10 @@ public class CloudProviderHandler {
   @Inject private Configuration appConfig;
   @Inject private Config config;
   @Inject private CloudQueryHelper queryHelper;
+
+  @Inject private AWSInitializer awsInitializer;
+  @Inject private GCPInitializer gcpInitializer;
+  @Inject private AZUInitializer azuInitializer;
 
   public void delete(Customer customer, Provider provider) {
     if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
@@ -212,6 +220,7 @@ public class CloudProviderHandler {
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
           az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.save();
         }
       }
     }
@@ -560,5 +569,15 @@ public class CloudProviderHandler {
           INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
     }
     provider.updateHostedZone(hostedZoneId, hostedZoneData.asText());
+  }
+
+  public void refreshPricing(UUID customerUUID, Provider provider) {
+    if (provider.code.equals("gcp")) {
+      gcpInitializer.initialize(customerUUID, provider.uuid);
+    } else if (provider.code.equals("azu")) {
+      azuInitializer.initialize(customerUUID, provider.uuid);
+    } else {
+      awsInitializer.initialize(customerUUID, provider.uuid);
+    }
   }
 }
