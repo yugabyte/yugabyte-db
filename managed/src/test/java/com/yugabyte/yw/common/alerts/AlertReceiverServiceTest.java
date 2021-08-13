@@ -1,8 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.models;
+package com.yugabyte.yw.common.alerts;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -15,11 +16,7 @@ import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
-import com.yugabyte.yw.common.alerts.AlertReceiverService;
-import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
-import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.YWValidateException;
+import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.AlertReceiver.TargetType;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -126,7 +123,10 @@ public class AlertReceiverServiceTest extends FakeDBApplication {
               alertReceiverService.getOrBadRequest(defaultCustomerUuid, uuidsToCheck);
             });
     assertThat(
-        exception.getMessage(), equalTo("Invalid Alert Receiver UUID: " + uuid1 + ", " + uuid2));
+        exception.getMessage(),
+        anyOf(
+            equalTo("Invalid Alert Receiver UUID: " + uuid1 + ", " + uuid2),
+            equalTo("Invalid Alert Receiver UUID: " + uuid2 + ", " + uuid1)));
   }
 
   @Test
@@ -160,7 +160,8 @@ public class AlertReceiverServiceTest extends FakeDBApplication {
 
   @Test
   public void testValidateReceiver_EmptyParams() {
-    AlertReceiver receiver = new AlertReceiver();
+    AlertReceiver receiver = new AlertReceiver().setName(RECEIVER_NAME);
+
     try {
       alertReceiverService.validate(receiver);
       fail("YWValidateException is expected.");
@@ -199,7 +200,7 @@ public class AlertReceiverServiceTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpdateWithDuplicateName() {
+  public void testSave_DuplicateName_Fail() {
     AlertReceiver receiver =
         ModelFactory.createAlertReceiver(
             defaultCustomerUuid,
@@ -222,6 +223,34 @@ public class AlertReceiverServiceTest extends FakeDBApplication {
             () -> {
               alertReceiverService.save(updatedReceiver);
             });
-    assertThat(exception.getMessage(), equalTo("Alert receiver with such name already exists."));
+    assertThat(
+        exception.getMessage(),
+        equalTo(
+            "Unable to create/update alert receiver:"
+                + " Alert receiver with such name already exists."));
+  }
+
+  @Test
+  public void testSave_LongName_Fail() {
+    StringBuilder longName = new StringBuilder();
+    while (longName.length() < AlertReceiver.MAX_NAME_LENGTH / 4) {
+      longName.append(RECEIVER_NAME);
+    }
+
+    AlertReceiver receiver =
+        new AlertReceiver()
+            .setCustomerUUID(defaultCustomerUuid)
+            .setName(longName.toString())
+            .setParams(AlertUtils.createParamsInstance(TargetType.Slack));
+
+    YWServiceException exception =
+        assertThrows(
+            YWServiceException.class,
+            () -> {
+              alertReceiverService.save(receiver);
+            });
+    assertThat(
+        exception.getMessage(),
+        equalTo("Unable to create/update alert receiver: Name length (63) is exceeded."));
   }
 }
