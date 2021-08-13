@@ -208,6 +208,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testCreateAlertReceiver_ErrorResult() {
     checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
     ObjectNode data = Json.newObject();
+    data.put("name", "name");
     data.put("params", Json.toJson(new AlertReceiverEmailParams()));
     Result result =
         assertYWSE(

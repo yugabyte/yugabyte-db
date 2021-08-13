@@ -26,6 +26,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -79,10 +80,6 @@ public class AlertRouteService {
 
   @Transactional
   public AlertRoute save(AlertRoute route) {
-    if (CollectionUtils.isEmpty(route.getReceiversList())) {
-      throw new YWServiceException(BAD_REQUEST, "Can't save alert route without receivers.");
-    }
-
     AlertRoute oldValue = null;
     if (route.getUuid() == null) {
       route.generateUUID();
@@ -90,16 +87,17 @@ public class AlertRouteService {
       oldValue = get(route.getCustomerUUID(), route.getUuid());
     }
 
-    if ((oldValue != null) && oldValue.isDefaultRoute() && !route.isDefaultRoute()) {
+    try {
+      validate(oldValue, route);
+    } catch (YWValidateException e) {
       throw new YWServiceException(
-          BAD_REQUEST,
-          "Can't set the alert route as non-default. Make another route as default at first.");
+          BAD_REQUEST, "Unable to create/update alert route: " + e.getMessage());
     }
 
-    AlertRoute valueWithSameName = get(route.getCustomerUUID(), route.getName());
-    if ((valueWithSameName != null) && !route.getUuid().equals(valueWithSameName.getUuid())) {
-      throw new YWServiceException(BAD_REQUEST, "Alert route with such name already exists.");
-    }
+    // Next will check that all the receivers exist.
+    alertReceiverService.getOrBadRequest(
+        route.getCustomerUUID(),
+        route.getReceiversList().stream().map(AlertReceiver::getUuid).collect(Collectors.toList()));
 
     AlertRoute defaultRoute = getDefaultRoute(route.getCustomerUUID());
     route.save();
@@ -175,5 +173,30 @@ public class AlertRouteService {
             .setDefaultRoute(true);
     save(route);
     return route;
+  }
+
+  private void validate(AlertRoute oldValue, AlertRoute route) throws YWValidateException {
+    if (CollectionUtils.isEmpty(route.getReceiversList())) {
+      throw new YWValidateException("Can't save alert route without receivers.");
+    }
+
+    if (StringUtils.isEmpty(route.getName())) {
+      throw new YWValidateException("Name is mandatory.");
+    }
+
+    if (route.getName().length() > AlertRoute.MAX_NAME_LENGTH / 4) {
+      throw new YWValidateException(
+          String.format("Name length (%d) is exceeded.", AlertReceiver.MAX_NAME_LENGTH / 4));
+    }
+
+    if ((oldValue != null) && oldValue.isDefaultRoute() && !route.isDefaultRoute()) {
+      throw new YWValidateException(
+          "Can't set the alert route as non-default. Make another route as default at first.");
+    }
+
+    AlertRoute valueWithSameName = get(route.getCustomerUUID(), route.getName());
+    if ((valueWithSameName != null) && !route.getUuid().equals(valueWithSameName.getUuid())) {
+      throw new YWValidateException("Alert route with such name already exists.");
+    }
   }
 }

@@ -18,12 +18,14 @@ import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.AlertRoute;
 import io.ebean.ExpressionList;
 import io.ebean.annotation.Transactional;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints.Required;
 
 @Singleton
@@ -56,9 +58,9 @@ public class AlertReceiverService {
     List<AlertReceiver> result = query.findList();
     if (result.size() != uuids.size()) {
       // We have incorrect receiver id(s).
-      List<UUID> uuidsToRemove =
-          result.stream().map(AlertReceiver::getUuid).collect(Collectors.toList());
-      List<UUID> uuidsToReport = new ArrayList<>(uuids);
+      Set<UUID> uuidsToRemove =
+          result.stream().map(AlertReceiver::getUuid).collect(Collectors.toSet());
+      Set<UUID> uuidsToReport = new HashSet<>(uuids);
       uuidsToReport.removeAll(uuidsToRemove);
       throw new YWServiceException(
           BAD_REQUEST,
@@ -79,11 +81,6 @@ public class AlertReceiverService {
   public AlertReceiver save(AlertReceiver receiver) {
     if (receiver.getUuid() == null) {
       receiver.generateUUID();
-    }
-
-    AlertReceiver valueWithSameName = get(receiver.getCustomerUUID(), receiver.getName());
-    if ((valueWithSameName != null) && !receiver.getUuid().equals(valueWithSameName.getUuid())) {
-      throw new YWServiceException(BAD_REQUEST, "Alert receiver with such name already exists.");
     }
 
     try {
@@ -127,6 +124,20 @@ public class AlertReceiverService {
   }
 
   public void validate(AlertReceiver receiver) throws YWValidateException {
+    if (StringUtils.isEmpty(receiver.getName())) {
+      throw new YWValidateException("Name is mandatory.");
+    }
+
+    if (receiver.getName().length() > AlertReceiver.MAX_NAME_LENGTH / 4) {
+      throw new YWValidateException(
+          String.format("Name length (%d) is exceeded.", AlertReceiver.MAX_NAME_LENGTH / 4));
+    }
+
+    AlertReceiver valueWithSameName = get(receiver.getCustomerUUID(), receiver.getName());
+    if ((valueWithSameName != null) && !receiver.getUuid().equals(valueWithSameName.getUuid())) {
+      throw new YWValidateException("Alert receiver with such name already exists.");
+    }
+
     if (receiver.getParams() == null) {
       throw new YWValidateException("Incorrect parameters in AlertReceiver.");
     }

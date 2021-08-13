@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
+
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -36,6 +37,8 @@ import play.data.validation.Constraints;
 @Entity
 public class AlertReceiver extends Model {
 
+  public static final int MAX_NAME_LENGTH = 255;
+
   /** These are the possible types of channels. */
   public enum TargetType {
     @EnumValue("Email")
@@ -57,7 +60,7 @@ public class AlertReceiver extends Model {
   private UUID uuid;
 
   @Constraints.Required
-  @Column(columnDefinition = "Text", length = 255, nullable = false)
+  @Column(columnDefinition = "Text", length = MAX_NAME_LENGTH, nullable = false)
   private String name;
 
   @Constraints.Required

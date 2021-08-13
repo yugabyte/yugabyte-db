@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.models;
+package com.yugabyte.yw.common.alerts;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
@@ -13,13 +13,11 @@ import com.yugabyte.yw.common.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertReceiverService;
-import com.yugabyte.yw.common.alerts.AlertRouteService;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import io.ebean.DataIntegrityException;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.Customer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -116,7 +114,7 @@ public class AlertRouteServiceTest extends FakeDBApplication {
             .setCustomerUUID(customerUUID)
             .setName(ALERT_ROUTE_NAME)
             .setReceiversList(Collections.singletonList(receiver));
-    assertThrows(DataIntegrityException.class, () -> alertRouteService.save(route));
+    assertThrows(YWServiceException.class, () -> alertRouteService.save(route));
   }
 
   @Test
@@ -128,7 +126,9 @@ public class AlertRouteServiceTest extends FakeDBApplication {
             .setReceiversList(Collections.emptyList());
     YWServiceException exception =
         assertThrows(YWServiceException.class, () -> alertRouteService.save(route));
-    assertThat(exception.getMessage(), equalTo("Can't save alert route without receivers."));
+    assertThat(
+        exception.getMessage(),
+        equalTo("Unable to create/update alert route: Can't save alert route without receivers."));
   }
 
   @Test
@@ -170,7 +170,8 @@ public class AlertRouteServiceTest extends FakeDBApplication {
     assertThat(
         exception.getMessage(),
         equalTo(
-            "Can't set the alert route as non-default. Make another route as default at first."));
+            "Unable to create/update alert route: Can't set the alert route as non-default."
+                + " Make another route as default at first."));
   }
 
   @Test
@@ -264,6 +265,32 @@ public class AlertRouteServiceTest extends FakeDBApplication {
             () -> {
               alertRouteService.save(updatedRoute);
             });
-    assertThat(exception.getMessage(), equalTo("Alert route with such name already exists."));
+    assertThat(
+        exception.getMessage(),
+        equalTo("Unable to create/update alert route: Alert route with such name already exists."));
+  }
+
+  @Test
+  public void testSave_LongName_Fail() {
+    StringBuilder longName = new StringBuilder();
+    while (longName.length() < AlertRoute.MAX_NAME_LENGTH / 4) {
+      longName.append(ALERT_ROUTE_NAME);
+    }
+
+    AlertRoute route =
+        new AlertRoute()
+            .setCustomerUUID(customerUUID)
+            .setName(longName.toString())
+            .setReceiversList(Collections.singletonList(receiver));
+
+    YWServiceException exception =
+        assertThrows(
+            YWServiceException.class,
+            () -> {
+              alertRouteService.save(route);
+            });
+    assertThat(
+        exception.getMessage(),
+        equalTo("Unable to create/update alert route: Name length (63) is exceeded."));
   }
 }
