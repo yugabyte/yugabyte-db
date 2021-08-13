@@ -44,10 +44,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
@@ -152,13 +150,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Setup mocks
     mockClient = mock(YBClient.class);
     try {
-      when(mockClient.getMasterClusterConfig())
-          .thenAnswer(
-              i -> {
-                Master.SysClusterConfigEntryPB.Builder configBuilder =
-                    Master.SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.version);
-                return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-              });
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())

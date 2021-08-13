@@ -35,10 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
@@ -72,11 +70,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     when(mockKubernetesManager.helmUpgrade(any(), any(), any(), any(), any()))
         .thenReturn(responseEmpty);
 
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-
     try {
       responsePod.message =
           "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
@@ -84,7 +77,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       mockClient = mock(YBClient.class);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     } catch (Exception ignored) {
