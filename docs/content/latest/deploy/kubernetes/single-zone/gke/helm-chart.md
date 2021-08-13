@@ -130,7 +130,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```sh
 NAME                CHART VERSION      APP VERSION DESCRIPTION                                       
-yugabytedb/yugabyte yugabyte-2.7.0     2.7.0.0-b17  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte 2.7.0     2.7.0.0-b17  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
