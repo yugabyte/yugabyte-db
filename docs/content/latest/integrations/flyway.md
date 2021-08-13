@@ -12,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Flyway provides the means to manage schema changes to a YugabyteDB database, among others. 
+[Flyway](https://flywaydb.org/) provides the means to manage schema changes to a YugabyteDB database, among others. 
 
-As a first step towards a better integration with Flyway to manage changes to your database schema (also called schema migration) for YugabyteDB instances, we have added the YugabyteDB-specific implementation of the Flyway APIs to Flyway community project.
+The YugabyteDB-specific implementation of the Flyway APIs has been added to the Flyway community project.
 
 ## Prerequisites
 
@@ -101,6 +101,8 @@ public class V3__AddHQAdress extends BaseJavaMigration {
   }
 }
 ```
+
+After you compile the Java class, place its JAR in the `<FLYWAY_INSTALL_DIR>/jars/` directory, as this is the default location for Flyway to look for Java migration JARs. If you want to use a different location, you need to specify the JAR path by editing the `flyway.locations` property in the `flyway.conf` file.
 
 To check the state of the database and run the migration, execute the following commands:
 
