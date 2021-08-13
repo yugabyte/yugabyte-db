@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -458,5 +459,9 @@ public class Util {
 
   public static String encodeBase64(String input) {
     return Base64.getEncoder().encodeToString(input.getBytes());
+  }
+
+  public static String doubleToString(double value) {
+    return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
   }
 }
