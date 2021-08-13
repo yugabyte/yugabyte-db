@@ -407,7 +407,7 @@ class STATUS_NODISCARD_CLASS Status {
   Status() {}
 
   // Returns true if the status indicates success.
-  bool ok() const { return state_ == nullptr; }
+  MUST_USE_RESULT bool ok() const { return state_ == nullptr; }
 
   // Declares set of Is* functions
   BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_CODE_IS_FUNC, YB_STATUS_CODES)
