@@ -106,6 +106,15 @@ public class AsyncReplicationRelationship extends Model {
     return find.query().where().eq("source_universe_uuid", sourceUniverseUUID).findList();
   }
 
+  public static List<AsyncReplicationRelationship> getBetweenUniverses(
+      UUID sourceUniverseUUID, UUID targetUniverseUUID) {
+    return find.query()
+        .where()
+        .eq("source_universe_uuid", sourceUniverseUUID)
+        .eq("target_universe_uuid", targetUniverseUUID)
+        .findList();
+  }
+
   public static boolean delete(UUID asyncReplicationRelationshipUUID) {
     AsyncReplicationRelationship relationship = get(asyncReplicationRelationshipUUID);
     return relationship != null && relationship.delete();

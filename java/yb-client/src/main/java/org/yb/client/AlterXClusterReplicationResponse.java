@@ -7,7 +7,7 @@ import org.yb.master.Master;
 public class AlterXClusterReplicationResponse extends YRpcResponse {
   private final Master.MasterErrorPB serverError;
 
-  AlterXClusterReplicationResponse(
+  public AlterXClusterReplicationResponse(
     long elapsedMillis, String tsUUID, Master.MasterErrorPB serverError) {
     super(elapsedMillis, tsUUID);
     this.serverError = serverError;

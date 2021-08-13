@@ -11,7 +11,7 @@ public class BootstrapUniverseResponse extends YRpcResponse {
   private final CdcService.CDCErrorPB cdcError;
   private final List<String> bootstrapIDs;
 
-  BootstrapUniverseResponse(
+  public BootstrapUniverseResponse(
     long elapsedMillis, String tsUUID, CdcService.CDCErrorPB cdcError, List<String> bootstrapIDs) {
     super(elapsedMillis, tsUUID);
     this.cdcError = cdcError;
