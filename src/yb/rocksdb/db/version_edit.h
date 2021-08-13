@@ -93,10 +93,11 @@ struct FileMetaData {
 
   int refs;
   FileDescriptor fd;
-  bool being_compacted;     // Is this file undergoing compaction?
-  BoundaryValues smallest;  // The smallest values in this file
-  BoundaryValues largest;   // The largest values in this file
-  bool imported = false;    // Was this file imported from another DB.
+  bool being_compacted;        // Is this file undergoing compaction?
+  bool being_deleted = false;  // Updated by DB::DeleteFile
+  BoundaryValues smallest;     // The smallest values in this file
+  BoundaryValues largest;      // The largest values in this file
+  bool imported = false;       // Was this file imported from another DB.
 
   // Needs to be disposed when refs becomes 0.
   Cache::Handle* table_reader_handle;

@@ -44,8 +44,7 @@ venv/
 *.bak
 
 # Core dumps
-core*
-!java/yb-cql/src/test/java/com/datastax/driver/core
+core.*
 
 # CLion directories
 /cmake-build-debug
@@ -98,8 +97,19 @@ rrdiagram*.jar*
 
 .clangd
 
+# Indexes built with clangd-indexer
+*.dex
+# Allows us to generate YAML-format clangd indexes.
+clangd_*.yml
+
 .cache
 
 target/
 
 thirdparty/
+
+# We don't use any submodules anymore.
+submodules/
+
+# Local Netlify folder
+.netlify/

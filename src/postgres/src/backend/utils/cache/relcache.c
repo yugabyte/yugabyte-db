@@ -3001,6 +3001,7 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 	FreeTriggerDesc(relation->trigdesc);
 	list_free_deep(relation->rd_fkeylist);
 	list_free(relation->rd_indexlist);
+	list_free(relation->rd_statlist);
 	bms_free(relation->rd_indexattr);
 	bms_free(relation->rd_projindexattr);
 	bms_free(relation->rd_keyattr);
@@ -3876,12 +3877,13 @@ RelationBuildLocalRelation(const char *relname,
 	 * probably need to fix IsSharedRelation() to match whatever you've done
 	 * to the set of shared relations.
 	 */
-	if (shared_relation != IsSharedRelation(relid))
+	if (shared_relation != IsSharedRelation(relid) && !yb_test_system_catalogs_creation)
 		elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)",
 			 relname, relid);
 
-	/* Shared relations had better be mapped, too */
-	Assert(mapped_relation || !shared_relation);
+	/* (Non-YB) shared relations had better be mapped, too */
+	Assert(IsYugaByteEnabled() ||
+		   (mapped_relation || !shared_relation));
 
 	/*
 	 * switch to the cache context to create the relcache entry.
@@ -4002,8 +4004,12 @@ RelationBuildLocalRelation(const char *relname,
 	if (mapped_relation)
 	{
 		rel->rd_rel->relfilenode = InvalidOid;
-		/* Add it to the active mapping information */
-		RelationMapUpdateMap(relid, relfilenode, shared_relation, true);
+
+		if (!IsYBRelation(rel))
+		{
+			/* Add it to the active mapping information */
+			RelationMapUpdateMap(relid, relfilenode, shared_relation, true);
+		}
 	}
 	else
 		rel->rd_rel->relfilenode = relfilenode;

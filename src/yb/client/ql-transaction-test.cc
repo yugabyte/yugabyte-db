@@ -1228,7 +1228,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         if (!IsReady(state.metadata_future)) {
           continue;
         }
-        state.metadata = ASSERT_RESULT(state.metadata_future.get());
+        state.metadata = ASSERT_RESULT(Copy(state.metadata_future.get()));
       }
       tserver::GetTransactionStatusRequestPB req;
       req.set_tablet_id(state.metadata.status_tablet);

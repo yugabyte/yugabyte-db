@@ -3,22 +3,23 @@ package com.yugabyte.yw.models;
 
 import io.ebean.Finder;
 import io.ebean.Model;
+import java.util.List;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import javax.persistence.*;
-import java.util.List;
-import java.util.UUID;
-
 @Entity
 public class PriceComponent extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(PriceComponent.class);
 
-  @EmbeddedId
-  @Constraints.Required
-  private PriceComponentKey idKey;
+  @EmbeddedId @Constraints.Required private PriceComponentKey idKey;
 
   // ManyToOne for provider is kept outside of PriceComponentKey
   // as ebean currently doesn't support having @ManyToOne inside @EmbeddedId
@@ -77,7 +78,7 @@ public class PriceComponent extends Model {
   public PriceDetails priceDetails = new PriceDetails();
 
   private static final Finder<PriceComponentKey, PriceComponent> find =
-    new Finder<PriceComponentKey, PriceComponent>(PriceComponent.class) {};
+      new Finder<PriceComponentKey, PriceComponent>(PriceComponent.class) {};
 
   /**
    * Get a single specified pricing component for a given provider and region.
@@ -106,9 +107,7 @@ public class PriceComponent extends Model {
    * @return A list of pricing components in the cloud provider.
    */
   public static List<PriceComponent> findByProvider(Provider provider) {
-    return PriceComponent.find.query().where()
-        .eq("provider_uuid", provider.uuid)
-        .findList();
+    return PriceComponent.find.query().where().eq("provider_uuid", provider.uuid).findList();
   }
 
   /**
@@ -119,7 +118,9 @@ public class PriceComponent extends Model {
    * @return A list of pricing components in the cloud provider's region.
    */
   public static List<PriceComponent> findByRegion(Provider provider, Region region) {
-    return PriceComponent.find.query().where()
+    return PriceComponent.find
+        .query()
+        .where()
         .eq("provider_uuid", provider.uuid)
         .eq("region_code", region.code)
         .findList();
@@ -130,13 +131,13 @@ public class PriceComponent extends Model {
    *
    * @param providerUuid Cloud provider that the pricing component belongs to.
    * @param regionCode Region in the cloud provider that the pricing component belongs to.
-   * @param componentCode The identifying code for the pricing component. Must be unique within
-   *                      the region.
+   * @param componentCode The identifying code for the pricing component. Must be unique within the
+   *     region.
    * @param priceDetails The pricing details of the component.
    * @return The newly created/updated pricing component.
    */
-  public static void upsert(UUID providerUuid, String regionCode, String componentCode,
-                            PriceDetails priceDetails) {
+  public static void upsert(
+      UUID providerUuid, String regionCode, String componentCode, PriceDetails priceDetails) {
     PriceComponent component = PriceComponent.get(providerUuid, regionCode, componentCode);
     if (component == null) {
       component = new PriceComponent();
@@ -146,9 +147,7 @@ public class PriceComponent extends Model {
     component.setPriceDetails(details);
   }
 
-  /**
-   * The actual details of the pricing component.
-   */
+  /** The actual details of the pricing component. */
   public static class PriceDetails {
 
     // The unit on which the 'pricePerUnit' is based.
@@ -207,7 +206,5 @@ public class PriceComponent extends Model {
           break;
       }
     }
-
   }
-
 }

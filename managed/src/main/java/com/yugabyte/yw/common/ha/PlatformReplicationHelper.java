@@ -8,7 +8,6 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-
 package com.yugabyte.yw.common.ha;
 
 import akka.actor.Cancellable;
@@ -16,22 +15,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.PlatformInstanceClient;
+import com.yugabyte.yw.common.PlatformInstanceClientFactory;
+import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager.PlatformBackupParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import io.ebean.Model;
-import org.apache.velocity.Template;
-import org.apache.velocity.VelocityContext;
-import org.apache.velocity.app.VelocityEngine;
-import org.apache.velocity.runtime.RuntimeConstants;
-import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -44,6 +39,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.velocity.Template;
+import org.apache.velocity.VelocityContext;
+import org.apache.velocity.app.VelocityEngine;
+import org.apache.velocity.runtime.RuntimeConstants;
+import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @Singleton
 public class PlatformReplicationHelper {
@@ -57,7 +60,7 @@ public class PlatformReplicationHelper {
   // Config keys:
   public static final String STORAGE_PATH_KEY = "yb.storage.path";
   private static final String REPLICATION_SCHEDULE_ENABLED_KEY =
-    "yb.ha.replication_schedule_enabled";
+      "yb.ha.replication_schedule_enabled";
   private static final String PROMETHEUS_FEDERATED_CONFIG_DIR_KEY = "yb.ha.prometheus_config_dir";
   private static final String NUM_BACKUP_RETENTION_KEY = "yb.ha.num_backup_retention";
   static final String PROMETHEUS_HOST_CONFIG_KEY = "yb.metrics.host";
@@ -73,16 +76,14 @@ public class PlatformReplicationHelper {
 
   private final PlatformInstanceClientFactory remoteClientFactory;
 
-  @VisibleForTesting
-  ShellProcessHandler shellProcessHandler;
+  @VisibleForTesting ShellProcessHandler shellProcessHandler;
 
   @Inject
   public PlatformReplicationHelper(
-    SettableRuntimeConfigFactory runtimeConfigFactory,
-    ApiHelper apiHelper,
-    PlatformInstanceClientFactory remoteClientFactory,
-    ShellProcessHandler shellProcessHandler
-  ) {
+      SettableRuntimeConfigFactory runtimeConfigFactory,
+      ApiHelper apiHelper,
+      PlatformInstanceClientFactory remoteClientFactory,
+      ShellProcessHandler shellProcessHandler) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.apiHelper = apiHelper;
     this.remoteClientFactory = remoteClientFactory;
@@ -94,10 +95,8 @@ public class PlatformReplicationHelper {
   }
 
   Path getBackupDir() {
-    return Paths.get(
-      this.getRuntimeConfig().getString(STORAGE_PATH_KEY),
-      BACKUP_DIR
-    ).toAbsolutePath();
+    return Paths.get(this.getRuntimeConfig().getString(STORAGE_PATH_KEY), BACKUP_DIR)
+        .toAbsolutePath();
   }
 
   String getPrometheusHost() {
@@ -129,10 +128,7 @@ public class PlatformReplicationHelper {
   }
 
   void setBackupScheduleEnabled(boolean enabled) {
-    this.getRuntimeConfig().setValue(
-      REPLICATION_SCHEDULE_ENABLED_KEY,
-      Boolean.toString(enabled)
-    );
+    this.getRuntimeConfig().setValue(REPLICATION_SCHEDULE_ENABLED_KEY, Boolean.toString(enabled));
   }
 
   boolean isBackupScheduleRunning(Cancellable schedule) {
@@ -156,9 +152,7 @@ public class PlatformReplicationHelper {
   }
 
   JsonNode getBackupInfoJson(long frequency, boolean isRunning) {
-    return Json.newObject()
-      .put("frequency_milliseconds", frequency)
-      .put("is_running", isRunning);
+    return Json.newObject().put("frequency_milliseconds", frequency).put("is_running", isRunning);
   }
 
   Path getReplicationDirFor(String leader) {
@@ -171,9 +165,7 @@ public class PlatformReplicationHelper {
       VelocityEngine velocityEngine = new VelocityEngine();
       velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
       velocityEngine.setProperty(
-        "classpath.resource.loader.class",
-        ClasspathResourceLoader.class.getName()
-      );
+          "classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
       velocityEngine.init();
 
       // Load the template.
@@ -209,25 +201,23 @@ public class PlatformReplicationHelper {
       }
 
       HighAvailabilityConfig config = remoteInstance.getConfig();
-      PlatformInstanceClient client = this.remoteClientFactory.getClient(
-        config.getClusterKey(),
-        remoteInstance.getAddress()
-      );
+      PlatformInstanceClient client =
+          this.remoteClientFactory.getClient(config.getClusterKey(), remoteInstance.getAddress());
 
       // Ensure all local records for remote instances are set to follower state.
       remoteInstance.demote();
 
-      return config.getLocal()
-        .map(localInstance -> {
-          // Send step down request to remote instance.
-          client.demoteInstance(
-            localInstance.getAddress(),
-            config.getLastFailover().getTime()
-          );
+      return config
+          .getLocal()
+          .map(
+              localInstance -> {
+                // Send step down request to remote instance.
+                client.demoteInstance(
+                    localInstance.getAddress(), config.getLastFailover().getTime());
 
-          return true;
-        })
-        .orElse(false);
+                return true;
+              })
+          .orElse(false);
     } catch (Exception e) {
       LOG.error("Error demoting remote platform instance {}", remoteInstance.getAddress(), e);
     }
@@ -237,10 +227,8 @@ public class PlatformReplicationHelper {
 
   void exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
     try {
-      PlatformInstanceClient client = this.remoteClientFactory.getClient(
-        config.getClusterKey(),
-        remoteInstanceAddr
-      );
+      PlatformInstanceClient client =
+          this.remoteClientFactory.getClient(config.getClusterKey(), remoteInstanceAddr);
 
       // Form payload to send to remote platform instance.
       List<PlatformInstance> instances = config.getInstances();
@@ -249,8 +237,8 @@ public class PlatformReplicationHelper {
       // Export the platform instances to the given remote platform instance.
       client.syncInstances(config.getLastFailover().getTime(), instancesJson);
     } catch (Exception e) {
-      LOG.error("Error exporting local platform instances to remote instance "
-        + remoteInstanceAddr, e);
+      LOG.error(
+          "Error exporting local platform instances to remote instance " + remoteInstanceAddr, e);
     }
   }
 
@@ -300,32 +288,45 @@ public class PlatformReplicationHelper {
   }
 
   void ensurePrometheusConfig() {
-    HighAvailabilityConfig.get().ifPresent(haConfig ->
-      haConfig.getLocal().ifPresent(localInstance -> {
-        if (!localInstance.getIsLeader()) {
-          haConfig.getLeader().ifPresent(leaderInstance -> {
-            try {
-              this.switchPrometheusToFederated(new URL(leaderInstance.getAddress()));
-            } catch (Exception ignored) {
-            }
-          });
-        } else {
-          this.switchPrometheusToStandalone();
-        }
-      })
-    );
+    HighAvailabilityConfig.get()
+        .ifPresent(
+            haConfig ->
+                haConfig
+                    .getLocal()
+                    .ifPresent(
+                        localInstance -> {
+                          if (!localInstance.getIsLeader()) {
+                            haConfig
+                                .getLeader()
+                                .ifPresent(
+                                    leaderInstance -> {
+                                      try {
+                                        this.switchPrometheusToFederated(
+                                            new URL(leaderInstance.getAddress()));
+                                      } catch (Exception ignored) {
+                                      }
+                                    });
+                          } else {
+                            this.switchPrometheusToStandalone();
+                          }
+                        }));
   }
 
-  boolean exportBackups(HighAvailabilityConfig config, String clusterKey,
-                        String remoteInstanceAddr, File backupFile) {
+  boolean exportBackups(
+      HighAvailabilityConfig config,
+      String clusterKey,
+      String remoteInstanceAddr,
+      File backupFile) {
     Optional<PlatformInstance> localInstance = config.getLocal();
     Optional<PlatformInstance> leaderInstance = config.getLeader();
     return localInstance.isPresent()
-      && leaderInstance.isPresent()
-      && remoteClientFactory.getClient(clusterKey, remoteInstanceAddr).syncBackups(
-        leaderInstance.get().getAddress(),
-        localInstance.get().getAddress(), // sender is same as leader for now.
-        backupFile);
+        && leaderInstance.isPresent()
+        && remoteClientFactory
+            .getClient(clusterKey, remoteInstanceAddr)
+            .syncBackups(
+                leaderInstance.get().getAddress(),
+                localInstance.get().getAddress(), // sender is same as leader for now.
+                backupFile);
   }
 
   void cleanupBackups(List<File> backups, int numToRetain) {
@@ -341,9 +342,7 @@ public class PlatformReplicationHelper {
 
   Optional<File> getMostRecentBackup() {
     try {
-      return Optional.of(
-        Util.listFiles(this.getBackupDir(), BACKUP_FILE_PATTERN).get(0)
-      );
+      return Optional.of(Util.listFiles(this.getBackupDir(), BACKUP_FILE_PATTERN).get(0));
     } catch (Exception exception) {
       LOG.error("Could not locate recent backup", exception);
     }
@@ -408,7 +407,7 @@ public class PlatformReplicationHelper {
       if (i.getIsLeader()) {
         Optional<PlatformInstance> existingLeader = config.get().getLeader();
         if (existingLeader.isPresent()
-          && !existingLeader.get().getAddress().equals(i.getAddress())) {
+            && !existingLeader.get().getAddress().equals(i.getAddress())) {
           existingLeader.get().demote();
         }
       }

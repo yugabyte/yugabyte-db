@@ -2,18 +2,14 @@
 
 package com.yugabyte.yw.common;
 
-import com.yugabyte.yw.models.Provider;
-
 import com.google.inject.Singleton;
-
+import com.yugabyte.yw.models.Provider;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
-
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
 
 @Singleton
@@ -35,6 +31,7 @@ public class HealthManager extends DevopsBase {
     public Map<String, String> tserverNodes = new HashMap<>();
     public String ybSoftwareVersion = null;
     public boolean enableTlsClient = false;
+    public boolean rootAndClientRootCASame = true;
     public String sslProtocol = "";
     public boolean enableYSQL = false;
     public int ysqlPort = 5433;
@@ -45,10 +42,10 @@ public class HealthManager extends DevopsBase {
   }
 
   public ShellResponse runCommand(
-    Provider provider,
-    List<ClusterInfo> clusters,
-    Long potentialStartTimeMs
-  ) {
+      Provider provider,
+      List<ClusterInfo> clusters,
+      Long potentialStartTimeMs,
+      Boolean shouldLogOutput) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -71,10 +68,10 @@ public class HealthManager extends DevopsBase {
     }
 
     // Start with a copy of the cloud config env vars.
-    HashMap<String, String> extraEnvVars = provider == null ?
-      new HashMap<>() : new HashMap<>(provider.getConfig());
+    HashMap<String, String> extraEnvVars =
+        provider == null ? new HashMap<>() : new HashMap<>(provider.getConfig());
 
-    return shellProcessHandler.run(commandArgs, extraEnvVars, false /*logCmdOutput*/, description);
+    return shellProcessHandler.run(commandArgs, extraEnvVars, shouldLogOutput, description);
   }
 
   @Override

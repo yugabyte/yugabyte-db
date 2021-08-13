@@ -2,20 +2,18 @@
 
 package com.yugabyte.yw.metrics;
 
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.models.MetricConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
-import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 public class MetricQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryExecutor.class);
@@ -29,9 +27,12 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   private String queryUrl;
   private int queryRangeSecs = 0;
 
-  public MetricQueryExecutor(play.Configuration appConfig, ApiHelper apiHelper,
-                             Map<String, String> queryParam, Map<String, String> additionalFilters,
-                             YBMetricQueryComponent ybMetricQueryComponent) {
+  public MetricQueryExecutor(
+      play.Configuration appConfig,
+      ApiHelper apiHelper,
+      Map<String, String> queryParam,
+      Map<String, String> additionalFilters,
+      YBMetricQueryComponent ybMetricQueryComponent) {
     this.apiHelper = apiHelper;
     this.appConfig = appConfig;
     this.queryParam.putAll(queryParam);
@@ -54,13 +55,15 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         LOG.warn("Invalid value for step parameter, ignoring: " + queryParam.get("step"));
       }
     } else {
-      LOG.warn("Missing step size in query parameters, this is unexpected. " +
-               "Queries over longer time windows like 6h/1d will be inaccurate.");
+      LOG.warn(
+          "Missing step size in query parameters, this is unexpected. "
+              + "Queries over longer time windows like 6h/1d will be inaccurate.");
     }
   }
 
   /**
    * Get the metrics base uri based on the appConfig yb.metrics.uri
+   *
    * @return returns metrics url string
    */
   private String getMetricsUrl() {
@@ -77,7 +80,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     if (useNativeMetrics) {
       return ybMetricQueryComponent.query(queryParam);
     } else {
-        if (queryParam.containsKey("end")) {
+      if (queryParam.containsKey("end")) {
         this.queryUrl = this.getMetricsUrl() + "/query_range";
       } else {
         this.queryUrl = this.getMetricsUrl() + "/query";
@@ -110,7 +113,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           return responseJson;
         }
         MetricQueryResponse queryResponse =
-          Json.fromJson(queryResponseJson, MetricQueryResponse.class);
+            Json.fromJson(queryResponseJson, MetricQueryResponse.class);
         if (queryResponse.error != null) {
           responseJson.put("error", queryResponse.error);
           break;

@@ -1,8 +1,8 @@
 ---
-title: Explore features
-headerTitle: Explore features
-linkTitle: Explore features
-description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
+title: Explore YugabyteDB
+headerTitle: Explore YugabyteDB
+linkTitle: Explore
+description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 headcontent:
 image: /images/section_icons/index/explore.png
 aliases:
@@ -38,7 +38,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/">
+    <a class="section-link icon-offset" href="fault-tolerance/macos">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>
@@ -48,7 +48,8 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="linear-scalability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
@@ -71,22 +72,36 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="indexes-constraints/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="title">Indexes and constraints</div>
+      </div>
+      <div class="body">
+        Improve database performance with indexes and constraints.
+      </div>
+    </a>
+  </div>  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="json-support/jsonb-ysql/">
       <div class="head">
         <div class="icon"><i class="far fa-file-code"></i></div>
-        <div class="title">JSON Support</div>
+        <div class="title">JSON support</div>
       </div>
       <div class="body">
         JSON document data types and support for built-in functions, indexes and constraints.
       </div>
     </a>
   </div>
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-region-deployments/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Multi-Region Deployments</div>
+        <div class="title">Multi-region deployments</div>
       </div>
       <div class="body">
         Multi-region deployment topologies supported by YugabyteDB such as sync and async replication, geo-partitioning, etc.
@@ -101,13 +116,13 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
         <div class="title">Query tuning</div>
       </div>
       <div class="body">
-        Optimize query performance
+        Optimize query performance.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads/">
+    <a class="section-link icon-offset" href="follower-reads/fr-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Follower reads</div>
@@ -118,8 +133,9 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="colocated-tables/">
+    <a class="section-link icon-offset" href="colocated-tables/macos/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Colocated tables</div>
@@ -129,15 +145,16 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
+-->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="change-data-capture/">
+    <a class="section-link icon-offset" href="security/security/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Change data capture (CDC)</div>
+        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
+        <div class="title">Security</div>
       </div>
       <div class="body">
-        Stream data changes from YugabyteDB to external systems.
+        Learn about strategies for securing YugabyteDB.
       </div>
     </a>
   </div>
@@ -154,26 +171,15 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="extensions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Extensions</div>
-      </div>
-      <div class="body">
-        Take advantage of powerful pre-bundled extensions.
-      </div>
-    </a>
-  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="linear-scalability/sharding-data/">
+    <a class="section-link icon-offset" href="cluster-management/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">Sharding Strategies</div>
+        <div class="title">Cluster management</div>
       </div>
       <div class="body">
-        Learn about range and hash sharding strategies.
+        Learn about point-in-time recovery.
       </div>
     </a>
   </div>

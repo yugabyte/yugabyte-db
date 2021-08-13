@@ -36,7 +36,7 @@
   typedef ::yb::StronglyTypedUuid<BOOST_PP_CAT(TypeName, _Tag)> TypeName; \
   typedef boost::hash<TypeName> BOOST_PP_CAT(TypeName, Hash); \
   inline Result<TypeName> BOOST_PP_CAT(FullyDecode, TypeName)(const Slice& slice) { \
-    return TypeName(VERIFY_RESULT(yb::FullyDecodeUuid(slice))); \
+    return TypeName(VERIFY_RESULT(yb::FullyDecodeUuid(slice, BOOST_PP_STRINGIZE(TypeName)))); \
   } \
   inline TypeName BOOST_PP_CAT(TryFullyDecode, TypeName)(const Slice& slice) { \
     return TypeName(yb::TryFullyDecodeUuid(slice)); \
@@ -195,9 +195,10 @@ std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
   return hash_value(*u);
 }
 
-Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice);
+// name is used in error message in case of failure.
+Result<boost::uuids::uuid> FullyDecodeUuid(const Slice& slice, const char* name = nullptr);
 boost::uuids::uuid TryFullyDecodeUuid(const Slice& slice);
-Result<boost::uuids::uuid> DecodeUuid(Slice* slice);
+Result<boost::uuids::uuid> DecodeUuid(Slice* slice, const char* name = nullptr);
 
 } // namespace yb
 

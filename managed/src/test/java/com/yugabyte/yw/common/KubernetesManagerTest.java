@@ -2,11 +2,26 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
+
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -16,41 +31,24 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.description;
-import static org.mockito.Mockito.times;
-
 @RunWith(MockitoJUnitRunner.class)
 public class KubernetesManagerTest extends FakeDBApplication {
 
-  @Mock
-  ShellProcessHandler shellProcessHandler;
+  @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock
-  play.Configuration mockAppConfig;
+  @Mock play.Configuration mockAppConfig;
 
-  @InjectMocks
-  KubernetesManager kubernetesManager;
+  @InjectMocks KubernetesManager kubernetesManager;
 
   Provider defaultProvider;
   Customer defaultCustomer;
-
 
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> config;
   ArgumentCaptor<String> description;
   Map<String, String> configProvider = new HashMap<String, String>();
+
+  static String TMP_CHART_PATH = "/tmp/yugaware_tests/KubernetesManagerTest/charts";
 
   @Before
   public void setUp() {
@@ -63,21 +61,41 @@ public class KubernetesManagerTest extends FakeDBApplication {
     command = ArgumentCaptor.forClass(ArrayList.class);
     config = ArgumentCaptor.forClass(HashMap.class);
     description = ArgumentCaptor.forClass(String.class);
+    new File(TMP_CHART_PATH).mkdirs();
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    FileUtils.deleteDirectory(new File(TMP_CHART_PATH));
   }
 
   private void runCommand(KubernetesCommandExecutor.CommandType commandType) {
+    runCommand(commandType, "2.8.0.0-b1");
+  }
+
+  private void runCommand(
+      KubernetesCommandExecutor.CommandType commandType, String ybSoftwareVersion) {
     ShellResponse response = new ShellResponse();
     when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
 
     int numOfCalls = 1;
-    switch(commandType) {
+    switch (commandType) {
       case HELM_INSTALL:
-        kubernetesManager.helmInstall(configProvider, defaultProvider.uuid, "demo-universe",
-                                      "demo-namespace", "/tmp/override.yml");
+        kubernetesManager.helmInstall(
+            ybSoftwareVersion,
+            configProvider,
+            defaultProvider.uuid,
+            "demo-universe",
+            "demo-namespace",
+            "/tmp/override.yml");
         break;
       case HELM_UPGRADE:
-        kubernetesManager.helmUpgrade(configProvider, "demo-universe",
-                                      "demo-namespace", "/tmp/override.yml");
+        kubernetesManager.helmUpgrade(
+            ybSoftwareVersion,
+            configProvider,
+            "demo-universe",
+            "demo-namespace",
+            "/tmp/override.yml");
         break;
       case POD_INFO:
         kubernetesManager.getPodInfos(configProvider, "demo-universe", "demo-namespace");
@@ -91,27 +109,57 @@ public class KubernetesManagerTest extends FakeDBApplication {
         break;
     }
 
-    Mockito.verify(shellProcessHandler, times(numOfCalls)).run(command.capture(),
-        (Map<String, String>) config.capture(), description.capture());
+    Mockito.verify(shellProcessHandler, times(numOfCalls))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
   }
 
   @Test
   public void testHelmUpgrade() {
-    when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
-    when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long)600);
+    when(mockReleaseManager.getReleaseByVersion("2.8.0.0-b1"))
+        .thenReturn(
+            ReleaseManager.ReleaseMetadata.create("2.8.0.0-b1")
+                .withChartPath(TMP_CHART_PATH + "/yugabyte-2.8.0.0-b1-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "yugabyte-2.8.0.0-b1-helm.tar.gz", "Sample helm chart data");
+    when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long) 600);
     runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
-    assertEquals(ImmutableList.of("helm",  "upgrade",  "demo-universe", "/my/helm.tgz", "-f",
-        "/tmp/override.yml", "--namespace", "demo-namespace", "--timeout", "600s", "--wait"),
+    assertEquals(
+        ImmutableList.of(
+            "helm",
+            "upgrade",
+            "demo-universe",
+            "/tmp/yugaware_tests/KubernetesManagerTest/charts/yugabyte-2.8.0.0-b1-helm.tar.gz",
+            "-f",
+            "/tmp/override.yml",
+            "--namespace",
+            "demo-namespace",
+            "--timeout",
+            "600s",
+            "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
 
   @Test
   public void testHelmUpgradeNoTimeout() {
-    when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
+    when(mockReleaseManager.getReleaseByVersion("2.8.0.0-b1"))
+        .thenReturn(
+            ReleaseManager.ReleaseMetadata.create("2.8.0.0-b1")
+                .withChartPath(TMP_CHART_PATH + "/yugabyte-2.8.0.0-b1-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "yugabyte-2.8.0.0-b1-helm.tar.gz", "Sample helm chart data");
     runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
-    assertEquals(ImmutableList.of("helm",  "upgrade",  "demo-universe", "/my/helm.tgz", "-f",
-        "/tmp/override.yml", "--namespace", "demo-namespace", "--timeout", "300s", "--wait"),
+    assertEquals(
+        ImmutableList.of(
+            "helm",
+            "upgrade",
+            "demo-universe",
+            "/tmp/yugaware_tests/KubernetesManagerTest/charts/yugabyte-2.8.0.0-b1-helm.tar.gz",
+            "-f",
+            "/tmp/override.yml",
+            "--namespace",
+            "demo-namespace",
+            "--timeout",
+            "300s",
+            "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -121,29 +169,57 @@ public class KubernetesManagerTest extends FakeDBApplication {
     try {
       runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
     } catch (RuntimeException e) {
-      assertEquals("Helm Package path not provided.", e.getMessage());
+      assertEquals("Helm Package path not found for release: 2.8.0.0-b1", e.getMessage());
     }
   }
 
   @Test
   public void helmInstallWithRequiredConfig() {
-    when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
-    when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long)600);
+    when(mockReleaseManager.getReleaseByVersion("2.8.0.0-b1"))
+        .thenReturn(
+            ReleaseManager.ReleaseMetadata.create("2.8.0.0-b1")
+                .withChartPath(TMP_CHART_PATH + "/yugabyte-2.8.0.0-b1-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "yugabyte-2.8.0.0-b1-helm.tar.gz", "Sample helm chart data");
+    when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long) 600);
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
-    assertEquals(ImmutableList.of("helm", "install", "demo-universe", "/my/helm.tgz",
-        "--namespace", "demo-namespace", "-f",
-        "/tmp/override.yml", "--timeout", "600s", "--wait"),
+    assertEquals(
+        ImmutableList.of(
+            "helm",
+            "install",
+            "demo-universe",
+            "/tmp/yugaware_tests/KubernetesManagerTest/charts/yugabyte-2.8.0.0-b1-helm.tar.gz",
+            "--namespace",
+            "demo-namespace",
+            "-f",
+            "/tmp/override.yml",
+            "--timeout",
+            "600s",
+            "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
 
   @Test
   public void helmInstallWithNoTimeout() {
-    when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
+    when(mockReleaseManager.getReleaseByVersion("2.8.0.0-b1"))
+        .thenReturn(
+            ReleaseManager.ReleaseMetadata.create("2.8.0.0-b1")
+                .withChartPath(TMP_CHART_PATH + "/yugabyte-2.8.0.0-b1-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "yugabyte-2.8.0.0-b1-helm.tar.gz", "Sample helm chart data");
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
-    assertEquals(ImmutableList.of("helm", "install", "demo-universe", "/my/helm.tgz",
-        "--namespace", "demo-namespace", "-f",
-        "/tmp/override.yml", "--timeout", "300s", "--wait"),
+    assertEquals(
+        ImmutableList.of(
+            "helm",
+            "install",
+            "demo-universe",
+            "/tmp/yugaware_tests/KubernetesManagerTest/charts/yugabyte-2.8.0.0-b1-helm.tar.gz",
+            "--namespace",
+            "demo-namespace",
+            "-f",
+            "/tmp/override.yml",
+            "--timeout",
+            "300s",
+            "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -153,15 +229,48 @@ public class KubernetesManagerTest extends FakeDBApplication {
     try {
       runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
     } catch (RuntimeException e) {
-      assertEquals("Helm Package path not provided.", e.getMessage());
+      assertEquals("Helm Package path not found for release: 2.8.0.0-b1", e.getMessage());
     }
+  }
+
+  // TODO: Delete this test once all k8s customers are upgraded past 2.7 and legacy helm chart is no
+  // longer required
+  @Test
+  public void helmInstallWithLegacyVersion() {
+    when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+    createTempFile(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz", "Sample helm chart data");
+    runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL, "2.7.0.0-b1");
+    assertEquals(
+        ImmutableList.of(
+            "helm",
+            "install",
+            "demo-universe",
+            "/tmp/yugaware_tests/KubernetesManagerTest/charts/yugabyte-2.7-helm-legacy.tar.gz",
+            "--namespace",
+            "demo-namespace",
+            "-f",
+            "/tmp/override.yml",
+            "--timeout",
+            "300s",
+            "--wait"),
+        command.getValue());
+    assertEquals(config.getValue(), configProvider);
   }
 
   @Test
   public void getPodInfos() {
     runCommand(KubernetesCommandExecutor.CommandType.POD_INFO);
-    assertEquals(ImmutableList.of("kubectl", "get", "pods",
-        "--namespace", "demo-namespace", "-o", "json",  "-l", "release=demo-universe"),
+    assertEquals(
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "pods",
+            "--namespace",
+            "demo-namespace",
+            "-o",
+            "json",
+            "-l",
+            "release=demo-universe"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -169,7 +278,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
   @Test
   public void helmDelete() {
     runCommand(KubernetesCommandExecutor.CommandType.HELM_DELETE);
-    assertEquals(ImmutableList.of("helm", "delete", "demo-universe", "-n", "demo-namespace"),
+    assertEquals(
+        ImmutableList.of("helm", "delete", "demo-universe", "-n", "demo-namespace"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
@@ -177,23 +287,44 @@ public class KubernetesManagerTest extends FakeDBApplication {
   @Test
   public void deleteStorage() {
     runCommand(KubernetesCommandExecutor.CommandType.VOLUME_DELETE);
-    assertEquals(ImmutableList.of(
-        ImmutableList.of("kubectl", "delete", "pvc",
-            "--namespace", "demo-namespace", "-l", "app=yb-master,release=demo-universe"),
-        ImmutableList.of("kubectl", "delete", "pvc",
-            "--namespace", "demo-namespace", "-l", "app=yb-tserver,release=demo-universe")),
+    assertEquals(
+        ImmutableList.of(
+            ImmutableList.of(
+                "kubectl",
+                "delete",
+                "pvc",
+                "--namespace",
+                "demo-namespace",
+                "-l",
+                "app=yb-master,release=demo-universe"),
+            ImmutableList.of(
+                "kubectl",
+                "delete",
+                "pvc",
+                "--namespace",
+                "demo-namespace",
+                "-l",
+                "app=yb-tserver,release=demo-universe")),
         command.getAllValues());
     assertEquals(config.getValue(), configProvider);
   }
 
   @Test
   public void getMasterServiceIPs() {
-      kubernetesManager.getServiceIPs(configProvider, "demo-universe", true);
-      Mockito.verify(shellProcessHandler, times(1))
-          .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
-      assertEquals(ImmutableList.of("kubectl", "get", "svc",
-          "yb-master-service", "--namespace", "demo-universe", "-o",
-          "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"), command.getValue());
+    kubernetesManager.getServiceIPs(configProvider, "demo-universe", true);
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
+    assertEquals(
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "svc",
+            "yb-master-service",
+            "--namespace",
+            "demo-universe",
+            "-o",
+            "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"),
+        command.getValue());
   }
 
   @Test
@@ -201,9 +332,17 @@ public class KubernetesManagerTest extends FakeDBApplication {
     kubernetesManager.getServiceIPs(configProvider, "demo-universe", false);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
-    assertEquals(ImmutableList.of("kubectl", "get", "svc",
-        "yb-tserver-service", "--namespace", "demo-universe", "-o",
-        "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"), command.getValue());
+    assertEquals(
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "svc",
+            "yb-tserver-service",
+            "--namespace",
+            "demo-universe",
+            "-o",
+            "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"),
+        command.getValue());
   }
 
   @Test
@@ -211,8 +350,45 @@ public class KubernetesManagerTest extends FakeDBApplication {
     kubernetesManager.getServices(configProvider, "demo-universe", "demo-ns");
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
-    assertEquals(ImmutableList.of("kubectl", "get", "services",
-        "--namespace", "demo-ns", "-o", "json", "-l", "release=" + "demo-universe"),
+    assertEquals(
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "services",
+            "--namespace",
+            "demo-ns",
+            "-o",
+            "json",
+            "-l",
+            "release=" + "demo-universe"),
         command.getValue());
+  }
+
+  @Test
+  public void getNodeInfos() {
+    kubernetesManager.runGetNodeInfos(configProvider);
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
+    assertEquals(ImmutableList.of("kubectl", "get", "nodes", "-o", "json"), command.getValue());
+  }
+
+  @Test
+  public void getSecret() {
+    kubernetesManager.runGetSecret(configProvider, "pull-sec", "test-ns");
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
+    assertEquals(
+        ImmutableList.of(
+            "kubectl", "get", "secret", "pull-sec", "-o", "json", "--namespace", "test-ns"),
+        command.getValue());
+  }
+
+  @Test
+  public void getSecretWithoutNamespace() {
+    kubernetesManager.runGetSecret(configProvider, "pull-sec", null);
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
+    assertEquals(
+        ImmutableList.of("kubectl", "get", "secret", "pull-sec", "-o", "json"), command.getValue());
   }
 }

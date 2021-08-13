@@ -8,10 +8,15 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.common;import com.google.common.base.Throwables;
+package com.yugabyte.yw.common;
+
+import com.google.common.base.Throwables;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import javax.inject.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Environment;
@@ -20,10 +25,6 @@ import play.api.routing.Router;
 import play.http.DefaultHttpErrorHandler;
 import play.mvc.Http;
 import play.mvc.Result;
-
-import javax.inject.Provider;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 @Singleton
 public final class YWErrorHandler extends DefaultHttpErrorHandler {

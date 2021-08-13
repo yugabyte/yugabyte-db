@@ -155,20 +155,24 @@ const client::YBTableName& PgTableDesc::table_name() const {
   return table_->name();
 }
 
-const size_t PgTableDesc::num_hash_key_columns() const {
+size_t PgTableDesc::num_hash_key_columns() const {
   return table_->schema().num_hash_key_columns();
 }
 
-const size_t PgTableDesc::num_key_columns() const {
+size_t PgTableDesc::num_key_columns() const {
   return table_->schema().num_key_columns();
 }
 
-const size_t PgTableDesc::num_columns() const {
+size_t PgTableDesc::num_columns() const {
   return table_->schema().num_columns();
 }
 
 std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSelect() {
   return table_->NewPgsqlSelect();
+}
+
+std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSample() {
+  return table_->NewPgsqlSample();
 }
 
 std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlInsert() {

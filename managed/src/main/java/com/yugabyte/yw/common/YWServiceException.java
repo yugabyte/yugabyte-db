@@ -11,7 +11,6 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.YWError;
 import com.yugabyte.yw.forms.YWResults;
 import play.libs.Json;
 import play.mvc.Result;
@@ -34,12 +33,12 @@ public class YWServiceException extends RuntimeException {
   }
 
   public YWServiceException(int httpStatus, JsonNode errJson) {
-    this(httpStatus, null, errJson);
+    this(httpStatus, "errorJson: " + errJson.toString(), errJson);
   }
 
   public Result getResult() {
     if (errJson == null) {
-      YWError ywError = new YWError(userVisibleMessage);
+      YWResults.YWError ywError = new YWResults.YWError(userVisibleMessage);
       return Results.status(httpStatus, Json.toJson(ywError));
     } else {
       YWResults.YWStructuredError ywError = new YWResults.YWStructuredError(errJson);

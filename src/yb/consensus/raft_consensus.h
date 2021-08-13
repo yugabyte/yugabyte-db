@@ -42,6 +42,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_peers.h"
@@ -60,7 +61,7 @@ DECLARE_int32(ht_lease_duration_ms);
 namespace yb {
 
 typedef std::lock_guard<simple_spinlock> Lock;
-typedef gscoped_ptr<Lock> ScopedLock;
+typedef std::unique_ptr<Lock> ScopedLock;
 
 class Counter;
 class HostPort;
@@ -89,6 +90,9 @@ YB_STRONGLY_TYPED_BOOL(PreElected);
 
 YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
+std::unique_ptr<ConsensusRoundCallback> MakeNonTrackedRoundCallback(
+    ConsensusRound* round, const StdStatusCallback& callback);
+
 class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                       public Consensus,
                       public PeerMessageQueueObserver,
@@ -97,8 +101,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   class ConsensusFaultHooks;
 
   // Creates RaftConsensus.
-  // split_op_info is the parameters of split tablet Raft operation requesting split of this
-  // tablet or unset.
   static std::shared_ptr<RaftConsensus> Create(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -115,12 +117,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests,
-    const SplitOpInfo& split_op_info);
+    RetryableRequests* retryable_requests);
 
   // Creates RaftConsensus.
-  // split_op_info is the parameters of split tablet Raft operation requesting split of this
-  // tablet or unset.
   RaftConsensus(
     const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
@@ -137,8 +136,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests,
-    const SplitOpInfo& split_op_info);
+    RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus();
 
@@ -160,7 +158,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                           LeaderStepDownResponsePB* resp) override;
 
   CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) override;
-  CHECKED_STATUS ReplicateBatch(ConsensusRounds* rounds) override;
+  CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) override;
 
   CHECKED_STATUS Update(
       ConsensusRequestPB* request,
@@ -184,6 +182,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::string peer_uuid() const override;
 
   std::string tablet_id() const override;
+
+  const TabletId& split_parent_tablet_id() const override;
 
   ConsensusStatePB ConsensusState(
       ConsensusConfigType type,
@@ -222,10 +222,6 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   yb::OpId GetLastAppliedOpId() override;
 
   yb::OpId GetAllAppliedOpId();
-
-  yb::OpId GetSplitOpId() override;
-
-  std::array<TabletId, kNumSplitParts> GetSplitChildTabletIds() override;
 
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
@@ -266,24 +262,30 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     return majority_num_sst_files_.load(std::memory_order_acquire);
   }
 
+  // Returns last op id from log cache with specified op id type and operation type.
+  Result<OpId> TEST_GetLastOpIdWithType(OpIdType opid_type, OperationType op_type);
+
   int64_t TEST_LeaderTerm() const;
 
- protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
   // may be Aborted or some other error status.
   // If 'status' is OK, write a Commit message to the local WAL based on the
   // type of message it is.
   // The 'client_cb' will be invoked at the end of this execution.
-  virtual void NonTxRoundReplicationFinished(ConsensusRound* round,
-                                             const StdStatusCallback& client_cb,
-                                             const Status& status);
+  virtual void NonTrackedRoundReplicationFinished(
+      ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
+ protected:
   // As a leader, append a new ConsensusRound to the queue.
   // Only virtual and protected for mocking purposes.
-  virtual CHECKED_STATUS AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round);
+  virtual CHECKED_STATUS AppendNewRoundToQueueUnlocked(const ConsensusRoundPtr& round);
+
+  // processed_rounds - out value for number of rounds that were processed.
   virtual CHECKED_STATUS AppendNewRoundsToQueueUnlocked(
-      const std::vector<scoped_refptr<ConsensusRound>>& rounds);
+      const ConsensusRounds& rounds, size_t* processed_rounds);
+
+  CHECKED_STATUS CheckLeasesUnlocked(const ConsensusRoundPtr& round);
 
   // As a follower, start a consensus round not associated with a Operation.
   // Only virtual and protected for mocking purposes.
@@ -302,6 +304,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
  private:
   friend class ReplicaState;
   friend class RaftConsensusQuorumTest;
+
+  // processed_rounds - out value for number of rounds that were processed.
+  CHECKED_STATUS DoReplicateBatch(const ConsensusRounds& rounds, size_t* processed_rounds);
 
   CHECKED_STATUS DoStartElection(const LeaderElectionData& data, PreElected preelected);
 
@@ -718,6 +723,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<MonoDelta> TEST_delay_update_{MonoDelta::kZero};
 
   std::atomic<uint64_t> majority_num_sst_files_{0};
+
+  const TabletId split_parent_tablet_id_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

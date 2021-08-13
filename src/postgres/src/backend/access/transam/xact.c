@@ -31,6 +31,7 @@
 #include "access/xloginsert.h"
 #include "access/xlogutils.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_enum.h"
 #include "catalog/storage.h"
 #include "commands/async.h"
 #include "commands/tablecmds.h"
@@ -1856,6 +1857,11 @@ AtSubCleanup_Memory(void)
  * ----------------------------------------------------------------
  */
 
+static void
+YBUpdateActiveSubTransaction(TransactionState s) {
+	YBCSetActiveSubTransaction(s->subTransactionId);
+}
+
 /*
  * Do a Yugabyte-specific initialization of transaction when it starts,
  * called as a part of StartTransaction
@@ -1867,7 +1873,11 @@ YBStartTransaction(TransactionState s)
 	s->ybDataSent             = false;
 	s->YBPostponedDdlOps      = NULL;
 
-	YBInitializeTransaction();
+	if (IsYugaByteEnabled())
+	{
+		YBResetOperationsBuffering();
+		YBInitializeTransaction();
+	}
 }
 
 void
@@ -2277,6 +2287,7 @@ CommitTransaction(void)
 	AtCommit_Notify();
 	AtEOXact_GUC(true, 1);
 	AtEOXact_SPI(true);
+	AtEOXact_Enum();
 	AtEOXact_on_commit_actions(true);
 	AtEOXact_Namespace(true, is_parallel_worker);
 	AtEOXact_SMgr();
@@ -2571,6 +2582,7 @@ PrepareTransaction(void)
 	/* PREPARE acts the same as COMMIT as far as GUC is concerned */
 	AtEOXact_GUC(true, 1);
 	AtEOXact_SPI(true);
+	AtEOXact_Enum();
 	AtEOXact_on_commit_actions(true);
 	AtEOXact_Namespace(true, false);
 	AtEOXact_SMgr();
@@ -2777,6 +2789,7 @@ AbortTransaction(void)
 
 		AtEOXact_GUC(false, 1);
 		AtEOXact_SPI(false);
+		AtEOXact_Enum();
 		AtEOXact_on_commit_actions(false);
 		AtEOXact_Namespace(false, is_parallel_worker);
 		AtEOXact_SMgr();
@@ -4330,6 +4343,8 @@ RollbackToSavepoint(const char *name)
 	else
 		elog(FATAL, "RollbackToSavepoint: unexpected state %s",
 			 BlockStateAsString(xact->blockState));
+
+	YBCRollbackSubTransaction(target->subTransactionId);
 }
 
 /*
@@ -5086,6 +5101,7 @@ PushTransaction(void)
 	s->parallelModeLevel = 0;
 
 	CurrentTransactionState = s;
+	YBUpdateActiveSubTransaction(CurrentTransactionState);
 
 	/*
 	 * AbortSubTransaction and CleanupSubTransaction have to be able to cope
@@ -5115,6 +5131,7 @@ PopTransaction(void)
 		elog(FATAL, "PopTransaction with no parent");
 
 	CurrentTransactionState = s->parent;
+	YBUpdateActiveSubTransaction(CurrentTransactionState);
 
 	/* Let's just make sure CurTransactionContext is good */
 	CurTransactionContext = s->parent->curTransactionContext;

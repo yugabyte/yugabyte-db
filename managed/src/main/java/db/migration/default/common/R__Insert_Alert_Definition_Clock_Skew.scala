@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import java.sql.Connection
+
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 
 class R__Insert_Alert_Definition_Clock_Skew extends JdbcMigration {

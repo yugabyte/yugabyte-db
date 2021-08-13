@@ -3,24 +3,22 @@ package com.yugabyte.yw.models;
 import com.google.common.annotations.VisibleForTesting;
 import io.ebean.Finder;
 import io.ebean.Model;
+import java.util.UUID;
+import javax.persistence.Entity;
+import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import java.util.UUID;
-
 /**
- * This bean is a parent for ConfigEntries bean. Intent is to identify the
- * scope of the child ConfigEntries.
- * This bean just points to one of many parent tables through a foreign key.
- * At present we are only adding such a pointer to provider and customer tables,
- * so that we can have scoped configurations for provider or customer.
+ * This bean is a parent for ConfigEntries bean. Intent is to identify the scope of the child
+ * ConfigEntries. This bean just points to one of many parent tables through a foreign key. At
+ * present we are only adding such a pointer to provider and customer tables, so that we can have
+ * scoped configurations for provider or customer.
  */
 @Entity
 public class ScopedRuntimeConfig extends Model {
   // TODO: delete if not needed by the end of it.
-//  public static final ScopedRuntimeConfig GLOBAL_SCOPE = new ScopedRuntimeConfig();
+  //  public static final ScopedRuntimeConfig GLOBAL_SCOPE = new ScopedRuntimeConfig();
   public static final UUID GLOBAL_SCOPE_UUID = new UUID(0, 0);
 
   private static final Logger LOG = LoggerFactory.getLogger(ScopedRuntimeConfig.class);
@@ -30,21 +28,16 @@ public class ScopedRuntimeConfig extends Model {
   // no uuid defined for parent entity we will
   // create a new uuid. At present all the use cases
   // global, provider, universe and customer have a uuid.
-  @VisibleForTesting
-  @Id
-  final UUID uuid;
+  @VisibleForTesting @Id final UUID uuid;
 
-  //====================================================
+  // ====================================================
   // Foreign keys to scoping entities.
   // At most one of these can be valid.
-  @VisibleForTesting
-  final UUID customerUUID;
-  @VisibleForTesting
-  final UUID universeUUID;
-  @VisibleForTesting
-  final UUID providerUUID;
+  @VisibleForTesting final UUID customerUUID;
+  @VisibleForTesting final UUID universeUUID;
+  @VisibleForTesting final UUID providerUUID;
   // End foreign key fields
-  //====================================================
+  // ====================================================
 
   private ScopedRuntimeConfig() {
     uuid = GLOBAL_SCOPE_UUID;
@@ -79,8 +72,7 @@ public class ScopedRuntimeConfig extends Model {
   }
 
   private static final Finder<UUID, ScopedRuntimeConfig> finder =
-    new Finder<UUID, ScopedRuntimeConfig>(ScopedRuntimeConfig.class) {
-    };
+      new Finder<UUID, ScopedRuntimeConfig>(ScopedRuntimeConfig.class) {};
 
   @VisibleForTesting
   static ScopedRuntimeConfig get(UUID uuid) {
@@ -118,12 +110,16 @@ public class ScopedRuntimeConfig extends Model {
     if (uuid == GLOBAL_SCOPE_UUID) {
       return "ScopedRuntimeConfig(GLOBAL_SCOPE)";
     } else {
-      return "ScopedRuntimeConfig{" +
-        "uuid=" + uuid +
-        ", customerUUID=" + customerUUID +
-        ", universeUUID=" + universeUUID +
-        ", providerUUID=" + providerUUID +
-        '}';
+      return "ScopedRuntimeConfig{"
+          + "uuid="
+          + uuid
+          + ", customerUUID="
+          + customerUUID
+          + ", universeUUID="
+          + universeUUID
+          + ", providerUUID="
+          + providerUUID
+          + '}';
     }
   }
 }

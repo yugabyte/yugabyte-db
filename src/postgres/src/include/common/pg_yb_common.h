@@ -84,8 +84,26 @@ extern int YBUnsupportedFeatureSignalLevel();
 extern bool YBIsNonTxnCopyEnabled();
 
 /**
- * Returns whether running the ANALYZE command is enabled.
+ * Returns a null-terminated string representing the name of the
+ * cloud this process is running on.
  */
-extern bool YBIsAnalyzeCmdEnabled();
+extern const char *YBGetCurrentCloud();
+
+/**
+ * Returns a null-terminated string representing the region this
+ * process is running on.
+ */
+extern const char *YBGetCurrentRegion();
+
+/**
+ * Returns a null-terminated string representing the zone this
+ * process is running on.
+ */
+extern const char *YBGetCurrentZone();
+
+/**
+ * Returns whether COLLATION support is enabled.
+ */
+extern bool YBIsCollationEnabled();
 
 #endif /* PG_YB_COMMON_H */

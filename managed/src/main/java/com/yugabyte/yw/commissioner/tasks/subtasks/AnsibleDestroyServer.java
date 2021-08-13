@@ -10,21 +10,28 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
+
+  @Inject
+  protected AnsibleDestroyServer(
+      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   public static class Params extends NodeTaskParams {
     // Flag to be set where errors from ansible will be ignored.
@@ -37,26 +44,25 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   protected AnsibleDestroyServer.Params taskParams() {
-    return (AnsibleDestroyServer.Params)taskParams;
+    return (AnsibleDestroyServer.Params) taskParams;
   }
-
-  public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
 
   private void removeNodeFromUniverse(final String nodeName) {
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     if (u.getNode(nodeName) == null) {
-      LOG.error("No node in universe with name " + nodeName);
+      log.error("No node in universe with name " + nodeName);
       return;
     }
     // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails.removeNode(nodeName);
-        LOG.debug("Removing node " + nodeName + " from universe " + taskParams().universeUUID);
-      }
-    };
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.removeNode(nodeName);
+            log.debug("Removing node " + nodeName + " from universe " + taskParams().universeUUID);
+          }
+        };
 
     saveUniverseDetails(updater);
   }
@@ -67,25 +73,27 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     setNodeState(NodeDetails.NodeState.Removing);
     // Execute the ansible command.
     try {
-      ShellResponse response = getNodeManager().nodeCommand(
-        NodeManager.NodeCommandType.Destroy, taskParams());
+      ShellResponse response =
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams());
       processShellResponse(response);
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;
       } else {
-        LOG.debug("Ignoring error deleting {} due to isForceDelete being set.",
-                  taskParams().nodeName, e);
+        log.debug(
+            "Ignoring error deleting {} due to isForceDelete being set.", taskParams().nodeName, e);
       }
     }
 
     Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-    UserIntent userIntent = u.getUniverseDetails()
-        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
+    UserIntent userIntent =
+        u.getUniverseDetails()
+            .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
+            .userIntent;
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
 
-    if (userIntent.providerType.equals(Common.CloudType.onprem) &&
-        univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {
+    if (userIntent.providerType.equals(Common.CloudType.onprem)
+        && univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {
       // Free up the node.
       try {
         NodeInstance providerNode = NodeInstance.getByName(taskParams().nodeName);
@@ -95,7 +103,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
           throw e;
         }
       }
-      LOG.info("Marked node instance {} as available", taskParams().nodeName);
+      log.info("Marked node instance {} as available", taskParams().nodeName);
     }
 
     if (taskParams().deleteNode) {

@@ -363,7 +363,7 @@ def parallel_run_test(test_descriptor_str):
 
                 if failed_to_launch:
                     # This exception should bubble up to Spark and cause it to hopefully re-run the
-                    # test one some other node.
+                    # test on some other node.
                     raise RuntimeError(error_msg)
                 break
 
@@ -481,7 +481,7 @@ def initialize_remote_task():
     if not os.path.exists(archive_path):
         raise IOError("Archive not found: %s" % archive_path)
     # We install the code into the same path where it was installed on the main build node (Jenkins
-    # slave or dev server), but put it in as separate variable to have flexibility to change it
+    # worker or dev server), but put it in as separate variable to have flexibility to change it
     # later.
     remote_yb_src_root = global_conf.yb_src_root
 
@@ -574,6 +574,7 @@ def parallel_list_test_descriptors(rel_test_path):
     from yb import yb_dist_tests, command_util
     global_conf = initialize_remote_task()
 
+    os.environ['BUILD_ROOT'] = global_conf.build_root
     find_or_download_thirdparty_script_path = os.path.join(
         global_conf.yb_src_root, 'build-support', 'find_or_download_thirdparty.sh')
     subprocess.check_call(find_or_download_thirdparty_script_path)

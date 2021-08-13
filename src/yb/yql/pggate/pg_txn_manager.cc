@@ -37,26 +37,37 @@ DEFINE_bool(use_node_hostname_for_local_tserver, false,
     VLOG(vlog_level) << __func__ << ": " << TxnStateDebugStr() \
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
+
 namespace {
 
-constexpr uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
-constexpr uint64_t txn_priority_highpri_lower_bound = yb::kHighPriTxnLowerBound;
-
 // Local copies that can be modified.
+uint64_t txn_priority_highpri_upper_bound = yb::kHighPriTxnUpperBound;
+uint64_t txn_priority_highpri_lower_bound = yb::kHighPriTxnLowerBound;
+
 uint64_t txn_priority_regular_upper_bound = yb::kRegularTxnUpperBound;
 uint64_t txn_priority_regular_lower_bound = yb::kRegularTxnLowerBound;
 
-// Converts double value in range 0..1 to uint64_t value in range
-// 0..(txn_priority_highpri_lower_bound - 1)
-uint64_t ConvertBound(double value) {
+// Converts double value in range 0..1 to uint64_t value in range [minValue, maxValue]
+uint64_t ConvertBound(double value, uint64_t minValue, uint64_t maxValue) {
   if (value <= 0.0) {
-    return 0;
+    return minValue;
   }
+
   if (value >= 1.0) {
-    return txn_priority_highpri_lower_bound - 1;
+    return maxValue;
   }
+
   // Have to cast to double to avoid a warning on implicit cast that changes the value.
-  return value * (static_cast<double>(txn_priority_highpri_lower_bound) - 1);
+  return minValue + value * static_cast<double>(maxValue - minValue);
+}
+
+uint64_t ConvertRegularPriorityTxnBound(double value) {
+  return ConvertBound(value, yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound);
+}
+
+uint64_t ConvertHighPriorityTxnBound(double value) {
+  return ConvertBound(value, yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound);
 }
 
 } // namespace
@@ -64,15 +75,21 @@ uint64_t ConvertBound(double value) {
 extern "C" {
 
 void YBCAssignTransactionPriorityLowerBound(double newval, void* extra) {
-  txn_priority_regular_lower_bound = ConvertBound(newval);
+  txn_priority_regular_lower_bound = ConvertRegularPriorityTxnBound(newval);
+  txn_priority_highpri_lower_bound = ConvertHighPriorityTxnBound(newval);
   // YSQL layer checks (guc.c) should ensure this.
   DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
+  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
+  DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_highpri_lower_bound);
 }
 
 void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
-  txn_priority_regular_upper_bound = ConvertBound(newval);
+  txn_priority_regular_upper_bound = ConvertRegularPriorityTxnBound(newval);
+  txn_priority_highpri_upper_bound = ConvertHighPriorityTxnBound(newval);
   // YSQL layer checks (guc.c) should ensure this.
   DCHECK_LE(txn_priority_regular_lower_bound, txn_priority_regular_upper_bound);
+  DCHECK_LE(txn_priority_highpri_lower_bound, txn_priority_highpri_upper_bound);
+  DCHECK_LE(txn_priority_regular_upper_bound, txn_priority_highpri_lower_bound);
 }
 
 }
@@ -90,6 +107,25 @@ using client::YBTransactionPtr;
 using client::YBSession;
 using client::YBSessionPtr;
 using client::LocalTabletFilter;
+
+#if defined(__APPLE__) && !defined(NDEBUG)
+// We are experiencing more slowness in tests on macOS in debug mode.
+const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
+#else
+const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
+#endif
+
+DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
+
+std::shared_ptr<yb::client::YBSession> BuildSession(
+    yb::client::YBClient* client,
+    const scoped_refptr<ClockBase>& clock) {
+  auto session = std::make_shared<YBSession>(client, clock);
+  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
+  return session;
+}
 
 PgTxnManager::PgTxnManager(
     AsyncClientInitialiser* async_client_init,
@@ -154,9 +190,8 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 }
 
 void PgTxnManager::StartNewSession() {
-  session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
+  session_ = BuildSession(async_client_init_->client(), clock_);
   session_->SetReadPoint(client::Restart::kFalse);
-  session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 uint64_t PgTxnManager::GetPriority(const NeedsPessimisticLocking needs_pessimistic_locking) {
@@ -219,7 +254,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   } else {
     if (tserver_shared_object_) {
       if (!tablet_server_proxy_) {
-        boost::optional<MonoDelta> resolve_cache_timeout;
+        MonoDelta resolve_cache_timeout;
         const auto& tserver_shared_data_ = **tserver_shared_object_;
         HostPort host_port(tserver_shared_data_.endpoint());
         if (FLAGS_use_node_hostname_for_local_tserver) {
@@ -253,6 +288,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
       DCHECK_EQ(docdb_isolation, IsolationLevel::SERIALIZABLE_ISOLATION);
       RETURN_NOT_OK(txn_->Init(docdb_isolation));
     }
+    txn_->SetSubTransactionMetadata(sub_txn_);
     session_->SetTransaction(txn_);
 
     VLOG_TXN_STATE(2) << "effective isolation level: "
@@ -262,7 +298,26 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
   return Status::OK();
 }
 
+void PgTxnManager::SetActiveSubTransaction(SubTransactionId id) {
+  sub_txn_.subtransaction_id = id;
+  sub_txn_.highest_subtransaction_id = std::max(sub_txn_.highest_subtransaction_id, id);
+}
+
+Status PgTxnManager::RollbackSubTransaction(SubTransactionId id) {
+  // We should abort the range [id, sub_txn_.highest_subtransaction_id]. It's possible that we have
+  // created and released savepoints, such that there have been writes with a subtransaction_id
+  // greater than sub_txn_.subtransaction_id, and those should be aborted as well.
+  SCHECK_GE(
+    sub_txn_.highest_subtransaction_id, id,
+    InternalError,
+    "Attempted to rollback to non-existent savepoint.");
+  return sub_txn_.aborted.SetRange(id, sub_txn_.highest_subtransaction_id);
+}
+
 Status PgTxnManager::RestartTransaction() {
+  if (!sub_txn_.IsDefaultState()) {
+    return STATUS(IllegalState, "Attempted to restart when session has established savepoints");
+  }
   if (!txn_in_progress_ || !txn_) {
     CHECK_NOTNULL(session_);
     if (!session_->IsRestartRequired()) {
@@ -275,6 +330,7 @@ Status PgTxnManager::RestartTransaction() {
     return STATUS(IllegalState, "Attempted to restart when transaction does not require restart");
   }
   txn_ = VERIFY_RESULT(txn_->CreateRestartedTransaction());
+  txn_->SetSubTransactionMetadata(sub_txn_);
   session_->SetTransaction(txn_);
 
   DCHECK(can_restart_.load(std::memory_order_acquire));
@@ -361,6 +417,7 @@ void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   session_ = nullptr;
   txn_ = nullptr;
+  sub_txn_ = SubTransactionMetadata();
   can_restart_.store(true, std::memory_order_release);
 }
 
@@ -368,8 +425,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!ddl_txn_,
           IllegalState, "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_session_ = std::make_shared<YBSession>(async_client_init_->client(), clock_);
-  ddl_session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+  ddl_session_ = BuildSession(async_client_init_->client(), clock_);
   ddl_txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
   ddl_session_->SetTransaction(ddl_txn_);
   RETURN_NOT_OK(ddl_txn_->Init(

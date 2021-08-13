@@ -135,12 +135,17 @@ TEST_F(MvccTest, Abort) {
   for (int i = 0; i != kTotalEntries; ++i) {
     hts[i] = manager_.AddLeaderPending(OpId(1, i));
   }
-  for (size_t i = 1; i < hts.size(); i += 2) {
-    manager_.Aborted(hts[i], OpId(1, i));
-  }
-  for (size_t i = 0; i < hts.size(); i += 2) {
-    ASSERT_EQ(hts[i].Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
-    manager_.Replicated(hts[i], OpId(1, i));
+  size_t begin = 0;
+  size_t end = hts.size();
+  for (size_t i = 0; i < hts.size(); ++i) {
+    if (i & 1) {
+      ASSERT_EQ(hts[begin].Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
+      manager_.Replicated(hts[begin], OpId(1, begin));
+      ++begin;
+    } else {
+      --end;
+      manager_.Aborted(hts[end], OpId(1, end));
+    }
   }
   auto now = clock_->Now();
   ASSERT_EQ(now, manager_.SafeTime({
@@ -248,8 +253,8 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
         ops.push_back(alive[idx].CopyAndChangeType(OpType::kReplicated));
         manager_.Replicated(alive[idx].ht, alive[idx].op_id);
       } else {
-        // Abort a random operation that is alive.
-        idx = RandomUniformInt<size_t>(0, alive.size() - 1);
+        // Abort the last operation that is alive.
+        idx = queue.rbegin()->second;
         ops.push_back(alive[idx].CopyAndChangeType(OpType::kAborted));
         manager_.Aborted(alive[idx].ht, alive[idx].op_id);
       }

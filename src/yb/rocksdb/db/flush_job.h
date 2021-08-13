@@ -80,6 +80,7 @@ class FlushJob {
            const MutableCFOptions& mutable_cf_options,
            const EnvOptions& env_options, VersionSet* versions,
            InstrumentedMutex* db_mutex, std::atomic<bool>* shutting_down,
+           std::atomic<bool>* disable_flush_on_shutdown_,
            std::vector<SequenceNumber> existing_snapshots,
            SequenceNumber earliest_write_conflict_snapshot,
            MemTableFilter mem_table_flush_filter,
@@ -108,6 +109,7 @@ class FlushJob {
   VersionSet* versions_;
   InstrumentedMutex* db_mutex_;
   std::atomic<bool>* shutting_down_;
+  std::atomic<bool>* disable_flush_on_shutdown_;
   std::vector<SequenceNumber> existing_snapshots_;
   SequenceNumber earliest_write_conflict_snapshot_;
   MemTableFilter mem_table_flush_filter_;

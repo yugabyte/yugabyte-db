@@ -31,16 +31,19 @@
 //
 package org.yb.client;
 
+import com.google.common.net.HostAndPort;
+import com.stumbleupon.async.Deferred;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Executor;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
+import org.yb.Common;
 import org.yb.Common.TableType;
 import org.yb.Common.YQLDatabase;
 import org.yb.Schema;
@@ -50,9 +53,6 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
 import org.yb.master.Master;
 import org.yb.tserver.Tserver;
-
-import com.google.common.net.HostAndPort;
-import com.stumbleupon.async.Deferred;
 import org.yb.util.Pair;
 
 /**
@@ -824,6 +824,18 @@ public class YBClient implements AutoCloseable {
     boolean get() throws Exception;
   }
 
+  private class TableDoesNotExistCondition implements Condition {
+    private String nameFilter;
+    public TableDoesNotExistCondition(String nameFilter) {
+      this.nameFilter = nameFilter;
+    }
+    @Override
+    public boolean get() throws Exception {
+      ListTablesResponse tl = getTablesList(nameFilter);
+      return tl.getTablesList().isEmpty();
+    }
+  }
+
   /**
    * Checks the ping of the given ip and port.
    */
@@ -1141,6 +1153,11 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public boolean waitForTableRemoval(final long timeoutMs, String name) {
+    Condition TableDoesNotExistCondition = new TableDoesNotExistCondition(name);
+    return waitForCondition(TableDoesNotExistCondition, timeoutMs);
+  }
+
   /**
    * Test if a table exists.
    * @param keyspace the keyspace name to which this table belongs.
@@ -1236,6 +1253,83 @@ public class YBClient implements AutoCloseable {
    */
   public YBTable openTableByUUID(final String tableUUID) throws Exception {
     Deferred<YBTable> d = asyncClient.openTableByUUID(tableUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CreateXClusterReplicationResponse createXClusterReplication(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDs,
+    List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
+    return createXClusterReplication(
+      sourceUniverseUUID, sourceTableIDs, sourceMasterAddresses, new ArrayList<>());
+  }
+
+  public CreateXClusterReplicationResponse createXClusterReplication(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDs,
+    List<Common.HostPortPB> sourceMasterAddresses,
+    List<String> sourceBootstrapIDs) throws Exception {
+    Deferred<CreateXClusterReplicationResponse> d =
+      asyncClient.createXClusterReplication(
+        sourceUniverseUUID,
+        sourceTableIDs,
+        sourceMasterAddresses,
+        sourceBootstrapIDs);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterXClusterReplicationResponse alterXClusterReplicationAddTables(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDsToAdd) throws Exception {
+    Deferred<AlterXClusterReplicationResponse> d =
+      asyncClient.alterXClusterReplicationAddTables(
+        sourceUniverseUUID, sourceTableIDsToAdd);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterXClusterReplicationResponse alterXClusterReplicationRemoveTables(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDsToRemove) throws Exception {
+    Deferred<AlterXClusterReplicationResponse> d =
+      asyncClient.alterXClusterReplicationRemoveTables(
+        sourceUniverseUUID, sourceTableIDsToRemove);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterXClusterReplicationResponse alterXClusterReplicationChangeSourceMasterAddresses(
+    UUID sourceUniverseUUID,
+    List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
+    Deferred<AlterXClusterReplicationResponse> d =
+      asyncClient.alterXClusterReplicationChangeSourceMasterAddresses(
+        sourceUniverseUUID, sourceMasterAddresses);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteXClusterReplicationResponse deleteXClusterReplication(
+    UUID sourceUniverseUUID) throws Exception {
+    Deferred<DeleteXClusterReplicationResponse> d =
+      asyncClient.deleteXClusterReplication(
+        sourceUniverseUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetXClusterReplicationInfoResponse getXClusterReplicationInfo(
+    UUID sourceUniverseUUID) throws Exception {
+    Deferred<GetXClusterReplicationInfoResponse> d =
+      asyncClient.getXClusterReplicationInfo(sourceUniverseUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetXClusterReplicationActiveResponse setXClusterReplicationActive(
+    UUID sourceUniverseUUID, boolean active) throws Exception {
+    Deferred<SetXClusterReplicationActiveResponse> d =
+      asyncClient.setXClusterReplicationActive(sourceUniverseUUID, active);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public BootstrapUniverseResponse bootstrapUniverse(List<String> tableIDs) throws Exception {
+    Deferred<BootstrapUniverseResponse> d =
+      asyncClient.bootstrapUniverse(tableIDs);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

@@ -16,7 +16,8 @@ import {
   UniverseConnectModal,
   UniverseOverviewContainerNew,
   EncryptionKeyModalContainer,
-  ToggleUniverseStateContainer
+  ToggleUniverseStateContainer,
+  ToggleBackupStateContainer
 } from '../../universes';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
@@ -30,6 +31,7 @@ import {
   isUniverseType
 } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
@@ -208,11 +210,14 @@ class UniverseDetail extends Component {
       showSoftwareUpgradesModal,
       showTLSConfigurationModal,
       showRollingRestartModal,
+      showUpgradeSystemdModal,
       showRunSampleAppsModal,
       showGFlagsModal,
       showManageKeyModal,
       showDeleteUniverseModal,
       showToggleUniverseStateModal,
+      showToggleBackupModal,
+      updateBackupState,
       closeModal,
       customer,
       customer: { currentCustomer },
@@ -222,6 +227,10 @@ class UniverseDetail extends Component {
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
+    const primaryCluster = getPrimaryCluster(
+      universe?.currentUniverse?.data?.universeDetails?.clusters
+    );
+    const useSystemd = primaryCluster?.userIntent?.useSystemd;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -466,10 +475,19 @@ class UniverseDetail extends Component {
         return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
       }) !== undefined;
 
-
-
-
-    
+    /**
+     * Handle the backup state toggle.
+     * i.e open the confirmation model if backup is to be disabled.
+     * else, Enable the backups.
+     */
+    const handleBackupToggle = () => {
+      const takeBackups =
+        currentUniverse.data.universeConfig &&
+        currentUniverse.data.universeConfig?.takeBackups === 'true';
+      takeBackups
+        ? showToggleBackupModal()
+        : updateBackupState(currentUniverse.data.universeUUID, !takeBackups);
+    };
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -523,6 +541,21 @@ class UniverseDetail extends Component {
                               {updateAvailable}
                             </span>
                           )}
+                        </YBMenuItem>
+                      )}
+
+                      {!universePaused && !useSystemd && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showUpgradeSystemdModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.systemdUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade To Systemd
+                          </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
 
@@ -620,6 +653,30 @@ class UniverseDetail extends Component {
                         />
                       )}
 
+                      {!universePaused && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={handleBackupToggle}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.backup'
+                          )}
+                        >
+                          <YBLabelWithIcon
+                            icon={
+                              currentUniverse.data.universeConfig.takeBackups === 'true'
+                                ? 'fa fa-pause'
+                                : 'fa fa-play'
+                            }
+                          >
+                            {currentUniverse.data.universeConfig &&
+                            currentUniverse.data.universeConfig.takeBackups === 'true'
+                              ? 'Disable Backup'
+                              : 'Enable Backup'}
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
+
                       <MenuItem divider />
 
                       {/* TODO:
@@ -629,11 +686,22 @@ class UniverseDetail extends Component {
                       2. One more condition needs to be added which specifies the
                       current status of the universe. */}
 
+                      {/*
+                      Read-only users should not be given the rights to "Pause Universe"
+                      */
+                      }
+
                       {isAWSUniverse(currentUniverse?.data) &&
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
                           featureFlags.released['pausedUniverse']) && (
-                          <YBMenuItem onClick={showToggleUniverseStateModal}>
+                          <YBMenuItem 
+                            onClick={showToggleUniverseStateModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.pausedUniverse'
+                            )}
+                          >
                             <YBLabelWithIcon icon="fa fa-pause-circle-o">
                               {!universePaused ? 'Pause Universe' : 'Resume Universe'}
                             </YBLabelWithIcon>
@@ -689,7 +757,8 @@ class UniverseDetail extends Component {
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
               visibleModal === 'tlsConfigurationModal' ||
-              visibleModal === 'rollingRestart')
+              visibleModal === 'rollingRestart' ||
+              visibleModal === 'systemdUpgrade')
           }
           onHide={closeModal}
         />
@@ -708,7 +777,12 @@ class UniverseDetail extends Component {
           type="primary"
           universePaused={universePaused}
         />
-
+        <ToggleBackupStateContainer
+          visible={showModal && visibleModal === 'toggleBackupModalForm'}
+          onHide={closeModal}
+          universe={currentUniverse.data}
+          type="primary"
+        />
         <EncryptionKeyModalContainer
           modalVisible={showModal && visibleModal === 'manageKeyModal'}
           onHide={closeModal}

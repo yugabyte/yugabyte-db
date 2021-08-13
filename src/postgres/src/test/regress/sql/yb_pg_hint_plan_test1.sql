@@ -7,20 +7,6 @@ SET client_min_messages TO log;
 -- In general, for postgres since t1.id and t2.id is sorted, merge joins should be optimal.
 -- However, since YB does not support merge join nested loop joins will be used.
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
--- TODO size estimates
--- For postgres table t1 is larger than t2. Hence, hash join takes t1 as the inner table.
--- However, in YB we do not have accurate size estimates and hence, t2 is the inner table.
--- Having accurate size estimate in YB will fix this automatically.
--- Postgres's output
---            QUERY PLAN
--- --------------------------------
---  Hash Join
---    Hash Cond: (t2.val = t1.val)
---    ->  Seq Scan on t2
---    ->  Hash
---          ->  Seq Scan on t1
--- (5 rows)
---
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
 SET pg_hint_plan.debug_print TO on;

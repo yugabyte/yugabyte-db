@@ -42,11 +42,14 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/consensus/log.pb.h"
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/atomic.h"
+#include "yb/util/compare_util.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
@@ -60,12 +63,6 @@ DECLARE_string(fs_wal_dirs);
 DECLARE_string(fs_data_dirs);
 
 namespace yb {
-
-namespace consensus {
-class ReplicateMsg;
-struct OpIdBiggerThanFunctor;
-} // namespace consensus
-
 namespace log {
 
 // Suffix for temporary files
@@ -77,8 +74,6 @@ extern const size_t kEntryHeaderSize;
 
 extern const int kLogMajorVersion;
 extern const int kLogMinorVersion;
-
-class ReadableLogSegment;
 
 // Options for the Write Ahead Log. The LogOptions constructor initializes default field values
 // based on flags. See log_util.cc for details.
@@ -123,13 +118,16 @@ struct LogEntryMetadata {
   uint64_t active_segment_sequence_number;
 
   std::string ToString() const {
-    return Format("{ entry_time: $0 offset: $1 active_segment_sequence_number: $2 }",
-                  entry_time, offset, active_segment_sequence_number);
+    return YB_STRUCT_TO_STRING(entry_time, offset, active_segment_sequence_number);
+  }
+
+  friend bool operator==(const LogEntryMetadata& lhs, const LogEntryMetadata& rhs) {
+    return YB_STRUCT_EQUALS(entry_time, offset, active_segment_sequence_number);
   }
 };
 
 // A sequence of segments, ordered by increasing sequence number.
-typedef std::vector<scoped_refptr<ReadableLogSegment> > SegmentSequence;
+typedef std::vector<ReadableLogSegmentPtr> SegmentSequence;
 typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
 
 struct ReadEntriesResult {

@@ -3,9 +3,9 @@
 package db.migration.default.common
 
 import java.sql.Connection
-import java.util.UUID
-import play.api.libs.json._
+
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
+import play.api.libs.json._
 
 class V67__Update_Access_Key_Aws_Hosted_Zone extends JdbcMigration {
 

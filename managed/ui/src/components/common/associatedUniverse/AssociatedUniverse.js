@@ -61,38 +61,36 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
       onHide={onHide}
       submitLabel='Close'
       onFormSubmit={onHide}
-      title={`Universes using this ${title}`}
+      title={`Universes using ${title}`}
     >
       {associatedUniverses?.length ? (
-        <div>
-          <BootstrapTable
-            data={associatedUniverses}
-            className="backup-list-table middle-aligned-table"
+        <BootstrapTable
+          data={associatedUniverses}
+          className="backup-list-table middle-aligned-table"
+        >
+          <TableHeaderColumn dataField="uuid" hidden={true} isKey={true}>
+            UUID
+            </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="name"
+            columnClassName="no-border name-column"
+            className="no-border"
+            width="80%"
+            dataFormat={getUniverseLink}
           >
-            <TableHeaderColumn dataField="uuid" hidden={true} isKey={true}>
-              UUID
+            Universe Name
             </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="name"
-              columnClassName="no-border name-column"
-              className="no-border"
-              width="80%"
-              dataFormat={getUniverseLink}
-            >
-              Universe Name
+          <TableHeaderColumn
+            dataField="universeStatus"
+            columnClassName="no-border name-column"
+            className="no-border"
+            dataFormat={modifyStatus}
+          >
+            Status
             </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="universeStatus"
-              columnClassName="no-border name-column"
-              className="no-border"
-              dataFormat={modifyStatus}
-            >
-              Status
-            </TableHeaderColumn>
-          </BootstrapTable>
-        </div>
+        </BootstrapTable>
       ) : (
-        <div>No Associated Universe with this {title}</div>
+        <>No Associated Universe.</>
       )}
     </YBModal>
   );

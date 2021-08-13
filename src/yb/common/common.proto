@@ -326,6 +326,14 @@ message IndexInfoPB {
   // When backfill fails with error, the first message that it failed with.
   optional string backfill_error_message = 31;
   optional bool is_backfill_deferred = 32 [ default = false ]; // Should backfill be deferred.
+
+  message WherePredicateSpecPB {
+    repeated uint32 column_ids = 1; // Columns referenced in the where_expr
+    optional QLExpressionPB where_expr = 2;
+  }
+
+  // Where clause for partial index.
+  optional WherePredicateSpecPB where_predicate_spec = 33;
 }
 
 message HostPortPB {
@@ -493,6 +501,16 @@ message TransactionMetadataPB {
   // Stores time when metadata was written to provisional records RocksDB on a
   // participating tablet. So it could be used for cleanup.
   optional fixed64 metadata_write_time = 6;
+}
+
+message AbortedSubTransactionSetPB {
+  repeated uint32 set = 1;
+}
+
+message SubTransactionMetadataPB {
+  optional uint32 subtransaction_id = 1;
+
+  optional AbortedSubTransactionSetPB aborted = 2;
 }
 
 // See ReadHybridTime for explation of this message.

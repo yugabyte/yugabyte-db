@@ -34,8 +34,12 @@
  * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
  */
 extern Oid YBCHeapInsert(TupleTableSlot *slot,
-												 HeapTuple tuple,
-												 EState *estate);
+                         HeapTuple tuple,
+                         EState *estate);
+extern Oid YBCHeapInsertForDb(Oid dboid,
+                              TupleTableSlot *slot,
+                              HeapTuple tuple,
+                              EState *estate);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
@@ -44,24 +48,39 @@ extern Oid YBCHeapInsert(TupleTableSlot *slot,
 extern Oid YBCExecuteInsert(Relation rel,
                             TupleDesc tupleDesc,
                             HeapTuple tuple);
+extern Oid YBCExecuteInsertForDb(Oid dboid,
+                                 Relation rel,
+                                 TupleDesc tupleDesc,
+                                 HeapTuple tuple);
 
 /*
  * Execute the insert outside of a transaction.
  * Assumes the caller checked that it is safe to do so.
  */
 extern Oid YBCExecuteNonTxnInsert(Relation rel,
-								  TupleDesc tupleDesc,
-								  HeapTuple tuple);
+                                  TupleDesc tupleDesc,
+                                  HeapTuple tuple);
+extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
+                                       Relation rel,
+                                       TupleDesc tupleDesc,
+                                       HeapTuple tuple);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
  */
 extern void YBCExecuteInsertIndex(Relation rel,
-								  Datum *values,
-								  bool *isnull,
-								  Datum ybctid,
-								  bool is_backfill,
-								  uint64_t *write_time);
+                                  Datum *values,
+                                  bool *isnull,
+                                  Datum ybctid,
+                                  bool is_backfill,
+                                  uint64_t* write_time);
+extern void YBCExecuteInsertIndexForDb(Oid dboid,
+                                       Relation rel,
+                                       Datum* values,
+                                       bool* isnull,
+                                       Datum ybctid,
+                                       bool is_backfill,
+                                       uint64_t* write_time);
 
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.
@@ -117,8 +136,12 @@ extern Oid YBCExecuteUpdateReplace(Relation rel,
 extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
 
 extern void YBCUpdateSysCatalogTuple(Relation rel,
-									 HeapTuple oldtuple,
-									 HeapTuple tuple);
+                                     HeapTuple oldtuple,
+                                     HeapTuple tuple);
+extern void YBCUpdateSysCatalogTupleForDb(Oid dboid,
+                                          Relation rel,
+                                          HeapTuple oldtuple,
+                                          HeapTuple tuple);
 
 //------------------------------------------------------------------------------
 // Utility methods.

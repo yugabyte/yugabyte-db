@@ -39,7 +39,7 @@ A _graph_ is a network of _nodes_ (sometimes called vertices) and _edges_ (somet
 - The two degrees of freedom, _undirected_ or _directed_ and _cyclic_ or _acyclic_ are orthogonal—i.e. all four combinations are possible.
 - The most general kind of graph is _undirected_ and _cyclic_ and the design of the traversal scheme must account for this. This general scheme will always work on the more specialized kinds of graph.
 - A graph might be just _a single set of connected nodes_, where every node can be reached from any other node; or it might be two or more isolated _subgraphs_ of mutually connected nodes where there exists no path between any pair of subgraphs.
-- The most general graph traversal scheme, therefore, must discover all the isolated _subgraphs_ and apply the required traversal scheme of each. This is beyond the scope of this overall section. It deals only with single connected graphs.
+- The most general graph traversal scheme, therefore, must discover all the isolated _subgraphs_ and apply the required traversal scheme to each of them. This is beyond the scope of this overall section. It deals only with single connected graphs.
 
 You can use a recursive CTE to find the paths in an _undirected_ _cyclic_ graph. But you must design the SQL explicitly to accommodate the fact that the edges are _undirected_ and you must include an explicit predicate to prevent cycles. Because each other kind of graph described below is a specialization of the graph whose description immediately precedes its description, you can, as mentioned, use progressively simpler SQL to trace paths in these—as long as you know, _a priori_, what kind of graph you're dealing with.
 
@@ -87,13 +87,15 @@ The reporting tree for employees in an organization, whose traversal was discuss
 
 The next sections show how to find the paths in each of the four kinds of graph that are described above.
 
-This section describes the minimal table structure for representing a graph:
+### Representing the different kinds of graph in a SQL database — [here](./graph-representation/)
 
-- [Representing the different kinds of graph in a SQL database](./graph-representation/)
+This section describes the minimal table structure for representing graphs.
 
-The described traversal schemes all depend upon some common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries and various helper functions and procedures. These are described here:
+### Common code for traversing all kinds of graph — [here](./common-code/)
 
-- [Common code for traversing all kinds of graph](./common-code/)
+The described traversal schemes all depend upon some common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries and various helper functions and procedures. This section describes them. 
+
+### Path finding approaches
 
 The method for the _directed_ _cyclic_ graph is identical to that for the _undirected_ _cyclic_ graph. Each implements cycle prevention. But the table for the _directed_ _cyclic_ graph usually records just the edge as either _"from a to b"_ or _"from b to a"_. Using the recommended representation for edges in a SQL database table, this is the difference:
 
@@ -102,6 +104,8 @@ The method for the _directed_ _cyclic_ graph is identical to that for the _undir
 - But the table for the _directed_ _cyclic_ graph usually records just the edge as either _"from a to b"_ or _"from b to a"_. Occasionally, when the _directed_ relationship between a particular pair of nodes is reciprocal, two edges will be recorded as _"from a to b"_ and _"from b to a"_.
 
 The method for the _directed_ _acyclic_ graph is identical to that for the rooted tree. Neither implements cycle prevention because there is no need for this (both these kinds of graph, by definition, have no cycles). For the same reason, there is never more than one _directed_ edge between any pair of nodes.
+
+The methods are described in these sections:
 
 - [Finding the paths in a general undirected cyclic graph](./undirected-cyclic-graph/)
 

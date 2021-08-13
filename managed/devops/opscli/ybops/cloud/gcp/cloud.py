@@ -10,12 +10,13 @@
 
 import json
 import logging
+import time
 
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.gcp.command import GcpInstanceCommand, GcpQueryCommand, GcpAccessCommand, \
     GcpNetworkCommand
-from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH, GoogleCloudAdmin, GcpMetadata
+from ybops.cloud.gcp.utils import GCP_SCRATCH, GoogleCloudAdmin, GcpMetadata
 
 
 class GcpCloud(AbstractCloud):
@@ -63,10 +64,37 @@ class GcpCloud(AbstractCloud):
         self.get_admin().create_instance(args.zone, body)
 
     def create_disk(self, args, body):
-        self.get_admin().create_disk(args.zone, body)
+        self.get_admin().create_disk(args.zone, args.instance_tags, body)
 
-    def mount_disk(self, args, instance, body):
-        self.get_admin().mount_disk(args.zone, instance, body)
+    def clone_disk(self, args, volume_id, num_disks):
+        output = []
+
+        for x in range(num_disks):
+            res = self.get_admin().create_disk(args.zone, args.instance_tags, body={
+                "name": "{}-disk-{}".format(args.search_pattern, x),
+                "sizeGb": args.boot_disk_size_gb,
+                "sourceDisk": volume_id})
+            output.append(res["targetLink"])
+
+            # GCP throttles disk cloning operations
+            # https://cloud.google.com/compute/docs/disks/create-disk-from-source#restrictions
+            if x != num_disks - 1:
+                time.sleep(30)
+
+        return output
+
+    def mount_disk(self, args, body):
+        self.get_admin().mount_disk(args.zone, args.search_pattern, body)
+
+    def unmount_disk(self, args, name):
+        self.get_admin().unmount_disk(args.zone, args.search_pattern, name)
+
+    def stop_instance(self, args):
+        self.admin.stop_instance(args.zone, args.search_pattern)
+
+    def start_instance(self, args, ssh_port):
+        self.admin.start_instance(args.zone, args.search_pattern)
+        self._wait_for_ssh_port(args.private_ip, args.search_pattern, ssh_port)
 
     def delete_instance(self, args):
         host_info = self.get_host_info(args)
@@ -248,6 +276,9 @@ class GcpCloud(AbstractCloud):
     def update_disk(self, args):
         instance = self.get_host_info(args)
         self.get_admin().update_disk(args, instance['id'])
+
+    def change_instance_type(self, args, newInstanceType):
+        self.get_admin().change_instance_type(args.zone, args.search_pattern, newInstanceType)
 
     def get_per_region_meta(self, args):
         if hasattr(args, "custom_payload") and args.custom_payload:

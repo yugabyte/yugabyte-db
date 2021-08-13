@@ -23,6 +23,7 @@ import _ from 'lodash';
 import * as cron from 'cron-validator';
 
 import '../common.scss';
+import { BackupStorageOptions } from '../BackupStorageOptions';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
@@ -81,7 +82,7 @@ export default class CreateBackup extends Component {
     const frequencyUnitConversion = {
       Hours: 3600,
       Minutes: 60
-    }
+    };
     if (isDefinedNotNull(values.storageConfigUUID)) {
       let backupType = null;
       let frequency = null;
@@ -94,8 +95,14 @@ export default class CreateBackup extends Component {
         backupType = YEDIS_TABLE_TYPE;
       }
 
-      if (!isEmptyString(values.schedulingFrequency) && !isEmptyString(values.schedulingFrequencyUnit.value)) {
-        frequency = values.schedulingFrequency * frequencyUnitConversion[values.schedulingFrequencyUnit.value] * 1000;
+      if (
+        !isEmptyString(values.schedulingFrequency) &&
+        !isEmptyString(values.schedulingFrequencyUnit.value)
+      ) {
+        frequency =
+          values.schedulingFrequency *
+          frequencyUnitConversion[values.schedulingFrequencyUnit.value] *
+          1000;
         frequency = Math.round(frequency);
       }
       const payload = {
@@ -225,15 +232,13 @@ export default class CreateBackup extends Component {
       props.form.setFieldValue(props.field.name, []);
     }
   };
+  
 
   render() {
     const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
     const { backupType } = this.state;
-    const storageOptions = storageConfigs.map((config) => {
-      return { value: config.configUUID, label: config.name + ' Storage' };
-    });
+    const configTypeList = BackupStorageOptions(storageConfigs);
     const initialValues = this.props.initialValues;
-
     let tableOptions = [];
     let keyspaceOptions = [];
     const keyspaces = new Set();
@@ -308,8 +313,9 @@ export default class CreateBackup extends Component {
           onFormSubmit={(values) => {
             const payload = {
               ...values,
-              storageConfigUUID: values.storageConfigUUID.value
+              storageConfigUUID: values.storageConfigUUID.value,
             };
+           
             this.createBackup(payload);
           }}
           initialValues={initialValues}
@@ -334,7 +340,6 @@ export default class CreateBackup extends Component {
             const isCronExpressionReadOnly = schedulingFrequency !== '';
             const isTableSelected = backupTableUUID && backupTableUUID.length;
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
-
             const showTransactionalToggle =
               isKeyspaceSelected &&
               !!isTableSelected &&
@@ -516,9 +521,11 @@ export default class CreateBackup extends Component {
                   >
                     <Field
                       name="storageConfigUUID"
+                      className="config"
+                      classNamePrefix="select-nested"
                       component={YBFormSelect}
                       label={'Storage'}
-                      options={storageOptions}
+                      options={configTypeList}
                     />
                     <Field
                       name="tableKeyspace"
@@ -555,9 +562,11 @@ export default class CreateBackup extends Component {
                   >
                     <Field
                       name="storageConfigUUID"
+                      className="config"
+                      classNamePrefix="select-nested"
                       component={YBFormSelect}
                       label={'Storage'}
-                      options={storageOptions}
+                      options={configTypeList}
                     />
                     <Field
                       name="tableKeyspace"
@@ -620,9 +629,11 @@ export default class CreateBackup extends Component {
                   >
                     <Field
                       name="storageConfigUUID"
+                      className="config"
+                      classNamePrefix="select-nested"
                       component={YBFormSelect}
                       label={'Storage'}
-                      options={storageOptions}
+                      options={configTypeList}
                     />
                     <Field
                       name="tableKeyspace"
@@ -672,10 +683,10 @@ export default class CreateBackup extends Component {
                       label={'Parallel Threads'}
                     />
                     <Field
-                        name="timeBeforeDelete"
-                        type="number"
-                        component={YBFormInput}
-                        label={'Number of Days to Retain Backup'}
+                      name="timeBeforeDelete"
+                      type="number"
+                      component={YBFormInput}
+                      label={'Number of Days to Retain Backup'}
                     />
                   </Tab>
                 </Tabs>

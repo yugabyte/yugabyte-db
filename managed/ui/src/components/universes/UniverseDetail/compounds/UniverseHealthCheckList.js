@@ -14,6 +14,7 @@ import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../uti
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
 import { isDisabled, isNotHidden } from '../../../../utils/LayoutUtils';
+import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 
 import './UniverseHealthCheckList.scss';
 
@@ -22,9 +23,13 @@ export const UniverseHealthCheckList = (props) => {
     universe: { healthCheck, currentUniverse },
     currentCustomer
   } = props;
+  const primaryCluster = getPrimaryCluster(
+    props?.universe?.currentUniverse?.data?.universeDetails?.clusters
+  );
+  const useSystemd = primaryCluster?.userIntent?.useSystemd;
   let nodesCronStatus = <span />;
   const inactiveCronNodes = getNodesWithInactiveCrons(currentUniverse.data).join(', ');
-  if (isNonEmptyString(inactiveCronNodes)) {
+  if (!useSystemd && isNonEmptyString(inactiveCronNodes)) {
     nodesCronStatus = (
       <Alert bsStyle="warning" className="pre-provision-message">
         Warning: cronjobs are not active on some nodes ({inactiveCronNodes})
@@ -225,8 +230,7 @@ const detailsFormatter = (cell, row) => {
 
 // For performance optimization, move this to a Redux reducer, so that it doesn't get run on each render.
 function prepareData(data) {
-  return data.map((timeDataJson) => {
-    const timeData = JSON.parse(timeDataJson);
+  return data.map((timeData) => {
     const timestampMoment = moment.utc(timeData.timestamp).local();
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {

@@ -2,14 +2,16 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.Test;
 import play.libs.Json;
-
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.junit.Assert.*;
 
 public class CommonUtilsTest {
 

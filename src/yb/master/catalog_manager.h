@@ -61,9 +61,13 @@
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/system_tablet.h"
+#include "yb/master/tablet_split_candidate_filter.h"
+#include "yb/master/tablet_split_driver.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
+#include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 #include "yb/rpc/rpc.h"
 #include "yb/server/monitored_task.h"
@@ -91,15 +95,15 @@ class ThreadPool;
 template<class T>
 class AtomicGauge;
 
-namespace pgwrapper {
-
 #define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
+namespace pgwrapper {
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables));
-#undef CALL_GTEST_TEST_CLASS_NAME_
-
 }
+
+class CALL_GTEST_TEST_CLASS_NAME_(MasterPartitionedTest, VerifyOldLeaderStepsDown);
+#undef CALL_GTEST_TEST_CLASS_NAME_
 
 namespace tablet {
 
@@ -128,6 +132,7 @@ static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid
 static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
 static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
+static const int32 kDelayAfterFailoverSecs = 120;
 
 using PlacementId = std::string;
 
@@ -144,6 +149,7 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
                               (kRunning) // All running tables
                               (kVisibleToClient) // All tables visible to the client
                );
+typedef unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -152,7 +158,10 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager : public tserver::TabletPeerLookupIf {
+class CatalogManager :
+    public tserver::TabletPeerLookupIf,
+    public TabletSplitCandidateFilterIf,
+    public TabletSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -175,7 +184,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void CompleteShutdown();
 
   // Create Postgres sys catalog table.
-  CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
+  CHECKED_STATUS CreateYsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
 
   CHECKED_STATUS ReplicatePgMetadataChange(const tserver::ChangeMetadataRequestPB* req);
 
@@ -200,12 +209,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreateTable(const CreateTableRequestPB* req,
                              CreateTableResponsePB* resp,
                              rpc::RpcContext* rpc);
-
-  // Analyze a table and provide estimates of pertinent statistics needed by a postgres ANALYZE
-  // command.
-  CHECKED_STATUS AnalyzeTable(const AnalyzeTableRequestPB* req,
-                              AnalyzeTableResponsePB* resp,
-                              rpc::RpcContext* rpc);
 
   // Create the transaction status table if needed (i.e. if it does not exist already).
   //
@@ -459,6 +462,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                                TSHeartbeatResponsePB* resp);
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
+
+  // Tablet peer for the sys catalog tablet's peer.
+  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const;
 
   ClusterLoadBalancer* load_balancer() { return load_balance_policy_.get(); }
 
@@ -734,6 +740,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   }
 
   uintptr_t tablets_version() const NO_THREAD_SAFETY_ANALYSIS {
+    // This method should not hold the lock, because Version method is thread safe.
     return tablet_map_.Version() + table_ids_map_.Version();
   }
 
@@ -745,7 +752,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return *encryption_manager_;
   }
 
-  CHECKED_STATUS SplitTablet(const TabletId& tablet_id);
+  CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
@@ -753,6 +760,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS DeleteTablet(
       const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
+
+  CHECKED_STATUS DdlLog(
+      const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
 
   CHECKED_STATUS DeleteTablets(const std::vector<TabletId>& tablet_ids);
 
@@ -785,7 +795,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id);
 
+  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+      const scoped_refptr<TableInfo>& table);
+
   void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
+
+  void CheckTableDeleted(const TableInfoPtr& table);
+
+  CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) override;
+
+  bool ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
+
+  BlacklistSet BlacklistSetFromPB() const;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -815,6 +837,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
 
   FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
+  FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -841,6 +864,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // 3) Releases 'lock_' and if successful, updates 'leader_ready_term_'
   // to true (under state_lock_).
   void LoadSysCatalogDataTask();
+
+  // This method checks that resource such as keyspace is available for GrantRevokePermission
+  // request.
+  // Since this method takes lock on mutex_, it is separated out of permissions manager
+  // so that the thread safety relationship between the two managers is easy to reason about.
+  CHECKED_STATUS CheckResource(const GrantRevokePermissionRequestPB* req,
+                               GrantRevokePermissionResponsePB* resp);
 
   // Generated the default entry for the cluster config, that is written into sys_catalog on very
   // first leader election of the cluster.
@@ -996,8 +1026,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Extract the set of tablets that can be deleted and the set of tablets
   // that must be processed because not running yet.
+  // Returns a map of table_id -> {tablet_info1, tablet_info2, etc.}.
   void ExtractTabletsToProcess(TabletInfos *tablets_to_delete,
-                               TabletInfos *tablets_to_process);
+                               TableToTabletInfos *tablets_to_process);
 
   // Determine whether any tables are in the DELETING state.
   bool AreTablesDeleting();
@@ -1069,8 +1100,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // updated to INDEX_PERM_WRITE_AND_DELETE state; followed by backfilling. Once
   // all the tablets have completed backfilling, the index will be updated
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
-  void SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
-                             const AlterTableRequestPB* req = nullptr);
+  CHECKED_STATUS SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
+                                       const AlterTableRequestPB* req = nullptr);
 
   // Start the background task to send the CopartitionTable() RPC to the leader for this
   // tablet.
@@ -1078,7 +1109,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const scoped_refptr<TableInfo>& table);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
-  void SendSplitTabletRequest(
+  CHECKED_STATUS SendSplitTabletRequest(
       const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key);
 
@@ -1177,39 +1208,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
-  // Return the tablespace information to caller.
-  void GetTablespaceInfo(
-      std::shared_ptr<TablespaceIdToReplicationInfoMap>* out_tablespace_placement_map,
-      std::shared_ptr<TableToTablespaceIdMap>* out_table_to_tablespace_map);
-
-  // Given 'tablespace_id' return the replication info associated with it.
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfo(
-      const TablespaceId& tablespace_id);
-
-  // Returns whether 'replication_info' has any relevant fields set.
-  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
-
-  // Validates that 'replication_info' for a table has supported fields set.
-  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
-
-  // Return the tablespaces in the system and their associated replication info from
-  // pg catalog tables.
-  Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetAndUpdateYsqlTablespaceInfo();
-
-  // Starts the periodic job to update tablespace info if it is not running.
   void StartTablespaceBgTaskIfStopped();
 
-  // Background task that refreshes the in-memory state for YSQL tables with their associated
-  // tablespace info.
-  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped()
-  // above.
-  void RefreshTablespaceInfoPeriodically();
+  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager();
 
-  // Helper function to schedule the next iteration of the tablespace info task.
-  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
-
-  // Helper function to refresh the tablespace info.
-  void DoRefreshTablespaceInfo();
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+      const TablespaceId& tablespace_id);
 
   // Report metrics.
   void ReportMetrics();
@@ -1280,6 +1284,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // the cluster config affinity specification.
   CHECKED_STATUS SysCatalogRespectLeaderAffinity();
 
+  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
+
+  virtual bool IsCdcEnabled(const TableInfo& table_info) const {
+    return false;
+  }
+
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntry::Type type) {
     return SnapshotSchedulesToObjectIdsMap();
@@ -1293,7 +1306,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   using MutexType = rw_spinlock;
   using SharedLock = NonRecursiveSharedLock<MutexType>;
   using LockGuard = std::lock_guard<MutexType>;
-  using UniqueLock = std::unique_lock<MutexType>;
   mutable MutexType mutex_;
 
   // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
@@ -1338,7 +1350,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Random number generator used for selecting replica locations.
   ThreadSafeRandom rng_;
 
-  gscoped_ptr<SysCatalogTable> sys_catalog_;
+  std::unique_ptr<SysCatalogTable> sys_catalog_;
 
   // Mutex to avoid concurrent remote bootstrap sessions.
   std::mutex remote_bootstrap_mtx_;
@@ -1349,7 +1361,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Background thread, used to execute the catalog manager tasks
   // like the assignment and cleaner.
   friend class CatalogManagerBgTasks;
-  gscoped_ptr<CatalogManagerBgTasks> background_tasks_;
+  std::unique_ptr<CatalogManagerBgTasks> background_tasks_;
 
   // Background threadpool, newer features use this (instead of the Background thread)
   // to execute time-lenient catalog manager tasks.
@@ -1373,10 +1385,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // NOTE: Presently, this thread pool must contain only a single
   // thread (to correctly serialize invocations of ElectedAsLeaderCb
   // upon closely timed consecutive elections).
-  gscoped_ptr<ThreadPool> leader_initialization_pool_;
+  std::unique_ptr<ThreadPool> leader_initialization_pool_;
 
   // Thread pool to do the async RPC task work.
-  gscoped_ptr<ThreadPool> async_task_pool_;
+  std::unique_ptr<ThreadPool> async_task_pool_;
 
   // This field is updated when a node becomes leader master,
   // waits for all outstanding uncommitted metadata (table and tablet metadata)
@@ -1411,9 +1423,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Policy for load balancing tablets on tablet servers.
   std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
-
-  // Tablet peer for the sys catalog tablet's peer.
-  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const;
 
   // Use the Raft config that has been bootstrapped to update the in-memory state of master options
   // and also the on-disk state of the consensus meta object.
@@ -1461,24 +1470,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
 
-  mutable MutexType tablespace_mutex_;
-
-  // The following shared_ptrs are periodically updated by a background task that
-  // reads tablespace information from the PG catalog tables. The task creates a new map,
-  // populates it with the information read from the catalog tables and updates these
-  // shared_ptrs. The maps themselves are thus never updated (no inserts/deletes/updates)
-  // once populated and are garbage collected once all references to them go out of scope.
-  // No clients are expected to update these maps, they take a lock merely to copy the
-  // shared_ptr and read from it.
-  std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_placement_map_
-    GUARDED_BY(tablespace_mutex_);
-
-  // Map to provide the tablespace associated with a given table.
-  std::shared_ptr<TableToTablespaceIdMap> table_to_tablespace_map_ GUARDED_BY(tablespace_mutex_);
-
-  // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_bg_task_running_;
-
  private:
   virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(mutex_);
 
@@ -1492,16 +1483,95 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key);
 
+  // From the list of TServers in 'ts_descs', return the ones that match any placement policy
+  // in 'placement_info'. Returns error if there are insufficient TServers to match the
+  // required replication factor in placement_info.
+  // NOTE: This function will only check whether the total replication factor can be
+  // satisfied, and not the individual min_num_replicas in each placement block.
+  Result<TSDescriptorVector> FindTServersForPlacementInfo(
+      const PlacementInfoPB& placement_info,
+      const TSDescriptorVector& ts_descs);
+
+  // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
+  // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
+  // outlined in 'placement_block'.
+  Result<TSDescriptorVector> FindTServersForPlacementBlock(
+      const PlacementBlockPB& placement_block,
+      const TSDescriptorVector& ts_descs);
+
+  bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+
+  // Return the tablespaces in the system and their associated replication info from
+  // pg catalog tables.
+  Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetYsqlTablespaceInfo();
+
+  // Return the table->tablespace mapping by reading the pg catalog tables.
+  Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap();
+
+  // Background task that refreshes the in-memory state for YSQL tables with their associated
+  // tablespace info.
+  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped().
+  void RefreshTablespaceInfoPeriodically();
+
+  // Helper function to schedule the next iteration of the tablespace info task.
+  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
+
+  // Helper function to refresh the tablespace info.
+  CHECKED_STATUS DoRefreshTablespaceInfo();
+
+  // Processes committed consensus state for specified tablet from ts_desc.
+  // Returns true if tablet was mutated.
+  bool ProcessCommittedConsensusState(
+      TSDescriptor* ts_desc,
+      bool is_incremental,
+      const ReportedTabletPB& report,
+      const TableInfo::ReadLock& table_lock,
+      const TabletInfoPtr& tablet,
+      const TabletInfo::WriteLock& tablet_lock,
+      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+
+  struct ReportedTablet {
+    TabletId tablet_id;
+    TabletInfoPtr info;
+    const ReportedTabletPB* report;
+  };
+  using ReportedTablets = std::vector<ReportedTablet>;
+
+  // Process tablets batch while processing tablet report.
+  CHECKED_STATUS ProcessTabletReportBatch(
+      TSDescriptor* ts_desc,
+      bool is_incremental,
+      ReportedTablets::const_iterator begin,
+      ReportedTablets::const_iterator end,
+      TabletReportUpdatesPB* full_report_update,
+      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 
+  mutable MutexType tablespace_mutex_;
+
+  // The tablespace_manager_ encapsulates two maps that are periodically updated by a background
+  // task that reads tablespace information from the PG catalog tables. The task creates a new
+  // manager instance, populates it with the information read from the catalog tables and updates
+  // this shared_ptr. The maps themselves are thus never updated (no inserts/deletes/updates)
+  // once populated and are garbage collected once all references to them go out of scope.
+  // No clients are expected to update the managaer, they take a lock merely to copy the
+  // shared_ptr and read from it.
+  std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
+
+  // Whether the periodic job to update tablespace info is running.
+  std::atomic<bool> tablespace_bg_task_running_;
+
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   ServerRegistrationPB server_registration_;
 
-  BlacklistSet BlacklistSetFromPB();
+  TabletSplitManager tablet_split_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

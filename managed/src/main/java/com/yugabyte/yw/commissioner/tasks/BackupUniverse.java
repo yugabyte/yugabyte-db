@@ -10,20 +10,25 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.Set;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class BackupUniverse extends UniverseTaskBase {
 
-  public static final Logger LOG = LoggerFactory.getLogger(BackupUniverse.class);
+  @Inject
+  protected BackupUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected BackupTableParams taskParams() {
@@ -32,12 +37,12 @@ public class BackupUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
+
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     try {
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       if (universe.getUniverseDetails().backupInProgress) {
         throw new RuntimeException("A backup for this universe is already in progress.");
       }
@@ -64,7 +69,7 @@ public class BackupUniverse extends UniverseTaskBase {
           restoreKeysParams.storageConfigUUID = taskParams().storageConfigUUID;
           restoreKeysParams.kmsConfigUUID = taskParams().kmsConfigUUID;
           restoreKeysParams.actionType = BackupTableParams.ActionType.RESTORE_KEYS;
-          createTableBackupTask(restoreKeysParams, null).setSubTaskGroupType(groupType);
+          createTableBackupTask(restoreKeysParams).setSubTaskGroupType(groupType);
 
           // Restore universe keys backup file for encryption at rest
           createEncryptedUniverseKeyRestoreTask(taskParams()).setSubTaskGroupType(groupType);
@@ -73,28 +78,35 @@ public class BackupUniverse extends UniverseTaskBase {
         throw new RuntimeException("Invalid backup action type: " + taskParams().actionType);
       }
 
-      createTableBackupTask(taskParams(), null).setSubTaskGroupType(groupType);
+      createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-      Set<String> tableNames = taskParams().getTableNames()
-        .stream()
-        .map(tableName -> taskParams().getKeyspace() + ":" + tableName)
-        .collect(Collectors.toSet());
+      Set<String> tableNames =
+          taskParams()
+              .getTableNames()
+              .stream()
+              .map(tableName -> taskParams().getKeyspace() + ":" + tableName)
+              .collect(Collectors.toSet());
 
       taskInfo = String.join(",", tableNames);
 
       // Run all the tasks.
       subTaskGroupQueue.run();
 
+      metricService.setOkStatusMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
         unlockUniverseForUpdate();
       }
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
+      metricService.setStatusMetric(
+          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe),
+          t.getMessage());
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
       unlockUniverseForUpdate();
@@ -105,6 +117,6 @@ public class BackupUniverse extends UniverseTaskBase {
       }
     }
 
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

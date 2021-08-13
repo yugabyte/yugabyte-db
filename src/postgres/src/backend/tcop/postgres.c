@@ -2514,9 +2514,6 @@ start_xact_command(void)
 {
 	if (!xact_started)
 	{
-		if (IsYugaByteEnabled())
-			YBResetOperationsBuffering();
-
 		StartTransactionCommand();
 
 		xact_started = true;
@@ -4021,6 +4018,12 @@ yb_is_restart_possible(const ErrorData* edata,
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, query string is missing");
+		return false;
+	}
+
+	if (IsSubTransaction()) {
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, savepoints have been used");
 		return false;
 	}
 

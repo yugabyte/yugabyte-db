@@ -33,8 +33,10 @@ class TabletServerAdminServiceProxy;
 class TabletServerBackupServiceProxy;
 class TabletServerOptions;
 class TabletServerServiceProxy;
+class TabletServerForwardServiceProxy;
 class TabletSnapshotOpRequestPB;
 class TabletSnapshotOpResponsePB;
+class TransactionStatePB;
 class UpdateTransactionRequestPB;
 class UpdateTransactionResponsePB;
 

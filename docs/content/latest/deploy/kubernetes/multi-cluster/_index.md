@@ -23,7 +23,7 @@ As highlighted in <a href="https://kubernetes.io/docs/setup/best-practices/multi
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gke/">
+    <a class="section-link icon-offset" href="gke/helm-chart/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/gke.png" aria-hidden="true" />
         <div class="title">Google Kubernetes Engine (GKE)</div>

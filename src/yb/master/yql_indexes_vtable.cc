@@ -54,6 +54,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     }
 
     scoped_refptr<TableInfo> indexed_table = catalog_manager->GetTableInfo(indexed_table_id);
+    // Skip if the index is invalid (bad schema).
+    if (indexed_table == nullptr) {
+      continue;
+    }
     Schema indexed_schema;
     RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
 

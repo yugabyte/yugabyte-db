@@ -75,7 +75,7 @@ const DEFAULT_PORTS = {
 };
 
 const DEFAULT_STORAGE_TYPES = {
-  AWS: 'GP2',
+  AWS: 'GP3',
   GCP: 'Persistent',
   AZU: 'Premium_LRS'
 };
@@ -125,6 +125,7 @@ const initialState = {
   enableNodeToNodeEncrypt: true,
   enableClientToNodeEncrypt: true,
   enableEncryptionAtRest: false,
+  useSystemd: false,
   customizePorts: false
 };
 
@@ -152,7 +153,6 @@ export default class ClusterFields extends Component {
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
     this.toggleEnableNodeToNodeEncrypt = this.toggleEnableNodeToNodeEncrypt.bind(this);
     this.toggleEnableClientToNodeEncrypt = this.toggleEnableClientToNodeEncrypt.bind(this);
-    this.clientToNodeEncryptField = this.clientToNodeEncryptField.bind(this);
     this.toggleEnableEncryptionAtRest = this.toggleEnableEncryptionAtRest.bind(this);
     this.handleAwsArnChange = this.handleAwsArnChange.bind(this);
     this.handleSelectAuthConfig = this.handleSelectAuthConfig.bind(this);
@@ -162,6 +162,7 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
+    this.toggleUseSystemd = this.toggleUseSystemd.bind(this);
     this.validateUserTags = this.validateUserTags.bind(this);
 
     this.currentInstanceType = _.get(
@@ -214,9 +215,6 @@ export default class ClusterFields extends Component {
         }
       }
     } = this.props;
-
-    // This prop will help us to get the list of KMS configs.
-    this.props.getKMSConfigs();
 
     // Set default software version in case of create
     if (
@@ -826,17 +824,8 @@ export default class ClusterFields extends Component {
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
       updateFormField('primary.enableNodeToNodeEncrypt', event.target.checked);
-      updateFormField('async.NodeToNodeEncrypt', event.target.checked);
-
-      // If NodeToNodeEncrypt is false update ClientToNodeEncrypt field to false.
-      if (!event.target.checked) {
-        updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
-        updateFormField('async.enableClientToNodeEncrypt', event.target.checked);
-      }
-      this.setState({
-        enableNodeToNodeEncrypt: event.target.checked,
-        enableClientToNodeEncrypt: this.state.enableClientToNodeEncrypt && event.target.checked
-      });
+      updateFormField('async.enableNodeToNodeEncrypt', event.target.checked);
+      this.setState({ enableNodeToNodeEncrypt: event.target.checked });
     }
   }
 
@@ -846,21 +835,37 @@ export default class ClusterFields extends Component {
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
       updateFormField('primary.enableClientToNodeEncrypt', event.target.checked);
-      updateFormField('async.ClientToNodeEncrypt', event.target.checked);
+      updateFormField('async.enableClientToNodeEncrypt', event.target.checked);
       this.setState({ enableClientToNodeEncrypt: event.target.checked });
     }
   }
 
   toggleEnableEncryptionAtRest(event) {
-    const { updateFormField, clusterType } = this.props;
+    const { updateFormField, clusterType, getKMSConfigs, cloud } = this.props;
+    const toggleValue = event.target.checked;
     if (clusterType === 'primary') {
-      updateFormField('primary.enableEncryptionAtRest', event.target.checked);
-      this.setState({ enableEncryptionAtRest: event.target.checked });
+      updateFormField('primary.enableEncryptionAtRest', toggleValue);
+      this.setState({ enableEncryptionAtRest: toggleValue });
+      /*
+       * Check if toggle is set to true and fetch list of KMS configs if
+       * the PromiseState is not success. Note that if returned data is
+       * an empty array, it is considered EMPTY and not SUCCESS, so if
+       * field is toggled a subsequent time, we will fetch again.
+       */
+      if (toggleValue && !getPromiseState(cloud.authConfig).isSuccess()) {
+        getKMSConfigs();
+      }
     }
   }
 
   toggleCustomizePorts(event) {
     this.setState({ customizePorts: event.target.checked });
+  }
+
+  toggleUseSystemd(event) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.useSystemd`, event.target.checked);
+    this.setState({ useSystemd: event.target.checked });
   }
 
   handleAwsArnChange(event) {
@@ -928,7 +933,6 @@ export default class ClusterFields extends Component {
       formValues,
       clusterType
     } = this.props;
-
     const instanceType = formValues[clusterType].instanceType;
     const regionList = formValues[clusterType].regionList;
     const verifyIntentConditions = function () {
@@ -956,7 +960,7 @@ export default class ClusterFields extends Component {
         ) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         } else {
-          this.props.submitConfigureUniverse(universeTaskParams);
+          this.props.submitConfigureUniverse(universeTaskParams, currentUniverse.data.universeUUID);
         }
       } else {
         // Create flow
@@ -1490,10 +1494,7 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.enableClientToNodeEncrypt`}
           component={YBToggle}
-          isReadOnly={this.clientToNodeEncryptField(
-            isFieldReadOnly,
-            this.state.enableNodeToNodeEncrypt
-          )}
+          isReadOnly={isFieldReadOnly}
           disableOnChange={disableToggleOnChange}
           checkedVal={this.state.enableClientToNodeEncrypt}
           onToggle={this.toggleEnableClientToNodeEncrypt}
@@ -2121,6 +2122,24 @@ export default class ClusterFields extends Component {
                     onToggle={this.toggleEnableExposingService}
                     label="Enable Public Network Access"
                     subLabel="Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+                  />
+                </div>
+              </Col>
+            </Row>
+          )}
+          {isDefinedNotNull(currentProvider) && (
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.useSystemd`}
+                    component={YBToggle}
+                    defaultChecked={false}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.useSystemd}
+                    onToggle={this.toggleUseSystemd}
+                    label="Enable Systemd Services"
+                    isReadOnly={isFieldReadOnly}
                   />
                 </div>
               </Col>

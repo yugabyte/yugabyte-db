@@ -13,7 +13,8 @@ from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod, \
     DestroyInstancesMethod, ListInstancesMethod, ConfigureInstancesMethod, \
     ControlInstanceMethod, AbstractMethod, AccessCreateVaultMethod, InitYSQLMethod, \
-    UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod
+    UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, \
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -29,6 +30,8 @@ class InstanceCommand(AbstractPerCloudCommand):
         """Override to prepare all the hooks for subcommands.
         """
         self.add_method(CreateInstancesMethod(self))
+        self.add_method(CreateRootVolumesMethod(self))
+        self.add_method(ReplaceRootVolumeMethod(self))
         self.add_method(ProvisionInstancesMethod(self))
         self.add_method(DestroyInstancesMethod(self))
         self.add_method(ListInstancesMethod(self))
@@ -36,6 +39,7 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
+        self.add_method(ChangeInstanceTypeMethod(self))
 
 
 class NetworkCommand(AbstractPerCloudCommand):

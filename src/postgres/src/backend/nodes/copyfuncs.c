@@ -2862,7 +2862,6 @@ _copyIndexElem(const IndexElem *from)
 	COPY_NODE_FIELD(opclass);
 	COPY_SCALAR_FIELD(ordering);
 	COPY_SCALAR_FIELD(nulls_ordering);
-	COPY_NODE_FIELD(yb_name_list);
 
 	return newnode;
 }

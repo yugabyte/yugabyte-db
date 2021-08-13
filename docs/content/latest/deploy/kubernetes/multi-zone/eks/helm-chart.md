@@ -174,7 +174,7 @@ isMultiAz: True
 
 AZ: us-east-1a
 
-masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
+masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
 
 storage:
   master:
@@ -205,7 +205,7 @@ isMultiAz: True
 
 AZ: us-east-1b
 
-masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
+masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
 
 storage:
   master:
@@ -236,7 +236,7 @@ isMultiAz: True
 
 AZ: us-east-1c
 
-masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100, yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
+masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100"
 
 storage:
   master:
@@ -366,7 +366,7 @@ $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 -- ycqlsh \
 yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 ```
 
-You can follow the [Explore YSQL](../../../../../quick-start/explore-ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
+You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
 ![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png) 
 

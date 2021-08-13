@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class DatabaseUserFormData {
 
@@ -18,11 +18,9 @@ public class DatabaseUserFormData {
   public String ysqlAdminPassword;
   public String dbName;
 
-  @Constraints.Required()
-  public String username;
+  @Constraints.Required() public String username;
 
-  @Constraints.Required()
-  public String password;
+  @Constraints.Required() public String password;
 
   // TODO(Shashank): Move this to use Validatable
   public void validation() {
@@ -30,8 +28,7 @@ public class DatabaseUserFormData {
       throw new YWServiceException(BAD_REQUEST, "Need to provide username and password.");
     }
 
-    if (StringUtils.isEmpty(ysqlAdminUsername)
-      && StringUtils.isEmpty(ycqlAdminUsername)) {
+    if (StringUtils.isEmpty(ysqlAdminUsername) && StringUtils.isEmpty(ycqlAdminUsername)) {
       throw new YWServiceException(BAD_REQUEST, "Need to provide YSQL and/or YCQL username.");
     }
 
@@ -43,8 +40,8 @@ public class DatabaseUserFormData {
 
     if (!StringUtils.isEmpty(ysqlAdminUsername)) {
       if (dbName == null) {
-        throw new YWServiceException(BAD_REQUEST,
-          "DB needs to be specified for YSQL user creation.");
+        throw new YWServiceException(
+            BAD_REQUEST, "DB needs to be specified for YSQL user creation.");
       }
 
       if (username.contains("\"")) {
@@ -52,5 +49,4 @@ public class DatabaseUserFormData {
       }
     }
   }
-
 }

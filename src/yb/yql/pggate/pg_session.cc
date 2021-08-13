@@ -28,6 +28,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
@@ -35,6 +36,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
@@ -53,6 +55,8 @@ DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60
              "DEPRECATED: use backfill_index_client_rpc_timeout_ms instead.");
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+
+DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 
 namespace yb {
 namespace pggate {
@@ -78,24 +82,12 @@ using yb::master::MasterServiceProxy;
 
 using yb::tserver::TServerSharedObject;
 
-#if defined(__APPLE__) && !defined(NDEBUG)
-// We are experiencing more slowness in tests on macOS in debug mode.
-const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
-#else
-const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
-#endif
-
-DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
-             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
-
 namespace {
 //--------------------------------------------------------------------------------------------------
 // Constants used for the sequences data table.
 //--------------------------------------------------------------------------------------------------
 static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
 static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
-
-static const string kPgSequencesDataNamespaceId = GetPgsqlNamespaceId(kPgSequencesDataDatabaseOid);
 
 // Columns names and ids.
 static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
@@ -314,13 +306,6 @@ bool Erase(Container* container, PgOid table_id, const Slice& ybctid) {
     return true;
   }
   return false;
-}
-
-void SetupSession(client::YBSession* session) {
-  // Sets the timeout for each rpc as well as the whole operation to
-  // 'FLAGS_pg_yb_session_timeout_ms'.
-  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
-  session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
 
 } // namespace
@@ -549,15 +534,12 @@ PgSession::PgSession(
     const tserver::TServerSharedObject* tserver_shared_object,
     const YBCPgCallbacks& pg_callbacks)
     : client_(client),
-      session_(client_->NewSession()),
+      session_(BuildSession(client_)),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
-      catalog_session_(std::make_shared<YBSession>(client_, clock_.get())),
+      catalog_session_(BuildSession(client_, clock_)),
       tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
-
-  SetupSession(session_.get());
-  SetupSession(catalog_session_.get());
 }
 
 PgSession::~PgSession() {
@@ -692,7 +674,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
     // Try one more time.
     result = LoadTable(oid);
   }
-  PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(result);
+  auto t = VERIFY_RESULT(std::move(result));
 
   auto psql_write(t->NewPgsqlInsert());
 
@@ -842,7 +824,7 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
     return Status::OK();
   }
 
-  PgTableDesc::ScopedRefPtr t = CHECK_RESULT(r);
+  auto t = std::move(*r);
   if (t == nullptr) {
     return Status::OK();
   }
@@ -909,10 +891,6 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
   return s;
 }
 
-Result<master::AnalyzeTableResponsePB> PgSession::AnalyzeTable(const PgObjectId& table_id) {
-  return client_->AnalyzeTable(table_id.GetYBTableId());
-}
-
 //--------------------------------------------------------------------------------------------------
 
 Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_id) {
@@ -946,14 +924,19 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
   table_cache_.erase(yb_table_id);
 }
 
-void PgSession::StartOperationsBuffering() {
-  DCHECK(!buffering_enabled_);
-  DCHECK(buffered_keys_.empty());
+Status PgSession::StartOperationsBuffering() {
+  SCHECK(!buffering_enabled_, IllegalState, "Buffering has been already started");
+  if (PREDICT_FALSE(!buffered_keys_.empty())) {
+    LOG(DFATAL) << "Buffering hasn't been started yet but "
+                << buffered_keys_.size()
+                << " buffered operations found";
+  }
   buffering_enabled_ = true;
+  return Status::OK();
 }
 
 Status PgSession::StopOperationsBuffering() {
-  DCHECK(buffering_enabled_);
+  SCHECK(buffering_enabled_, IllegalState, "Buffering hasn't been started");
   buffering_enabled_ = false;
   return FlushBufferedOperations();
 }
@@ -1006,7 +989,12 @@ Result<bool> PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op)
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
   }
-  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
+  // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
+  // read restart error because subsequent cache refresh used an outdated txn to read from the
+  // system catalog,
+  // As a quick fix, we prevent yb_non_ddl_txn_for_sys_tables_allowed from affecting reads.
+  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn
+                                       && op.type() == YBOperation::Type::PGSQL_WRITE)) {
     return true;
   }
   if (op.type() == YBOperation::Type::PGSQL_WRITE) {
@@ -1136,11 +1124,11 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   // two strategy are possible:
   // 1. select keys belonging to same tablet to reduce number of simultaneous RPC
   // 2. select keys belonging to different tablets to distribute reads among different nodes
-  const auto intent_match = [table_id](const auto& it) { return it->table_id == table_id; };
+  const auto intent_match = [table_id](const auto& key) { return key.table_id == table_id; };
   for (auto it = fk_reference_intent_.begin();
        it != fk_reference_intent_.end() && ybctids.size() < FLAGS_ysql_session_max_batch_size;
        ++it) {
-    if (intent_match(it)) {
+    if (intent_match(*it)) {
       ybctids.push_back(it->ybctid);
     }
   }
@@ -1154,7 +1142,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
   } else {
     for (auto it = fk_reference_intent_.begin();
         it != fk_reference_intent_.end() && intent_count_for_remove > 0;) {
-      if (intent_match(it)) {
+      if (intent_match(*it)) {
         it = fk_reference_intent_.erase(it);
         --intent_count_for_remove;
       } else {
@@ -1168,6 +1156,12 @@ Result<bool> PgSession::ForeignKeyReferenceExists(PgOid table_id,
 void PgSession::AddForeignKeyReferenceIntent(PgOid table_id, const Slice& ybctid) {
   if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
     fk_reference_intent_.emplace(table_id, ybctid.ToBuffer());
+  }
+}
+
+void PgSession::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  if (Find(fk_reference_cache_, table_id, ybctid) == fk_reference_cache_.end()) {
+    fk_reference_cache_.emplace(table_id, ybctid.ToBuffer());
   }
 }
 
@@ -1221,15 +1215,23 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
         Slice(),
         PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
   } else {
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests || FLAGS_ysql_log_failed_docdb_requests)) {
+      LOG(INFO) << "Operation failed: " << op.ToString();
+    }
     s = STATUS(QLError, op.response().error_message(), Slice(),
                PgsqlError(pg_error_code));
   }
-  s = s.CloneAndAddErrorCode(TransactionError(txn_error_code));
-  return s;
+  return s.CloneAndAddErrorCode(TransactionError(txn_error_code));
 }
 
 Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
   return client_->TabletServerCount(tserver_count, primary_only, use_cache);
+}
+
+Result<client::YBClient::TabletServersInfo> PgSession::ListTabletServers() {
+  std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>> tablet_servers;
+  RETURN_NOT_OK(client_->ListLiveTabletServers(&tablet_servers, false));
+  return tablet_servers;
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {
@@ -1246,6 +1248,27 @@ void PgSession::ResetCatalogReadPoint() {
 
 void PgSession::SetCatalogReadPoint(const ReadHybridTime& read_ht) {
   catalog_session_->SetReadPoint(read_ht);
+}
+
+Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
+  // It's required that we flush all buffered operations before changing the SubTransactionMetadata
+  // used by the underlying batcher and RPC logic, as this will snapshot the current
+  // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
+  // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
+  // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
+  // they are eventually sent to DocDB.
+  RETURN_NOT_OK(FlushBufferedOperations());
+  pg_txn_manager_->SetActiveSubTransaction(id);
+  return Status::OK();
+}
+
+Status PgSession::RollbackSubTransaction(SubTransactionId id) {
+  // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
+  // eventually send this metadata.
+  // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
+  // SubTransactionMetadata.
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RollbackSubTransaction(id);
 }
 
 }  // namespace pggate

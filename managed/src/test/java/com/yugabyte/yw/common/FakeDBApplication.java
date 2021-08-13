@@ -2,31 +2,37 @@
 
 package com.yugabyte.yw.common;
 
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
+
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.cloud.CloudAPI;
-import com.yugabyte.yw.commissioner.*;
+import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.QueryAlerts;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.*;
-import java.util.function.BiFunction;
-
-import static org.mockito.Mockito.mock;
-import static play.inject.Bindings.bind;
-import static play.test.Helpers.route;
 
 public class FakeDBApplication extends WithApplication {
   public Commissioner mockCommissioner = mock(Commissioner.class);
@@ -49,6 +55,9 @@ public class FakeDBApplication extends WithApplication {
   public NetworkManager mockNetworkManager = mock(NetworkManager.class);
   public YamlWrapper mockYamlWrapper = mock(YamlWrapper.class);
   public QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
+  public CleanExpiredMetrics mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
+  public AlertConfigurationWriter mockAlertConfigurationWriter =
+      mock(AlertConfigurationWriter.class);
   public Executors mockExecutors = mock(Executors.class);
   public ShellProcessHandler mockShellProcessHandler = mock(ShellProcessHandler.class);
   public TableManager mockTableManager = mock(TableManager.class);
@@ -61,34 +70,44 @@ public class FakeDBApplication extends WithApplication {
 
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
 
-    return new GuiceApplicationBuilder()
-      .configure(additionalConfiguration)
-      .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
-      .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-      .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
-      .overrides(bind(CallHome.class).toInstance(mockCallHome))
-      .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
-      .overrides(bind(Executors.class).toInstance(mockExecutors))
-      .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
-      .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
-      .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
-      .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-      .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-      .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
-      .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
-      .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
-      .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
-      .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
-      .overrides(bind(YBClientService.class).toInstance(mockService))
-      .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
-      .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
-      .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
-      .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
-      .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
-      .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
-      .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
-      .overrides(bind(TableManager.class).toInstance(mockTableManager))
-      .build();
+    GuiceApplicationBuilder guiceApplicationBuilder = new GuiceApplicationBuilder();
+    if (!isSwaggerEnabled()) {
+      guiceApplicationBuilder.disable(SwaggerModule.class);
+    }
+    return guiceApplicationBuilder
+        .configure(additionalConfiguration)
+        .configure(Maps.newHashMap(Helpers.inMemoryDatabase()))
+        .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+        .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+        .overrides(bind(CallHome.class).toInstance(mockCallHome))
+        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
+        .overrides(bind(Executors.class).toInstance(mockExecutors))
+        .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+        .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
+        .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+        .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
+        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+        .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
+        .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
+        .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
+        .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
+        .overrides(bind(YBClientService.class).toInstance(mockService))
+        .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
+        .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
+        .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))
+        .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
+        .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
+        .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(Scheduler.class).toInstance(mock(Scheduler.class)))
+        .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
+        .overrides(bind(TableManager.class).toInstance(mockTableManager))
+        .build();
+  }
+
+  protected boolean isSwaggerEnabled() {
+    return false;
   }
 
   public Application getApp() {
@@ -96,12 +115,12 @@ public class FakeDBApplication extends WithApplication {
   }
 
   /**
-   * If you want to quickly fix existing test that returns YWError json when exception
-   * gets thrown then use this function instead of Helpers.route().
-   * Alternatively change the test to expect that YWException get thrown
+   * If you want to quickly fix existing test that returns YWError json when exception gets thrown
+   * then use this function instead of Helpers.route(). Alternatively change the test to expect that
+   * YWException get thrown
    */
   public Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder)
-    throws InterruptedException, ExecutionException, TimeoutException {
+      throws InterruptedException, ExecutionException, TimeoutException {
     return FakeApiHelper.routeWithYWErrHandler(requestBuilder, getApp());
   }
 }

@@ -1,36 +1,41 @@
 package com.yugabyte.yw.common;
 
+import static play.libs.Json.newObject;
+import static play.libs.Json.toJson;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.mvc.Http;
-
-import javax.inject.Singleton;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static play.libs.Json.newObject;
-import static play.libs.Json.toJson;
+import java.util.Properties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 
 @Singleton
 public class YsqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YsqlQueryExecutor.class);
-  private final static String DEFAULT_DB_USER = "yugabyte";
-  private final static String DEFAULT_DB_PASSWORD = "yugabyte";
+  private static final String DEFAULT_DB_USER = "yugabyte";
+  private static final String DEFAULT_DB_PASSWORD = "yugabyte";
 
   private String getQueryType(String queryString) {
     String[] queryParts = queryString.split(" ");
     String command = queryParts[0].toUpperCase();
     if (command.equals("TRUNCATE") || command.equals("DROP"))
-      return  command + " " + queryParts[1].toUpperCase();
+      return command + " " + queryParts[1].toUpperCase();
     return command;
   }
 
@@ -57,16 +62,26 @@ public class YsqlQueryExecutor {
     return executeQuery(universe, queryParams, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD);
   }
 
-  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams, String username,
-                               String password) {
+  public JsonNode executeQuery(
+      Universe universe, RunQueryFormData queryParams, String username, String password) {
     ObjectNode response = newObject();
 
     // TODO: implement execute query for CQL
     String ysqlEndpoints = universe.getYSQLServerAddresses();
-    String connectString =  String.format("jdbc:postgresql://%s/%s",
-        ysqlEndpoints.split(",")[0], queryParams.db_name);
-    try (Connection conn = DriverManager.getConnection(
-        connectString, username, password)) {
+    String connectString =
+        String.format("jdbc:postgresql://%s/%s", ysqlEndpoints.split(",")[0], queryParams.db_name);
+    Properties props = new Properties();
+    props.put("user", username);
+    props.put("password", password);
+    String caCert = universe.getCertificateClientToNode();
+    if (caCert != null) {
+      // Using verify CA since it is possible that the CN for the server cert
+      // is the loadbalancer DNS/some generic ID. Just verifying the cert
+      // is good enough.
+      props.put("sslmode", "verify-ca");
+      props.put("sslrootcert", caCert);
+    }
+    try (Connection conn = DriverManager.getConnection(connectString, props)) {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
       } else {
@@ -75,15 +90,14 @@ public class YsqlQueryExecutor {
         if (hasResult) {
           ResultSet result = p.getResultSet();
           List<Map<String, Object>> rows = resultSetToMap(result);
-          response.put("result", toJson(rows));
+          response.set("result", toJson(rows));
         } else {
-          response.put("queryType", getQueryType(queryParams.query))
-                  .put("count", p.getUpdateCount());
+          response
+              .put("queryType", getQueryType(queryParams.query))
+              .put("count", p.getUpdateCount());
         }
       }
-    } catch (SQLException e) {
-      response.put("error", e.getMessage());
-    } catch (Exception e) {
+    } catch (SQLException | RuntimeException e) {
       response.put("error", e.getMessage());
     }
     return response;
@@ -92,13 +106,14 @@ public class YsqlQueryExecutor {
   public void createUser(Universe universe, DatabaseUserFormData data) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     // Create user for customer YSQL.
-    ysqlQuery.query = String.format("CREATE USER \"%s\" SUPERUSER INHERIT CREATEROLE " +
-        "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD '%s'",
-      data.username, Util.escapeSingleQuotesOnly(data.password));
+    ysqlQuery.query =
+        String.format(
+            "CREATE USER \"%s\" SUPERUSER INHERIT CREATEROLE "
+                + "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD '%s'",
+            data.username, Util.escapeSingleQuotesOnly(data.password));
     ysqlQuery.db_name = data.dbName;
-    JsonNode ysqlResponse = executeQuery(universe, ysqlQuery,
-      data.ysqlAdminUsername,
-      data.ysqlAdminPassword);
+    JsonNode ysqlResponse =
+        executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
     LOG.info("Creating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
       throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
@@ -108,15 +123,16 @@ public class YsqlQueryExecutor {
   public void updateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     // Update admin user password YSQL.
     RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.query = String.format("ALTER USER \"%s\" WITH PASSWORD '%s'",
-      data.ysqlAdminUsername, Util.escapeSingleQuotesOnly(data.ysqlAdminPassword));
+    ysqlQuery.query =
+        String.format(
+            "ALTER USER \"%s\" WITH PASSWORD '%s'",
+            data.ysqlAdminUsername, Util.escapeSingleQuotesOnly(data.ysqlAdminPassword));
     ysqlQuery.db_name = data.dbName;
-    JsonNode ysqlResponse = executeQuery(universe, ysqlQuery,
-      data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
+    JsonNode ysqlResponse =
+        executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
     LOG.info("Updating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
       throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
     }
   }
-
 }

@@ -1,8 +1,24 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
@@ -11,16 +27,34 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
@@ -28,18 +62,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Mockito.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseTest extends FakeDBApplication {
@@ -111,10 +133,15 @@ public class UniverseTest extends FakeDBApplication {
   public void testParallelSaveDetails() {
     int numNodes = 100;
     ThreadFactory namedThreadFactory =
-      new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
+        new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     ThreadPoolExecutor executor =
-      new ThreadPoolExecutor(numNodes, numNodes, 60L, TimeUnit.SECONDS,
-        new LinkedBlockingQueue<Runnable>(), namedThreadFactory);
+        new ThreadPoolExecutor(
+            numNodes,
+            numNodes,
+            60L,
+            TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(),
+            namedThreadFactory);
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     assertEquals(0, u.getNodes().size());
     for (int i = 0; i < numNodes; i++) {
@@ -124,7 +151,8 @@ public class UniverseTest extends FakeDBApplication {
     executor.shutdown();
     try {
       executor.awaitTermination(120, TimeUnit.SECONDS);
-    } catch (InterruptedException e1) { }
+    } catch (InterruptedException ignored) {
+    }
     Universe updUniv = Universe.getOrBadRequest(u.universeUUID);
     assertEquals(numNodes, updUniv.getNodes().size());
     assertEquals(numNodes + 1, updUniv.version);
@@ -133,43 +161,41 @@ public class UniverseTest extends FakeDBApplication {
   @Test
   public void testSaveDetails() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails = new UniverseDefinitionTaskParams();
-        UserIntent userIntent = new UserIntent();
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails;
+          universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
 
-        // Create some subnets.
-        List<String> subnets = new ArrayList<String>();
-        subnets.add("subnet-1");
-        subnets.add("subnet-2");
-        subnets.add("subnet-3");
+          // Create some subnets.
+          List<String> subnets = new ArrayList<>();
+          subnets.add("subnet-1");
+          subnets.add("subnet-2");
+          subnets.add("subnet-3");
 
-        // Add a desired number of nodes.
-        userIntent.numNodes = 5;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = new NodeDetails();
-          node.nodeName = "host-n" + idx;
-          node.cloudInfo = new CloudSpecificInfo();
-          node.cloudInfo.cloud = "aws";
-          node.cloudInfo.az = "az-" + idx;
-          node.cloudInfo.region = "test-region";
-          node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
-          node.cloudInfo.private_ip = "host-n" + idx;
-          node.state = NodeDetails.NodeState.Live;
-          node.isTserver = true;
-          if (idx <= 3) {
-            node.isMaster = true;
+          // Add a desired number of nodes.
+          userIntent.numNodes = 5;
+          universeDetails.nodeDetailsSet = new HashSet<>();
+          for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeName = "host-n" + idx;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.cloud = "aws";
+            node.cloudInfo.az = "az-" + idx;
+            node.cloudInfo.region = "test-region";
+            node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
+            node.cloudInfo.private_ip = "host-n" + idx;
+            node.state = NodeState.Live;
+            node.isTserver = true;
+            if (idx <= 3) {
+              node.isMaster = true;
+            }
+            node.nodeIdx = idx;
+            universeDetails.nodeDetailsSet.add(node);
           }
-          node.nodeIdx = idx;
-          universeDetails.nodeDetailsSet.add(node);
-        }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universe.setUniverseDetails(universeDetails);
+        };
     u = Universe.saveDetails(u.universeUUID, updater);
 
     int nodeIdx;
@@ -233,37 +259,35 @@ public class UniverseTest extends FakeDBApplication {
   public void testGetMasterAddresses() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
 
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails = new UniverseDefinitionTaskParams();
-        UserIntent userIntent = new UserIntent();
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails;
+          universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
 
-        // Add a desired number of nodes.
-        userIntent.numNodes = 3;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = new NodeDetails();
-          node.nodeName = "host-n" + idx;
-          node.cloudInfo = new CloudSpecificInfo();
-          node.cloudInfo.cloud = "aws";
-          node.cloudInfo.az = "az-" + idx;
-          node.cloudInfo.region = "test-region";
-          node.cloudInfo.subnet_id = "subnet-" + idx;
-          node.cloudInfo.private_ip = "host-n" + idx;
-          node.state = NodeDetails.NodeState.Live;
-          node.isTserver = true;
-          if (idx <= 3) {
-            node.isMaster = true;
+          // Add a desired number of nodes.
+          userIntent.numNodes = 3;
+          universeDetails.nodeDetailsSet = new HashSet<>();
+          for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeName = "host-n" + idx;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.cloud = "aws";
+            node.cloudInfo.az = "az-" + idx;
+            node.cloudInfo.region = "test-region";
+            node.cloudInfo.subnet_id = "subnet-" + idx;
+            node.cloudInfo.private_ip = "host-n" + idx;
+            node.state = NodeState.Live;
+            node.isTserver = true;
+            if (idx <= 3) {
+              node.isMaster = true;
+            }
+            node.nodeIdx = idx;
+            universeDetails.upsertPrimaryCluster(userIntent, null);
+            universeDetails.nodeDetailsSet.add(node);
           }
-          node.nodeIdx = idx;
-          universeDetails.upsertPrimaryCluster(userIntent, null);
-          universeDetails.nodeDetailsSet.add(node);
-        }
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+          universe.setUniverseDetails(universeDetails);
+        };
     u = Universe.saveDetails(u.universeUUID, updater);
     String masterAddrs = u.getMasterAddresses();
     assertNotNull(masterAddrs);
@@ -290,9 +314,9 @@ public class UniverseTest extends FakeDBApplication {
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
-    AvailabilityZone.create(r1, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone.create(r2, "az-2", "AZ 2", "subnet-2");
-    AvailabilityZone.create(r3, "az-3", "AZ 3", "subnet-3");
+    AvailabilityZone.createOrThrow(r1, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r2, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r3, "az-3", "AZ 3", "subnet-3");
     List<UUID> regionList = new ArrayList<>();
     regionList.add(r1.uuid);
     regionList.add(r2.uuid);
@@ -323,12 +347,14 @@ public class UniverseTest extends FakeDBApplication {
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
     UniverseResourceDetails resourceDetails =
-      UniverseResourceDetails.create(u.getUniverseDetails(), getApp().config());
+        UniverseResourceDetails.create(u.getUniverseDetails(), getApp().config());
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null, resourceDetails));
-    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
-      equalTo(u.universeUUID.toString())));
-    assertThat(universeJson.get("resources").asText(), allOf(notNullValue(),
-      equalTo(Json.toJson(resourceDetails).asText())));
+    assertThat(
+        universeJson.get("universeUUID").asText(),
+        allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    assertThat(
+        universeJson.get("resources").asText(),
+        allOf(notNullValue(), equalTo(Json.toJson(resourceDetails).asText())));
     JsonNode universeConfig = universeJson.get("universeConfig");
     assertEquals(universeConfig.toString(), "{\"takeBackups\":\"true\"}");
     JsonNode clustersListJson = universeJson.get("universeDetails").get("clusters");
@@ -345,14 +371,24 @@ public class UniverseTest extends FakeDBApplication {
 
     JsonNode providerNode = userIntentJson.get("provider");
     assertThat(providerNode, notNullValue());
-    assertThat(providerNode.asText(), allOf(notNullValue(),
-      equalTo(defaultProvider.uuid.toString())));
+    assertThat(
+        providerNode.asText(), allOf(notNullValue(), equalTo(defaultProvider.uuid.toString())));
 
     JsonNode regionsNode = clusterJson.get("regions");
     assertThat(regionsNode, is(notNullValue()));
     assertTrue(regionsNode.isArray());
     assertEquals(3, regionsNode.size());
     assertNull(universeJson.get("dnsName"));
+
+    JsonNode targetAsyncReplicationRelationshipsNode =
+        universeJson.get("universeDetails").get("targetAsyncReplicationRelationships");
+    assertTrue(targetAsyncReplicationRelationshipsNode.isArray());
+    assertEquals(0, targetAsyncReplicationRelationshipsNode.size());
+
+    JsonNode sourceAsyncReplicationRelationshipsNode =
+        universeJson.get("universeDetails").get("sourceAsyncReplicationRelationships");
+    assertTrue(sourceAsyncReplicationRelationshipsNode.isArray());
+    assertEquals(0, sourceAsyncReplicationRelationshipsNode.size());
   }
 
   @Test
@@ -364,8 +400,9 @@ public class UniverseTest extends FakeDBApplication {
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
-    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
-      equalTo(u.universeUUID.toString())));
+    assertThat(
+        universeJson.get("universeUUID").asText(),
+        allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
     assertTrue(clusterJson.get("userIntent").get("regionList").isNull());
     assertNull(clusterJson.get("regions"));
@@ -379,8 +416,8 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
     userIntent.masterGFlags = null;
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
-      .get(0).uuid.toString();
+    userIntent.provider =
+        Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
 
     // SaveDetails in order to generate universeDetailsJson with null gflags
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
@@ -392,8 +429,9 @@ public class UniverseTest extends FakeDBApplication {
 
     // Verify returned json is generated from the non-json userDetails object
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
-    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
-      equalTo(u.universeUUID.toString())));
+    assertThat(
+        universeJson.get("universeUUID").asText(),
+        allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
     JsonNode masterGFlags = clusterJson.get("userIntent").get("masterGFlags");
     assertThat(masterGFlags, is(notNullValue()));
@@ -406,8 +444,9 @@ public class UniverseTest extends FakeDBApplication {
   public void testToJSONWithEmptyRegionList() {
     Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
-    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
-      equalTo(u.universeUUID.toString())));
+    assertThat(
+        universeJson.get("universeUUID").asText(),
+        allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
     assertTrue(clusterJson.get("userIntent").get("regionList").isArray());
     assertNull(clusterJson.get("regions"));
@@ -423,12 +462,77 @@ public class UniverseTest extends FakeDBApplication {
     u.getUniverseDetails().upsertPrimaryCluster(ui, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
-    assertThat(universeJson.get("universeUUID").asText(),
-      allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    assertThat(
+        universeJson.get("universeUUID").asText(),
+        allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
     JsonNode masterGFlags = clusterJson.get("userIntent").get("masterGFlags");
     assertThat(masterGFlags, is(notNullValue()));
     assertEquals(0, masterGFlags.size());
+  }
+
+  @Test
+  public void testSourceUniverseToJsonWithAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+
+    AsyncReplicationRelationship.create(source, "sourceTableID", target, "targetTableID", false);
+
+    JsonNode sourceUniverseDetailsJson =
+        Json.toJson(new UniverseResp(source)).get("universeDetails");
+
+    JsonNode targetAsyncReplicationRelationshipsJson =
+        sourceUniverseDetailsJson.get("targetAsyncReplicationRelationships");
+    assertTrue(targetAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(0, targetAsyncReplicationRelationshipsJson.size());
+
+    JsonNode sourceAsyncReplicationRelationshipsJson =
+        sourceUniverseDetailsJson.get("sourceAsyncReplicationRelationships");
+    assertTrue(sourceAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(1, sourceAsyncReplicationRelationshipsJson.size());
+
+    JsonNode asyncReplicationRelationshipJson = sourceAsyncReplicationRelationshipsJson.get(0);
+    assertEquals(
+        source.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("sourceUniverseUUID").asText());
+    assertEquals("sourceTableID", asyncReplicationRelationshipJson.get("sourceTableID").asText());
+    assertEquals(
+        target.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("targetUniverseUUID").asText());
+    assertEquals("targetTableID", asyncReplicationRelationshipJson.get("targetTableID").asText());
+    assertFalse(asyncReplicationRelationshipJson.get("active").asBoolean());
+  }
+
+  @Test
+  public void testTargetUniverseToJsonWithAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+
+    AsyncReplicationRelationship.create(source, "sourceTableID", target, "targetTableID", false);
+
+    JsonNode targetUniverseDetailsJson =
+        Json.toJson(new UniverseResp(target)).get("universeDetails");
+
+    JsonNode sourceAsyncReplicationRelationshipsJson =
+        targetUniverseDetailsJson.get("sourceAsyncReplicationRelationships");
+    assertTrue(sourceAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(0, sourceAsyncReplicationRelationshipsJson.size());
+
+    JsonNode targetAsyncReplicationRelationshipsJson =
+        targetUniverseDetailsJson.get("targetAsyncReplicationRelationships");
+    assertTrue(targetAsyncReplicationRelationshipsJson.isArray());
+    assertEquals(1, targetAsyncReplicationRelationshipsJson.size());
+
+    JsonNode asyncReplicationRelationshipJson = targetAsyncReplicationRelationshipsJson.get(0);
+    assertEquals(
+        target.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("targetUniverseUUID").asText());
+    assertEquals("targetTableID", asyncReplicationRelationshipJson.get("targetTableID").asText());
+    assertEquals(
+        source.universeUUID.toString(),
+        asyncReplicationRelationshipJson.get("sourceUniverseUUID").asText());
+    assertEquals("sourceTableID", asyncReplicationRelationshipJson.get("sourceTableID").asText());
+    assertFalse(asyncReplicationRelationshipJson.get("active").asBoolean());
   }
 
   @Test
@@ -442,8 +546,9 @@ public class UniverseTest extends FakeDBApplication {
     taskParams.upsertPrimaryCluster(userIntent, null);
     JsonNode clusterJson = Json.toJson(taskParams).get("clusters").get(0);
 
-    assertThat(clusterJson.get("userIntent").get("masterGFlags").get("emulate_redis_responses"),
-      notNullValue());
+    assertThat(
+        clusterJson.get("userIntent").get("masterGFlags").get("emulate_redis_responses"),
+        notNullValue());
   }
 
   @Test
@@ -515,18 +620,19 @@ public class UniverseTest extends FakeDBApplication {
     try {
       cluster.areTagsSame(newCluster);
     } catch (IllegalArgumentException iae) {
-      assertThat(iae.getMessage(), allOf(notNullValue(), containsString("Mismatched provider " +
-        "types")));
+      assertThat(
+          iae.getMessage(),
+          allOf(notNullValue(), containsString("Mismatched provider " + "types")));
     }
   }
 
   @Test
-    public void testGetUniverses() {
-      UUID certUUID = CertificateHelper.createRootCA("test", defaultCustomer.uuid , "/tmp/certs");
-      ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
-      Set<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
-      assertEquals(universes.size(), 1);
-    }
+  public void testGetUniverses() {
+    UUID certUUID = CertificateHelper.createRootCA("test", defaultCustomer.uuid, "/tmp/certs");
+    ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
+    Set<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
+    assertEquals(universes.size(), 1);
+  }
 
   private UserIntent getBaseIntent() {
 
@@ -567,31 +673,33 @@ public class UniverseTest extends FakeDBApplication {
     assertNotNull(nodeDetailsSet);
     assertTrue(nodeDetailsSet.isArray());
     for (int i = 0; i < nodeDetailsSet.size(); i++) {
-      assertTrue(jsonArrayHasItem(nodeDetailsSet.get(i).get("allowedActions"),
-        NodeActionType.START_MASTER.name()));
+      assertTrue(
+          jsonArrayHasItem(
+              nodeDetailsSet.get(i).get("allowedActions"), NodeActionType.START_MASTER.name()));
     }
   }
 
   @Test
   // @formatter:off
-  @Parameters({"host-n4,      true,  true",  // underReplicated, node from primary cluster
+  @Parameters({
+    "host-n4,      true,  true", // underReplicated, node from primary cluster
     "yb-tserver-0, true,  false", // underReplicated, node from read only cluster
     "host-n4,      false, false", // not underReplicated, node from primary cluster
-    "yb-tserver-0, false, false"  // not underReplicated, node from read only cluster
+    "yb-tserver-0, false, false" // not underReplicated, node from read only cluster
   })
   // @formatter:on
-  public void testUpdateNodesDynamicActions_WithReadOnlyCluster(String nodeToTest,
-                                                                boolean isMasterUnderReplicated,
-                                                                boolean expectedResult) {
+  public void testUpdateNodesDynamicActions_WithReadOnlyCluster(
+      String nodeToTest, boolean isMasterUnderReplicated, boolean expectedResult) {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
-      .get(0).uuid.toString();
+    userIntent.provider =
+        Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     userIntent.numNodes = 3;
-    u = Universe.saveDetails(u.universeUUID,
-      ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(true, 3));
+    u =
+        Universe.saveDetails(
+            u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(true, 3));
 
     if (isMasterUnderReplicated) {
       // Stopping master.
@@ -607,30 +715,28 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode nodeDetailsSet = json.get("nodeDetailsSet");
     assertNotNull(nodeDetailsSet);
     assertTrue(nodeDetailsSet.isArray());
-    assertEquals(expectedResult,
-      nodeHasAction(nodeDetailsSet, nodeToTest, NodeActionType.START_MASTER.name()));
-    assertEquals(expectedResult, u.isNodeActionAllowed(nodeToTest, NodeActionType.START_MASTER));
+    assertEquals(
+        expectedResult,
+        nodeHasAction(nodeDetailsSet, nodeToTest, NodeActionType.START_MASTER.name()));
   }
 
   // Updates the node state
   private void updateNode(Universe u, String nodeName, NodeState newState, boolean newIsMaster) {
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
-          if (StringUtils.equals(node.nodeName, nodeName)) {
-            node.state = newState;
-            node.isMaster = newIsMaster;
-            break;
+    Universe.UniverseUpdater updater =
+        universe -> {
+          for (NodeDetails node : u.getUniverseDetails().nodeDetailsSet) {
+            if (StringUtils.equals(node.nodeName, nodeName)) {
+              node.state = newState;
+              node.isMaster = newIsMaster;
+              break;
+            }
           }
-        }
-      }
-    };
+        };
     Universe.saveDetails(u.universeUUID, updater);
   }
 
-  private static boolean nodeHasAction(JsonNode nodeDetailsSet, String nodeName,
-                                       String actionName) {
+  private static boolean nodeHasAction(
+      JsonNode nodeDetailsSet, String nodeName, String actionName) {
     boolean nodeFound = false;
     boolean actionFound = false;
     for (int i = 0; i < nodeDetailsSet.size(); i++) {
@@ -648,7 +754,7 @@ public class UniverseTest extends FakeDBApplication {
   private static boolean jsonArrayHasItem(JsonNode arr, String value) {
     assertNotNull(arr);
     assertTrue(arr.isArray());
-    for (JsonNode item : (ArrayNode) arr) {
+    for (JsonNode item : arr) {
       if (StringUtils.equals(item.asText(), value)) {
         return true;
       }
@@ -663,30 +769,28 @@ public class UniverseTest extends FakeDBApplication {
 
     for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
       nd.state = nodeState;
-      Set<NodeActionType> allowedActions = u.getNodeActions(nd, u.getNodes());
+      Set<NodeActionType> allowedActions = new AllowedActionsHelper(u, nd).listAllowedActions();
 
       if (nodeState == NodeDetails.NodeState.ToBeAdded) {
         assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Adding) {
         assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.ToJoinCluster) {
-        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+        // Cannot REMOVE host-n1: As it will under replicate the masters.
+        assertEquals(ImmutableSet.of(), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.SoftwareInstalled) {
         assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.DELETE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.ToBeRemoved) {
-        assertEquals(ImmutableSet.of(NodeActionType.REMOVE), allowedActions);
+        // Cannot REMOVE host-n1: As it will under replicate the masters.
+        assertEquals(ImmutableSet.of(), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Live) {
-        assertEquals(ImmutableSet.of(
-          NodeActionType.STOP,
-          NodeActionType.REMOVE,
-          NodeActionType.QUERY
-        ), allowedActions);
+        assertEquals(
+            ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
+            allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(ImmutableSet.of(
-          NodeActionType.START,
-          NodeActionType.RELEASE,
-          NodeActionType.QUERY
-        ), allowedActions);
+        assertEquals(
+            ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE, NodeActionType.QUERY),
+            allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Removed) {
         assertEquals(
             ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),
@@ -704,8 +808,8 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     userIntent.regionList = new ArrayList<>();
-    userIntent.provider = Provider.get(defaultCustomer.uuid, Common.CloudType.aws)
-    .get(0).uuid.toString();
+    userIntent.provider =
+        Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     userIntent.numNodes = numNodes;
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, setMasters));
     return u;
@@ -718,7 +822,7 @@ public class UniverseTest extends FakeDBApplication {
 
     for (NodeDetails.NodeState nodeState : NodeDetails.NodeState.values()) {
       nd.state = nodeState;
-      Set<NodeActionType> actions = u.getNodeActions(nd, u.getNodes());
+      Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
       assertEquals(nd.isRemovable(), actions.contains(NodeActionType.DELETE));
     }
   }
@@ -727,8 +831,44 @@ public class UniverseTest extends FakeDBApplication {
   public void testGetNodeActions_NoStopAndRemoveForOneNodeUniverse() {
     Universe u = createUniverseWithNodes(1 /* rf */, 1 /* numNodes */, true /* setMasters */);
     NodeDetails nd = u.getNodes().iterator().next();
-    Set<NodeActionType> actions = u.getNodeActions(nd, u.getNodes());
+    Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
     assertFalse(actions.contains(NodeActionType.REMOVE));
     assertFalse(actions.contains(NodeActionType.STOP));
+  }
+
+  private AsyncReplicationRelationship setupAsyncReplicationRelationship(
+      Universe source, Universe target) {
+    return AsyncReplicationRelationship.create(
+        source, "sourceTableID", target, "targetTableID", false);
+  }
+
+  @Test
+  public void testGetSourceAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+    AsyncReplicationRelationship relationship = setupAsyncReplicationRelationship(source, target);
+
+    source.refresh();
+
+    assertEquals(1, source.sourceAsyncReplicationRelationships.size());
+    assertEquals(
+        relationship, source.sourceAsyncReplicationRelationships.stream().findFirst().orElse(null));
+
+    assertTrue(source.targetAsyncReplicationRelationships.isEmpty());
+  }
+
+  @Test
+  public void testGetTargetAsyncReplicationRelationships() {
+    Universe source = createUniverse("source", defaultCustomer.getCustomerId());
+    Universe target = createUniverse("target", defaultCustomer.getCustomerId());
+    AsyncReplicationRelationship relationship = setupAsyncReplicationRelationship(source, target);
+
+    target.refresh();
+
+    assertEquals(1, target.targetAsyncReplicationRelationships.size());
+    assertEquals(
+        relationship, target.targetAsyncReplicationRelationships.stream().findFirst().orElse(null));
+
+    assertTrue(target.sourceAsyncReplicationRelationships.isEmpty());
   }
 }

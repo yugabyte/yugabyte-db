@@ -1,7 +1,7 @@
-package com.yugabyte.yw.common;// Copyright (c) YugaByte, Inc.
+package com.yugabyte.yw.common; // Copyright (c) YugaByte, Inc.
 
-import com.google.inject.Singleton;
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import java.io.InputStream;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
@@ -16,15 +16,10 @@ public class YamlWrapper {
     this.environment = environment;
   }
 
-  /**
-   * Load a com.yugabyte.yw.common.Yaml file from the classpath.
-   */
+  /** Load a com.yugabyte.yw.common.Yaml file from the classpath. */
   public <T> T load(String resourceName) {
 
-    return load(
-      environment.resourceAsStream(resourceName),
-      environment.classLoader()
-    );
+    return load(environment.resourceAsStream(resourceName), environment.classLoader());
   }
 
   /**
@@ -36,5 +31,4 @@ public class YamlWrapper {
     Yaml yaml = new Yaml(new CustomClassLoaderConstructor(classloader));
     return yaml.load(is);
   }
-
 }

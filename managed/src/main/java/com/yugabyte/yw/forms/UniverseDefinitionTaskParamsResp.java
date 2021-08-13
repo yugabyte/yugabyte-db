@@ -14,7 +14,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.yugabyte.yw.models.Universe;
-
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -26,16 +25,18 @@ public class UniverseDefinitionTaskParamsResp {
 
   private final Set<NodeDetailsResp> nodeDetailsSet;
 
-  public UniverseDefinitionTaskParamsResp(UniverseDefinitionTaskParams universeDefinitionTaskParams,
-                                          Universe universe) {
+  public UniverseDefinitionTaskParamsResp(
+      UniverseDefinitionTaskParams universeDefinitionTaskParams, Universe universe) {
     this.delegate = universeDefinitionTaskParams;
     if (universeDefinitionTaskParams.nodeDetailsSet == null) {
       nodeDetailsSet = null;
     } else {
       nodeDetailsSet =
-        universeDefinitionTaskParams.nodeDetailsSet.stream()
-          .map(nodeDetails -> new NodeDetailsResp(nodeDetails, universe))
-          .collect(Collectors.toSet());
+          universeDefinitionTaskParams
+              .nodeDetailsSet
+              .stream()
+              .map(nodeDetails -> new NodeDetailsResp(nodeDetails, universe))
+              .collect(Collectors.toSet());
     }
   }
 

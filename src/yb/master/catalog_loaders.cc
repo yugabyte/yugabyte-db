@@ -32,7 +32,6 @@
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_util.h"
-#include "yb/master/permissions_manager.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -141,8 +140,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     // was empty, we "upgrade" the master to support this new invariant.
     if (metadata.table_ids_size() == 0) {
       l.mutable_data()->pb.add_table_ids(metadata.table_id());
-      Status s = catalog_manager_->sys_catalog_->UpdateItem(
-          tablet.get(), catalog_manager_->leader_ready_term());
+      Status s = catalog_manager_->sys_catalog_->Upsert(
+          catalog_manager_->leader_ready_term(), tablet);
       if (PREDICT_FALSE(!s.ok())) {
         return STATUS_FORMAT(
             IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
@@ -206,8 +205,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
           << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
       string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->UpdateItem(tablet.get(), term_),
-                            strings::Substitute("Error deleting tablet $0", tablet->id()));
+      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->Upsert(term_, tablet),
+                            Format("Error deleting tablet $0", tablet->id()));
     }
 
     l.Commit();
@@ -426,9 +425,6 @@ Status RedisConfigLoader::Visit(const std::string& key, const SysRedisConfigEntr
 ////////////////////////////////////////////////////////////
 
 Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metadata) {
-  CHECK(!catalog_manager_->permissions_manager()->DoesRoleExistUnlocked(role_name))
-    << "Role already exists: " << role_name;
-
   RoleInfo* const role = new RoleInfo(role_name);
   {
     auto l = role->LockForWrite();

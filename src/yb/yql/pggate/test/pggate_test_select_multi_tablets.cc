@@ -180,7 +180,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   int select_row_count = 0;
   for (int i = 0; i < insert_row_count; i++) {
-    bool has_data = false;
+    has_data = false;
     CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
     if (!has_data) {
       break;
@@ -244,7 +244,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
   isnulls = static_cast<bool*>(YBCPAlloc(col_count * sizeof(bool)));
   for (int i = 0; i < insert_row_count; i++) {
-    bool has_data = false;
+    has_data = false;
     CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, col_count, values, isnulls, nullptr, &has_data));
     CHECK(has_data) << "Not all inserted rows are fetch";
 

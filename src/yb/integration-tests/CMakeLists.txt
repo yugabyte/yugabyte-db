@@ -97,6 +97,7 @@ ADD_YB_TEST(tablet-split-itest)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
 ADD_YB_TEST(compaction-test)
+ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
@@ -160,6 +161,7 @@ endfunction()
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)
+ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 

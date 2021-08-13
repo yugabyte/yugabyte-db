@@ -5,10 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-
-/**
- * These are the various types of user tasks and internal tasks.
- */
+/** These are the various types of user tasks and internal tasks. */
 public enum TaskType {
 
   // Tasks that are CustomerTasks
@@ -27,7 +24,7 @@ public enum TaskType {
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
 
   DestroyUniverse("DestroyUniverse"),
-  
+
   PauseUniverse("PauseUniverse"),
 
   ResumeUniverse("ResumeUniverse"),
@@ -49,7 +46,36 @@ public enum TaskType {
 
   ImportIntoTable("ImportIntoTable"),
 
+  // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
+
+  RestartUniverse("upgrade.RestartUniverse"),
+
+  SoftwareUpgrade("upgrade.SoftwareUpgrade"),
+
+  SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
+
+  GFlagsUpgrade("upgrade.GFlagsUpgrade"),
+
+  GFlagsKubernetesUpgrade("upgrade.GFlagsKubernetesUpgrade"),
+
+  CertsRotate("upgrade.CertsRotate"),
+
+  TlsToggle("upgrade.TlsToggle"),
+
+  VMImageUpgrade("upgrade.VMImageUpgrade"),
+
+  CreateRootVolumes("subtasks.CreateRootVolumes"),
+
+  ReplaceRootVolume("subtasks.ReplaceRootVolume"),
+
+  ChangeInstanceType("subtasks.ChangeInstanceType"),
+
+  PersistResizeNode("subtasks.PersistResizeNode"),
+
+  PersistSystemdUpgrade("subtasks.PersistSystemdUpgrade"),
+
+  UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
 
@@ -78,13 +104,15 @@ public enum TaskType {
 
   StartMasterOnNode("StartMasterOnNode"),
 
+  SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
 
   AnsibleDestroyServer("subtasks.AnsibleDestroyServer"),
-  
+
   PauseServer("subtasks.PauseServer"),
 
   ResumeServer("subtasks.ResumeServer"),
@@ -189,7 +217,15 @@ public enum TaskType {
 
   UnivSetCertificate("subtasks.UnivSetCertificate"),
 
-  CreateAlertDefinitions("subtasks.CreateAlertDefinitions");
+  CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
+
+  UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
+
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
+
+  AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
+
+  ResetUniverseVersion("subtasks.ResetUniverseVersion");
 
   private String relativeClassPath;
 
@@ -203,13 +239,16 @@ public enum TaskType {
   }
 
   public static List<TaskType> filteredValues() {
-    return Arrays.stream(TaskType.values()).filter(value -> {
-      try {
-        Field field = TaskType.class.getField(value.name());
-        return !field.isAnnotationPresent(Deprecated.class);
-      } catch (Exception e) {
-        return false;
-      }
-    }).collect(Collectors.toList());
+    return Arrays.stream(TaskType.values())
+        .filter(
+            value -> {
+              try {
+                Field field = TaskType.class.getField(value.name());
+                return !field.isAnnotationPresent(Deprecated.class);
+              } catch (Exception e) {
+                return false;
+              }
+            })
+        .collect(Collectors.toList());
   }
 }

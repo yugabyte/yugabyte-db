@@ -33,6 +33,8 @@
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uint_set.h"
 #include "yb/util/uuid.h"
 
 namespace rocksdb {
@@ -45,6 +47,12 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
+using SubTransactionId = uint32_t;
+
+// By default, postgres SubTransactionId's propagated to DocDB start at 1, so we use this as a
+// minimum value on the DocDB side as well. All intents written without an explicit SubTransactionId
+// are assumed to belong to the subtransaction with this kMinSubTransactionId.
+constexpr SubTransactionId kMinSubTransactionId = 1;
 
 // Decodes transaction id from its binary representation.
 // Checks that slice contains only TransactionId.
@@ -63,6 +71,9 @@ struct TransactionStatusResult {
   // COMMITTED - status_time is a commit time.
   // ABORTED - not used.
   HybridTime status_time;
+
+  // TODO(savepoints) -- Add aborted subtransaction bitset here to enable ignoring aborted
+  // subtransactions during conflict resolution.
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
@@ -141,6 +152,8 @@ class TransactionStatusManager {
 
   virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
 
+  virtual const TabletId& tablet_id() const = 0;
+
  private:
   friend class RequestScope;
 
@@ -194,15 +207,61 @@ class RequestScope {
   int64_t request_id_;
 };
 
+using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
+
+// Represents all metadata tracked about subtransaction state by the client in support of postgres
+// savepoints. Can be serialized and deserialized to/from SubTransactionMetadataPB. This should be
+// sent by the client on any transactional read/write requests where a savepoint has been created,
+// and finally on transaction commit.
+struct SubTransactionMetadata {
+  SubTransactionId subtransaction_id = kMinSubTransactionId;
+  AbortedSubTransactionSet aborted;
+  // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
+  // the highest live subtransaction_id.
+  SubTransactionId highest_subtransaction_id = kMinSubTransactionId;
+
+  // This will lose highest_subtransaction_id, so SubTransactionMetadata::FromPB(stm.ToPB) is
+  // not always equal to stm for `SubTransactionMetadata stm`.
+  // TODO: refactor this to something like
+  // `SubTransactionMetadataWithHighest : public SubTransactionMetadata`.
+  // See https://github.com/yugabyte/yugabyte-db/issues/9593.
+  void ToPB(SubTransactionMetadataPB* dest) const;
+
+  static Result<SubTransactionMetadata> FromPB(
+      const SubTransactionMetadataPB& source);
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(subtransaction_id, highest_subtransaction_id, aborted);
+  }
+
+  // Returns true if this is the default state, i.e. default subtransaction_id. This indicates
+  // whether the client has interacted with savepoints at all in the context of a session. If true,
+  // the client could, for example, skip sending subtransaction-related metadata in RPCs.
+  // TODO(savepoints) -- update behavior and comment to track default aborted subtransaction state
+  // as well.
+  bool IsDefaultState() const;
+};
+
+std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);
+
 struct TransactionOperationContext {
   TransactionOperationContext(
       const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_)
       : transaction_id(transaction_id_),
         txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
 
+  TransactionOperationContext(
+      const TransactionId& transaction_id_,
+      SubTransactionMetadata&& subtransaction_,
+      TransactionStatusManager* txn_status_manager_)
+      : transaction_id(transaction_id_),
+        subtransaction(std::move(subtransaction_)),
+        txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
+
   bool transactional() const;
 
   TransactionId transaction_id;
+  SubTransactionMetadata subtransaction;
   TransactionStatusManager& txn_status_manager;
 };
 

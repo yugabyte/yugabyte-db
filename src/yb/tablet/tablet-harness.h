@@ -131,7 +131,7 @@ class TabletHarness {
   CHECKED_STATUS Open() {
     RETURN_NOT_OK(tablet_->Open());
     tablet_->MarkFinishedBootstrapping();
-    return tablet_->EnableCompactions(/* operation_pause */ nullptr);
+    return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
   }
 
   Result<TabletPtr> OpenTablet(const TabletId& tablet_id) {
@@ -140,7 +140,7 @@ class TabletHarness {
     auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
     RETURN_NOT_OK(tablet->Open());
     tablet->MarkFinishedBootstrapping();
-    RETURN_NOT_OK(tablet->EnableCompactions(/* operation_pause */ nullptr));
+    RETURN_NOT_OK(tablet->EnableCompactions(/* non_abortable_ops_pause */ nullptr));
     return tablet;
   }
 
@@ -186,11 +186,11 @@ class TabletHarness {
  private:
   Options options_;
 
-  gscoped_ptr<MetricRegistry> metrics_registry_;
+  std::unique_ptr<MetricRegistry> metrics_registry_;
 
   scoped_refptr<server::Clock> clock_;
   Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   TabletPtr tablet_;
 };
 

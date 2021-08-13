@@ -23,7 +23,9 @@
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -35,47 +37,93 @@ class RestoreSysCatalogState {
  public:
   explicit RestoreSysCatalogState(SnapshotScheduleRestoration* restoration);
 
-  CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db);
+  // Load objects that should be restored from DB snapshot.
+  CHECKED_STATUS LoadRestoringObjects(const Schema& schema, const docdb::DocDB& doc_db);
 
-  CHECKED_STATUS DetermineObsoleteObjects(const SysRowEntries& existing);
+  // Load existing objects from DB snapshot.
+  CHECKED_STATUS LoadExistingObjects(const Schema& schema, const docdb::DocDB& doc_db);
 
+  // Process loaded data and prepare entries to restore.
+  CHECKED_STATUS Process();
+
+  // Prepare write batch with object changes.
   CHECKED_STATUS PrepareWriteBatch(const Schema& schema, docdb::DocWriteBatch* write_batch);
 
+  // Prepare write batch to delete obsolete tablet.
   CHECKED_STATUS PrepareTabletCleanup(
       const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
+  // Prepare write batch to delete obsolete table.
   CHECKED_STATUS PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
-  Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table) {
-    return MatchTable(id, table);
-  }
+  void WriteToRocksDB(
+      docdb::DocWriteBatch* pg_catalog_write_batch, const yb::HybridTime& write_time,
+      const yb::OpId& op_id, tablet::Tablet* tablet);
+
+  CHECKED_STATUS PatchPgVersionTable(const tablet::Tablet* tablet,
+                                     docdb::DocWriteBatch* write_batch);
+
+  CHECKED_STATUS ProcessPgCatalogRestores(const tablet::Tablet* tablet,
+                                          docdb::DocWriteBatch* write_batch);
+
+  Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
 
   void TEST_AddNamespace(const NamespaceId& id, const SysNamespaceEntryPB& value) {
-    namespaces_.emplace(id, value);
+    restoring_objects_.namespaces.emplace(id, value);
   }
 
  private:
+  struct Objects;
+
+  // Patch table versions, so restored tables will have greater schema version to force schema
+  // update.
+  CHECKED_STATUS PatchVersions();
+
+  // Determine entries that should be restored. I.e. apply filter and serialize.
+  template <class ProcessEntry>
+  CHECKED_STATUS DetermineEntries(
+      const Objects& objects, bool is_restoration_objects, const ProcessEntry& process_entry);
+
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
-      const Schema& schema, const docdb::DocDB& doc_db, std::unordered_map<std::string, PB>* map);
-
-  CHECKED_STATUS DetermineEntries();
-
-  Result<bool> MatchTable(const TableId& id, const SysTablesEntryPB& table);
-  Result<bool> TableMatchesIdentifier(
-      const TableId& id, const SysTablesEntryPB& table, const TableIdentifierPB& table_identifier);
+      const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
+      std::unordered_map<std::string, PB>* map);
 
   template <class PB>
-  void AddEntry(const std::pair<const std::string, PB>& id_and_pb, faststring* buffer);
+  void AddRestoringEntry(const std::string& id, const PB& pb, faststring* buffer);
+
+  void CheckExistingEntry(
+      const std::string& id, const SysNamespaceEntryPB& pb, faststring* buffer);
+
+  void CheckExistingEntry(
+      const std::string& id, const SysTabletsEntryPB& pb, faststring* buffer);
+
+  void CheckExistingEntry(
+      const std::string& id, const SysTablesEntryPB& pb, faststring* buffer);
+
+  CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db,
+                             HybridTime read_time, Objects* objects);
+
+  struct Objects {
+    std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;
+    std::unordered_map<TableId, SysTablesEntryPB> tables;
+    std::unordered_map<TabletId, SysTabletsEntryPB> tablets;
+
+    Result<bool> MatchTable(
+        const SnapshotScheduleFilterPB& filter, const TableId& id,
+        const SysTablesEntryPB& table) const;
+
+    std::string SizesToString() const;
+  };
 
   SnapshotScheduleRestoration& restoration_;
   SysRowEntries entries_;
-  std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces_;
-  std::unordered_map<TableId, SysTablesEntryPB> tables_;
-  std::unordered_map<TabletId, SysTabletsEntryPB> tablets_;
+
+  Objects restoring_objects_;
+  Objects existing_objects_;
 };
 
 }  // namespace master

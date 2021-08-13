@@ -8,24 +8,22 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import scala.concurrent.ExecutionContext;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import scala.concurrent.ExecutionContext;
 
 @Singleton
 public class TaskGarbageCollector {
   public static final Logger LOG = LoggerFactory.getLogger(TaskGarbageCollector.class);
 
   // TODO: Set this to true once we start collecting prometheus metric:
-  @VisibleForTesting
-  public static boolean EXPORT_PROM_METRIC = false;
+  @VisibleForTesting public static boolean EXPORT_PROM_METRIC = false;
 
   // Counter names
   static final String CUSTOMER_TASK_METRIC_NAME = "yw_customer_task_gc_count";
@@ -61,53 +59,58 @@ public class TaskGarbageCollector {
 
   private static Optional<Counter> registerNumTaskGCErrors(CollectorRegistry promRegistry) {
     return tryOrLog(
-      () -> Counter.build(NUM_TASK_GC_ERRORS,
-        "Number of failed customer_task delete attempts")
-        .register(promRegistry),
-      "Failed to build prometheus Counter for name: " + NUM_TASK_GC_ERRORS);
+        () ->
+            Counter.build(NUM_TASK_GC_ERRORS, "Number of failed customer_task delete attempts")
+                .register(promRegistry),
+        "Failed to build prometheus Counter for name: " + NUM_TASK_GC_ERRORS);
   }
 
   private static Optional<Counter> registerNumTaskGCRuns(CollectorRegistry promRegistry) {
     return tryOrLog(
-      () -> Counter.build(NUM_TASK_GC_RUNS,
-        "Number of times customer gc checks are run")
-        .register(promRegistry),
-      "Failed to build prometheus Counter for name: " + NUM_TASK_GC_RUNS);
+        () ->
+            Counter.build(NUM_TASK_GC_RUNS, "Number of times customer gc checks are run")
+                .register(promRegistry),
+        "Failed to build prometheus Counter for name: " + NUM_TASK_GC_RUNS);
   }
 
   private static Optional<Counter> registerPurgedTaskInfoCount(CollectorRegistry promRegistry) {
     return tryOrLog(
-      () -> Counter.build(TASK_INFO_METRIC_NAME,
-        "Number of tasks info rows purged for a customer")
-        .labelNames(CUSTOMER_UUID_LABEL)
-        .register(promRegistry),
-      "Failed to build prometheus Counter for name: " + TASK_INFO_METRIC_NAME);
+        () ->
+            Counter.build(TASK_INFO_METRIC_NAME, "Number of tasks info rows purged for a customer")
+                .labelNames(CUSTOMER_UUID_LABEL)
+                .register(promRegistry),
+        "Failed to build prometheus Counter for name: " + TASK_INFO_METRIC_NAME);
   }
 
   private static Optional<Counter> registerPurgedCustomerTaskCount(CollectorRegistry promRegistry) {
     return tryOrLog(
-      () -> Counter.build(CUSTOMER_TASK_METRIC_NAME,
-        "Number of old completed customer tasks purged for a customer")
-        .labelNames(CUSTOMER_UUID_LABEL)
-        .register(promRegistry),
-      "Failed to build prometheus Counter for name: " + CUSTOMER_TASK_METRIC_NAME);
+        () ->
+            Counter.build(
+                    CUSTOMER_TASK_METRIC_NAME,
+                    "Number of old completed customer tasks purged for a customer")
+                .labelNames(CUSTOMER_UUID_LABEL)
+                .register(promRegistry),
+        "Failed to build prometheus Counter for name: " + CUSTOMER_TASK_METRIC_NAME);
   }
 
   @Inject
   public TaskGarbageCollector(
-    ActorSystem actorSystem,
-    RuntimeConfigFactory runtimeConfigFactory,
-    ExecutionContext executionContext) {
-    this(actorSystem.scheduler(), runtimeConfigFactory, executionContext,
-      CollectorRegistry.defaultRegistry);
+      ActorSystem actorSystem,
+      RuntimeConfigFactory runtimeConfigFactory,
+      ExecutionContext executionContext) {
+    this(
+        actorSystem.scheduler(),
+        runtimeConfigFactory,
+        executionContext,
+        CollectorRegistry.defaultRegistry);
   }
 
   @VisibleForTesting
   TaskGarbageCollector(
-    Scheduler scheduler,
-    RuntimeConfigFactory runtimeConfigFactory,
-    ExecutionContext executionContext,
-    CollectorRegistry promRegistry) {
+      Scheduler scheduler,
+      RuntimeConfigFactory runtimeConfigFactory,
+      ExecutionContext executionContext,
+      CollectorRegistry promRegistry) {
     this.scheduler = scheduler;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.executionContext = executionContext;
@@ -127,11 +130,10 @@ public class TaskGarbageCollector {
     } else {
       LOG.info("Scheduling TaskGC every " + gcInterval);
       scheduler.schedule(
-        Duration.ZERO, // InitialDelay
-        gcInterval,
-        this::scheduleRunner,
-        this.executionContext
-      );
+          Duration.ZERO, // InitialDelay
+          gcInterval,
+          this::scheduleRunner,
+          this.executionContext);
     }
   }
 
@@ -152,10 +154,9 @@ public class TaskGarbageCollector {
       int numRowsDeleted = customerTask.cascadeDeleteCompleted();
       numRowsGCdInThisRun += numRowsDeleted;
       if (numRowsDeleted > 0) {
-        purgedCustomerTaskCount
-          .ifPresent(counter -> counter.labels(c.getUuid().toString()).inc());
-        purgedTaskInfoCount
-          .ifPresent(counter -> counter.labels(c.getUuid().toString()).inc(numRowsDeleted - 1));
+        purgedCustomerTaskCount.ifPresent(counter -> counter.labels(c.getUuid().toString()).inc());
+        purgedTaskInfoCount.ifPresent(
+            counter -> counter.labels(c.getUuid().toString()).inc(numRowsDeleted - 1));
       } else {
         numTaskGCErrors.ifPresent(Counter::inc);
       }
@@ -163,19 +164,15 @@ public class TaskGarbageCollector {
     LOG.info("Garbage collected {} rows", numRowsGCdInThisRun);
   }
 
-  /**
-   * The interval at which the gc checker will run.
-   */
+  /** The interval at which the gc checker will run. */
   private Duration gcCheckInterval() {
-    return runtimeConfigFactory.staticApplicationConf()
-      .getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
+    return runtimeConfigFactory.staticApplicationConf().getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
   }
 
-  /**
-   * For how many days to retain a completed task before garbage collecting it.
-   */
+  /** For how many days to retain a completed task before garbage collecting it. */
   private Duration taskRetentionDuration(Customer customer) {
-    return runtimeConfigFactory.forCustomer(customer)
-      .getDuration(YB_TASK_GC_TASK_RETENTION_DURATION);
+    return runtimeConfigFactory
+        .forCustomer(customer)
+        .getDuration(YB_TASK_GC_TASK_RETENTION_DURATION);
   }
 }

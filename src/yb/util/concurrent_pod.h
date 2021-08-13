@@ -39,7 +39,7 @@ class ConcurrentPod {
       ANNOTATE_IGNORE_READS_END();
       auto time2 = time_.load(std::memory_order_acquire);
       if (time1 == time2 && time1 != CoarseTimePoint::min()) {
-        if (CoarseMonoClock::now() > time1 + timeout_) {
+        if (CoarseMonoClock::now() - time1 > timeout_) {
           return T();
         }
         return result;
@@ -49,7 +49,7 @@ class ConcurrentPod {
  private:
   const std::chrono::steady_clock::duration timeout_;
   T value_;
-  std::atomic<CoarseTimePoint> time_{CoarseTimePoint::min() + MonoDelta::FromMilliseconds(1)};
+  std::atomic<CoarseTimePoint> time_{CoarseTimePoint()};
 };
 
 } // namespace yb

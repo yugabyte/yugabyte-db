@@ -1373,11 +1373,14 @@ ProcessUtilitySlow(ParseState *pstate,
 							 * build.
 							 * TODO(jason): heed issue #6240.
 							 */
-							ereport(DEBUG1,
+							ereport(NOTICE,
 									(errmsg("making create index for table "
-											"\"%s\" in transaction block "
-											"nonconcurrent",
-											stmt->relation->relname)));
+											"\"%s\" nonconcurrent",
+											stmt->relation->relname),
+									 errdetail("Create index in transaction"
+											   " block cannot be concurrent."),
+									 errhint("Consider running it outside of a"
+											 " transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.")));
 							stmt->concurrent = false;
 						}
 						else
@@ -1549,7 +1552,7 @@ ProcessUtilitySlow(ParseState *pstate,
 				break;
 
 			case T_AlterEnumStmt:	/* ALTER TYPE (enum) */
-				address = AlterEnum((AlterEnumStmt *) parsetree, isTopLevel);
+				address = AlterEnum((AlterEnumStmt *) parsetree);
 				break;
 
 			case T_ViewStmt:	/* CREATE VIEW */

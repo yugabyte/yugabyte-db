@@ -151,27 +151,35 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
   result.intent_prefix = decoded_intent_key.intent_prefix;
   result.intent_types = decoded_intent_key.intent_types;
   if (result.intent_types.Test(IntentType::kStrongWrite)) {
-    result.intent_value = intent_iter->value();
-    auto txn_id = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&result.intent_value));
-    result.same_transaction = txn_id == txn_op_context.transaction_id;
-    if (result.intent_value.size() < 1 + sizeof(IntraTxnWriteId) ||
-        result.intent_value[0] != ValueTypeAsChar::kWriteId) {
-      return STATUS_FORMAT(
-          Corruption, "Write id is missing in $0", intent_iter->value().ToDebugHexString());
-    }
-    result.intent_value.consume_byte();
-    IntraTxnWriteId in_txn_write_id = BigEndian::Load32(result.intent_value.data());
-    result.intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+    auto intent_value = intent_iter->value();
+    auto decoded_intent_value = VERIFY_RESULT(DecodeIntentValue(intent_value));
+
+    auto decoded_txn_id = decoded_intent_value.transaction_id;
+
+    result.intent_value = decoded_intent_value.body;
     result.intent_time = decoded_intent_key.doc_ht;
-    if (result.intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+    result.same_transaction = decoded_txn_id == txn_op_context.transaction_id;
+
+    auto is_aborted_subtxn = !txn_op_context.subtransaction.IsDefaultState() &&
+      result.same_transaction &&
+      txn_op_context.subtransaction.aborted.Test(decoded_intent_value.subtransaction_id);
+
+    if (is_aborted_subtxn || result.intent_value.starts_with(ValueTypeAsChar::kRowLock)) {
+      // By setting the value time to kMin, we ensure the caller ignores this intent. This is true
+      // because the caller is skipping all intents written before or at the same time as
+      // intent_dht_from_same_txn_ or resolved_intent_txn_dht_, which of course are greater than or
+      // equal to DocHybridTime::kMin
       result.value_time = DocHybridTime::kMin;
     } else if (result.same_transaction) {
       result.value_time = decoded_intent_key.doc_ht;
     } else {
-      auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(txn_id));
-      result.value_time = DocHybridTime(
-          commit_ht, commit_ht != HybridTime::kMin ? in_txn_write_id : 0);
-      VLOG(4) << "Transaction id: " << txn_id << ", value time: " << result.value_time
+      auto commit_ht = VERIFY_RESULT(transaction_status_cache->GetCommitTime(decoded_txn_id));
+      result.value_time = commit_ht == HybridTime::kMin
+          ? DocHybridTime::kMin
+          : DocHybridTime(commit_ht, decoded_intent_value.write_id);
+      VLOG(4) << "Transaction id: " << decoded_txn_id
+              << ", subtransaction id: " << decoded_intent_value.subtransaction_id
+              << ", value time: " << result.value_time
               << ", value: " << result.intent_value.ToDebugHexString();
     }
   } else {
@@ -592,7 +600,8 @@ Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
           << ", while read bounds are: " << read_time_;
 
   YB_TRANSACTION_DUMP(
-      Read, txn_op_context_ ? txn_op_context_->transaction_id : TransactionId::Nil(),
+      Read, txn_op_context_ ? txn_op_context_->txn_status_manager.tablet_id() : TabletId(),
+      txn_op_context_ ? txn_op_context_->transaction_id : TransactionId::Nil(),
       read_time_, result.write_time, result.same_transaction,
       result.key.size(), result.key, value().size(), value());
 

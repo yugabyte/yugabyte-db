@@ -19,37 +19,18 @@
 namespace yb {
 namespace tablet {
 
-class HistoryCutoffOperationState : public OperationStateBase<consensus::HistoryCutoffPB> {
+class HistoryCutoffOperation
+    : public OperationBase<OperationType::kHistoryCutoff, consensus::HistoryCutoffPB> {
  public:
   template <class... Args>
-  explicit HistoryCutoffOperationState(Args&&... args)
-      : OperationStateBase(std::forward<Args>(args)...) {}
+  explicit HistoryCutoffOperation(Args&&... args) : OperationBase(std::forward<Args>(args)...) {}
 
-  CHECKED_STATUS Replicated(int64_t leader_term);
-
- private:
-  void UpdateRequestFromConsensusRound() override;
-};
-
-class HistoryCutoffOperation : public Operation {
- public:
-  explicit HistoryCutoffOperation(std::unique_ptr<HistoryCutoffOperationState> state)
-      : Operation(std::move(state), OperationType::kHistoryCutoff) {}
-
-  HistoryCutoffOperationState* state() override {
-    return down_cast<HistoryCutoffOperationState*>(Operation::state());
-  }
-
-  const HistoryCutoffOperationState* state() const override {
-    return down_cast<const HistoryCutoffOperationState*>(Operation::state());
-  }
+  CHECKED_STATUS Apply(int64_t leader_term);
 
  private:
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
   CHECKED_STATUS Prepare() override;
   CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
   CHECKED_STATUS DoAborted(const Status& status) override;
-  std::string ToString() const override;
 };
 
 } // namespace tablet

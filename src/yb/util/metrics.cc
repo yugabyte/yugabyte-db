@@ -167,6 +167,8 @@ const char* MetricLevelName(MetricLevel level) {
   }
 }
 
+const std::regex prometheus_name_regex("[a-zA-Z_:][a-zA-Z0-9_:]*");
+
 } // anonymous namespace
 
 //
@@ -204,8 +206,7 @@ MetricEntity::~MetricEntity() {
 }
 
 const std::regex& PrometheusNameRegex() {
-  static const std::regex result("[a-zA-Z_:][a-zA-Z0-9_:]*");
-  return result;
+  return prometheus_name_regex;
 }
 
 void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
@@ -223,11 +224,13 @@ scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype)
 
 namespace {
 
+const string kWildCardString = "*";
+
 bool MatchMetricInList(const string& metric_name,
                        const vector<string>& match_params) {
   for (const string& param : match_params) {
     // Handle wildcard.
-    if (param == "*") return true;
+    if (param == kWildCardString) return true;
     // The parameter is a substring match of the metric name.
     if (metric_name.find(param) != std::string::npos) {
       return true;
@@ -306,7 +309,10 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
+                                                const vector<string>& requested_metrics,
                                                 const MetricPrometheusOptions& opts) const {
+  bool select_all = MatchMetricInList(id(), requested_metrics);
+
   // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
   typedef std::map<const char*, scoped_refptr<Metric> > OrderedMetricMap;
   OrderedMetricMap metrics;
@@ -322,9 +328,20 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
       const MetricPrototype* prototype = val.first;
       const scoped_refptr<Metric>& metric = val.second;
 
-      InsertOrDie(&metrics, prototype->name(), metric);
+      if (select_all || MatchMetricInList(prototype->name(), requested_metrics)) {
+        InsertOrDie(&metrics, prototype->name(), metric);
+      }
     }
   }
+
+  // If we had a filter, and we didn't either match this entity or any metrics inside
+  // it, don't print the entity at all.
+  // If metrics is empty, we'd still call the callbacks if the entity matches,
+  // i.e. requested_metrics and select_all is true.
+  if (!requested_metrics.empty() && !select_all && metrics.empty()) {
+    return Status::OK();
+  }
+
   AttributeMap prometheus_attr;
   // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
   // We ignore the tablet part to squash at the table level.
@@ -479,6 +496,12 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 
 CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                                   const MetricPrometheusOptions& opts) const {
+  return WriteForPrometheus(writer, {kWildCardString}, opts);  // Include all metrics.
+}
+
+CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+                                                  const vector<string>& requested_metrics,
+                                                  const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -490,7 +513,7 @@ CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts),
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer, requested_metrics, opts),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
   RETURN_NOT_OK(writer->FlushAggregatedValues());
@@ -769,7 +792,8 @@ CHECKED_STATUS Counter::WriteForPrometheus(
     return Status::OK();
   }
 
-  return writer->WriteSingleEntry(attr, prototype_->name(), value());
+  return writer->WriteSingleEntry(attr, prototype_->name(), value(),
+                                  prototype()->aggregation_function());
 }
 
 //
@@ -810,7 +834,8 @@ Status MillisLag::WriteForPrometheus(
     return Status::OK();
   }
 
-  return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms());
+  return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms(),
+                                  prototype()->aggregation_function());
 }
 
 AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto)
@@ -916,27 +941,34 @@ CHECKED_STATUS Histogram::WriteForPrometheus(
   std::string hist_name = prototype_->name();
   auto copy_of_attr = attr;
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_sum", snapshot.TotalSum()));
+        copy_of_attr, hist_name + "_sum", snapshot.TotalSum(),
+        prototype()->aggregation_function()));
   RETURN_NOT_OK(writer->WriteSingleEntry(
-        copy_of_attr, hist_name + "_count", snapshot.TotalCount()));
+        copy_of_attr, hist_name + "_count", snapshot.TotalCount(),
+        prototype()->aggregation_function()));
 
   // Copy the label map to add the quatiles.
   if (export_percentiles_ && FLAGS_expose_metric_histogram_percentiles) {
     copy_of_attr["quantile"] = "p50";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(50)));
+                                           snapshot.ValueAtPercentile(50),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "p95";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(95)));
+                                           snapshot.ValueAtPercentile(95),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "p99";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.ValueAtPercentile(99)));
+                                           snapshot.ValueAtPercentile(99),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "mean";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.MeanValue()));
+                                           snapshot.MeanValue(),
+                                           prototype()->aggregation_function()));
     copy_of_attr["quantile"] = "max";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
-                                           snapshot.MaxValue()));
+                                           snapshot.MaxValue(),
+                                           prototype()->aggregation_function()));
   }
   return Status::OK();
 }

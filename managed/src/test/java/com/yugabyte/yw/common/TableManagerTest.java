@@ -2,12 +2,34 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
+import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
+import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -16,32 +38,19 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
-import java.util.*;
-
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
-import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
-import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.*;
-
 @RunWith(MockitoJUnitRunner.class)
-  public class TableManagerTest extends FakeDBApplication {
+public class TableManagerTest extends FakeDBApplication {
 
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_PATH = "/home/yugabyte/yugabyte-tls-config/";
 
-  @Mock
-  play.Configuration mockAppConfig;
+  @Mock play.Configuration mockAppConfig;
 
-  @Mock
-  ShellProcessHandler shellProcessHandler;
+  @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock
-  ReleaseManager releaseManager;
+  @Mock ReleaseManager releaseManager;
 
-  @InjectMocks
-  TableManager tableManager;
+  @InjectMocks TableManager tableManager;
 
   private Provider testProvider;
   private Customer testCustomer;
@@ -58,7 +67,7 @@ import static org.mockito.Mockito.*;
       String azName = "PlacementAZ " + Integer.toString(i);
       String subnetName = "Subnet - " + Integer.toString(i);
       Region r = Region.create(testProvider, regionCode, regionName, "default-image");
-      AvailabilityZone.create(r, azCode, azName, subnetName);
+      AvailabilityZone.createOrThrow(r, azCode, azName, subnetName);
       regionUUIDs.add(r.uuid);
     }
     return regionUUIDs;
@@ -94,8 +103,10 @@ import static org.mockito.Mockito.*;
     }
     uniParams.upsertPrimaryCluster(userIntent, null);
     testUniverse.setUniverseDetails(uniParams);
-    testUniverse = Universe.saveDetails(testUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, uniParams.nodePrefix));
+    testUniverse =
+        Universe.saveDetails(
+            testUniverse.universeUUID,
+            ApiUtils.mockUniverseUpdater(userIntent, uniParams.nodePrefix));
   }
 
   private BulkImportParams getBulkImportParams() {
@@ -119,7 +130,8 @@ import static org.mockito.Mockito.*;
     return backupTableParams;
   }
 
-  private BackupTableParams getBackupUniverseParams(BackupTableParams.ActionType actionType, UUID storageUUID) {
+  private BackupTableParams getBackupUniverseParams(
+      BackupTableParams.ActionType actionType, UUID storageUUID) {
     BackupTableParams backupTableParams = new BackupTableParams();
     if (actionType.equals(BackupTableParams.ActionType.CREATE)) {
       backupTableParams.tableUUID = UUID.randomUUID();
@@ -163,7 +175,9 @@ import static org.mockito.Mockito.*;
     cmd.add(pkPath);
     cmd.add("--instance_count");
     if (bulkImportParams.instanceCount == 0) {
-      cmd.add(Integer.toString(testUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes * 8));
+      cmd.add(
+          Integer.toString(
+              testUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes * 8));
     } else {
       cmd.add(Integer.toString(bulkImportParams.instanceCount));
     }
@@ -189,8 +203,9 @@ import static org.mockito.Mockito.*;
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-      namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
-          testUniverse.getUniverseDetails().nodePrefix, testProvider);
+      namespaceToConfig =
+          PlacementInfoUtil.getConfigPerNamespace(
+              pi, testUniverse.getUniverseDetails().nodePrefix, testProvider);
     }
 
     List<String> cmd = new LinkedList<>();
@@ -220,8 +235,8 @@ import static org.mockito.Mockito.*;
         cmd.add("--keyspace");
         cmd.add(backupTableParams.getKeyspace());
       }
-      if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE) &&
-          backupTableParams.tableUUID != null) {
+      if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)
+          && backupTableParams.tableUUID != null) {
         cmd.add("--table_uuid");
         cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
       }
@@ -243,7 +258,7 @@ import static org.mockito.Mockito.*;
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
     cmd.add(storageType);
-    if(storageType.equals("nfs")) {
+    if (storageType.equals("nfs")) {
       cmd.add("--nfs_storage_path");
       cmd.add("/foo/bar");
     }
@@ -297,7 +312,8 @@ import static org.mockito.Mockito.*;
   }
 
   private void testCreateS3BackupHelper(boolean enableVerbose, boolean sse) {
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     backupTableParams.sse = sse;
@@ -308,13 +324,14 @@ import static org.mockito.Mockito.*;
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   private void testCreateBackupKubernetesHelper() {
     Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG", "foo");
     testProvider.setConfig(config);
+    testProvider.save();
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -324,7 +341,7 @@ import static org.mockito.Mockito.*;
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     expectedEnvVars.put("KUBECONFIG", "foo");
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -348,97 +365,105 @@ import static org.mockito.Mockito.*;
   @Test
   public void testCreateNfsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
   public void testCreateGcsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);;
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);
+    ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
   public void testCreateUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
-    BackupTableParams backupTableParams = getBackupUniverseParams(BackupTableParams.ActionType.CREATE,
-                                                                  storageConfig.configUUID);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    ;
+    BackupTableParams backupTableParams =
+        getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
     Backup.create(testCustomer.uuid, backupTableParams);
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     for (BackupTableParams params : backupTableParams.backupList) {
       tableManager.createBackup(params);
       List<String> expectedCommand = getExpectedBackupTableCommand(params, "nfs");
-      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
     }
   }
 
   @Test
   public void testRestoreS3Backup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
-    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.RESTORE);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    ;
+    BackupTableParams backupTableParams =
+        getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
   public void testRestoreNfsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
-    BackupTableParams backupTableParams = getBackupTableParams(
-      BackupTableParams.ActionType.RESTORE);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    ;
+    BackupTableParams backupTableParams =
+        getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
   public void testRestoreGcsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);;
-    BackupTableParams backupTableParams = getBackupTableParams(
-      BackupTableParams.ActionType.RESTORE);
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);
+    ;
+    BackupTableParams backupTableParams =
+        getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
   public void testRestoreUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
-    BackupTableParams backupTableParams = getBackupUniverseParams(BackupTableParams.ActionType.RESTORE,
-      storageConfig.configUUID);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    ;
+    BackupTableParams backupTableParams =
+        getBackupUniverseParams(BackupTableParams.ActionType.RESTORE, storageConfig.configUUID);
     Backup.create(testCustomer.uuid, backupTableParams);
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     for (BackupTableParams params : backupTableParams.backupList) {
       tableManager.createBackup(params);
       List<String> expectedCommand = getExpectedBackupTableCommand(params, "nfs");
-      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
     }
   }
 
@@ -460,7 +485,7 @@ import static org.mockito.Mockito.*;
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars, (UUID) null);
   }
 
   @Test
@@ -495,9 +520,10 @@ import static org.mockito.Mockito.*;
   @Test
   public void testDeleteUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);;
-    BackupTableParams backupTableParams = getBackupUniverseParams(
-        BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    ;
+    BackupTableParams backupTableParams =
+        getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
     Backup.create(testCustomer.uuid, backupTableParams);
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     for (BackupTableParams params : backupTableParams.backupList) {

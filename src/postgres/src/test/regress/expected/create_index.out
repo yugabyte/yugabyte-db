@@ -2036,23 +2036,23 @@ SELECT * FROM array_index_op_test WHERE i <@ '{}' ORDER BY seqno;
    101 | {} | {}
 (1 row)
 
-SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i = '{NULL}' ORDER BY seqno;
  seqno |   i    |   t    
 -------+--------+--------
    102 | {NULL} | {NULL}
 (1 row)
 
-SELECT * FROM array_op_test WHERE i @> '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i @> '{NULL}' ORDER BY seqno;
  seqno | i | t 
 -------+---+---
 (0 rows)
 
-SELECT * FROM array_op_test WHERE i && '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i && '{NULL}' ORDER BY seqno;
  seqno | i | t 
 -------+---+---
 (0 rows)
 
-SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
  seqno | i  | t  
 -------+----+----
    101 | {} | {}
@@ -2327,13 +2327,13 @@ SELECT * FROM array_index_op_test WHERE t = '{}' ORDER BY seqno;
    101 | {} | {}
 (1 row)
 
-SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i = '{NULL}' ORDER BY seqno;
  seqno |   i    |   t    
 -------+--------+--------
    102 | {NULL} | {NULL}
 (1 row)
 
-SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
  seqno | i  | t  
 -------+----+----
    101 | {} | {}

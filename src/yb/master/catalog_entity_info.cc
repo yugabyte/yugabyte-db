@@ -37,6 +37,8 @@
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
 using std::string;
@@ -140,19 +142,33 @@ CHECKED_STATUS TabletInfo::CheckRunning() const {
   return Status::OK();
 }
 
-Result<TSDescriptor*> TabletInfo::GetLeader() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  auto result = GetLeaderUnlocked();
-  if (result) {
-    return result;
-  }
-
+CHECKED_STATUS TabletInfo::GetLeaderNotFoundStatus() const {
   RETURN_NOT_OK(CheckRunning());
 
   return STATUS_FORMAT(
       NotFound,
       "No leader found for tablet $0 with $1 replicas: $2.",
       ToString(), replica_locations_->size(), *replica_locations_);
+}
+
+Result<TSDescriptor*> TabletInfo::GetLeader() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto result = GetLeaderUnlocked();
+  if (result) {
+    return result;
+  }
+  return GetLeaderNotFoundStatus();
+}
+
+Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+
+  for (const auto& pair : *replica_locations_) {
+    if (pair.second.role == consensus::RaftPeerPB::LEADER) {
+      return pair.second.drive_info;
+    }
+  }
+  return GetLeaderNotFoundStatus();
 }
 
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
@@ -279,6 +295,10 @@ bool TableInfo::is_running() const {
   return LockForRead()->is_running();
 }
 
+bool TableInfo::is_deleted() const {
+  return LockForRead()->is_deleted();
+}
+
 string TableInfo::ToString() const {
   return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
@@ -305,11 +325,8 @@ bool TableInfo::colocated() const {
   return LockForRead()->pb.colocated();
 }
 
-const string TableInfo::indexed_table_id() const {
-  auto l = LockForRead();
-  return l->pb.has_index_info()
-             ? l->pb.index_info().indexed_table_id()
-             : l->pb.has_indexed_table_id() ? l->pb.indexed_table_id() : "";
+std::string TableInfo::indexed_table_id() const {
+  return LockForRead()->indexed_table_id();
 }
 
 bool TableInfo::is_local_index() const {
@@ -375,7 +392,7 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletI
 void TableInfo::GetTabletsInRange(
     const std::string& partition_key_start, const std::string& partition_key_end,
     TabletInfos* ret, const int32_t max_returned_locations) const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
 
   TableInfo::TabletInfoMap::const_iterator it, it_end;
   if (partition_key_start.empty()) {
@@ -400,12 +417,13 @@ void TableInfo::GetTabletsInRange(
 }
 
 bool TableInfo::IsAlterInProgress(uint32_t version) const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     if (e.second->reported_schema_version(table_id_) < version) {
-      VLOG(3) << "Table " << table_id_ << " ALTER in progress due to tablet "
-              << e.second->ToString() << " because reported schema "
-              << e.second->reported_schema_version(table_id_) << " < expected " << version;
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "ALTER in progress due to tablet "
+          << e.second->ToString() << " because reported schema "
+          << e.second->reported_schema_version(table_id_) << " < expected " << version;
       return true;
     }
   }
@@ -413,15 +431,15 @@ bool TableInfo::IsAlterInProgress(uint32_t version) const {
 }
 
 bool TableInfo::HasTablets() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return !tablet_map_.empty();
 }
 
-bool TableInfo::AreAllTabletsDeletedOrHidden() const {
-  shared_lock<decltype(lock_)> l(lock_);
+bool TableInfo::AreAllTabletsHidden() const {
+  SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : tablet_map_) {
-    auto tablet_lock = e.second->LockForRead();
-    if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
+    if (!e.second->LockForRead()->is_hidden()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not hidden tablet: " << e.second->ToString();
       return false;
     }
   }
@@ -429,9 +447,10 @@ bool TableInfo::AreAllTabletsDeletedOrHidden() const {
 }
 
 bool TableInfo::AreAllTabletsDeleted() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : tablet_map_) {
     if (!e.second->LockForRead()->is_deleted()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not deleted tablet: " << e.second->ToString();
       return false;
     }
   }
@@ -439,7 +458,7 @@ bool TableInfo::AreAllTabletsDeleted() const {
 }
 
 bool TableInfo::IsCreateInProgress() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     if (!e.second->LockForRead()->is_running()) {
       return true;
@@ -449,13 +468,13 @@ bool TableInfo::IsCreateInProgress() const {
 }
 
 Status TableInfo::SetIsBackfilling() {
+  const auto table_lock = LockForRead();
   std::lock_guard<decltype(lock_)> l(lock_);
   if (is_backfilling_) {
     return STATUS(AlreadyPresent, "Backfill already in progress", id(),
                   MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
   }
 
-  const auto table_lock = LockForRead();
   for (const auto& tablet_it : tablet_map_) {
     const auto& tablet = tablet_it.second;
     if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
@@ -475,29 +494,30 @@ void TableInfo::SetCreateTableErrorStatus(const Status& status) {
 }
 
 Status TableInfo::GetCreateTableErrorStatus() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return create_table_error_;
 }
 
 std::size_t TableInfo::NumLBTasks() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return std::count_if(pending_tasks_.begin(),
                        pending_tasks_.end(),
                        [](auto task) { return task->started_by_lb(); });
 }
 
 std::size_t TableInfo::NumTasks() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return pending_tasks_.size();
 }
 
 bool TableInfo::HasTasks() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
+  VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(pending_tasks_);
   return !pending_tasks_.empty();
 }
 
 bool TableInfo::HasTasks(MonitoredTask::Type type) const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (auto task : pending_tasks_) {
     if (task->type() == type) {
       return true;
@@ -522,16 +542,19 @@ void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   if (abort_task) {
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
+    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"));
   }
 }
 
-void TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
+bool TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
+  bool result;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     pending_tasks_.erase(task);
+    result = pending_tasks_.empty();
   }
-  VLOG(1) << __func__ << " Removed task " << task.get() << " " << task->description();
+  VLOG(1) << "Removed task " << task.get() << " " << task->description();
+  return result;
 }
 
 // Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
@@ -554,11 +577,17 @@ void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
     abort_tasks.reserve(pending_tasks_.size());
     abort_tasks.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
   }
+  if (abort_tasks.empty()) {
+    return;
+  }
+  auto status = close ? STATUS(Expired, "Table closing") : STATUS(Aborted, "Table closing");
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   for (const auto& task : abort_tasks) {
-    VLOG(1) << __func__ << " Aborting task " << task.get() << " " << task->description();
-    task->AbortAndReturnPrevState(STATUS(Aborted, "Table closing"));
+    VLOG_WITH_FUNC(1)
+        << (close ? "Close and abort" : "Abort") << " task " << task.get() << " "
+        << task->description();
+    task->AbortAndReturnPrevState(status);
   }
 }
 
@@ -567,7 +596,7 @@ void TableInfo::WaitTasksCompletion() {
   while (1) {
     std::vector<std::shared_ptr<MonitoredTask>> waiting_on_for_debug;
     {
-      shared_lock<decltype(lock_)> l(lock_);
+      SharedLock<decltype(lock_)> l(lock_);
       if (pending_tasks_.empty()) {
         break;
       } else if (VLOG_IS_ON(1)) {
@@ -584,25 +613,25 @@ void TableInfo::WaitTasksCompletion() {
 }
 
 std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return pending_tasks_;
 }
 
 std::size_t TableInfo::NumTablets() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return tablet_map_.size();
 }
 
 void TableInfo::GetAllTablets(TabletInfos *ret) const {
   ret->clear();
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     ret->push_back(make_scoped_refptr(e.second));
   }
 }
 
 TabletInfoPtr TableInfo::GetColocatedTablet() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   if (colocated()) {
     for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
       return make_scoped_refptr(e.second);
@@ -623,11 +652,12 @@ IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 
 bool TableInfo::UsesTablespacesForPlacement() const {
   auto l = LockForRead();
-  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated();
+  return l->pb.table_type() == PGSQL_TABLE_TYPE && !l->pb.colocated() &&
+         l->namespace_id() != kPgSequencesDataNamespaceId;
 }
 
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
-  shared_lock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(lock_)> l(lock_);
   return tablespace_id_for_table_creation_;
 }
 
@@ -637,11 +667,23 @@ void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_i
 }
 
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
-  VLOG(2) << __PRETTY_FUNCTION__ << " setting state for " << name() << " to "
-          << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
+  VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
+                    << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
   pb.set_state(state);
   pb.set_state_msg(msg);
 }
+
+bool PersistentTableInfo::is_index() const {
+  return !indexed_table_id().empty();
+}
+
+const std::string& PersistentTableInfo::indexed_table_id() const {
+  static const std::string kEmptyString;
+  return pb.has_index_info()
+             ? pb.index_info().indexed_table_id()
+             : pb.has_indexed_table_id() ? pb.indexed_table_id() : kEmptyString;
+}
+
 
 // ================================================================================================
 // DeletedTableInfo
@@ -779,6 +821,32 @@ const QLTypePB& UDTypeInfo::field_types(int index) const {
 string UDTypeInfo::ToString() const {
   auto l = LockForRead();
   return Format("$0 [id=$1] {metadata=$2} ", name(), udtype_id_, l->pb);
+}
+
+DdlLogEntry::DdlLogEntry(
+    HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
+    const std::string& action) {
+  pb_.set_time(time.ToUint64());
+  pb_.set_table_type(table.table_type());
+  pb_.set_namespace_name(table.namespace_name());
+  pb_.set_namespace_id(table.namespace_id());
+  pb_.set_table_name(table.name());
+  pb_.set_table_id(table_id);
+  pb_.set_action(action);
+}
+
+const DdlLogEntryPB& DdlLogEntry::old_pb() const {
+  // Since DDL log entry are always added, we don't have previous PB for the same entry.
+  static const DdlLogEntryPB kEmpty;
+  return kEmpty;
+}
+
+const DdlLogEntryPB& DdlLogEntry::new_pb() const {
+  return pb_;
+}
+
+std::string DdlLogEntry::id() const {
+  return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
 }
 
 }  // namespace master

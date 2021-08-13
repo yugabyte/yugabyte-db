@@ -79,6 +79,30 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
   return out << metadata.ToString();
 }
 
+void SubTransactionMetadata::ToPB(SubTransactionMetadataPB* dest) const {
+  dest->set_subtransaction_id(subtransaction_id);
+  aborted.ToPB(dest->mutable_aborted()->mutable_set());
+}
+
+Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
+    const SubTransactionMetadataPB& source) {
+  return SubTransactionMetadata {
+    .subtransaction_id = source.has_subtransaction_id()
+        ? source.subtransaction_id()
+        : kMinSubTransactionId,
+    .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(source.aborted().set())),
+  };
+}
+
+bool SubTransactionMetadata::IsDefaultState() const {
+  DCHECK(subtransaction_id >= kMinSubTransactionId);
+  return subtransaction_id == kMinSubTransactionId && aborted.IsEmpty();
+}
+
+std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata) {
+  return out << metadata.ToString();
+}
+
 MonoDelta TransactionRpcTimeout() {
   return FLAGS_transaction_rpc_timeout_ms * 1ms * kTimeMultiplier;
 }

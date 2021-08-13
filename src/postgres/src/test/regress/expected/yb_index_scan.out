@@ -492,6 +492,9 @@ insert into test values(6,6,6,6,6,6,'Ff',6,88);
 -- Creating indices with included columns
 create index idx_col3 on test(col3) include (col4,col5,col6);
 create index idx_col5 on test(col5) include (col6,col7);
+-- Ordering is disallowed for included columns
+create index on test(col5) include (col6 hash, col7);
+ERROR:  including column does not support ASC/DESC/HASH options
 -- Performing a few updates and checking if subsequent commands exhibit expected behavior
 update test set col3=11, col4=11 where pk=1;
 select * from test;
@@ -683,6 +686,37 @@ SELECT * FROM test WHERE col6 = 5554;
   5 |    5 |    5 |    5 |    5 | 5554 | Ee   |    5 |  199
 (1 row)
 
+-- test index only scan with non-target column refs in qual (github issue #9176)
+-- baseline, col5 is in target columns
+EXPLAIN SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+                                          QUERY PLAN
+-----------------------------------------------------------------------------------------------
+ Index Only Scan using idx_col4_idx_col5_idx_col6 on test  (cost=0.00..16.25 rows=100 width=8)
+   Index Cond: (col4 = 232)
+   Filter: ((col5 % 3) = 0)
+(3 rows)
+
+SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+ col4 | col5
+------+------
+  232 |  345
+(1 row)
+
+-- same lines are expected without col5 in the target list
+EXPLAIN SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+                                          QUERY PLAN
+-----------------------------------------------------------------------------------------------
+ Index Only Scan using idx_col4_idx_col5_idx_col6 on test  (cost=0.00..16.25 rows=100 width=4)
+   Index Cond: (col4 = 232)
+   Filter: ((col5 % 3) = 0)
+(3 rows)
+
+SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;
+ col4
+------
+  232
+(1 row)
+
 -- testing update on primary key
 update test set pk=17 where pk=1;
 update test set pk=25, col4=777 where pk=2;
@@ -722,4 +756,3 @@ select * from test where pk=25;
 ----+------+------+------+------+------+------+------+------
  25 |    2 |    2 |  777 |  223 |    2 | Bb   |    2 |  199
 (1 row)
-

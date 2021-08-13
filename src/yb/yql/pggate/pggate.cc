@@ -14,6 +14,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pg_system_attr.h"
@@ -21,7 +22,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
 
-#include "yb/yql/pggate/pg_analyze.h"
+#include "yb/yql/pggate/pg_sample.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -35,6 +36,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/table.h"
@@ -43,11 +45,14 @@
 #include "yb/server/secure.h"
 
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_forward_service.proxy.h"
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
+DECLARE_bool(use_node_hostname_for_local_tserver);
 
 namespace yb {
 namespace pggate {
@@ -131,7 +136,7 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
       }
     }
   } while (!rowsets.empty());
-  return std::move(result);
+  return result;
 }
 
 } // namespace
@@ -195,7 +200,22 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
     const YBCPgTypeEntity *type_entity = &YBCDataTypeArray[idx];
     type_map_[type_entity->type_oid] = type_entity;
   }
-
+  if (FLAGS_ysql_forward_rpcs_to_local_tserver) {
+    async_client_init_.AddPostCreateHook([this](client::YBClient *client) {
+      const auto& tserver_shared_data = **tserver_shared_object_;
+      HostPort host_port(tserver_shared_data.endpoint());
+      MonoDelta resolve_cache_timeout;
+      if (FLAGS_use_node_hostname_for_local_tserver) {
+        host_port = HostPort(tserver_shared_data.host().ToBuffer(),
+                             tserver_shared_data.endpoint().port());
+        resolve_cache_timeout = MonoDelta::kMax;
+      }
+      auto proxy = std::make_shared<tserver::TabletServerForwardServiceProxy>(
+          &client->proxy_cache(), host_port, nullptr /* protocol */, resolve_cache_timeout);
+      client->SetNodeLocalForwardProxy(proxy);
+      client->SetNodeLocalTServerHostPort(host_port);
+    });
+  }
   async_client_init_.Start();
 }
 
@@ -248,7 +268,7 @@ Status PgApiImpl::InvalidateCache() {
   return Status::OK();
 }
 
-const bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
+bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
   return FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry;
 }
 
@@ -561,6 +581,9 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
                                 PgStatement **handle) {
   auto stmt = std::make_unique<PgAlterTable>(pg_session_, table_id);
+  if (pg_txn_manager_->IsDdlMode()) {
+    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+  }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
@@ -918,8 +941,8 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   return STATUS_FORMAT(Corruption, "Not all attributes ($0) were resolved", remain_attr);
 }
 
-void PgApiImpl::StartOperationsBuffering() {
-  pg_session_->StartOperationsBuffering();
+Status PgApiImpl::StartOperationsBuffering() {
+  return pg_session_->StartOperationsBuffering();
 }
 
 Status PgApiImpl::StopOperationsBuffering() {
@@ -1046,21 +1069,47 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
   return down_cast<PgDelete*>(handle)->Exec();
 }
 
-Status PgApiImpl::NewAnalyze(const PgObjectId& table_id, PgStatement **handle) {
+Status PgApiImpl::NewSample(const PgObjectId& table_id, const int targrows, PgStatement **handle) {
   *handle = nullptr;
-  auto analyze = std::make_unique<PgAnalyze>(pg_session_, table_id);
-  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(analyze), handle));
+  auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id);
+  RETURN_NOT_OK(sample->Prepare());
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(sample), handle));
   return Status::OK();
 }
 
-Status PgApiImpl::ExecAnalyze(PgStatement *handle, int32_t* rows) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ANALYZE)) {
+Status PgApiImpl::InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  auto analyze = down_cast<PgAnalyze*>(handle);
-  RETURN_NOT_OK(analyze->Exec());
-  *rows = VERIFY_RESULT(analyze->GetNumRows());
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->InitRandomState(rstate_w, rand_state));
+  return Status::OK();
+}
+
+Status PgApiImpl::SampleNextBlock(PgStatement *handle, bool *has_more) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->SampleNextBlock(has_more));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecSample(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->Exec(nullptr));
+  return Status::OK();
+}
+
+Status PgApiImpl::GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  RETURN_NOT_OK(down_cast<PgSample*>(handle)->GetEstimatedRowCount(liverows, deadrows));
   return Status::OK();
 }
 
@@ -1320,6 +1369,14 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
   return Status::OK();
 }
 
+Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
+  return pg_session_->SetActiveSubTransaction(id);
+}
+
+Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
+  return pg_session_->RollbackSubTransaction(id);
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }
@@ -1342,8 +1399,16 @@ void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
   pg_session_->DeleteForeignKeyReference(table_id, ybctid);
 }
 
+void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
+  pg_session_->AddForeignKeyReference(table_id, ybctid);
+}
+
 void PgApiImpl::SetTimeout(const int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
+}
+
+Result<client::YBClient::TabletServersInfo> PgApiImpl::ListTabletServers() {
+  return pg_session_->ListTabletServers();
 }
 
 } // namespace pggate

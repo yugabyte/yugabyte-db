@@ -226,7 +226,11 @@ void Command(
                       BatchContext* context) { \
       BOOST_PP_CAT(type, _COMMAND)(cname); \
     }; \
-    yb::rpc::RpcMethodMetrics metrics(YB_REDIS_METRIC(name).Instantiate(metric_entity)); \
+    yb::rpc::RpcMethodMetrics metrics {               \
+        .request_bytes = nullptr, \
+        .response_bytes = nullptr, \
+        .handler_latency = YB_REDIS_METRIC(name).Instantiate(metric_entity), \
+    };\
     setup_method({BOOST_PP_STRINGIZE(name), functor, arity, std::move(metrics)}); \
   } \
   /**/

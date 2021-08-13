@@ -86,7 +86,7 @@ print("Created table employee")
 session.execute(
   """
   INSERT INTO ybdemo.employee (id, name, age, language)
-  VALUES (1, 'John', 35, 'NodeJS');
+  VALUES (1, 'John', 35, 'Python');
   """)
 print("Inserted (id, name, age, language) = (1, 'John', 35, 'Python')")
 

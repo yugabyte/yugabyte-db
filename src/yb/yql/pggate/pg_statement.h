@@ -54,7 +54,7 @@ enum class StmtOp {
   STMT_ALTER_DATABASE,
   STMT_CREATE_TABLEGROUP,
   STMT_DROP_TABLEGROUP,
-  STMT_ANALYZE,
+  STMT_SAMPLE,
 };
 
 class PgStatement : public PgMemctx::Registrable {

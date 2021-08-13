@@ -48,6 +48,7 @@
 #include "utils/syscache.h"
 #include "utils/selfuncs.h"
 #include "utils/snapmgr.h"
+#include "utils/spccache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
@@ -225,6 +226,24 @@ static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
 	HandleYBStatus(YBCPgDmlAppendTarget(ybScan->handle, expr));
 }
 
+static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
+{
+	if (!ybScan->exec_params)
+		return;
+
+	switch (ybScan->exec_params->rowmark) {
+	case ROW_MARK_EXCLUSIVE:
+	case ROW_MARK_NOKEYEXCLUSIVE:
+	case ROW_MARK_SHARE:
+	case ROW_MARK_KEYSHARE:
+		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(ybScan->relation), ybctid);
+		break;
+	case ROW_MARK_REFERENCE:
+	case ROW_MARK_COPY:
+		break;
+	}
+}
+
 static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 {
 	HeapTuple tuple    = NULL;
@@ -262,6 +281,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 		if (syscols.ybctid != NULL)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			ybcUpdateFKCache(ybScan, tuple->t_ybctid);
 		}
 		tuple->t_tableOid = RelationGetRelid(ybScan->relation);
 	}
@@ -321,6 +341,7 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 			if (syscols.ybctid != NULL)
 			{
 				tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
 			}
 		}
 		else
@@ -329,6 +350,7 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 			if (syscols.ybbasectid != NULL)
 			{
 				tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
+				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
 			}
 		}
 
@@ -933,7 +955,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
  * Required columns are:
  * - all bound key columns
  * - all query targets columns (from index for Index Only Scan case and from table otherwise)
- * - all table columns required for filtering resulting rows on postgres' side
+ * - all qual columns (not bound to the scan keys), they are requirted for filtering results
+ *   on the postgres side
  *
  * Example:
  * SELECT <target columns from index or table> FROM t
@@ -963,14 +986,8 @@ ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_pla
 		items = bms_add_member(items, *sk_attno - min_attr + 1);
 
 	ListCell *lc;
-	Index target_relid = INDEX_VAR;
-	if (!ybScan->prepare_params.index_only_scan)
-	{
-		/* Collect table filtering attributes */
-		foreach(lc, pg_scan_plan->plan.qual)
-			pull_varattnos_min_attr((Node *) lfirst(lc), pg_scan_plan->scanrelid, &items, min_attr);
-		target_relid = pg_scan_plan->scanrelid;
-	}
+	Index target_relid =
+		ybScan->prepare_params.index_only_scan ? INDEX_VAR : pg_scan_plan->scanrelid;
 
 	/* Collect target attributes */
 	foreach(lc, pg_scan_plan->plan.targetlist)
@@ -978,6 +995,10 @@ ybcInitColumnFilter(YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_pla
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
 		pull_varattnos_min_attr((Node *) tle->expr, target_relid, &items, min_attr);
 	}
+
+	/* Collect table filtering attributes */
+	foreach(lc, pg_scan_plan->plan.qual)
+		pull_varattnos_min_attr((Node *) lfirst(lc), target_relid, &items, min_attr);
 
 	/* In case InvalidAttrNumber is set whole row columns are required */
 	if (bms_is_member(InvalidAttrNumber - min_attr + 1, items))
@@ -1410,7 +1431,7 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
 
 void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 					 bool is_backwards_scan, bool is_uncovered_idx_scan,
-					 Cost *startup_cost, Cost *total_cost)
+					 Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid)
 {
 	/*
 	 * Yugabyte-specific per-tuple cost considerations:
@@ -1420,7 +1441,18 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	 *   - uncovered index scan is more costly than index-only or seq scan because
 	 *     it requires extra request to the main table.
 	 */
-	Cost yb_per_tuple_cost_factor = 10;
+	double tsp_cost = 0.0;
+	bool is_valid_tsp_cost = !is_uncovered_idx_scan
+								&& get_yb_tablespace_cost(index_tablespace_oid,
+															&tsp_cost);
+	Cost yb_per_tuple_cost_factor = YB_DEFAULT_PER_TUPLE_COST;
+
+	if (is_valid_tsp_cost && yb_per_tuple_cost_factor > tsp_cost)
+	{
+		yb_per_tuple_cost_factor = tsp_cost;
+	}
+
+	Assert(!is_valid_tsp_cost || tsp_cost != 0);
 	if (is_backwards_scan)
 	{
 		yb_per_tuple_cost_factor *= YBC_BACKWARDS_SCAN_COST_FACTOR;
@@ -1561,7 +1593,7 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	}
 
 	ybcCostEstimate(baserel, *selectivity, is_backwards_scan,
-	                is_uncovered_idx_scan, startup_cost, total_cost);
+	                is_uncovered_idx_scan, startup_cost, total_cost, path->indexinfo->reltablespace);
 
 	/*
 	 * Try to evaluate the number of rows this baserel might return.
@@ -1578,7 +1610,6 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	{
 		baserel->rows = baserel_rows_estimate;
 	}
-
 
 	if (relation)
 		RelationClose(relation);
@@ -1664,4 +1695,142 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	pfree(nulls);
 	YBCPgDeleteStatement(ybc_stmt);
 	return tuple;
+}
+
+/*
+ * ANALYZE support: take random sample of a YB table data
+ */
+
+YbSample
+ybBeginSample(Relation rel, int targrows)
+{
+	ReservoirStateData rstate;
+	Oid dboid = YBCGetDatabaseOid(rel);
+	Oid relid = RelationGetRelid(rel);
+	TupleDesc tupdesc = RelationGetDescr(rel);
+	YbSample ybSample = (YbSample) palloc0(sizeof(YbSampleData));
+	ybSample->relation = rel;
+	ybSample->targrows = targrows;
+	ybSample->liverows = 0;
+	ybSample->deadrows = 0;
+
+	/*
+	 * Create new sampler command
+	 */
+	HandleYBStatus(YBCPgNewSample(dboid, relid, targrows, &ybSample->handle));
+
+	/*
+	 * Set up the scan targets. We need to return all "real" columns.
+	 */
+	if (RelationGetForm(ybSample->relation)->relhasoids)
+	{
+		YBCPgTypeAttrs type_attrs = { 0 };
+		YBCPgExpr	expr = YBCNewColumnRef(ybSample->handle,
+										   ObjectIdAttributeNumber,
+										   InvalidOid,
+										   &type_attrs);
+		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
+	}
+	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
+		YBCPgTypeAttrs type_attrs = { att->atttypmod };
+		YBCPgExpr   expr = YBCNewColumnRef(ybSample->handle,
+										   attnum,
+										   att->atttypid,
+										   &type_attrs);
+		HandleYBStatus(YBCPgDmlAppendTarget(ybSample->handle, expr));
+	}
+
+	/*
+	 * Initialize sampler random state
+	 */
+	reservoir_init_selection_state(&rstate, targrows);
+	HandleYBStatus(YBCPgInitRandomState(ybSample->handle,
+										rstate.W,
+										SamplerRandomStateToUint64(rstate.randstate)));
+
+	return ybSample;
+}
+
+/*
+ * Sequentially scan next block of YB table and select rows for the sample.
+ * Block is a sequence of rows from one partition, up to specific number of
+ * rows or the end of the partition.
+ * Algorithm selects every scanned row until targrows are selected, then it
+ * select random rows, with decreasing probability, to replace one of the
+ * previously selected rows.
+ * The IDs of selected rows are stored in the internal buffer (reservoir).
+ * Scan ends and function returns false if one of two is true:
+ *  - end of the table is reached
+ *  or
+ *  - targrows are selected and end of a table partition is reached.
+ */
+bool
+ybSampleNextBlock(YbSample ybSample)
+{
+	bool has_more;
+	HandleYBStatus(YBCPgSampleNextBlock(ybSample->handle, &has_more));
+	return has_more;
+}
+
+/*
+ * Fetch the rows selected for the sample into pre-allocated buffer.
+ * Return number of rows fetched.
+ */
+int
+ybFetchSample(YbSample ybSample, HeapTuple *rows)
+{
+	Oid relid = RelationGetRelid(ybSample->relation);
+	TupleDesc	tupdesc = RelationGetDescr(ybSample->relation);
+	Datum	   *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool	   *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	int 		numrows;
+
+	/*
+	 * Execute equivalent of
+	 *   SELECT * FROM table WHERE ybctid IN [yctid0, ybctid1, ...];
+	 */
+	HandleYBStatus(YBCPgExecSample(ybSample->handle));
+	/*
+	 * Retrieve liverows and deadrows counters.
+	 * TODO: count deadrows
+	 */
+	HandleYBStatus(YBCPgGetEstimatedRowCount(ybSample->handle,
+											 &ybSample->liverows,
+											 &ybSample->deadrows));
+
+	for (numrows = 0; numrows < ybSample->targrows; numrows++)
+	{
+		bool has_data = false;
+		YBCPgSysColumns syscols;
+
+		/* Fetch one row. */
+		HandleYBStatus(YBCPgDmlFetch(ybSample->handle,
+									 tupdesc->natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (!has_data)
+			break;
+
+		/* Make a heap tuple in current memory context */
+		rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
+		if (syscols.oid != InvalidOid)
+		{
+			HeapTupleSetOid(rows[numrows], syscols.oid);
+		}
+		if (syscols.ybctid != NULL)
+		{
+			rows[numrows]->t_ybctid = PointerGetDatum(syscols.ybctid);
+		}
+		rows[numrows]->t_tableOid = relid;
+	}
+	pfree(values);
+	pfree(nulls);
+	/* Close the DocDB statement */
+	YBCPgDeleteStatement(ybSample->handle);
+	return numrows;
 }

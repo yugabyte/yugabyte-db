@@ -1,0 +1,21 @@
+groups:
+  - name: yugaware
+    rules:
+      - alert: alertDefinitionGroup
+        expr: query > 1
+        for: 15s
+        labels:
+          group_uuid: <group_uuid>
+          group_type: UNIVERSE
+          definition_uuid: <definition_uuid>
+          definition_name: alertDefinitionGroup
+          customer_uuid: <customer_uuid>
+          severity: SEVERE
+          threshold: 1
+          universe_uuid: <universe_uuid>
+          universe_name: Test Universe
+          target_uuid: <universe_uuid>
+          target_name: Test Universe
+          target_type: universe
+        annotations:
+          summary: "Average memory usage for universe 'Test Universe' is above 1%. Current value is {{ $value | printf \"%.0f\" }}%"

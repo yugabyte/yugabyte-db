@@ -2568,7 +2568,6 @@ _equalIndexElem(const IndexElem *a, const IndexElem *b)
 	COMPARE_NODE_FIELD(opclass);
 	COMPARE_SCALAR_FIELD(ordering);
 	COMPARE_SCALAR_FIELD(nulls_ordering);
-	COMPARE_NODE_FIELD(yb_name_list);
 
 	return true;
 }

@@ -9,15 +9,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.LiveQueriesParams;
-import com.yugabyte.yw.models.MetricConfig;
+import java.util.UUID;
+import java.util.concurrent.Callable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.api.Play;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.concurrent.Callable;
 
 public class LiveQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(LiveQueryExecutor.class);
@@ -29,8 +26,7 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
   private int port;
   private QueryHelper.QueryApi apiType;
 
-  public LiveQueryExecutor(String nodeName, String hostName,
-                           int port, QueryHelper.QueryApi api) {
+  public LiveQueryExecutor(String nodeName, String hostName, int port, QueryHelper.QueryApi api) {
     this.nodeName = nodeName;
     this.hostName = hostName;
     this.port = port;
@@ -52,10 +48,7 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
       LOG.error("Exception while fetching url: {}; message: {}", url, e.getStackTrace());
       ObjectNode errorJson = Json.newObject();
       errorJson.put("error", e.getMessage());
-      errorJson.put("type", apiType == QueryHelper.QueryApi.YSQL ?
-        "ysql" :
-        "ycql"
-      );
+      errorJson.put("type", apiType == QueryHelper.QueryApi.YSQL ? "ysql" : "ycql");
       return errorJson;
     }
   }
@@ -66,16 +59,14 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
     ObjectMapper mapper = new ObjectMapper();
     if (response.has("connections")) {
       for (JsonNode objNode : response.get("connections")) {
-        if (objNode.has("backend_type") &&
-          objNode.get("backend_type").asText().equalsIgnoreCase("client backend") &&
-          objNode.has("backend_status") &&
-          !objNode.get("backend_status").asText().equalsIgnoreCase("idle")) {
+        if (objNode.has("backend_type")
+            && objNode.get("backend_type").asText().equalsIgnoreCase("client backend")
+            && objNode.has("backend_status")
+            && !objNode.get("backend_status").asText().equalsIgnoreCase("idle")) {
           try {
             // Rather than access the JSON through .get()'s we convert to POJO
-            LiveQueriesParams.YSQLQueryParams params = mapper.treeToValue(
-              objNode,
-              LiveQueriesParams.YSQLQueryParams.class
-            );
+            LiveQueriesParams.YSQLQueryParams params =
+                mapper.treeToValue(objNode, LiveQueriesParams.YSQLQueryParams.class);
             ObjectNode rowData = Json.newObject();
             // Random UUID intended for table row key
             rowData.put("id", UUID.randomUUID().toString());
@@ -113,10 +104,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
     if (response.has("inbound_connections")) {
       for (JsonNode objNode : response.get("inbound_connections")) {
         try {
-          LiveQueriesParams.YCQLQueryParams params = mapper.treeToValue(
-            objNode,
-            LiveQueriesParams.YCQLQueryParams.class
-          );
+          LiveQueriesParams.YCQLQueryParams params =
+              mapper.treeToValue(objNode, LiveQueriesParams.YCQLQueryParams.class);
           if (params.calls_in_flight != null) {
             for (LiveQueriesParams.QueryCallsInFlight query : params.calls_in_flight) {
               // Get SQL query string, joining multiple entries if necessary
@@ -128,8 +117,8 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
                 }
                 queryStringBuilder.append(callDetail.get("sql_string").asText());
               }
-              String keyspace = params.connection_details.cql_connection_details
-                .get("keyspace").asText();
+              String keyspace =
+                  params.connection_details.cql_connection_details.get("keyspace").asText();
               String[] splitIp = params.remote_ip.split(":");
               // Random UUID intended for table row key
               rowData.put("id", UUID.randomUUID().toString());

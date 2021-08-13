@@ -38,7 +38,6 @@
 
 #include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master.h"
 #include "yb/server/server_base.h"
@@ -88,6 +87,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // of tablets. Caller can block, waiting for the initialization to fully
   // complete by calling WaitInited().
   CHECKED_STATUS Init();
+
+  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg,
+    server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 
   // Waits for the tablet server to complete the initialization.
   CHECKED_STATUS WaitInited();
@@ -227,7 +229,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   TabletServerOptions opts_;
 
   // Manager for tablets which are available on this server.
-  gscoped_ptr<TSTabletManager> tablet_manager_;
+  std::unique_ptr<TSTabletManager> tablet_manager_;
 
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
@@ -236,10 +238,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   std::unique_ptr<Heartbeater> heartbeater_;
 
   // Thread responsible for collecting metrics snapshots for native storage.
-  gscoped_ptr<MetricsSnapshotter> metrics_snapshotter_;
+  std::unique_ptr<MetricsSnapshotter> metrics_snapshotter_;
 
   // Webserver path handlers
-  gscoped_ptr<TabletServerPathHandlers> path_handlers_;
+  std::unique_ptr<TabletServerPathHandlers> path_handlers_;
 
   // The maintenance manager for this tablet server
   std::shared_ptr<MaintenanceManager> maintenance_manager_;

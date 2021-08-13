@@ -10,29 +10,30 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
-import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Backup;
-
-import play.api.Play;
-
+import com.yugabyte.yw.models.Universe;
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
+
+  @Inject
+  public DestroyUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
@@ -41,7 +42,7 @@ public class DestroyUniverse extends UniverseTaskBase {
   }
 
   public Params params() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -52,28 +53,29 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = null;
+      Universe universe;
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1, true);
       } else {
-        universe = lockUniverseForUpdate(-1 , true);
+        universe = lockUniverseForUpdate(-1, true);
       }
 
       if (params().isDeleteBackups) {
-        List<Backup> backupList = Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
-        createDeleteBackupTasks(backupList, params().customerUUID).setSubTaskGroupType(
-            SubTaskGroupType.DeletingBackup);
+        List<Backup> backupList =
+            Backup.fetchByUniverseUUID(params().customerUUID, universe.universeUUID);
+        createDeleteBackupTasks(backupList, params().customerUUID)
+            .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
       // Cleanup the kms_history table
       createDestroyEncryptionAtRestTask()
-              .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-        createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                  primaryCluster.userIntent)
+        createDnsManipulationTask(
+                DnsManager.DnsCommandType.Delete, params().isForceDelete, primaryCluster.userIntent)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {
@@ -86,15 +88,12 @@ public class DestroyUniverse extends UniverseTaskBase {
 
         // Create tasks to destroy the existing nodes.
         createDestroyServerTasks(
-          universe.getNodes(),
-          params().isForceDelete,
-          true /* delete node */
-        ).setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+                universe.getNodes(), params().isForceDelete, true /* delete node */)
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
       // Create tasks to remove the universe entry from the Universe table.
-      createRemoveUniverseEntryTask()
-          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      createRemoveUniverseEntryTask().setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(true /* removeFile */);
@@ -102,9 +101,11 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
-      AlertManager alertManager = Play.current().injector().instanceOf(AlertManager.class);
-      alertManager.resolveAlerts(params().customerUUID, params().universeUUID, "%");
-
+      alertDefinitionGroupService.handleTargetRemoval(
+          params().customerUUID,
+          AlertDefinitionGroup.TargetType.UNIVERSE,
+          universe.getUniverseUUID());
+      metricService.handleTargetRemoval(params().customerUUID, universe.getUniverseUUID());
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {
@@ -112,10 +113,10 @@ public class DestroyUniverse extends UniverseTaskBase {
       } catch (Throwable t1) {
         // Ignore the error
       }
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
   public SubTaskGroup createRemoveUniverseEntryTask() {
@@ -127,7 +128,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     params.isForceDelete = params().isForceDelete;
 
     // Create the Ansible task to destroy the server.
-    RemoveUniverseEntry task = new RemoveUniverseEntry();
+    RemoveUniverseEntry task = createTask(RemoveUniverseEntry.class);
     task.initialize(params);
     // Add it to the task list.
     subTaskGroup.addTask(task);

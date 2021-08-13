@@ -269,6 +269,16 @@ typedef struct PgYBTupleIdDescriptor {
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
 
+typedef struct PgServerDescriptor {
+  const char *host;
+  const char *cloud;
+  const char *region;
+  const char *zone;
+  const char *publicIp;
+  bool isPrimary;
+  uint16_t pgPort;
+} YBCServerDescriptor;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -2,45 +2,43 @@
 
 package com.yugabyte.yw.models;
 
-import java.util.Date;
-import java.util.UUID;
-import java.util.List;
-import java.util.stream.Collectors;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Enumerated;
-import javax.persistence.EnumType;
-import javax.persistence.Id;
-
-import org.joda.time.DateTime;
-import org.mindrot.jbcrypt.BCrypt;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.ebean.*;
-import io.ebean.annotation.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.YWServiceException;
-
-
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
+import org.joda.time.DateTime;
+import org.mindrot.jbcrypt.BCrypt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 
 @Entity
+@ApiModel(description = "Users associated customers.")
 public class Users extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
   // A globally unique UUID for the Users.
 
-  /**
-   * These are the various states of the task and taskgroup.
-   */
+  /** These are the various states of the task and taskgroup. */
   public enum Role {
     @EnumValue("Admin")
     Admin,
@@ -70,12 +68,13 @@ public class Users extends Model {
     }
   }
 
-
   @Id
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "User uuid", accessMode = READ_ONLY)
   public UUID uuid = UUID.randomUUID();
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   public void setCustomerUuid(UUID id) {
@@ -85,6 +84,7 @@ public class Users extends Model {
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
+  @ApiModelProperty(value = "User email id", example = "username1@email.com", required = true)
   public String email;
 
   public String getEmail() {
@@ -93,6 +93,7 @@ public class Users extends Model {
 
   @JsonIgnore
   @Column(length = 256, nullable = false)
+  @ApiModelProperty(value = "User password id", example = "password")
   public String passwordHash;
 
   public void setPassword(String password) {
@@ -101,36 +102,49 @@ public class Users extends Model {
 
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(
+      value = "Creation time",
+      example = "2021-06-17 15:00:05",
+      accessMode = READ_ONLY)
   public Date creationDate;
 
   private String authToken;
 
   @Column(nullable = true)
+  @ApiModelProperty(value = "Token issued date", example = "1624255408795", accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
   @JsonIgnore
   @Column(nullable = true)
+  @ApiModelProperty(value = "User API token", accessMode = READ_ONLY)
   private String apiToken;
 
   @Column(nullable = true, columnDefinition = "TEXT")
+  @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
   // The role of the user.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "User role")
   private Role role;
+
   public Role getRole() {
     return this.role;
   }
+
   public void setRole(Role role) {
     this.role = role;
   }
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "User is primary user or not")
   private boolean isPrimary;
+
   public boolean getIsPrimary() {
     return this.isPrimary;
   }
+
   public void setIsPrimary(boolean isPrimary) {
     this.isPrimary = isPrimary;
   }
@@ -139,8 +153,7 @@ public class Users extends Model {
     return this.authTokenIssueDate;
   }
 
-  public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {
-  };
+  public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 
   @Deprecated
   public static Users get(UUID userUUID) {
@@ -175,8 +188,8 @@ public class Users extends Model {
    * @param password
    * @return Newly Created Users
    */
-  public static Users create(String email, String password, Role role, UUID customerUUID,
-                             boolean isPrimary) {
+  public static Users create(
+      String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
     Users users = new Users();
     users.email = email.toLowerCase();
     users.setPassword(password);
@@ -189,8 +202,7 @@ public class Users extends Model {
   }
 
   /**
-   * Validate if the email and password combination is valid, we use this to authenticate
-   * the Users.
+   * Validate if the email and password combination is valid, we use this to authenticate the Users.
    *
    * @param email
    * @param password
@@ -207,8 +219,7 @@ public class Users extends Model {
   }
 
   /**
-   * Validate if the email and password combination is valid, we use this to authenticate
-   * the Users.
+   * Validate if the email and password combination is valid, we use this to authenticate the Users.
    *
    * @param email
    * @return Authenticated Users Info
@@ -301,32 +312,26 @@ public class Users extends Model {
     }
   }
 
-  /**
-   * Delete authToken for the Users.
-   */
+  /** Delete authToken for the Users. */
   public void deleteAuthToken() {
     authToken = null;
     authTokenIssueDate = null;
     save();
   }
 
-  /**
-   * Get features for this Users.
-   */
+  /** Get features for this Users. */
   public JsonNode getFeatures() {
     return features == null ? Json.newObject() : features;
   }
 
-  /**
-   * Set features for this User.
-   */
+  /** Set features for this User. */
   public void setFeatures(JsonNode input) {
     this.features = input;
   }
 
   /**
-   * Upserts features for this Users. If updating a feature, only specified features will
-   * be updated.
+   * Upserts features for this Users. If updating a feature, only specified features will be
+   * updated.
    */
   public void upsertFeatures(JsonNode input) {
     if (features == null) {

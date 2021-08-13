@@ -2,18 +2,18 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.Users.Role;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import javax.persistence.PersistenceException;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
-
-import com.yugabyte.yw.common.FakeDBApplication;
-
-import javax.persistence.PersistenceException;
-
-import static com.yugabyte.yw.models.Users.Role;
-import static org.junit.Assert.*;
 
 public class UsersTest extends FakeDBApplication {
 
@@ -26,7 +26,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Users user = Users.create("tc1@test.com","password", Role.Admin, customer.uuid);
+    Users user = Users.create("tc1@test.com", "password", Role.Admin, customer.uuid);
     assertNotNull(user.uuid);
     assertEquals("tc1@test.com", user.email);
     assertNotNull(user.creationDate);
@@ -34,19 +34,18 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testGet() {
-    Users user = Users.create("tc1@test.com","password", Role.Admin, customer.uuid);
+    Users user = Users.create("tc1@test.com", "password", Role.Admin, customer.uuid);
     Users getUser = Users.get(user.uuid);
     assertEquals("tc1@test.com", user.email);
     assertNotNull(user.creationDate);
     assertEquals(user, getUser);
   }
 
-   @Test(expected = PersistenceException.class)
-   public void testCreateWithDuplicateEmail() {
-     Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
-     Users u2 = Users.create("foo@foo.com", "password", Role.ReadOnly, customer.uuid);
-   }
-
+  @Test(expected = PersistenceException.class)
+  public void testCreateWithDuplicateEmail() {
+    Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u2 = Users.create("foo@foo.com", "password", Role.ReadOnly, customer.uuid);
+  }
 
   @Test
   public void authenticateWithEmailAndValidPassword() {
@@ -74,6 +73,7 @@ public class UsersTest extends FakeDBApplication {
     Users authUser = Users.authWithToken(authToken);
     assertEquals(authUser.uuid, u.uuid);
   }
+
   @Test
   public void testAuthTokenExpiry() {
     Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);

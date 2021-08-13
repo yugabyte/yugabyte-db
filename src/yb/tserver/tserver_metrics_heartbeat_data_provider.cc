@@ -25,6 +25,9 @@ DEFINE_int32(tserver_heartbeat_metrics_interval_ms, 5000,
              "Interval (in milliseconds) at which tserver sends its metrics in a heartbeat to "
              "master.");
 
+DEFINE_bool(tserver_heartbeat_metrics_add_drive_data, true,
+            "Add drive data to metrics which tserver sends to master");
+
 using namespace std::literals;
 
 namespace yb {
@@ -37,7 +40,9 @@ void addTabletData(master::TabletPathInfoPB* path_info,
                    std::unordered_map<std::string, master::ListTabletsOnPathPB*>* paths) {
   std::string data_dir = tablet_peer->tablet_metadata()->data_root_dir();
   const auto& tablet = tablet_peer->shared_tablet();
-  if (!tablet_peer->log_available() || !tablet || data_dir.empty()) {
+  if (!tablet_peer->log_available() || !tablet || data_dir.empty() ||
+      tablet_peer->tablet_metadata()->tablet_data_state() !=
+        tablet::TabletDataState::TABLET_DATA_READY) {
     return;
   }
   // Ignore WAL files when using another path
@@ -56,6 +61,8 @@ void addTabletData(master::TabletPathInfoPB* path_info,
   tablet_on_path->set_sst_file_size(sst_file_size);
   tablet_on_path->set_wal_file_size(wal_file_size);
   tablet_on_path->set_uncompressed_sst_file_size(uncompressed_sst_file_size);
+  tablet_on_path->set_may_have_orphaned_post_split_data(
+      tablet_peer->shared_tablet()->MayHaveOrphanedPostSplitData());
 }
 
 
@@ -78,7 +85,8 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
   std::unordered_map<std::string, master::ListTabletsOnPathPB*> paths;
   master::TabletPathInfoPB* path_info =
-      !req->has_tablet_report() || req->tablet_report().is_incremental() ?
+      FLAGS_tserver_heartbeat_metrics_add_drive_data &&
+      (!req->has_tablet_report() || req->tablet_report().is_incremental()) ?
         req->mutable_tablet_path_info() : nullptr;
 
   for (const auto& tablet_peer : server().tablet_manager()->GetTabletPeers()) {
@@ -132,15 +140,17 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   VLOG_WITH_PREFIX(4) << "Total SST File Sizes: "<< total_file_sizes;
   VLOG_WITH_PREFIX(4) << "Uptime seconds: "<< uptime_seconds;
 
-  for (const std::string& path : server().fs_manager()->GetDataRootDirs()) {
-    auto stat = server().GetEnv()->GetFilesystemStatsBytes(path.c_str());
-    if (!stat.ok()) {
-      continue;
+  if (FLAGS_tserver_heartbeat_metrics_add_drive_data) {
+    for (const std::string& path : server().fs_manager()->GetFsRootDirs()) {
+      auto stat = server().GetEnv()->GetFilesystemStatsBytes(path.c_str());
+      if (!stat.ok()) {
+        continue;
+      }
+      auto* path_metric = metrics->add_path_metrics();
+      path_metric->set_path_id(path);
+      path_metric->set_used_space(stat->used_space);
+      path_metric->set_total_space(stat->total_space);
     }
-    auto* path_metric = metrics->add_path_metrics();
-    path_metric->set_path_id(path);
-    path_metric->set_used_space(stat->used_space);
-    path_metric->set_total_space(stat->total_space);
   }
 }
 

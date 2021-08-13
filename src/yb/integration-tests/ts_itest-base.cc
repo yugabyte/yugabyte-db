@@ -91,7 +91,7 @@ void TabletServerIntegrationTestBase::CreateCluster(
 // in 'tablet_servers_'.
 void TabletServerIntegrationTestBase::CreateTSProxies() {
   CHECK(tablet_servers_.empty());
-  CHECK_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
+  CHECK_OK(itest::CreateTabletServerMap(cluster_->GetLeaderMasterProxy().get(),
                                         proxy_cache_.get(),
                                         &tablet_servers_));
 }
@@ -109,7 +109,7 @@ void TabletServerIntegrationTestBase::WaitForReplicasAndUpdateLocations() {
     rpc::RpcController controller;
     kTableName.SetIntoTableIdentifierPB(req.mutable_table());
     controller.set_timeout(MonoDelta::FromSeconds(1));
-    CHECK_OK(cluster_->master_proxy()->GetTableLocations(req, &resp, &controller));
+    CHECK_OK(cluster_->GetLeaderMasterProxy()->GetTableLocations(req, &resp, &controller));
     CHECK_OK(controller.status());
     CHECK(!resp.has_error()) << "Response had an error: " << resp.error().ShortDebugString();
 
@@ -296,15 +296,14 @@ void TabletServerIntegrationTestBase::GetOnlyLiveFollowerReplicas(
 int64_t TabletServerIntegrationTestBase::GetFurthestAheadReplicaIdx(
     const std::string& tablet_id,
     const std::vector<itest::TServerDetails*>& replicas) {
-  std::vector<OpIdPB> op_ids;
-  CHECK_OK(GetLastOpIdForEachReplica(tablet_id, replicas, consensus::RECEIVED_OPID,
-                                     MonoDelta::FromSeconds(10), &op_ids));
+  auto op_ids = CHECK_RESULT(GetLastOpIdForEachReplica(
+      tablet_id, replicas, consensus::RECEIVED_OPID, MonoDelta::FromSeconds(10)));
 
   int64 max_index = 0;
   int max_replica_index = -1;
   for (int i = 0; i < op_ids.size(); i++) {
-    if (op_ids[i].index() > max_index) {
-      max_index = op_ids[i].index();
+    if (op_ids[i].index > max_index) {
+      max_index = op_ids[i].index;
       max_replica_index = i;
     }
   }
@@ -368,6 +367,12 @@ Status TabletServerIntegrationTestBase::CheckTabletServersAreAlive(int num_table
 void TabletServerIntegrationTestBase::TearDown() {
   client_.reset();
   if (cluster_) {
+    for (const auto* daemon : cluster_->master_daemons()) {
+      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive());
+    }
+    for (const auto* daemon : cluster_->tserver_daemons()) {
+      EXPECT_TRUE(daemon->IsShutdown() || daemon->IsProcessAlive());
+    }
     cluster_->Shutdown();
   }
   tablet_servers_.clear();
@@ -376,9 +381,11 @@ void TabletServerIntegrationTestBase::TearDown() {
 
 Result<std::unique_ptr<client::YBClient>> TabletServerIntegrationTestBase::CreateClient() {
   // Connect to the cluster.
-  return client::YBClientBuilder()
-             .add_master_server_addr(yb::ToString(cluster_->master()->bound_rpc_addr()))
-             .Build();
+  client::YBClientBuilder builder;
+  for (const auto* master : cluster_->master_daemons()) {
+    builder.add_master_server_addr(AsString(master->bound_rpc_addr()));
+  }
+  return builder.Build();
 }
 
 // Create a table with a single tablet.

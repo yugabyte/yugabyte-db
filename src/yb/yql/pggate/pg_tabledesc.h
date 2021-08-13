@@ -51,11 +51,12 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
     return columns_;
   }
 
-  const size_t num_hash_key_columns() const;
-  const size_t num_key_columns() const;
-  const size_t num_columns() const;
+  size_t num_hash_key_columns() const;
+  size_t num_key_columns() const;
+  size_t num_columns() const;
 
   std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSelect();
+  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSample();
   std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlInsert();
   std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlUpdate();
   std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlDelete();

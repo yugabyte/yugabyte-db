@@ -166,8 +166,8 @@ class RemoteBootstrapITest : public YBTest {
                                                            const MonoDelta& timeout,
                                                            vector<string>* tablet_ids);
 
-  gscoped_ptr<ExternalMiniCluster> cluster_;
-  gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   std::unique_ptr<YBClient> client_;
   itest::TabletServerMap ts_map_;
 
@@ -534,7 +534,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   opts.wal_paths.push_back(JoinPathSegments(testbase, "wals"));
   opts.data_paths.push_back(JoinPathSegments(testbase, "data-0"));
   opts.server_type = "tserver_test";
-  gscoped_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
+  std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
   ASSERT_OK(fs_manager->CreateInitialFileSystemLayout());
   ASSERT_OK(fs_manager->Open());
 
@@ -642,12 +642,10 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
   LOG(INFO) << "Tablet " << tablet_ids[0]
             << " is in state TABLET_DATA_READY in TS " << kFollowerIndex;
   TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
-  OpIdPB op_id;
-  ASSERT_OK(GetLastOpIdForReplica(tablet_ids[0], leader_ts,
-                                  consensus::COMMITTED_OPID, timeout,
-                                  &op_id));
+  OpId op_id = ASSERT_RESULT(GetLastOpIdForReplica(
+      tablet_ids[0], leader_ts, consensus::COMMITTED_OPID, timeout));
 
-  auto expected_index = op_id.index();
+  auto expected_index = op_id.index;
 
   ASSERT_OK(WaitForServersToAgree(timeout,
                                   ts_map_,
@@ -655,7 +653,7 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
                                   expected_index,
                                   &expected_index));
 
-  LOG(INFO) << "Op id index in TS " << kFollowerIndex << " is " << op_id.index()
+  LOG(INFO) << "Op id index in TS " << kFollowerIndex << " is " << op_id.index
             << " for tablet " << tablet_ids[0];
 
   ClusterVerifier cluster_verifier(cluster_.get());

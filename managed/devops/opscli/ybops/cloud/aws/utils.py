@@ -13,11 +13,14 @@ import json
 import logging
 import os
 import re
+import time
 
 from ipaddress import ip_network
 from ybops.utils import get_or_create, get_and_cleanup, DNS_RECORD_SET_TTL
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
+from ybops.cloud.common.cloud import AbstractCloud
+
 
 RESOURCE_PREFIX_FORMAT = "yb-{}"
 IGW_CIDR = "0.0.0.0/0"
@@ -26,6 +29,7 @@ IGW_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-igw"
 ROUTE_TABLE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-rt"
 SG_YUGABYTE_PREFIX_FORMAT = RESOURCE_PREFIX_FORMAT + "-sg"
 PEER_CONN_FORMAT = "yb-peer-conn-{}-to-{}"
+ROOT_VOLUME_LABEL = "/dev/sda1"
 
 
 class AwsBootstrapRegion():
@@ -210,7 +214,7 @@ class AwsBootstrapClient():
         self._validate_cidr_overlap()
 
     def _validate_cidr_overlap(self):
-        region_networks = [ip_network(cidr.decode('utf-8')) for cidr in self.region_cidrs.values()]
+        region_networks = [ip_network(cidr) for cidr in self.region_cidrs.values()]
         all_networks = region_networks
         for i in range(len(all_networks)):
             for j in range(i + 1, len(all_networks)):
@@ -840,7 +844,7 @@ def get_device_names(instance_type, num_volumes):
 
 
 def is_next_gen(instance_type):
-    return instance_type.startswith(("c3.", "c4.", "c5.", "m4.", "r4."))
+    return instance_type.startswith(("c3.", "c4.", "c5.", "m4.", "r4.", "m6g.", "t2."))
 
 
 def is_nvme(instance_type):
@@ -882,10 +886,10 @@ def create_instance(args):
     }]
     # Volume setup.
     volumes = []
+
     ebs = {
-        "DeleteOnTermination": True,
-        # TODO: constant
-        "VolumeSize": 40,
+        "DeleteOnTermination": args.auto_delete_boot_disk,
+        "VolumeSize": args.boot_disk_size_gb,
         "VolumeType": "gp2"
     }
 
@@ -898,7 +902,7 @@ def create_instance(args):
             "Arn": args.iam_profile_arn
         }
     volumes.append({
-        "DeviceName": "/dev/sda1",
+        "DeviceName": ROOT_VOLUME_LABEL,
         "Ebs": ebs
     })
 
@@ -931,6 +935,10 @@ def create_instance(args):
         volumes.append(volume)
     vars["BlockDeviceMappings"] = volumes
 
+    if args.boot_script:
+        with open(args.boot_script, 'r') as script:
+            vars["UserData"] = script.read()
+
     # Tag setup.
     def __create_tag(k, v):
         return {"Key": k, "Value": v}
@@ -941,12 +949,26 @@ def create_instance(args):
         __create_tag("yb-server-type", args.type)
     ]
     custom_tags = args.instance_tags if args.instance_tags is not None else '{}'
+    user_tags = []
     for k, v in json.loads(custom_tags).items():
         instance_tags.append(__create_tag(k, v))
-    vars["TagSpecifications"] = [{
+        user_tags.append(__create_tag(k, v))
+    resources_to_tag = [
+        "network-interface", "volume"
+    ]
+    tag_dicts = []
+    tag_dicts.append({
         "ResourceType": "instance",
         "Tags": instance_tags
-    }]
+    })
+    if user_tags:
+        for tagged_resource in resources_to_tag:
+            resources_tag_dict = {
+                "ResourceType": tagged_resource,
+                "Tags": user_tags
+            }
+            tag_dicts.append(resources_tag_dict)
+    vars["TagSpecifications"] = tag_dicts
     # TODO: user_data > templates/cloud_init.yml.j2, still needed?
     logging.info("[app] About to create AWS VM {}. ".format(args.search_pattern))
     instance_ids = client.create_instances(**vars)
@@ -995,6 +1017,17 @@ def update_disk(args, instance_id):
                 ec2_client.modify_volume(VolumeId=volume.id, Size=args.volume_size)
     # Wait for volumes to be ready.
     _wait_for_disk_modifications(ec2_client, vol_ids)
+
+
+def change_instance_type(region, instance_id, new_instance_type):
+    instance = get_client(region).Instance(instance_id)
+
+    try:
+        # Change instance type
+        instance.modify_attribute(Attribute='instanceType', Value=new_instance_type)
+        logging.info('Instance {}\'s type changed to {}'.format(instance_id, new_instance_type))
+    except Exception as e:
+        raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'.format(repr(e)))
 
 
 def delete_route(rt, cidr):
@@ -1059,21 +1092,32 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
 
 
 def _wait_for_disk_modifications(ec2_client, vol_ids):
-    num_vols_completed = 0
+    # This function returns as soon as the volume state is optimizing, not completed.
     num_vols_to_modify = len(vol_ids)
-    # Loop till the progress is at 100
-    while True:
+    # It should retry for a 1 hour time limit.
+    retry_num = int((1 * 3600) / AbstractCloud.SSH_WAIT_SECONDS) + 1
+    # Loop till all volumes are modified or the limit is reached.
+    while retry_num > 0:
+        num_vols_modified = 0
         response = ec2_client.describe_volumes_modifications(VolumeIds=vol_ids)
         # The response format can be found here:
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_volumes_modifications
-        for entry in response['VolumesModifications']:
-            if entry['Progress'] == 100:
-                if entry['ModificationState'] != 'completed':
-                    raise YBOpsRuntimeError(("Disk {} could not be modified.").format(
-                        entry['VolumeId']))
-                else:
-                    num_vols_completed += 1
+        for entry in response["VolumesModifications"]:
+            if entry["ModificationState"] == "failed":
+                raise YBOpsRuntimeError(("Mofication of disk {} failed.").format(
+                    entry['VolumeId']))
+
+            if entry["ModificationState"] == "optimizing" or \
+                    entry["ModificationState"] == "completed":
+                # Modifying completed.
+                num_vols_modified += 1
+
         # This means all volumes have completed modification.
-        if num_vols_completed == num_vols_to_modify:
+        if num_vols_modified == num_vols_to_modify:
             break
-        time.sleep(WAIT_TIME_BETWEEN_RETRIES)
+
+        time.sleep(AbstractCloud.SSH_WAIT_SECONDS)
+        retry_num -= 1
+
+    if retry_num <= 0:
+        raise YBOpsRuntimeError("wait_for_disk_modifications failed. Retry limit reached.")

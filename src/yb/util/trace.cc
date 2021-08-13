@@ -99,11 +99,11 @@ void DumpEntries(std::ostream* out,
     return;
   }
 
-  auto time_usec = entries.begin()->timestamp.GetDeltaSinceMin().ToMicroseconds();
+  auto time_usec = MonoDelta(entries.begin()->timestamp.time_since_epoch()).ToMicroseconds();
   const int64_t time_correction_usec = start - time_usec;
   int64_t prev_usecs = time_usec;
   for (const auto& e : entries) {
-    time_usec = e.timestamp.GetDeltaSinceMin().ToMicroseconds();
+    time_usec = MonoDelta(e.timestamp.time_since_epoch()).ToMicroseconds();
     const int64_t usecs_since_prev = time_usec - prev_usecs;
     prev_usecs = time_usec;
 
@@ -155,18 +155,16 @@ std::once_flag init_get_current_micros_fast_flag;
 int64_t initial_micros_offset;
 
 void InitGetCurrentMicrosFast() {
-  auto before = MonoTime::Now();
+  auto before = CoarseMonoClock::Now();
   initial_micros_offset = GetCurrentTimeMicros();
-  auto after = MonoTime::Now();
-  auto mid = after.GetDeltaSinceMin().ToMicroseconds();
-  mid += before.GetDeltaSinceMin().ToMicroseconds();
-  mid /= 2;
+  auto after = CoarseMonoClock::Now();
+  auto mid = MonoDelta(after.time_since_epoch() + before.time_since_epoch()).ToMicroseconds() / 2;
   initial_micros_offset -= mid;
 }
 
-int64_t GetCurrentMicrosFast(MonoTime now) {
+int64_t GetCurrentMicrosFast(CoarseTimePoint now) {
   std::call_once(init_get_current_micros_fast_flag, InitGetCurrentMicrosFast);
-  return initial_micros_offset + now.GetDeltaSinceMin().ToMicroseconds();
+  return initial_micros_offset + MonoDelta(now.time_since_epoch()).ToMicroseconds();
 }
 
 } // namespace
@@ -208,7 +206,7 @@ ScopedAdoptTrace::~ScopedAdoptTrace() {
 
 // Struct which precedes each entry in the trace.
 struct TraceEntry {
-  MonoTime timestamp;
+  CoarseTimePoint timestamp;
 
   // The source file and line number which generated the trace message.
   const char* file_path;
@@ -259,7 +257,7 @@ ThreadSafeArena* Trace::GetAndInitArena() {
 }
 
 void Trace::SubstituteAndTrace(
-    const char* file_path, int line_number, MonoTime now, GStringPiece format) {
+    const char* file_path, int line_number, CoarseTimePoint now, GStringPiece format) {
   int msg_len = format.size();
   DCHECK_NE(msg_len, 0) << "Bad format specification";
   TraceEntry* entry = NewEntry(msg_len, file_path, line_number, now);
@@ -270,7 +268,7 @@ void Trace::SubstituteAndTrace(
 
 void Trace::SubstituteAndTrace(const char* file_path,
                                int line_number,
-                               MonoTime now,
+                               CoarseTimePoint now,
                                GStringPiece format,
                                const SubstituteArg& arg0, const SubstituteArg& arg1,
                                const SubstituteArg& arg2, const SubstituteArg& arg3,
@@ -289,7 +287,8 @@ void Trace::SubstituteAndTrace(const char* file_path,
   AddEntry(entry);
 }
 
-TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number, MonoTime now) {
+TraceEntry* Trace::NewEntry(
+    int msg_len, const char* file_path, int line_number, CoarseTimePoint now) {
   auto* arena = GetAndInitArena();
   size_t size = offsetof(TraceEntry, message) + msg_len;
   void* dst = arena->AllocateBytesAligned(size, alignof(TraceEntry));
@@ -385,7 +384,7 @@ PlainTrace::PlainTrace() {
 }
 
 void PlainTrace::Trace(const char *file_path, int line_number, const char *message) {
-  auto timestamp = MonoTime::Now();
+  auto timestamp = CoarseMonoClock::Now();
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     if (size_ < kMaxEntries) {
