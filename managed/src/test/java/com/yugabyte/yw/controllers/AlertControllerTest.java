@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -831,7 +831,7 @@ public class AlertControllerTest extends FakeDBApplication {
   @Test
   public void testListTemplates() {
     AlertDefinitionTemplateApiFilter apiFilter = new AlertDefinitionTemplateApiFilter();
-    apiFilter.setName(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getName());
+    apiFilter.setName(AlertTemplate.MEMORY_CONSUMPTION.getName());
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -846,18 +846,15 @@ public class AlertControllerTest extends FakeDBApplication {
 
     assertThat(templates, hasSize(1));
     AlertDefinitionGroup template = templates.get(0);
-    assertThat(template.getName(), equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getName()));
-    assertThat(template.getTemplate(), equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION));
+    assertThat(template.getName(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getName()));
+    assertThat(template.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
     assertThat(
-        template.getDescription(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getDescription()));
-    assertThat(
-        template.getTargetType(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getTargetType()));
+        template.getDescription(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDescription()));
+    assertThat(template.getTargetType(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getTargetType()));
     assertThat(template.getTarget(), equalTo(new AlertDefinitionGroupTarget().setAll(true)));
     assertThat(
         template.getThresholdUnit(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getDefaultThresholdUnit()));
+        equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDefaultThresholdUnit()));
     assertThat(
         template.getThresholds(),
         equalTo(
@@ -865,10 +862,10 @@ public class AlertControllerTest extends FakeDBApplication {
                 AlertDefinitionGroup.Severity.SEVERE,
                 new AlertDefinitionGroupThreshold()
                     .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
-                    .setThreshold(90))));
+                    .setThreshold(90D))));
     assertThat(
         template.getDurationSec(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getDefaultDurationSec()));
+        equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDefaultDurationSec()));
   }
 
   @Test
@@ -982,7 +979,7 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(group.getCreateTime(), notNullValue());
     assertThat(group.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(group.getName(), equalTo("alertDefinitionGroup"));
-    assertThat(group.getTemplate(), equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION));
+    assertThat(group.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
     assertThat(group.getDescription(), equalTo("alertDefinitionGroup description"));
     assertThat(group.getTargetType(), equalTo(AlertDefinitionGroup.TargetType.UNIVERSE));
     assertThat(
@@ -998,7 +995,7 @@ public class AlertControllerTest extends FakeDBApplication {
                 AlertDefinitionGroup.Severity.SEVERE,
                 new AlertDefinitionGroupThreshold()
                     .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
-                    .setThreshold(1))));
+                    .setThreshold(1D))));
     assertThat(group.getDurationSec(), equalTo(15));
     assertThat(group.getRouteUUID(), equalTo(route.getUuid()));
   }
