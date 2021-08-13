@@ -20,18 +20,19 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Result;
 
 public abstract class AbstractInitializer {
+
   public static final Logger LOG = LoggerFactory.getLogger(AbstractInitializer.class);
 
   @Inject ApiHelper apiHelper;
 
   @Inject CloudQueryHelper cloudQueryHelper;
 
-  public abstract Result initialize(UUID customerUUID, UUID providerUUID);
+  public abstract void initialize(UUID customerUUID, UUID providerUUID);
 
   protected static class InitializationContext {
+
     final Provider provider;
     final List<Map<String, String>> availableInstances = new ArrayList<>();
 
