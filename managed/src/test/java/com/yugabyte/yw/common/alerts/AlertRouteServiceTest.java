@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThrows;
 
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.YWServiceException;
@@ -225,8 +225,9 @@ public class AlertRouteServiceTest extends FakeDBApplication {
         ModelFactory.createAlertRoute(
             customerUUID, ALERT_ROUTE_NAME, Collections.singletonList(receiver));
     AlertDefinitionGroup group =
-        alertDefinitionGroupService.createGroupFromTemplate(
-            defaultCustomer, AlertDefinitionTemplate.MEMORY_CONSUMPTION);
+        alertDefinitionGroupService
+            .createDefinitionTemplate(defaultCustomer, AlertTemplate.MEMORY_CONSUMPTION)
+            .getDefaultGroup();
     group.setRouteUUID(route.getUuid());
     group.save();
 

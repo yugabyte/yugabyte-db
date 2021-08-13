@@ -23,7 +23,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.impl.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
@@ -353,9 +354,10 @@ public class SessionController extends Controller {
       alertRouteService.createDefaultRoute(cust.uuid);
 
       List<AlertDefinitionGroup> alertGroups =
-          Arrays.stream(AlertDefinitionTemplate.values())
-              .filter(AlertDefinitionTemplate::isCreateForNewCustomer)
-              .map(template -> alertDefinitionGroupService.createGroupFromTemplate(cust, template))
+          Arrays.stream(AlertTemplate.values())
+              .filter(AlertTemplate::isCreateForNewCustomer)
+              .map(template -> alertDefinitionGroupService.createDefinitionTemplate(cust, template))
+              .map(AlertDefinitionTemplate::getDefaultGroup)
               .collect(Collectors.toList());
       alertDefinitionGroupService.save(alertGroups);
 

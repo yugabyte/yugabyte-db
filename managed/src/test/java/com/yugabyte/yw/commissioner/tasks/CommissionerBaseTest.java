@@ -10,9 +10,6 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
-import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.QueryAlerts;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -24,7 +21,7 @@ import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
-import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.YWGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -50,9 +47,8 @@ import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
-import play.test.WithApplication;
 
-public abstract class CommissionerBaseTest extends WithApplication {
+public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
   private int maxRetryCount = 200;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
@@ -67,13 +63,9 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected KubernetesManager mockKubernetesManager;
   protected SwamperHelper mockSwamperHelper;
   protected CallHome mockCallHome;
-  protected HealthChecker mockHealthChecker;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
-  protected QueryAlerts mockQueryAlerts;
-  protected CleanExpiredMetrics mockCleanExpiredMetrics;
-  protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected MetricService metricService;
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
@@ -125,38 +117,31 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockKubernetesManager = mock(KubernetesManager.class);
     mockSwamperHelper = mock(SwamperHelper.class);
     mockCallHome = mock(CallHome.class);
-    mockHealthChecker = mock(HealthChecker.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
-    mockQueryAlerts = mock(QueryAlerts.class);
-    mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
-    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
-    return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
-        .configure((Map) Helpers.inMemoryDatabase())
-        .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
-        .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
-        .overrides(bind(ConfigHelper.class).toInstance(mockConfigHelper))
-        .overrides(bind(AWSInitializer.class).toInstance(mockAWSInitializer))
-        .overrides(bind(GCPInitializer.class).toInstance(mockGCPInitializer))
-        .overrides(bind(YBClientService.class).toInstance(mockYBClient))
-        .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
-        .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
-        .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
-        .overrides(bind(TableManager.class).toInstance(mockTableManager))
-        .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
-        .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
-        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
-        .overrides(bind(CallHome.class).toInstance(mockCallHome))
-        .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
-        .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-        .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
-        .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
-        .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
-        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
-        .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))
+    return configureApplication(
+            new GuiceApplicationBuilder()
+                .disable(SwaggerModule.class)
+                .configure((Map) Helpers.inMemoryDatabase())
+                .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+                .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
+                .overrides(bind(ConfigHelper.class).toInstance(mockConfigHelper))
+                .overrides(bind(AWSInitializer.class).toInstance(mockAWSInitializer))
+                .overrides(bind(GCPInitializer.class).toInstance(mockGCPInitializer))
+                .overrides(bind(YBClientService.class).toInstance(mockYBClient))
+                .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
+                .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
+                .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
+                .overrides(bind(TableManager.class).toInstance(mockTableManager))
+                .overrides(bind(KubernetesManager.class).toInstance(mockKubernetesManager))
+                .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
+                .overrides(bind(CallHome.class).toInstance(mockCallHome))
+                .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
+                .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+                .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+                .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies)))
         .build();
   }
 

@@ -23,7 +23,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.YWServiceException;
@@ -186,7 +186,7 @@ public class CustomerController extends AuthenticatedController {
             alertDefinitionGroupService.list(
                 AlertDefinitionGroupFilter.builder()
                     .customerUuid(customerUUID)
-                    .name(AlertDefinitionTemplate.CLOCK_SKEW.getName())
+                    .name(AlertTemplate.CLOCK_SKEW.getName())
                     .build());
         for (AlertDefinitionGroup group : groups) {
           group.setActive(alertingFormData.alertingData.enableClockSkew);
@@ -204,7 +204,7 @@ public class CustomerController extends AuthenticatedController {
             alertDefinitionGroupService.list(
                 AlertDefinitionGroupFilter.builder()
                     .customerUuid(customerUUID)
-                    .name(AlertDefinitionTemplate.BACKUP_FAILURE.getName())
+                    .name(AlertTemplate.BACKUP_FAILURE.getName())
                     .build());
         for (AlertDefinitionGroup group : groups) {
           group.setActive(alertingFormData.alertingData.reportBackupFailures);

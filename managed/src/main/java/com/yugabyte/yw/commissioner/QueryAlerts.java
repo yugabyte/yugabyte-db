@@ -130,7 +130,7 @@ public class QueryAlerts {
           metricService.setStatusMetric(
               metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS),
               "Error querying for alerts: " + e.getMessage());
-          log.error("Error querying for alerts alerts", e);
+          log.error("Error querying for alerts", e);
         }
         alertManager.sendNotifications();
       } catch (Exception e) {

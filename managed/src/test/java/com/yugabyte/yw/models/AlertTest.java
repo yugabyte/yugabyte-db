@@ -169,6 +169,7 @@ public class AlertTest extends FakeDBApplication {
     AlertDefinition definition2 = ModelFactory.createAlertDefinition(cust2, universe2);
     Alert alert2 = ModelFactory.createAlert(cust2, definition2);
     alert2.setState(Alert.State.RESOLVED);
+    alert2.setTargetName("Some other target");
 
     alertService.save(alert2);
 
@@ -190,6 +191,9 @@ public class AlertTest extends FakeDBApplication {
     queryAndAssertByFilter(filter, definition);
 
     filter = AlertFilter.builder().excludeUuid(alert2.getUuid()).build();
+    queryAndAssertByFilter(filter, definition);
+
+    filter = AlertFilter.builder().targetName("Target 1").build();
     queryAndAssertByFilter(filter, definition);
   }
 

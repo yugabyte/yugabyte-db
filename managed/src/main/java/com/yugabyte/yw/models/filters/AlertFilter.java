@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
@@ -37,6 +38,8 @@ public class AlertFilter {
   Set<AlertDefinitionGroup.TargetType> groupTypes;
   AlertLabel label;
   Boolean notificationPending;
+  String targetName;
+  Date resolvedDateBefore;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -71,6 +74,12 @@ public class AlertFilter {
     }
     if (notificationPending != null) {
       result.notificationPending(notificationPending);
+    }
+    if (targetName != null) {
+      result.targetName(targetName);
+    }
+    if (resolvedDateBefore != null) {
+      result.resolvedDateBefore(resolvedDateBefore);
     }
     return result;
   }
@@ -165,6 +174,16 @@ public class AlertFilter {
 
     public AlertFilterBuilder notificationPending(boolean notificationPending) {
       this.notificationPending = notificationPending;
+      return this;
+    }
+
+    public AlertFilterBuilder targetName(@NonNull String targetName) {
+      this.targetName = targetName;
+      return this;
+    }
+
+    public AlertFilterBuilder resolvedDateBefore(@NonNull Date resolvedDateBefore) {
+      this.resolvedDateBefore = resolvedDateBefore;
       return this;
     }
   }

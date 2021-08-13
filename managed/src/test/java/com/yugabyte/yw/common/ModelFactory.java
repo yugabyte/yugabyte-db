@@ -279,13 +279,13 @@ public class ModelFactory {
             .setTarget(
                 new AlertDefinitionGroupTarget()
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
-            .setTemplate(AlertDefinitionTemplate.MEMORY_CONSUMPTION)
+            .setTemplate(AlertTemplate.MEMORY_CONSUMPTION)
             .setThresholds(
                 ImmutableMap.of(
                     AlertDefinitionGroup.Severity.SEVERE,
                     new AlertDefinitionGroupThreshold()
                         .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
-                        .setThreshold(1)))
+                        .setThreshold(1D)))
             .setThresholdUnit(Unit.PERCENT)
             .generateUUID();
     modifier.accept(group);

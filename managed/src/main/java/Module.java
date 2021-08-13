@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
+import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
@@ -108,6 +109,7 @@ public class Module extends AbstractModule {
       bind(AlertManager.class).asEagerSingleton();
       bind(QueryAlerts.class).asEagerSingleton();
       bind(CleanExpiredMetrics.class).asEagerSingleton();
+      bind(AlertsGarbageCollector.class).asEagerSingleton();
       bind(AlertConfigurationWriter.class).asEagerSingleton();
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformInstanceClientFactory.class).asEagerSingleton();

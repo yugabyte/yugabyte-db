@@ -7,7 +7,7 @@ import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
@@ -56,7 +56,7 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     u = ModelFactory.createUniverse(customer.getCustomerId());
 
-    for (AlertDefinitionTemplate template : AlertDefinitionTemplate.values()) {
+    for (AlertTemplate template : AlertTemplate.values()) {
       ModelFactory.createAlertDefinitionGroup(
           customer,
           u,

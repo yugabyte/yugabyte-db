@@ -10,6 +10,10 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -17,6 +21,7 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
+@ApiModel(value = "Alert configuration threshold.")
 public class AlertDefinitionGroupThreshold {
 
   public enum Condition {
@@ -34,6 +39,9 @@ public class AlertDefinitionGroupThreshold {
     }
   }
 
+  @ApiModelProperty(value = "Threshold condition", accessMode = READ_WRITE)
   private Condition condition;
-  private double threshold;
+
+  @ApiModelProperty(value = "Threshold value", accessMode = READ_WRITE)
+  private Double threshold;
 }

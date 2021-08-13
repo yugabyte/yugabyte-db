@@ -183,9 +183,10 @@ public class AlertService {
   }
 
   @Transactional
-  public void delete(AlertFilter filter) {
+  public int delete(AlertFilter filter) {
     int deleted = createQueryByFilter(filter).delete();
     log.debug("{} alerts deleted", deleted);
+    return deleted;
   }
 
   /**

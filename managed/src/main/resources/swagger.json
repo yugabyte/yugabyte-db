@@ -85,7 +85,7 @@
           "type" : "string"
         },
         "nextNotificationTime" : {
-          "description" : "Time of the nex notification attempt.",
+          "description" : "Time of the next notification attempt.",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -149,6 +149,39 @@
       "required" : [ "labels", "severityIndex", "stateIndex" ],
       "type" : "object"
     },
+    "Alert configuration group target." : {
+      "properties" : {
+        "all" : {
+          "description" : "Alert applicable for all targets",
+          "type" : "boolean"
+        },
+        "uuids" : {
+          "description" : "Alert target uuids",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "type" : "object"
+    },
+    "Alert configuration threshold." : {
+      "properties" : {
+        "condition" : {
+          "description" : "Threshold condition",
+          "enum" : [ "GREATER_THAN", "LESS_THAN" ],
+          "type" : "string"
+        },
+        "threshold" : {
+          "description" : "Threshold value",
+          "format" : "double",
+          "type" : "number"
+        }
+      },
+      "type" : "object"
+    },
     "AlertApiFilter" : {
       "properties" : {
         "groupTypes" : {
@@ -179,6 +212,9 @@
           "type" : "array",
           "uniqueItems" : true
         },
+        "targetName" : {
+          "type" : "string"
+        },
         "uuids" : {
           "items" : {
             "format" : "uuid",
@@ -188,63 +224,82 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "groupTypes", "groupUuid", "severities", "states", "uuids" ],
+      "required" : [ "groupTypes", "groupUuid", "severities", "states", "targetName", "uuids" ],
       "type" : "object"
     },
     "AlertDefinitionGroup" : {
+      "description" : "Alert configuration group.",
       "properties" : {
         "active" : {
+          "description" : "Is group alerts raised or not",
           "type" : "boolean"
         },
         "createTime" : {
+          "description" : "Creation time",
           "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
+          "description" : "Customer uuid",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "description" : {
+          "description" : "Group description",
           "type" : "string"
         },
         "durationSec" : {
+          "description" : "Duration in seconds, while condition is met to raise an alert",
           "format" : "int32",
           "type" : "integer"
         },
         "name" : {
+          "description" : "Group name",
           "type" : "string"
         },
         "routeUUID" : {
+          "description" : "Alert route uuid",
           "format" : "uuid",
           "type" : "string"
         },
         "target" : {
-          "$ref" : "#/definitions/AlertDefinitionGroupTarget"
+          "$ref" : "#/definitions/Alert configuration group target.",
+          "description" : "Group target"
         },
         "targetType" : {
+          "description" : "Group target type",
           "enum" : [ "CUSTOMER", "UNIVERSE" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "template" : {
+          "description" : "Template name",
           "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NODE_ERRORS", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "thresholdUnit" : {
+          "description" : "Thresholds unit",
           "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "thresholds" : {
           "additionalProperties" : {
-            "$ref" : "#/definitions/AlertDefinitionGroupThreshold"
+            "$ref" : "#/definitions/Alert configuration threshold."
           },
+          "description" : "Group thresholds",
           "type" : "object"
         },
         "uuid" : {
+          "description" : "Group uuid",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         }
       },
-      "required" : [ "active", "createTime", "customerUUID", "description", "durationSec", "name", "routeUUID", "target", "targetType", "template", "thresholdUnit", "thresholds", "uuid" ],
       "type" : "object"
     },
     "AlertDefinitionGroupApiFilter" : {
@@ -329,35 +384,96 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
-    "AlertDefinitionGroupTarget" : {
+    "AlertDefinitionTemplate" : {
+      "description" : "Alert configuration template.",
       "properties" : {
-        "all" : {
+        "active" : {
+          "description" : "Is group alerts raised or not",
           "type" : "boolean"
         },
-        "uuids" : {
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        }
-      },
-      "required" : [ "all", "uuids" ],
-      "type" : "object"
-    },
-    "AlertDefinitionGroupThreshold" : {
-      "properties" : {
-        "condition" : {
-          "enum" : [ "GREATER_THAN", "LESS_THAN" ],
+        "createTime" : {
+          "description" : "Creation time",
+          "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
-        "threshold" : {
+        "customerUUID" : {
+          "description" : "Customer uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "description" : {
+          "description" : "Group description",
+          "type" : "string"
+        },
+        "durationSec" : {
+          "description" : "Duration in seconds, while condition is met to raise an alert",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "name" : {
+          "description" : "Group name",
+          "type" : "string"
+        },
+        "routeUUID" : {
+          "description" : "Alert route uuid",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "target" : {
+          "$ref" : "#/definitions/Alert configuration group target.",
+          "description" : "Group target"
+        },
+        "targetType" : {
+          "description" : "Group target type",
+          "enum" : [ "CUSTOMER", "UNIVERSE" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "template" : {
+          "description" : "Template name",
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NODE_ERRORS", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "thresholdInteger" : {
+          "description" : "Is alert threshold integer or floating point",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "thresholdMaxValue" : {
+          "description" : "Alert threshold maximal value",
           "format" : "double",
+          "readOnly" : true,
           "type" : "number"
+        },
+        "thresholdMinValue" : {
+          "description" : "Alert threshold minimal value",
+          "format" : "double",
+          "readOnly" : true,
+          "type" : "number"
+        },
+        "thresholdUnit" : {
+          "description" : "Thresholds unit",
+          "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "thresholds" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/Alert configuration threshold."
+          },
+          "description" : "Group thresholds",
+          "type" : "object"
+        },
+        "uuid" : {
+          "description" : "Group uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
         }
       },
-      "required" : [ "condition", "threshold" ],
       "type" : "object"
     },
     "AlertDefinitionTemplateApiFilter" : {
@@ -4440,7 +4556,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertDefinitionGroup"
+                "$ref" : "#/definitions/AlertDefinitionTemplate"
               },
               "type" : "array"
             }

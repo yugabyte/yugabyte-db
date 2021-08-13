@@ -10,19 +10,31 @@
 package com.yugabyte.yw.models.common;
 
 public enum Unit {
-  STATUS(Measure.STATUS, "", ""),
-  COUNT(Measure.COUNT, "", ""),
-  PERCENT(Measure.PERCENTAGE, "%", "pct"),
-  MILLISECOND(Measure.TIME, "ms", "ms");
+  STATUS(Measure.STATUS, "", "", 0, 1, true),
+  COUNT(Measure.COUNT, "", "", 0, Double.MAX_VALUE, true),
+  PERCENT(Measure.PERCENTAGE, "%", "pct", 0, 100, false),
+  MILLISECOND(Measure.TIME, "ms", "ms", 0, Double.MAX_VALUE, true);
 
   private final Measure measure;
   private final String displayName;
   private final String metricName;
+  private final double minValue;
+  private final double maxValue;
+  private final boolean integer;
 
-  Unit(Measure measure, String displayName, String metricName) {
+  Unit(
+      Measure measure,
+      String displayName,
+      String metricName,
+      double minValue,
+      double maxValue,
+      boolean integer) {
     this.measure = measure;
     this.displayName = displayName;
     this.metricName = metricName;
+    this.minValue = minValue;
+    this.maxValue = maxValue;
+    this.integer = integer;
   }
 
   public Measure getMeasure() {
@@ -35,5 +47,17 @@ public enum Unit {
 
   public String getMetricName() {
     return metricName;
+  }
+
+  public double getMinValue() {
+    return minValue;
+  }
+
+  public double getMaxValue() {
+    return maxValue;
+  }
+
+  public boolean isInteger() {
+    return integer;
   }
 }

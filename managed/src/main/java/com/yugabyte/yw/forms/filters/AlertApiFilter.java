@@ -17,6 +17,7 @@ import java.util.UUID;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @NoArgsConstructor
@@ -26,6 +27,7 @@ public class AlertApiFilter {
   private Set<AlertDefinitionGroup.Severity> severities;
   private Set<AlertDefinitionGroup.TargetType> groupTypes;
   private Set<Alert.State> states;
+  private String targetName;
 
   public AlertFilter toFilter() {
     AlertFilter.AlertFilterBuilder builder = AlertFilter.builder();
@@ -43,6 +45,9 @@ public class AlertApiFilter {
     }
     if (!CollectionUtils.isEmpty(states)) {
       builder.states(states);
+    }
+    if (!StringUtils.isEmpty(targetName)) {
+      builder.targetName(targetName);
     }
     return builder.build();
   }

@@ -10,6 +10,10 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
@@ -19,7 +23,11 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
+@ApiModel(value = "Alert configuration group target.")
 public class AlertDefinitionGroupTarget {
+  @ApiModelProperty(value = "Alert applicable for all targets", accessMode = READ_WRITE)
   private boolean all;
+
+  @ApiModelProperty(value = "Alert target uuids", accessMode = READ_WRITE)
   private Set<UUID> uuids;
 }
