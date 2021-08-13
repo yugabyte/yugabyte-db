@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -36,6 +37,8 @@ import play.data.validation.Constraints;
 @Entity
 public class AlertRoute extends Model {
 
+  public static final int MAX_NAME_LENGTH = 255;
+
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
@@ -46,7 +49,7 @@ public class AlertRoute extends Model {
   private UUID customerUUID;
 
   @Constraints.Required
-  @Column(columnDefinition = "Text", length = 255, nullable = false)
+  @Column(columnDefinition = "Text", length = MAX_NAME_LENGTH, nullable = false)
   private String name;
 
   @ToString.Exclude
