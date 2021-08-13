@@ -3,39 +3,42 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
-import java.time.Duration;
-import java.util.*;
-import java.util.Map.Entry;
-
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
-import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.forms.*;
-import com.yugabyte.yw.models.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.typesafe.config.Config;
-import org.apache.commons.lang3.StringUtils;
-import org.yb.Common;
-import org.yb.client.YBClient;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
-
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
-
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
+import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.Common;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
 import play.api.Play;
 import play.libs.Json;
 
@@ -94,6 +97,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     universe.setUniverseDetails(universeDetails);
   }
 
+  /**
+   * verifyUniverseVersion
+   *
+   * @param expectedUniverseVersion
+   * @param universe
+   *     <p>This is attempting to flag situations where the UI is operating on a stale copy of the
+   *     universe for example, when multiple browsers or users are operating on the same universe.
+   *     <p>This assumes that the UI supplies the expectedUniverseVersion in the API call but this
+   *     is not always true. If the UI does not supply it, expectedUniverseVersion is set from
+   *     universe.version itself so this check is not useful in that case.
+   */
   public void verifyUniverseVersion(int expectedUniverseVersion, Universe universe) {
     if (expectedUniverseVersion != -1 && expectedUniverseVersion != universe.version) {
       String msg =
@@ -1333,20 +1347,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return true if we should increment the version, false otherwise
    */
   protected boolean shouldIncrementVersion() {
+
+    if (!HighAvailabilityConfig.get().isPresent()) {
+      return false;
+    }
+
+    // For create/destroy/pause/resume operations, do not attempt to bump up
+    // the cluster config version on the leader master because the cluster
+    // and the leader master may not be available at the time we are attempting to do this.
     if (userTaskUUID == null) {
       return false;
     }
 
-    final CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-    if (task == null) {
+    TaskInfo taskInfo = TaskInfo.get(userTaskUUID);
+    if (taskInfo == null) {
       return false;
     }
 
-    return !(task.getTarget().equals(CustomerTask.TargetType.Universe)
-        && (task.getType().equals(CustomerTask.TaskType.Create)
-            || task.getType().equals(CustomerTask.TaskType.Delete)
-            || task.getType().equals(CustomerTask.TaskType.Pause)
-            || task.getType().equals(CustomerTask.TaskType.Resume)));
+    TaskType taskType = taskInfo.getTaskType();
+    return !(taskType == TaskType.CreateUniverse
+        || taskType == TaskType.DestroyUniverse
+        || taskType == TaskType.PauseUniverse
+        || taskType == TaskType.ResumeUniverse);
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.
@@ -1380,15 +1402,36 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // For backwards compatibility (see V56__Alter_Universe_Version.sql)
     if (universe.version == -1) {
       universe.version = clusterConfigVersion;
+      LOG.info(
+          "Updating version for universe {} from -1 to cluster config version {}",
+          universeUUID,
+          universe.version);
       universe.save();
     }
 
     return universe.version == clusterConfigVersion;
   }
 
-  // TODO: Use of synchronized in static scope! Looks suspicious.
-  //  Use of transactions may be better.
+  /**
+   * checkUniverseVersion
+   *
+   * @param universeUUID
+   *     <p>Check that the universe version in the Platform database matches the one in the cluster
+   *     config on the yugabyte db master. A mismatch could indicate one of two issues: 1. Multiple
+   *     Platform replicas in a HA config are operating on the universe and (async) replication has
+   *     failed to sychronize Platform db state correctly across different Platforms. We want to
+   *     flag this case. 2. Manual yb-admin operations on the cluster have bumped up the database
+   *     cluster config version. This is not necessarily always a problem, so we choose to ignore
+   *     this case for now. When we get to a point where manual yb-admin operations are never
+   *     needed, we can consider flagging this case. For now, we will let the universe version on
+   *     Platform and the cluster config version on the master diverge.
+   */
   private static void checkUniverseVersion(UUID universeUUID) {
+    if (!HighAvailabilityConfig.get().isPresent()) {
+      LOG.debug("Skipping cluster config version check for universe {}", universeUUID);
+      return;
+    }
+
     if (!versionsMatch(universeUUID)) {
       throw new RuntimeException("Universe version does not match cluster config version");
     }
@@ -1412,9 +1455,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           new ModifyClusterConfigIncrementVersion(client, version);
       int newVersion = modifyConfig.incrementVersion();
       ybService.closeClient(client, hostPorts);
-      LOG.debug("Updated cluster config version from {} to {}", version, newVersion);
+      LOG.info(
+          "Updated cluster config version for universe {} from {} to {}",
+          universeUUID,
+          version,
+          newVersion);
     } catch (Exception e) {
-      LOG.error("Error occurred incrementing cluster config version", e);
+      LOG.error(
+          "Error occurred incrementing cluster config version for universe {}", universeUUID, e);
       throw new RuntimeException("Error incrementing cluster config version", e);
     } finally {
       ybService.closeClient(client, hostPorts);

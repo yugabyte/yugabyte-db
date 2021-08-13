@@ -2,6 +2,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.Backup.BackupState.Completed;
+import static com.yugabyte.yw.models.Backup.BackupState.Failed;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
+
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -11,25 +17,14 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
-import org.yb.master.Master;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-
-import static com.yugabyte.yw.models.Backup.BackupState.Completed;
-import static com.yugabyte.yw.models.Backup.BackupState.Failed;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class BackupUniverseTest extends CommissionerBaseTest {
@@ -38,23 +33,9 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
   Universe defaultUniverse;
 
-  private YBClient mockClient;
-
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
-        new ChangeMasterClusterConfigResponse(0, "", null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
-    } catch (Exception e) {
-    }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Map<String, String> config = new HashMap<>();

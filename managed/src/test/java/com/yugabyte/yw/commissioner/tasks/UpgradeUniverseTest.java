@@ -155,14 +155,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     // Setup mocks
     mockClient = mock(YBClient.class);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-    } catch (Exception e) {
-    }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
     when(mockClient.getLeaderMasterHostAndPort())
@@ -663,8 +655,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   private void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
 
     List<String> nodeNames =
-        subTasks
-            .stream()
+        subTasks.stream()
             .map(t -> t.getTaskDetails().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
@@ -681,8 +672,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
             List<Object> values =
-                subTaskDetails
-                    .stream()
+                subTaskDetails.stream()
                     .map(
                         t -> {
                           JsonNode data =
@@ -935,15 +925,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testGFlagsUpgradeWithSameMasterFlags() {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-    } catch (Exception e) {
-    }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> masterFlags = ImmutableMap.of("master-flag", "m123");
     Universe.UniverseUpdater updater =
@@ -986,15 +967,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testGFlagsUpgradeWithSameTserverFlags() {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-    } catch (Exception e) {
-    }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "m123");
     Universe.UniverseUpdater updater =
@@ -1037,27 +1010,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testRemoveFlags() {
     for (ServerType serverType : ImmutableList.of(MASTER, TSERVER)) {
-      if (serverType.equals(MASTER)) {
-        Master.SysClusterConfigEntryPB.Builder configBuilder =
-            Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
-        GetMasterClusterConfigResponse mockConfigResponse =
-            new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-        try {
-          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-        } catch (Exception e) {
-        }
-        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-      } else if (serverType.equals(TSERVER)) {
-        Master.SysClusterConfigEntryPB.Builder configBuilder =
-            Master.SysClusterConfigEntryPB.newBuilder().setVersion(4);
-        GetMasterClusterConfigResponse mockConfigResponse =
-            new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-        try {
-          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-        } catch (Exception e) {
-        }
-        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-      }
       // Simulate universe created with master flags and tserver flags.
       final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "t1");
       final Map<String, String> masterGFlags = ImmutableMap.of("master-flag", "m1");

@@ -2,6 +2,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -15,24 +21,14 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.*;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
-import org.yb.master.Master;
 import play.libs.Json;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class StartNodeInUniverseTest extends CommissionerBaseTest {
@@ -40,21 +36,10 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
-  YBClient mockClient;
 
   @Before
   public void setUp() {
     super.setUp();
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    mockClient = mock(YBClient.class);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-    } catch (Exception e) {
-    }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
     // create default universe

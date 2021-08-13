@@ -2,56 +2,58 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.YBClient;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import play.libs.Json;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.Master;
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyBoolean;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.*;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
+import org.yb.client.YBClient;
+import org.yb.master.Master;
+import play.libs.Json;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class AddNodeToUniverseTest extends CommissionerBaseTest {
   public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverseTest.class);
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
@@ -154,6 +156,13 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     taskParams.azUuid = AvailabilityZone.getByCode(defaultProvider, AZ_CODE).uuid;
     try {
       UUID taskUUID = commissioner.submit(TaskType.AddNodeToUniverse, taskParams);
+      CustomerTask.create(
+          defaultCustomer,
+          universe.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Add,
+          DEFAULT_NODE_NAME);
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
@@ -268,15 +277,31 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testAddNodeSuccess() {
+  @Parameters({"true", "false"})
+  public void testAddNodeSuccess(boolean isHAConfig) throws Exception {
+
+    if (isHAConfig) {
+      HighAvailabilityConfig.create("clusterKey");
+    }
     mockWaits(mockClient, 3);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
+
     verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     assertAddNodeSequence(subTasksByPosition, false);
+
+    if (isHAConfig) {
+      // In HA config mode, we expect any save of universe details to result in
+      // a bump on the cluster config version. The actual number depends on the
+      // number of invocations of saveUniverseDetails so it can vary but the
+      // important thing is that it is much more than the other case.
+      verify(mockClient, times(8)).changeMasterClusterConfig(any());
+    } else {
+      verify(mockClient, times(1)).changeMasterClusterConfig(any());
+    }
   }
 
   @Test
