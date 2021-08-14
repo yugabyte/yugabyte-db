@@ -274,8 +274,19 @@ SELECT * FROM cypher('cypher_create', $$
 $$) as (a agtype);
 
 --
+-- check the cypher CREATE clause inside an INSERT INTO
+--
+CREATE TABLE simple_path (u agtype, e agtype, v agtype);
+
+INSERT INTO simple_path(SELECT * FROM cypher('cypher_create',
+    $$CREATE (u)-[e:knows]->(v) return u, e, v
+    $$) AS (u agtype, e agtype, v agtype));
+
+SELECT count(*) FROM simple_path;
+--
 -- Clean up
 --
+DROP TABLE simple_path;
 DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
 

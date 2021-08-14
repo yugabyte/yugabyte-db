@@ -324,6 +324,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
     EState *estate = css->css.ss.ps.state;
     ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
     ResultRelInfo *resultRelInfo = node->resultRelInfo;
+    ResultRelInfo *old_estate_es_result_relation_info = NULL;
     TupleTableSlot *elemTupleSlot = node->elemTupleSlot;
     TupleTableSlot *scanTupleSlot = econtext->ecxt_scantuple;
     Datum id;
@@ -368,6 +369,10 @@ static void create_edge(cypher_create_custom_scan_state *css,
      *
      * Note: This obliterates what was their previously
      */
+
+    /* save the old result relation info */
+    old_estate_es_result_relation_info = estate->es_result_relation_info;
+
     estate->es_result_relation_info = resultRelInfo;
 
     ExecClearTuple(elemTupleSlot);
@@ -393,6 +398,9 @@ static void create_edge(cypher_create_custom_scan_state *css,
 
     // Insert the new edge
     insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+
+    /* restore the old result relation info */
+    estate->es_result_relation_info = old_estate_es_result_relation_info;
 
     /*
      * When the edge is used by clauses higher in the execution tree
@@ -447,12 +455,18 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
      */
     if (CYPHER_TARGET_NODE_INSERT_ENTITY(node->flags))
     {
+        ResultRelInfo *old_estate_es_result_relation_info = NULL;
+
         /*
          * Set estate's result relation to the vertex's result
          * relation.
          *
          * Note: This obliterates what was their previously
          */
+
+        /* save the old result relation info */
+        old_estate_es_result_relation_info = estate->es_result_relation_info;
+
         estate->es_result_relation_info = resultRelInfo;
 
         ExecClearTuple(elemTupleSlot);
@@ -470,6 +484,9 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
 
         // Insert the new vertex
         insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+
+        /* restore the old result relation info */
+        estate->es_result_relation_info = old_estate_es_result_relation_info;
 
         /*
          * When the vertex is used by clauses higher in the execution tree
@@ -494,12 +511,13 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
             // append to the path list
             if (CYPHER_TARGET_NODE_IN_PATH(node->flags))
             {
-                css->path_values = lappend(css->path_values, DatumGetPointer(result));
+                css->path_values = lappend(css->path_values,
+                                           DatumGetPointer(result));
             }
 
             /*
-             * Put the vertex in the correct spot in the scantuple, so parent execution
-             * nodes can reference the newly created variable.
+             * Put the vertex in the correct spot in the scantuple, so parent
+             * execution nodes can reference the newly created variable.
              */
             if (CYPHER_TARGET_NODE_IS_VARIABLE(node->flags))
             {
@@ -537,27 +555,30 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
         id = GRAPHID_GET_DATUM(id_value->val.int_value);
 
         /*
-         * Its possible the variable has already been deleted. There are two ways
-         * this can happen. One is the query explicitly deleted the variable, the
-         * is_deleted flag will catch that. However, it is possible the user deleted
-         * the vertex using another variable name. We need to scan the table to find
-         * the vertex's current status relative to this CREATE clause. If the variable
-         * was initially created in this clause, we can skip this check, because the
-         * transaction system guarantees that nothing can happen to that tuple, as
-         * far as we are concerned with at this time.
+         * Its possible the variable has already been deleted. There are two
+         * ways this can happen. One is the query explicitly deleted the
+         * variable, the is_deleted flag will catch that. However, it is
+         * possible the user deleted the vertex using another variable name. We
+         * need to scan the table to find the vertex's current status relative
+         * to this CREATE clause. If the variable was initially created in this
+         * clause, we can skip this check, because the transaction system
+         * guarantees that nothing can happen to that tuple, as far as we are
+         * concerned with at this time.
          */
         if (!SAFE_TO_SKIP_EXISTENCE_CHECK(node->flags))
         {
             if (!entity_exists(estate, css->graph_oid, DATUM_GET_GRAPHID(id)))
                 ereport(ERROR,
                     (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-                     errmsg("vertex assigned to variable %s was deleted", node->variable_name)));
+                     errmsg("vertex assigned to variable %s was deleted",
+                            node->variable_name)));
         }
 
         if (CYPHER_TARGET_NODE_IN_PATH(node->flags))
         {
             Datum vertex = scanTupleSlot->tts_values[node->tuple_position - 1];
-            css->path_values = lappend(css->path_values, DatumGetPointer(vertex));
+            css->path_values = lappend(css->path_values,
+                                       DatumGetPointer(vertex));
         }
     }
 
@@ -616,7 +637,8 @@ static bool entity_exists(EState *estate, Oid graph_oid, graphid id)
  * constraints have not been violated.
  */
 static HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
-                                      TupleTableSlot *elemTupleSlot, EState *estate)
+                                     TupleTableSlot *elemTupleSlot,
+                                     EState *estate)
 {
     HeapTuple tuple;
 

@@ -579,11 +579,25 @@ ERROR:  label existing_elabel is for edges, not vertices
 LINE 2:  CREATE (a:existing_elabel { id: 5})
                 ^
 --
+-- check the cypher CREATE clause inside an INSERT INTO
+--
+CREATE TABLE simple_path (u agtype, e agtype, v agtype);
+INSERT INTO simple_path(SELECT * FROM cypher('cypher_create',
+    $$CREATE (u)-[e:knows]->(v) return u, e, v
+    $$) AS (u agtype, e agtype, v agtype));
+SELECT count(*) FROM simple_path;
+ count 
+-------
+     1
+(1 row)
+
+--
 -- Clean up
 --
+DROP TABLE simple_path;
 DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 11 other objects
+NOTICE:  drop cascades to 12 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
@@ -595,6 +609,7 @@ drop cascades to table cypher_create.b_var
 drop cascades to table cypher_create.new_vertex
 drop cascades to table cypher_create.existing_vlabel
 drop cascades to table cypher_create.existing_elabel
+drop cascades to table cypher_create.knows
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------
