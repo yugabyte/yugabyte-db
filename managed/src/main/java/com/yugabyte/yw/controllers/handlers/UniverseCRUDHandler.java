@@ -830,6 +830,9 @@ public class UniverseCRUDHandler {
               BAD_REQUEST,
               "ybSoftwareVersion param is required for taskType: " + taskParams.taskType);
         }
+        UniverseDefinitionTaskParams.UserIntent uIntent =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent;
+        taskParams.ybPrevSoftwareVersion = uIntent.ybSoftwareVersion;
         break;
       case GFlags:
         customerTaskType = CustomerTask.TaskType.UpgradeGflags;

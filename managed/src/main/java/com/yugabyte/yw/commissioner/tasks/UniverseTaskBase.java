@@ -405,6 +405,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
     params.universeUUID = taskParams().universeUUID;
     params.softwareVersion = softwareVersion;
+    params.prevSoftwareVersion = taskParams().ybPrevSoftwareVersion;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);

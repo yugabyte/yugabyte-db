@@ -1113,6 +1113,10 @@
           "description" : "Associate universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
         }
       },
       "required" : [ "actionType", "storageConfigUUID" ],
@@ -1211,6 +1215,10 @@
         "universeUUID" : {
           "description" : "Associate universe UUID",
           "format" : "uuid",
+          "type" : "string"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
           "type" : "string"
         }
       },
@@ -2382,6 +2390,10 @@
           "description" : "Associate universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
         }
       },
       "required" : [ "actionType", "customerUUID", "storageConfigUUID", "tableUUIDList" ],
@@ -2568,6 +2580,10 @@
         "universeUUID" : {
           "description" : "Associate universe UUID",
           "format" : "uuid",
+          "type" : "string"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
           "type" : "string"
         }
       },
@@ -3466,6 +3482,10 @@
           "description" : "Associate universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
         }
       },
       "required" : [ "tableDetails", "tableType", "tableUUID" ],
@@ -3677,6 +3697,10 @@
         },
         "userAZSelected" : {
           "type" : "boolean"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
         }
       },
       "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
@@ -3815,6 +3839,10 @@
         },
         "userAZSelected" : {
           "type" : "boolean"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
         }
       },
       "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
