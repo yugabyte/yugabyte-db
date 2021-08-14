@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Date;
 import java.util.UUID;
 
@@ -36,4 +37,7 @@ public class CustomerTaskFormData {
 
   @ApiModelProperty(value = "Customer Task status", example = "Complete")
   public String status;
+
+  @ApiModelProperty(value = "Customer Task details", example = "2.4.3.0 => 2.7.1.1")
+  public JsonNode details;
 }

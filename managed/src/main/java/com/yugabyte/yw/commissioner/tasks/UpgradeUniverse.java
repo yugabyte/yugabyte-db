@@ -319,6 +319,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
       // Check if the combination of taskType and upgradeOption are compatible.
       verifyParams(universe, primIntent);
+      taskParams().ybPrevSoftwareVersion = primIntent.ybSoftwareVersion;
 
       // Get the nodes that need to be upgraded.
       // Left element is master and right element is tserver.
