@@ -398,6 +398,10 @@ analyze_requires_snapshot(RawStmt *parseTree)
 			result = true;
 			break;
 
+		case T_BackfillIndexStmt:
+			result = false;
+			break;
+
 		default:
 			/* other utility statements don't have any real parse analysis */
 			result = false;

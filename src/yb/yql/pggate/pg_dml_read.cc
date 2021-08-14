@@ -229,6 +229,9 @@ bool PgDmlRead::IsConcreteRowRead() const {
 }
 
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
+  // Save IN/OUT parameters from Postgres.
+  pg_exec_params_ = exec_params;
+
   // Set column references in protobuf and whether query is aggregate.
   SetColumnRefs();
 

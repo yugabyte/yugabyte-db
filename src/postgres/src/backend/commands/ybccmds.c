@@ -42,10 +42,12 @@
 #include "commands/tablegroup.h"
 
 #include "access/htup_details.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "executor/executor.h"
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
 
@@ -1149,4 +1151,80 @@ YBCIsTableColocated(Oid dboid, Oid relationId)
 	bool colocated;
 	HandleYBStatus(YBCPgIsTableColocated(dboid, relationId, &colocated));
 	return colocated;
+}
+
+void
+YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
+{
+	IndexInfo  *indexInfo;
+	ListCell   *cell;
+	Oid			heapId;
+	Oid			indexId;
+	Relation	heapRel;
+	Relation	indexRel;
+	TupOutputState *tstate;
+	YbPgExecOutParam *out_param;
+
+	if (YBCGetDisableIndexBackfill())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("backfill is not enabled")));
+
+	/*
+	 * Examine oid list.  Currently, we only allow it to be a single oid, but
+	 * later it should handle multiple oids of indexes on the same indexed
+	 * table.
+	 * TODO(jason): fix from here downwards for issue #4785.
+	 */
+	if (list_length(stmt->oid_list) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("only a single oid is allowed in BACKFILL INDEX (see"
+						" issue #4785)")));
+
+	foreach(cell, stmt->oid_list)
+	{
+		indexId = lfirst_oid(cell);
+	}
+
+	heapId = IndexGetRelation(indexId, false);
+	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
+	heapRel = heap_open(heapId, ShareLock);
+	indexRel = index_open(indexId, ShareLock);
+
+	indexInfo = BuildIndexInfo(indexRel);
+	/*
+	 * The index should be ready for writes because it should be on the
+	 * BACKFILLING permission.
+	 */
+	Assert(indexInfo->ii_ReadyForInserts);
+	indexInfo->ii_Concurrent = true;
+	indexInfo->ii_BrokenHotChain = false;
+
+	out_param = YbCreateExecOutParam();
+	index_backfill(heapRel,
+				   indexRel,
+				   indexInfo,
+				   false,
+				   stmt->bfinfo,
+				   out_param);
+
+	index_close(indexRel, ShareLock);
+	heap_close(heapRel, ShareLock);
+
+	/* output tuples */
+	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt));
+	do_text_output_oneline(tstate, out_param->bfoutput->data);
+	end_tup_output(tstate);
+}
+
+TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt) {
+	TupleDesc	tupdesc;
+	Oid			result_type = TEXTOID;
+
+	/* Need a tuple descriptor representing a single TEXT or XML column */
+	tupdesc = CreateTemplateTupleDesc(1, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
+					   result_type, -1, 0);
+	return tupdesc;
 }

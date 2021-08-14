@@ -111,3 +111,28 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 	}
 	return ybc_expr;
 }
+
+/* ------------------------------------------------------------------------- */
+/*  Execution output parameter from Yugabyte */
+YbPgExecOutParam *YbCreateExecOutParam()
+{
+	YbPgExecOutParam *param = makeNode(YbPgExecOutParam);
+	param->bfoutput = makeStringInfo();
+
+	/* Not yet used */
+	param->status = makeStringInfo();
+	param->status_code = 0;
+
+	return param;
+}
+
+void YbWriteExecOutParam(YbPgExecOutParam *param, const YbcPgExecOutParamValue *value) {
+	appendStringInfoString(param->bfoutput, value->bfoutput);
+
+	/* Not yet used */
+	if (value->status)
+	{
+		appendStringInfoString(param->status, value->status);
+		param->status_code = value->status_code;
+	}
+}

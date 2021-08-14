@@ -1271,7 +1271,8 @@ static void pgaudit_ProcessUtility_hook(
         do {
           if (nextItem->auditEvent.commandTag != T_SelectStmt &&
               nextItem->auditEvent.commandTag != T_VariableShowStmt &&
-              nextItem->auditEvent.commandTag != T_ExplainStmt) {
+              nextItem->auditEvent.commandTag != T_ExplainStmt &&
+              nextItem->auditEvent.commandTag != T_BackfillIndexStmt) {
             // TODO(Sudheer): Remove the following statements suppressing the
             // 'stack is not empty' error  once we have a proper fix for
             // correctly restarting write operations in presence of PGAudit.

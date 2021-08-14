@@ -24,6 +24,7 @@
 #define YBCIN_H
 
 #include "access/amapi.h"
+#include "nodes/execnodes.h"
 
 /*
  * external entry points for YugaByte indexes in ybcin.c
@@ -38,8 +39,8 @@ extern void ybcindelete(Relation rel, Datum *values, bool *isnull, Datum ybctid,
 extern IndexBuildResult *ybcinbackfill(Relation heap,
 									   Relation index,
 									   struct IndexInfo *indexInfo,
-									   uint64_t *read_time,
-									   RowBounds *row_bounds);
+									   YbBackfillInfo *bfinfo,
+									   YbPgExecOutParam *bfresult);
 extern IndexBulkDeleteResult *ybcinbulkdelete(IndexVacuumInfo *info,
 											  IndexBulkDeleteResult *stats,
 											  IndexBulkDeleteCallback callback,

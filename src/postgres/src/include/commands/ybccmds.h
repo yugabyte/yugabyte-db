@@ -30,6 +30,7 @@
 #include "nodes/parsenodes.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
+#include "tcop/utility.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -86,5 +87,9 @@ extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
 extern bool YBCIsTableColocated(Oid dboid, Oid relationId);
+
+extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
+
+extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
 #endif

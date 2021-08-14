@@ -27,8 +27,6 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "executor/ybc_fdw.h"
-
 /*  TODO see which includes of this block are still needed. */
 #include "access/htup_details.h"
 #include "access/reloptions.h"
@@ -64,6 +62,7 @@
 #include "pg_yb_utils.h"
 #include "access/ybcam.h"
 #include "executor/ybcExpr.h"
+#include "executor/ybc_fdw.h"
 
 #include "utils/resowner_private.h"
 

@@ -67,6 +67,9 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 // error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
 
+// Get access to callbacks.
+const YBCPgCallbacks* YBCGetPgCallbacks();
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------

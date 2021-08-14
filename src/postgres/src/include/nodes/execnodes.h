@@ -601,7 +601,6 @@ typedef struct EState
 	bool yb_can_batch_updates;
 } EState;
 
-
 /*
  * ExecRowMark -
  *	   runtime representation of FOR [KEY] UPDATE/SHARE clauses
@@ -653,6 +652,24 @@ typedef struct ExecAuxRowMark
 	AttrNumber	toidAttNo;		/* resno of tableoid junk attribute, if any */
 	AttrNumber	wholeAttNo;		/* resno of whole-row junk attribute, if any */
 } ExecAuxRowMark;
+
+/*
+ * Yugabyte output parameter.
+ * The following parameters are not yet used.
+ * - Execution status in text. Currently, details are lost when reporting status. This OUT param
+ *   value can be used for that purpose.
+ * - Execution status code in yugabyte (This code might be different from Postgres).
+ */
+typedef struct YbPgExecOutParam {
+	NodeTag type;
+
+	/* BACKFILL output */
+	StringInfo bfoutput;
+
+	/* Not yet used */
+	StringInfo status;
+	int64_t status_code;
+} YbPgExecOutParam;
 
 
 /* ----------------------------------------------------------------

@@ -118,6 +118,10 @@ void YBCDestroyPgGate() {
   }
 }
 
+const YBCPgCallbacks *YBCGetPgCallbacks() {
+  return pgapi->pg_callbacks();
+}
+
 YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {
   return ToYBCStatus(pgapi->CreateEnv(pg_env));
 }

@@ -626,6 +626,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <defelt>		hash_partbound_elem
 
 %type <rowbounds>	RowBounds
+%type <str>		opt_for_bfinstr
 %type <str>		partition_key
 %type <str>		row_key row_key_end row_key_start
 %type <str>		read_time
@@ -8227,17 +8228,19 @@ opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
 		;
 
 BackfillIndexStmt:
-			BACKFILL INDEX oid_list
-				READ TIME read_time
-				RowBounds
+			BACKFILL INDEX oid_list opt_for_bfinstr
+				READ TIME read_time RowBounds
 				{
 					BackfillIndexStmt *n = makeNode(BackfillIndexStmt);
 					n->oid_list = $3;
+
+					n->bfinfo = makeNode(YbBackfillInfo);
+					n->bfinfo->bfinstr = $4;
 					{
-						char *nptr = $6;
+						char *nptr = $7;
 						char *end;
 						errno = 0;
-						n->read_time = pg_strtouint64(nptr, &end, 10);
+						n->bfinfo->read_time = pg_strtouint64(nptr, &end, 10);
 						if (!(*nptr != '\0' && *end == '\0')
 								|| errno == ERANGE)
 							ereport(ERROR,
@@ -8245,10 +8248,15 @@ BackfillIndexStmt:
 									 errmsg("read time must be uint64"),
 									 parser_errposition(@6)));
 					}
-					n->row_bounds = $7;
+					n->bfinfo->row_bounds = $8;
 					$$ = (Node *)n;
 				}
 		;
+
+opt_for_bfinstr:
+			/*EMPTY*/		{ $$ = NULL; }
+			/* Strip the leading 'x' */
+			| WITH XCONST	{ $$ = $2 + 1; }
 
 oid_list:	Oid
 				{

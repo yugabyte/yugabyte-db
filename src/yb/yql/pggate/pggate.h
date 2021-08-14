@@ -62,6 +62,10 @@ class PgApiImpl {
   PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
   virtual ~PgApiImpl();
 
+  const YBCPgCallbacks* pg_callbacks() {
+    return &pg_callbacks_;
+  }
+
   //------------------------------------------------------------------------------------------------
   // Access function to Pggate attribute.
   client::YBClient* client() {
