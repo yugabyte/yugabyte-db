@@ -28,6 +28,9 @@
 #ifndef YBCEXPR_H
 #define YBCEXPR_H
 
+#include "postgres.h"
+#include "nodes/execnodes.h"
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -59,5 +62,10 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
                              Expr *pg_expr,
                              YBExprParamDesc *params,
                              int num_params);
+
+extern YbPgExecOutParam *YbCreateExecOutParam();
+
+extern void YbWriteExecOutParam(YbPgExecOutParam *out_param,
+								const YbcPgExecOutParamValue *value);
 
 #endif							/* YBCEXPR_H */

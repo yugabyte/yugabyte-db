@@ -2334,9 +2334,15 @@ Status Tablet::BackfillIndexesForYsql(
   // This should be safe from injection attacks because the parameters only consist of characters
   // [,0-9a-f].
   // TODO(jason): pass deadline
+  PgsqlBackfillSpecPB bfinstr_pb;
+  std::string bfinstr;
+  bfinstr_pb.set_limit(8192);
+  bfinstr_pb.SerializeToString(&bfinstr);
+
   std::string query_str = Format(
-      "BACKFILL INDEX $0 READ TIME $1 PARTITION x'$2';",
+      "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
       index_oids,
+      b2a_hex(bfinstr),
       read_time.ToUint64(),
       b2a_hex(partition_key));
   VLOG(1) << __func__ << ": libpq query string: " << query_str;
@@ -2373,8 +2379,7 @@ Status Tablet::BackfillIndexesForYsql(
   }
   ExecStatusType status = PQresultStatus(res.get());
   // TODO(jason): more properly handle bad statuses
-  // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
-  if (status != PGRES_COMMAND_OK) {
+  if (status != PGRES_TUPLES_OK) {
     std::string msg(PQresultErrorMessage(res.get()));
 
     // Avoid double newline (postgres adds a newline after the error message).
@@ -2387,8 +2392,11 @@ Status Tablet::BackfillIndexesForYsql(
     return STATUS(IllegalState, msg);
   }
 
-  // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
-  // response message by libpq or manual DocDB inspection?
+  CHECK_EQ(PQntuples(res.get()), 1);
+  CHECK_EQ(PQnfields(res.get()), 1);
+  const std::string returned_spec = CHECK_RESULT(pgwrapper::GetString(res.get(), 0, 0));
+  VLOG(3) << "Got back " << returned_spec << " of length " << returned_spec.length();
+  // TODO(jason): handle partially finished backfills.
   *backfilled_until = "";
   return Status::OK();
 }

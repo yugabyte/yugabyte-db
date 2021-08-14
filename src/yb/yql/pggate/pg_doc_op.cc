@@ -380,6 +380,7 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
 
   template_op_->mutable_request()->set_return_paging_state(true);
   SetRequestPrefetchLimit();
+  SetBackfillSpec();
   SetRowMark();
   SetReadTime();
   return Status::OK();
@@ -390,7 +391,7 @@ Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
   auto result = VERIFY_RESULT(ProcessResponseResult());
 
   // Process paging state and check status.
-  RETURN_NOT_OK(ProcessResponsePagingState());
+  RETURN_NOT_OK(ProcessResponseReadStates());
   return result;
 }
 
@@ -764,7 +765,7 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   return Status::OK();
 }
 
-Status PgDocReadOp::ProcessResponsePagingState() {
+Status PgDocReadOp::ProcessResponseReadStates() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   int32_t send_count = std::min(parallelism_level_, active_op_count_);
@@ -773,10 +774,14 @@ Status PgDocReadOp::ProcessResponsePagingState() {
     YBPgsqlReadOp *read_op = GetReadOp(op_index);
     RETURN_NOT_OK(ReviewResponsePagingState(read_op));
 
-    auto& res = *read_op->mutable_response();
     // Check for completion.
     bool has_more_arg = false;
-    if (res.has_paging_state()) {
+    auto& res = *read_op->mutable_response();
+
+    // Save the backfill_spec if tablet server wants to return it.
+    if (res.is_backfill_batch_done()) {
+      out_param_backfill_spec_ = res.backfill_spec();
+    } else if (res.has_paging_state()) {
       has_more_arg = true;
       PgsqlReadRequestPB *req = read_op->mutable_request();
 
@@ -793,6 +798,12 @@ Status PgDocReadOp::ProcessResponsePagingState() {
       if (innermost_req->paging_state().has_read_time()) {
         read_op->SetReadTime(ReadHybridTime::FromPB(innermost_req->paging_state().read_time()));
       }
+
+      // Setup backfill_spec for the next request.
+      if (res.has_backfill_spec()) {
+        *innermost_req->mutable_backfill_spec() = std::move(*res.mutable_backfill_spec());
+      }
+
       // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
       // The docdb layer will check the target table's schema version is compatible.
       // This allows long-running queries to continue in the presence of other DDL statements
@@ -914,6 +925,16 @@ void PgDocReadOp::SetRowMark() {
     req->set_row_mark_type(row_mark_type);
   } else {
     req->clear_row_mark_type();
+  }
+}
+
+void PgDocReadOp::SetBackfillSpec() {
+  PgsqlReadRequestPB* const req = template_op_->mutable_request();
+
+  if (exec_params_.bfinstr) {
+    req->set_backfill_spec(exec_params_.bfinstr, strlen(exec_params_.bfinstr));
+  } else {
+    req->clear_backfill_spec();
   }
 }
 
