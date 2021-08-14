@@ -2,25 +2,30 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -39,7 +44,7 @@ public class ReleaseController extends AuthenticatedController {
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
-        value = "Release data to be created",
+        value = "Release data for remote downloading to be created",
         required = true,
         dataType = "com.yugabyte.yw.forms.ReleaseFormData",
         paramType = "body")
@@ -47,15 +52,27 @@ public class ReleaseController extends AuthenticatedController {
   public Result create(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    Form<ReleaseFormData> formData = formFactory.getFormDataOrBadRequest(ReleaseFormData.class);
-    ReleaseFormData releaseFormData = formData.get();
-    LOG.info("ReleaseController: Adding new release: {} ", releaseFormData.toString());
+    Iterator<Map.Entry<String, JsonNode>> it = request().body().asJson().fields();
+    List<ReleaseFormData> versionDataList = new ArrayList<>();
+    while (it.hasNext()) {
+      Map.Entry<String, JsonNode> versionJson = it.next();
+      ReleaseFormData formData =
+          formFactory.getFormDataOrBadRequest(versionJson.getValue(), ReleaseFormData.class);
+      formData.version = versionJson.getKey();
+      LOG.info("ReleaseController: Asked to add new release: {} ", formData.version);
+      versionDataList.add(formData);
+    }
+
     try {
-      releaseManager.addRelease(releaseFormData.version);
+      Map<String, ReleaseMetadata> releases =
+          ReleaseManager.formDataToReleaseMetadata(versionDataList);
+      releases.forEach(
+          (version, metadata) -> releaseManager.addReleaseWithMetadata(version, metadata));
     } catch (RuntimeException re) {
       throw new YWServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+
+    auditService().createAuditEntry(ctx(), request(), request().body().asJson());
     return YWResults.YWSuccess.empty();
   }
 
@@ -63,10 +80,11 @@ public class ReleaseController extends AuthenticatedController {
       value = "Get list of releases",
       response = Object.class,
       responseContainer = "Map",
-      nickname = "getReleases")
+      nickname = "getListOfReleases")
   public Result list(UUID customerUUID, Boolean includeMetadata) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
+
     // Filter out any deleted releases
     Map<String, Object> filtered =
         releases
@@ -74,7 +92,8 @@ public class ReleaseController extends AuthenticatedController {
             .stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
             .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
-    return YWResults.withData(includeMetadata ? filtered : filtered.keySet());
+    return YWResults.withData(
+        includeMetadata ? CommonUtils.maskObject(filtered) : filtered.keySet());
   }
 
   @ApiOperation(
@@ -98,9 +117,12 @@ public class ReleaseController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
     formData = (ObjectNode) request().body().asJson();
+
     // For now we would only let the user change the state on their releases.
     if (formData.has("state")) {
-      m.state = ReleaseManager.ReleaseState.valueOf(formData.get("state").asText());
+      String stateValue = formData.get("state").asText();
+      LOG.info("Updating release state for version {} to {}", version, stateValue);
+      m.state = ReleaseManager.ReleaseState.valueOf(stateValue);
       releaseManager.updateReleaseMetadata(version, m);
     } else {
       throw new YWServiceException(BAD_REQUEST, "Missing Required param: State");

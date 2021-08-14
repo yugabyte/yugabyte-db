@@ -480,7 +480,21 @@ public class NodeManager extends DevopsBase {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
       if (releaseMetadata != null) {
-        ybServerPackage = releaseMetadata.filePath;
+        if (releaseMetadata.s3 != null) {
+          subcommand.add("--s3_remote_download");
+          ybServerPackage = releaseMetadata.s3.paths.x86_64;
+          subcommand.add("--aws_access_key");
+          subcommand.add(releaseMetadata.s3.accessKeyId);
+          subcommand.add("--aws_secret_key");
+          subcommand.add(releaseMetadata.s3.secretAccessKey);
+        } else if (releaseMetadata.http != null) {
+          subcommand.add("--http_remote_download");
+          ybServerPackage = releaseMetadata.http.paths.x86_64;
+          subcommand.add("--http_package_checksum");
+          subcommand.add(releaseMetadata.http.paths.x86_64_checksum);
+        } else {
+          ybServerPackage = releaseMetadata.filePath;
+        }
       }
     }
 
