@@ -4,6 +4,8 @@ package com.yugabyte.yw.common;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.forms.ReleaseFormData;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
@@ -22,9 +24,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import javax.validation.Valid;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Configuration;
+import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Singleton
@@ -42,7 +47,7 @@ public class ReleaseManager {
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
 
-  @ApiModel(description = "Release data")
+  @ApiModel(value = "ReleaseMetadata", description = "YB release metadata")
   public static class ReleaseMetadata {
 
     @ApiModelProperty(value = "Release state", example = "ACTIVE")
@@ -62,6 +67,62 @@ public class ReleaseManager {
     // Docker image tag corresponding to the release
     @ApiModelProperty(value = "Release image tag")
     public String imageTag;
+
+    // S3 link and credentials for remote downloading of the release
+    @ApiModelProperty(value = "S3 link and credentials")
+    public S3Location s3;
+
+    // S3 link and credentials for remote downloading of the release
+    @ApiModelProperty(value = "HTTP link to the release")
+    public HttpLocation http;
+
+    @lombok.Getter
+    @lombok.Setter
+    public static class PackagePaths {
+      @ApiModelProperty(value = "Path to x86_64 package")
+      @Constraints.Pattern(
+          message = "Must be prefixed with s3:// or http(s)://",
+          value = "\\b(?:(https|s3):\\/\\/).+\\b")
+      public String x86_64;
+
+      @ApiModelProperty(required = false, value = "Checksum for x86_64 package")
+      public String x86_64_checksum;
+
+      // @ApiModelProperty(required = false, value = "Path to aarch64 package")
+      // @Constraints.Pattern(
+      //   message = "Must be prefixed with s3:// or http(s)://",
+      //   value = "\\b(?:(https|s3):\\/\\/).+\\b")
+      // public String aarch64;
+
+      // @ApiModelProperty(required = false, value = "Checksum for aarch64 package")
+      // public String aarch64_checksum;
+    }
+
+    @lombok.Getter
+    @lombok.Setter
+    public static class S3Location {
+      @ApiModelProperty(value = "package paths")
+      @Constraints.Required
+      @Valid
+      public PackagePaths paths;
+
+      // S3 credentials.
+      @ApiModelProperty(value = "access key id", hidden = true)
+      @Constraints.Required
+      public String accessKeyId;
+
+      @ApiModelProperty(value = "access key secret", hidden = true)
+      @Constraints.Required
+      public String secretAccessKey;
+    }
+
+    @lombok.Getter
+    @lombok.Setter
+    public static class HttpLocation {
+      @ApiModelProperty(required = false, value = "package paths")
+      @Valid
+      public PackagePaths paths;
+    }
 
     public static ReleaseMetadata fromLegacy(String version, Object metadata) {
       // Legacy release metadata would have name and release path alone
@@ -91,15 +152,7 @@ public class ReleaseManager {
     }
 
     public String toString() {
-      return getClass().getName()
-          + " state: "
-          + String.valueOf(state)
-          + " filePath: "
-          + String.valueOf(filePath)
-          + " chartPath: "
-          + String.valueOf(chartPath)
-          + " imageTag: "
-          + String.valueOf(imageTag);
+      return Json.toJson(CommonUtils.maskObject(this)).toString();
     }
   }
 
@@ -168,15 +221,70 @@ public class ReleaseManager {
     return releases;
   }
 
-  public void addRelease(String version) {
-    ReleaseMetadata metadata = ReleaseMetadata.create(version);
-    addReleaseWithMetadata(version, metadata);
+  public static Map<String, ReleaseMetadata> formDataToReleaseMetadata(
+      List<ReleaseFormData> versionDataList) {
+
+    // Input validation
+    for (ReleaseFormData versionData : versionDataList) {
+      if (versionData.version == null) {
+        throw new RuntimeException("Version is not specified");
+      }
+
+      // At list one link should be available.
+      if (versionData.s3 == null && versionData.http == null) {
+        throw new RuntimeException("S3 link or HTTP link must be specified");
+      }
+
+      if (versionData.s3 != null) {
+        if (versionData.s3.paths == null) {
+          throw new RuntimeException("No paths provided for S3 packages");
+        }
+        if (StringUtils.isBlank(versionData.s3.paths.x86_64)
+            || StringUtils.isBlank(versionData.s3.accessKeyId)
+            || StringUtils.isBlank(versionData.s3.secretAccessKey)) {
+          throw new RuntimeException("S3 needs non-empty path and AWS credentials");
+        }
+        if (!versionData.s3.paths.x86_64.startsWith("s3://")) {
+          throw new RuntimeException("S3 path should be prefixed with s3://");
+        }
+      }
+
+      if (versionData.http != null) {
+        if (versionData.http.paths == null) {
+          throw new RuntimeException("No paths provided for HTTP packages");
+        }
+        if (StringUtils.isBlank(versionData.http.paths.x86_64)
+            || StringUtils.isBlank(versionData.http.paths.x86_64_checksum)) {
+          throw new RuntimeException("HTTP location needs non-empty path and checksum");
+        }
+        if (!versionData.http.paths.x86_64.startsWith("https://")) {
+          throw new RuntimeException("HTTP path should be prefixed with https://");
+        }
+      }
+    }
+    Map<String, ReleaseMetadata> releases = new HashMap<>();
+    for (ReleaseFormData versionData : versionDataList) {
+      ReleaseMetadata metadata = ReleaseMetadata.create(versionData.version);
+
+      if (versionData.s3 != null) {
+        metadata.s3 = versionData.s3;
+        metadata.filePath = metadata.s3.paths.x86_64;
+      }
+
+      if (versionData.http != null) {
+        metadata.http = versionData.http;
+        metadata.filePath = metadata.http.paths.x86_64;
+      }
+      releases.put(versionData.version, metadata);
+    }
+    return releases;
   }
 
   public void addReleaseWithMetadata(String version, ReleaseMetadata metadata) {
     Map<String, Object> currentReleases = getReleaseMetadata();
     if (currentReleases.containsKey(version)) {
-      throw new RuntimeException("Release already exists: " + version);
+      String errorMsg = "Release already exists for version [" + version + "]";
+      throw new RuntimeException(errorMsg);
     }
     LOG.info("Adding release version {} with metadata {}", version, metadata.toString());
     currentReleases.put(version, metadata);
@@ -196,7 +304,7 @@ public class ReleaseManager {
       LOG.debug("Current releases: [ {} ]", currentReleases.keySet().toString());
       LOG.debug("Local releases: [ {} ]", localReleases.keySet());
       if (!localReleases.isEmpty()) {
-        LOG.info("Importing local releases: [ {} ]", localReleases.toString());
+        LOG.info("Importing local releases: [ {} ]", Json.toJson(localReleases));
         localReleases.forEach(currentReleases::put);
         configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
       }
