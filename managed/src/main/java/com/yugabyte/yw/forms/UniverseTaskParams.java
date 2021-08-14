@@ -236,6 +236,10 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModelProperty(value = "Associate universe UUID")
   public UUID universeUUID;
 
+  // Previous version used for task info.
+  @ApiModelProperty(value = "Previous software version")
+  public String ybPrevSoftwareVersion;
+
   // Expected version of the universe for operation execution. Set to -1 if an operation should
   // not verify expected version of the universe.
   @ApiModelProperty(value = "Universe version")

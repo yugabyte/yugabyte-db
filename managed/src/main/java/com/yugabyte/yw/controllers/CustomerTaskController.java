@@ -43,6 +43,8 @@ public class CustomerTaskController extends AuthenticatedController {
   @Inject private Commissioner commissioner;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
+  private static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
+  private static final String YB_PREV_SOFTWARE_VERSION = "ybPrevSoftwareVersion";
 
   protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
@@ -83,6 +85,15 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.target = task.getTarget().name();
       taskData.type = task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
+      ObjectNode versionNumbers = Json.newObject();
+      JsonNode taskDetails = taskInfo.getTaskDetails();
+      if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
+        versionNumbers.put(
+            YB_PREV_SOFTWARE_VERSION, taskDetails.get(YB_PREV_SOFTWARE_VERSION).asText());
+        versionNumbers.put(YB_SOFTWARE_VERSION, taskDetails.get(YB_SOFTWARE_VERSION).asText());
+        taskData.details = versionNumbers;
+      }
       return taskData;
     } catch (RuntimeException e) {
       LOG.error(
