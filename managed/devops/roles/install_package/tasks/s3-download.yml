@@ -6,6 +6,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+# This playbook is now deprecated in favor of the S3 download in download-package.yml
 - name: Download-itest | Set yum packages fact
   set_fact: yum_packages="[ 'python3', 'python3-pip' ]"
 

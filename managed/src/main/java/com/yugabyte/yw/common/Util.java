@@ -264,7 +264,7 @@ public class Util {
     try {
       return mapper.readTree(inputString);
     } catch (IOException e) {
-      throw new RuntimeException("Shell Response message is not a valid Json.");
+      throw new RuntimeException("I/O error reading json");
     }
   }
 

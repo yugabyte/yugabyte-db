@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
@@ -35,12 +36,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.Spy;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.Configuration;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
-public class ReleaseManagerTest {
+public class ReleaseManagerTest extends FakeDBApplication {
   static String TMP_STORAGE_PATH = "/tmp/yugaware_tests/releases";
   static String TMP_DOCKER_STORAGE_PATH = "/tmp/yugaware_tests/docker/releases";
 
@@ -48,7 +50,7 @@ public class ReleaseManagerTest {
 
   @Mock Configuration appConfig;
 
-  @Mock ConfigHelper configHelper;
+  @Spy ConfigHelper configHelper;
 
   @Before
   public void beforeTest() throws IOException {
@@ -299,7 +301,9 @@ public class ReleaseManagerTest {
 
   @Test
   public void testAddRelease() {
-    releaseManager.addRelease("0.0.1");
+    ReleaseManager.ReleaseMetadata metadata =
+        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
+    releaseManager.addReleaseWithMetadata("0.0.1", metadata);
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
@@ -313,14 +317,43 @@ public class ReleaseManagerTest {
   }
 
   @Test
+  public void testAddReleaseWithFullMetadata() {
+    ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
+    metadata.s3 = new ReleaseMetadata.S3Location();
+    metadata.s3.paths = new ReleaseMetadata.PackagePaths();
+    metadata.s3.paths.x86_64 = "s3://foo";
+    metadata.s3.accessKeyId = "abc";
+    metadata.s3.secretAccessKey = "abc";
+    releaseManager.addReleaseWithMetadata("0.0.1", metadata);
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1))
+        .loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map releaseInfo = releaseMap.getValue();
+    assertTrue(releaseInfo.containsKey("0.0.1"));
+    JsonNode releaseMetadata = Json.toJson(releaseInfo.get("0.0.1"));
+    assertValue(releaseMetadata, "imageTag", "0.0.1");
+
+    Map<String, Object> allReleases = releaseManager.getReleaseMetadata();
+    assertEquals(allReleases.size(), 1);
+    Object foundObj = allReleases.get("0.0.1");
+    ReleaseMetadata foundMetadata = Json.fromJson(Json.toJson(foundObj), ReleaseMetadata.class);
+    assertEquals(foundMetadata.s3.accessKeyId, metadata.s3.accessKeyId);
+    assertEquals(foundMetadata.s3.secretAccessKey, metadata.s3.secretAccessKey);
+    assertEquals(foundMetadata.s3.paths.x86_64, metadata.s3.paths.x86_64);
+  }
+
+  @Test
   public void testAddExistingRelease() {
-    ReleaseManager.ReleaseMetadata metadata =
+    ReleaseMetadata metadata =
         ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
     when(configHelper.getConfig(SoftwareReleases)).thenReturn(ImmutableMap.of("0.0.1", metadata));
     try {
-      releaseManager.addRelease("0.0.1");
+      releaseManager.addReleaseWithMetadata("0.0.1", metadata);
     } catch (RuntimeException re) {
-      assertEquals("Release already exists: 0.0.1", re.getMessage());
+      assertEquals("Release already exists for version [0.0.1]", re.getMessage());
     }
   }
 }

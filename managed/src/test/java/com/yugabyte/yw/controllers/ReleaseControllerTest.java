@@ -11,12 +11,17 @@ import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.ReleaseManager.ReleaseState.DISABLED;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyObject;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -122,23 +127,28 @@ public class ReleaseControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateRelease() {
-    ObjectNode body = Json.newObject();
-    body.put("version", "0.0.1");
+  public void testCreateS3Release() {
+    ObjectNode pathsNode =
+        (ObjectNode)
+            Json.newObject()
+                .put(
+                    "x86_64",
+                    "s3://releases.yugabyte.com/2.7.2.0-b137/"
+                        + "yugabyte-2.7.2.0-b137-centos-x86_64.tar.gz");
+    ObjectNode s3 =
+        (ObjectNode)
+            Json.newObject()
+                .put("accessKeyId", "AAAAAAAAAAAAAAAAAAAA")
+                .put("secretAccessKey", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+Vlvn/W")
+                .set("paths", pathsNode);
+
+    ObjectNode body = (ObjectNode) Json.newObject().set("foo", Json.newObject().set("s3", s3));
     Result result = createRelease(customer.uuid, body);
-    verify(mockReleaseManager, times(1)).addRelease("0.0.1");
+    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(anyString(), anyObject());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
     assertAuditEntry(1, customer.uuid);
-  }
-
-  @Test
-  public void testCreateReleaseWithInvalidData() {
-    ObjectNode body = Json.newObject();
-    Result result = assertYWSE(() -> createRelease(customer.uuid, body));
-    assertBadRequest(result, "{\"version\":[\"This field is required\"]}");
-    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -155,15 +165,78 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateReleaseWithReleaseManagerException() {
-    ObjectNode body = Json.newObject();
-    body.put("version", "0.0.1");
+
+    ObjectNode pathsNode =
+        (ObjectNode)
+            Json.newObject()
+                .put(
+                    "x86_64",
+                    "s3://releases.yugabyte.com/2.7.2.0-b137/"
+                        + "yugabyte-2.7.2.0-b137-centos-x86_64.tar.gz");
+    ObjectNode s3 =
+        (ObjectNode)
+            Json.newObject()
+                .put("accessKeyId", "AAAAAAAAAAAAAAAAAAAA")
+                .put("secretAccessKey", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+Vlvn/W")
+                .set("paths", pathsNode);
+
+    ObjectNode body =
+        (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
     doThrow(new YWServiceException(BAD_REQUEST, "Some Error"))
         .when(mockReleaseManager)
-        .addRelease("0.0.1");
+        .addReleaseWithMetadata(any(), any());
     Result result = assertYWSE(() -> createRelease(customer.uuid, body));
-    verify(mockReleaseManager, times(1)).addRelease("0.0.1");
-    assertInternalServerError(result, "Some Error");
+    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
+    assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCreateReleaseInvalidParams() {
+
+    ObjectNode pathsNode = (ObjectNode) Json.newObject().put("x86_64", "s3://foobar");
+    ObjectNode s3 =
+        (ObjectNode)
+            Json.newObject()
+                .put("accessKeyId", "AAAAAAAAAAAAAAAAAAAA")
+                .put("secretAccessKey", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+Vlvn/W")
+                .set("paths", pathsNode);
+    ObjectNode http = (ObjectNode) Json.newObject().set("paths", pathsNode);
+
+    pathsNode.put("x86_64", "a3://foobar");
+
+    ObjectNode body =
+        (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
+    Result result = assertYWSE(() -> createRelease(customer.uuid, body));
+    verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
+    assertEquals(BAD_REQUEST, result.status());
+    assertAuditEntry(0, customer.uuid);
+
+    pathsNode.put("x86_64", "s3://foobar");
+    s3.remove("accessKeyId");
+
+    ObjectNode body2 =
+        (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
+    result = assertYWSE(() -> createRelease(customer.uuid, body2));
+    verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
+    assertEquals(BAD_REQUEST, result.status());
+    assertAuditEntry(0, customer.uuid);
+
+    ObjectNode body3 =
+        (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
+    result = assertYWSE(() -> createRelease(customer.uuid, body3));
+    verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
+    assertEquals(INTERNAL_SERVER_ERROR, result.status());
+    assertAuditEntry(0, customer.uuid);
+
+    pathsNode.put("x86_64_checksum", "foo");
+    pathsNode.put("x86_64", "https://foobar.com");
+    ObjectNode body4 =
+        (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
+    result = createRelease(customer.uuid, body4);
+    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(anyString(), anyObject());
+    assertOk(result);
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -218,6 +291,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     HashMap releases = Json.fromJson(json, HashMap.class);
+
     assertTrue(json.has("0.0.1"));
     Map expectedMap =
         ImmutableMap.of(
