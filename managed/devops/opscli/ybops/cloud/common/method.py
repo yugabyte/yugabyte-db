@@ -15,6 +15,7 @@ import logging
 import os
 import sys
 import time
+import re
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
@@ -663,6 +664,13 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--cql_proxy_rpc_port', default=9042)
         self.parser.add_argument('--redis_proxy_rpc_port', default=6379)
 
+        # Parameters for downloading YB package directly on DB nodes.
+        self.parser.add_argument('--s3_remote_download', action="store_true")
+        self.parser.add_argument('--aws_access_key')
+        self.parser.add_argument('--aws_secret_key')
+        self.parser.add_argument('--http_remote_download', action="store_true")
+        self.parser.add_argument('--http_package_checksum', default='')
+
         # Development flag for itests.
         self.parser.add_argument('--itest_s3_package_path',
                                  help="Path to download packages for itest. Only for AWS/onprem.")
@@ -756,7 +764,44 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             # TODO: Add a variable to specify itest ssh_user depending on VM users.
             start_time = time.time()
             if args.package and (args.tags is None or args.tags == "download-software"):
-                if args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
+                if args.s3_remote_download:
+                    aws_access_key = args.aws_access_key or os.getenv('AWS_ACCESS_KEY_ID')
+                    aws_secret_key = args.aws_secret_key or os.getenv('AWS_SECRET_ACCESS_KEY')
+
+                    if aws_access_key is None or aws_secret_key is None:
+                        raise YBOpsRuntimeError("Aws credentials are not specified, nor found in " +
+                                                "the environment to download YB package from {}"
+                                                .format(args.package))
+
+                    s3_uri_pattern = r"^s3:\/\/(?:[^\/]+)\/(?:.+)$"
+                    match = re.match(s3_uri_pattern, args.package)
+                    if not match:
+                        raise YBOpsRuntimeError("{} is not a valid s3 URI. Must match {}"
+                                                .format(args.package, s3_uri_pattern))
+
+                    self.extra_vars['s3_package_path'] = args.package
+                    self.extra_vars['aws_access_key'] = aws_access_key
+                    self.extra_vars['aws_secret_key'] = aws_secret_key
+                    logging.info(
+                        "Variables to download {} directly on the remote host added."
+                        .format(args.package))
+                elif args.http_remote_download:
+                    http_url_pattern = r"^((?:https?):\/\/(?:www\.)?[a-z0-9\.:].*?)(?:\?.*)?$"
+                    match = re.match(http_url_pattern, args.package)
+                    if not match:
+                        raise YBOpsRuntimeError("{} is not a valid HTTP URL. Must match {}"
+                                                .format(args.package, http_url_pattern))
+
+                    # Remove query string part from http url.
+                    self.extra_vars["package"] = match.group(1)
+
+                    # Pass the complete http url to download the package.
+                    self.extra_vars['http_package_path'] = match.group(0)
+                    self.extra_vars['http_package_checksum'] = args.http_package_checksum
+                    logging.info(
+                        "Variables to download {} directly on the remote host added."
+                        .format(args.package))
+                elif args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
                     itest_extra_vars = self.extra_vars.copy()
                     itest_extra_vars["itest_s3_package_path"] = args.itest_s3_package_path
                     itest_extra_vars["ssh_user"] = "centos"

@@ -1973,6 +1973,15 @@
       },
       "type" : "object"
     },
+    "HttpLocation" : {
+      "properties" : {
+        "paths" : {
+          "$ref" : "#/definitions/PackagePaths",
+          "description" : "package paths"
+        }
+      },
+      "type" : "object"
+    },
     "ImportUniverseFormData" : {
       "properties" : {
         "cloudName" : {
@@ -2952,6 +2961,19 @@
       "required" : [ "nodes" ],
       "type" : "object"
     },
+    "PackagePaths" : {
+      "properties" : {
+        "x86_64" : {
+          "description" : "Path to x86_64 package",
+          "type" : "string"
+        },
+        "x86_64_checksum" : {
+          "description" : "Checksum for x86_64 package",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "PlacementAZ" : {
       "properties" : {
         "isAffinitized" : {
@@ -3215,16 +3237,23 @@
       "type" : "object"
     },
     "ReleaseFormData" : {
+      "description" : "Specification for release locations",
       "properties" : {
+        "http" : {
+          "$ref" : "#/definitions/HttpLocation"
+        },
+        "s3" : {
+          "$ref" : "#/definitions/S3Location"
+        },
         "version" : {
           "type" : "string"
         }
       },
-      "required" : [ "version" ],
+      "required" : [ "http", "s3", "version" ],
       "type" : "object"
     },
     "ReleaseMetadata" : {
-      "description" : "Release data",
+      "description" : "YB release metadata",
       "properties" : {
         "chartPath" : {
           "description" : "Helm chart path",
@@ -3233,6 +3262,10 @@
         "filePath" : {
           "description" : "Release file path",
           "type" : "string"
+        },
+        "http" : {
+          "$ref" : "#/definitions/HttpLocation",
+          "description" : "HTTP link to the release"
         },
         "imageTag" : {
           "description" : "Release image tag",
@@ -3244,6 +3277,10 @@
             "type" : "string"
           },
           "type" : "array"
+        },
+        "s3" : {
+          "$ref" : "#/definitions/S3Location",
+          "description" : "S3 link and credentials"
         },
         "state" : {
           "description" : "Release state",
@@ -3263,6 +3300,15 @@
             "$ref" : "#/definitions/ScopedConfig"
           },
           "type" : "array"
+        }
+      },
+      "type" : "object"
+    },
+    "S3Location" : {
+      "properties" : {
+        "paths" : {
+          "$ref" : "#/definitions/PackagePaths",
+          "description" : "package paths"
         }
       },
       "type" : "object"
@@ -6651,7 +6697,7 @@
     "/api/v1/customers/{cUUID}/releases" : {
       "get" : {
         "description" : "",
-        "operationId" : "getReleases",
+        "operationId" : "getListOfReleases",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -6692,7 +6738,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "description" : "Release data to be created",
+          "description" : "Release data for remote downloading to be created",
           "in" : "body",
           "name" : "Release",
           "required" : true,
