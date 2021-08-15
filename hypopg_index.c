@@ -395,12 +395,13 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			break;
 #endif
 		default:
-			elog(ERROR, "hypopg: \"%s\" is not a table"
 #if PG_VERSION_NUM >= 90300
-				 " or materialized view"
-#endif
-				 ,
+			elog(ERROR, "hypopg: \"%s\" is not a table or materialized view",
 				 node->relation->relname);
+#else
+			elog(ERROR, "hypopg: \"%s\" is not a table",
+				 node->relation->relname);
+#endif
 	}
 
 	/* Run parse analysis ... */
