@@ -14,7 +14,7 @@ import lombok.Getter;
 import lombok.Value;
 
 @Getter
-public enum AlertDefinitionTemplate {
+public enum AlertTemplate {
 
   // @formatter:off
   REPLICATION_LAG(
@@ -166,7 +166,7 @@ public enum AlertDefinitionTemplate {
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
       AlertDefinitionGroupThreshold.Condition.LESS_THAN,
-      Unit.COUNT),
+      Unit.STATUS),
 
   ALERT_CONFIG_WRITING_FAILED(
       "Alert Rules Sync Failed",
@@ -179,7 +179,7 @@ public enum AlertDefinitionTemplate {
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
       AlertDefinitionGroupThreshold.Condition.LESS_THAN,
-      Unit.COUNT),
+      Unit.STATUS),
 
   ALERT_NOTIFICATION_ERROR(
       "Alert Notification Failed",
@@ -192,7 +192,7 @@ public enum AlertDefinitionTemplate {
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
       AlertDefinitionGroupThreshold.Condition.LESS_THAN,
-      Unit.COUNT),
+      Unit.STATUS),
 
   ALERT_NOTIFICATION_CHANNEL_ERROR(
       "Alert Channel Failed",
@@ -206,7 +206,7 @@ public enum AlertDefinitionTemplate {
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
       AlertDefinitionGroupThreshold.Condition.LESS_THAN,
-      Unit.COUNT);
+      Unit.STATUS);
 
   // @formatter:on
 
@@ -235,6 +235,10 @@ public enum AlertDefinitionTemplate {
 
   private final Unit defaultThresholdUnit;
 
+  private final double thresholdMinValue;
+
+  private final double thresholdMaxValue;
+
   public String buildTemplate(Customer customer) {
     return buildTemplate(customer, null);
   }
@@ -250,7 +254,7 @@ public enum AlertDefinitionTemplate {
     return query;
   }
 
-  AlertDefinitionTemplate(
+  AlertTemplate(
       String name,
       String description,
       String queryTemplate,
@@ -261,6 +265,34 @@ public enum AlertDefinitionTemplate {
       AlertDefinitionGroup.TargetType targetType,
       AlertDefinitionGroupThreshold.Condition defaultThresholdCondition,
       Unit defaultThresholdUnit) {
+    this(
+        name,
+        description,
+        queryTemplate,
+        summaryTemplate,
+        defaultDurationSec,
+        settings,
+        defaultThresholdParamMap,
+        targetType,
+        defaultThresholdCondition,
+        defaultThresholdUnit,
+        defaultThresholdUnit.getMinValue(),
+        defaultThresholdUnit.getMaxValue());
+  }
+
+  AlertTemplate(
+      String name,
+      String description,
+      String queryTemplate,
+      String summaryTemplate,
+      int defaultDurationSec,
+      EnumSet<DefinitionSettings> settings,
+      Map<AlertDefinitionGroup.Severity, DefaultThreshold> defaultThresholdParamMap,
+      AlertDefinitionGroup.TargetType targetType,
+      AlertDefinitionGroupThreshold.Condition defaultThresholdCondition,
+      Unit defaultThresholdUnit,
+      double thresholdMinValue,
+      double thresholdMaxValue) {
     this.name = name;
     this.description = description;
     this.queryTemplate = queryTemplate;
@@ -271,6 +303,8 @@ public enum AlertDefinitionTemplate {
     this.targetType = targetType;
     this.defaultThresholdCondition = defaultThresholdCondition;
     this.defaultThresholdUnit = defaultThresholdUnit;
+    this.thresholdMinValue = thresholdMinValue;
+    this.thresholdMaxValue = thresholdMaxValue;
   }
 
   public boolean isCreateForNewCustomer() {

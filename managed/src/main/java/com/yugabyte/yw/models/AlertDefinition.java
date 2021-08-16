@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.Util.doubleToString;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
 import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
@@ -20,7 +21,6 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -123,9 +123,7 @@ public class AlertDefinition extends Model {
         new AlertDefinitionLabel(
             this,
             KnownAlertLabels.THRESHOLD,
-            BigDecimal.valueOf(group.getThresholds().get(severity).getThreshold())
-                .stripTrailingZeros()
-                .toPlainString()));
+            doubleToString(group.getThresholds().get(severity).getThreshold())));
     effectiveLabels.addAll(labels);
     return effectiveLabels;
   }

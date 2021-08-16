@@ -85,7 +85,7 @@
           "type" : "string"
         },
         "nextNotificationTime" : {
-          "description" : "Time of the nex notification attempt.",
+          "description" : "Time of the next notification attempt.",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -149,6 +149,39 @@
       "required" : [ "labels", "severityIndex", "stateIndex" ],
       "type" : "object"
     },
+    "Alert configuration group target." : {
+      "properties" : {
+        "all" : {
+          "description" : "Alert applicable for all targets",
+          "type" : "boolean"
+        },
+        "uuids" : {
+          "description" : "Alert target uuids",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "type" : "object"
+    },
+    "Alert configuration threshold." : {
+      "properties" : {
+        "condition" : {
+          "description" : "Threshold condition",
+          "enum" : [ "GREATER_THAN", "LESS_THAN" ],
+          "type" : "string"
+        },
+        "threshold" : {
+          "description" : "Threshold value",
+          "format" : "double",
+          "type" : "number"
+        }
+      },
+      "type" : "object"
+    },
     "AlertApiFilter" : {
       "properties" : {
         "groupTypes" : {
@@ -179,6 +212,9 @@
           "type" : "array",
           "uniqueItems" : true
         },
+        "targetName" : {
+          "type" : "string"
+        },
         "uuids" : {
           "items" : {
             "format" : "uuid",
@@ -188,63 +224,82 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "groupTypes", "groupUuid", "severities", "states", "uuids" ],
+      "required" : [ "groupTypes", "groupUuid", "severities", "states", "targetName", "uuids" ],
       "type" : "object"
     },
     "AlertDefinitionGroup" : {
+      "description" : "Alert configuration group.",
       "properties" : {
         "active" : {
+          "description" : "Is group alerts raised or not",
           "type" : "boolean"
         },
         "createTime" : {
+          "description" : "Creation time",
           "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
+          "description" : "Customer uuid",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "description" : {
+          "description" : "Group description",
           "type" : "string"
         },
         "durationSec" : {
+          "description" : "Duration in seconds, while condition is met to raise an alert",
           "format" : "int32",
           "type" : "integer"
         },
         "name" : {
+          "description" : "Group name",
           "type" : "string"
         },
         "routeUUID" : {
+          "description" : "Alert route uuid",
           "format" : "uuid",
           "type" : "string"
         },
         "target" : {
-          "$ref" : "#/definitions/AlertDefinitionGroupTarget"
+          "$ref" : "#/definitions/Alert configuration group target.",
+          "description" : "Group target"
         },
         "targetType" : {
+          "description" : "Group target type",
           "enum" : [ "CUSTOMER", "UNIVERSE" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "template" : {
+          "description" : "Template name",
           "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NODE_ERRORS", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "thresholdUnit" : {
+          "description" : "Thresholds unit",
           "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND" ],
+          "readOnly" : true,
           "type" : "string"
         },
         "thresholds" : {
           "additionalProperties" : {
-            "$ref" : "#/definitions/AlertDefinitionGroupThreshold"
+            "$ref" : "#/definitions/Alert configuration threshold."
           },
+          "description" : "Group thresholds",
           "type" : "object"
         },
         "uuid" : {
+          "description" : "Group uuid",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         }
       },
-      "required" : [ "active", "createTime", "customerUUID", "description", "durationSec", "name", "routeUUID", "target", "targetType", "template", "thresholdUnit", "thresholds", "uuid" ],
       "type" : "object"
     },
     "AlertDefinitionGroupApiFilter" : {
@@ -329,35 +384,96 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
-    "AlertDefinitionGroupTarget" : {
+    "AlertDefinitionTemplate" : {
+      "description" : "Alert configuration template.",
       "properties" : {
-        "all" : {
+        "active" : {
+          "description" : "Is group alerts raised or not",
           "type" : "boolean"
         },
-        "uuids" : {
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        }
-      },
-      "required" : [ "all", "uuids" ],
-      "type" : "object"
-    },
-    "AlertDefinitionGroupThreshold" : {
-      "properties" : {
-        "condition" : {
-          "enum" : [ "GREATER_THAN", "LESS_THAN" ],
+        "createTime" : {
+          "description" : "Creation time",
+          "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
-        "threshold" : {
+        "customerUUID" : {
+          "description" : "Customer uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "description" : {
+          "description" : "Group description",
+          "type" : "string"
+        },
+        "durationSec" : {
+          "description" : "Duration in seconds, while condition is met to raise an alert",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "name" : {
+          "description" : "Group name",
+          "type" : "string"
+        },
+        "routeUUID" : {
+          "description" : "Alert route uuid",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "target" : {
+          "$ref" : "#/definitions/Alert configuration group target.",
+          "description" : "Group target"
+        },
+        "targetType" : {
+          "description" : "Group target type",
+          "enum" : [ "CUSTOMER", "UNIVERSE" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "template" : {
+          "description" : "Template name",
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NODE_ERRORS", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "thresholdInteger" : {
+          "description" : "Is alert threshold integer or floating point",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "thresholdMaxValue" : {
+          "description" : "Alert threshold maximal value",
           "format" : "double",
+          "readOnly" : true,
           "type" : "number"
+        },
+        "thresholdMinValue" : {
+          "description" : "Alert threshold minimal value",
+          "format" : "double",
+          "readOnly" : true,
+          "type" : "number"
+        },
+        "thresholdUnit" : {
+          "description" : "Thresholds unit",
+          "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "thresholds" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/Alert configuration threshold."
+          },
+          "description" : "Group thresholds",
+          "type" : "object"
+        },
+        "uuid" : {
+          "description" : "Group uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
         }
       },
-      "required" : [ "condition", "threshold" ],
       "type" : "object"
     },
     "AlertDefinitionTemplateApiFilter" : {
@@ -2020,34 +2136,6 @@
       "required" : [ "airGapInstall", "installNodeExporter", "nodeExporterPort", "nodeExporterUser", "passwordlessSudoAccess", "privateKey", "provisionInstanceScript", "publicKey", "skipProvisioning", "sshPort", "sshUser", "vaultFile", "vaultPasswordFile" ],
       "type" : "object"
     },
-    "KubernetesProviderFormData" : {
-      "properties" : {
-        "code" : {
-          "enum" : [ "unknown", "aws", "gcp", "azu", "docker", "onprem", "kubernetes", "local", "other" ],
-          "type" : "string"
-        },
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "region" : {
-          "type" : "string"
-        },
-        "regionList" : {
-          "items" : {
-            "$ref" : "#/definitions/RegionData"
-          },
-          "type" : "array"
-        }
-      },
-      "required" : [ "code", "config", "name", "region", "regionList" ],
-      "type" : "object"
-    },
     "MasterNode" : {
       "properties" : {
         "cloudInfo" : {
@@ -3022,9 +3110,6 @@
           },
           "type" : "object"
         },
-        "details" : {
-          "$ref" : "#/definitions/RegionDetails"
-        },
         "latitude" : {
           "description" : "Latitude of this region",
           "example" : 37.22,
@@ -3068,51 +3153,7 @@
           "type" : "array"
         }
       },
-      "required" : [ "details", "securityGroupId", "vnetName", "zones" ],
-      "type" : "object"
-    },
-    "RegionData" : {
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "latitude" : {
-          "format" : "double",
-          "type" : "number"
-        },
-        "longitude" : {
-          "format" : "double",
-          "type" : "number"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "zoneList" : {
-          "items" : {
-            "$ref" : "#/definitions/ZoneData"
-          },
-          "type" : "array"
-        }
-      },
-      "required" : [ "code", "config", "latitude", "longitude", "name", "zoneList" ],
-      "type" : "object"
-    },
-    "RegionDetails" : {
-      "properties" : {
-        "sg_id" : {
-          "type" : "string"
-        },
-        "vnet" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "sg_id", "vnet" ],
+      "required" : [ "securityGroupId", "vnetName", "zones" ],
       "type" : "object"
     },
     "RegionFormData" : {
@@ -3242,7 +3283,7 @@
         },
         "taskType" : {
           "description" : "Type of the task to be schedules",
-          "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion" ],
+          "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "CreateXClusterReplication", "DeleteXClusterReplication", "EditXClusterReplication", "PauseOrResumeXClusterReplication", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion", "AlterXClusterReplicationAddTables", "AlterXClusterReplicationRemoveTables", "AlterXClusterReplicationChangeMasterAddresses", "XClusterReplicationSetActive" ],
           "type" : "string"
         }
       },
@@ -4141,24 +4182,6 @@
         }
       },
       "type" : "object"
-    },
-    "ZoneData" : {
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "config" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
-        "name" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "code", "config", "name" ],
-      "type" : "object"
     }
   },
   "externalDocs" : {
@@ -4533,7 +4556,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertDefinitionGroup"
+                "$ref" : "#/definitions/AlertDefinitionTemplate"
               },
               "type" : "array"
             }
@@ -5782,7 +5805,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "listProvider",
-        "tags" : [ "Provider1" ]
+        "tags" : [ "Provider" ]
       },
       "post" : {
         "description" : "",
@@ -5813,38 +5836,23 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "createProvider",
-        "tags" : [ "Provider1" ]
+        "tags" : [ "Provider" ]
       }
     },
-    "/api/v1/customers/{cUUID}/providers/kubernetes" : {
-      "post" : {
-        "operationId" : "createKubernetes",
+    "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
+      "delete" : {
+        "description" : "This endpoint we are using only for deleting provider for integration test purpose.",
+        "operationId" : "delete",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "Provider" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/suggested_kubernetes_config" : {
-      "get" : {
-        "description" : " Performs discovery of region, zones, pull secret, storageClass when running inside a Kubernetes cluster. Returns the discovered information as a JSON, which is similar to the one which is passed to the createKubernetes method.",
-        "operationId" : "getSuggestedKubernetesConfigs",
-        "parameters" : [ {
+        }, {
           "format" : "uuid",
           "in" : "path",
-          "name" : "cUUID",
+          "name" : "pUUID",
           "required" : true,
           "type" : "string"
         } ],
@@ -5852,14 +5860,14 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/KubernetesProviderFormData"
+              "$ref" : "#/definitions/YWSuccess"
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getSuggestedKubernetesConfigs",
+        "summary" : "deleteProvider",
         "tags" : [ "Provider" ]
       }
     },
@@ -5997,33 +6005,6 @@
         "tags" : [ "AccessKey" ]
       }
     },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/bootstrap" : {
-      "post" : {
-        "operationId" : "bootstrap",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "Provider" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
       "put" : {
         "description" : "",
@@ -6061,35 +6042,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "editProvider",
-        "tags" : [ "Provider" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/initialize" : {
-      "get" : {
-        "description" : "Refresh Provider pricing info",
-        "operationId" : "initialize",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "refreshPricing",
         "tags" : [ "Provider" ]
       }
     },
@@ -6321,6 +6273,35 @@
         } ],
         "summary" : "List of node instances by provider",
         "tags" : [ "Node Instances" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/refresh_pricing" : {
+      "put" : {
+        "description" : "Refresh Provider pricing info",
+        "operationId" : "refreshPricing",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "refreshPricing",
+        "tags" : [ "Provider" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions" : {
@@ -9416,8 +9397,6 @@
     "name" : "Node Instances"
   }, {
     "name" : "Provider"
-  }, {
-    "name" : "Provider1"
   }, {
     "name" : "Region"
   }, {

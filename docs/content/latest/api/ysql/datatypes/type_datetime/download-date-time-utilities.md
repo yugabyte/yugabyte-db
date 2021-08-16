@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: download-date-time-utilities
     parent: api-ysql-datatypes-datetime
-    weight: 90
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---
@@ -19,7 +19,7 @@ Each of these five sections describes reusable code that you might find useful:
 - [Modeling the internal representation and comparing the model with the actual implementation](../date-time-data-types-semantics/type-interval/interval-representation/internal-representation-model/)
 - [Custom domain types for specializing the native _interval_ functionality](../date-time-data-types-semantics/type-interval/custom-interval-domains/)
 - [The _extended_timezone_names view_](../timezones/extended-timezone-names/)
-- [Recommended practise for specifying the _UTC offset_](../timezones/recommendation/)
+- [Recommended practice for specifying the _UTC offset_](../timezones/recommendation/)
 - [Rules for resolving a string that's intended to identify a _UTC offset  > Helper functions](../timezones/ways-to-spec-offset/name-res-rules/helper-functions/)
 
 Moreover, some of the code examples depend on some of this code. Yugabyte recommends therefore that you download and install the entire kit into the database that you use to support your study of the _date-time_ data types. With this code installed, all the code examples on every page listed in the [Table of contents](../toc/) will run without error provided only that, in the general case, you run them in the order in which a particular page presents them.
