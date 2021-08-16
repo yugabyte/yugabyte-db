@@ -14,18 +14,16 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.MetricService;
-import com.yugabyte.yw.common.alerts.YWValidateException;
+import com.yugabyte.yw.common.alerts.impl.AlertDefinitionTemplate;
 import com.yugabyte.yw.forms.AlertReceiverFormData;
 import com.yugabyte.yw.forms.AlertRouteFormData;
 import com.yugabyte.yw.forms.YWResults;
@@ -55,11 +53,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 import play.mvc.Result;
 
-@Slf4j
 @Api(value = "Alert", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AlertController extends AuthenticatedController {
 
@@ -68,6 +63,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
 
   @Inject private AlertService alertService;
+
+  @Inject private AlertReceiverService alertReceiverService;
 
   @Inject private AlertRouteService alertRouteService;
 
@@ -112,8 +109,7 @@ public class AlertController extends AuthenticatedController {
   public Result pageAlerts(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertPagedApiQuery apiQuery =
-        Json.fromJson(request().body().asJson(), AlertPagedApiQuery.class);
+    AlertPagedApiQuery apiQuery = parseJson(AlertPagedApiQuery.class);
     AlertApiFilter apiFilter = apiQuery.getFilter();
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
     AlertPagedQuery query = apiQuery.copyWithFilter(filter, AlertPagedQuery.class);
@@ -144,7 +140,7 @@ public class AlertController extends AuthenticatedController {
   public Result acknowledgeByFilter(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertApiFilter apiFilter = Json.fromJson(request().body().asJson(), AlertApiFilter.class);
+    AlertApiFilter apiFilter = parseJson(AlertApiFilter.class);
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
     alertService.acknowledge(filter);
@@ -162,7 +158,7 @@ public class AlertController extends AuthenticatedController {
 
   @ApiOperation(
       value = "listDefinitionGroupTemplates",
-      response = AlertDefinitionGroup.class,
+      response = AlertDefinitionTemplate.class,
       responseContainer = "List")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -173,15 +169,15 @@ public class AlertController extends AuthenticatedController {
   public Result listDefinitionGroupTemplates(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinitionTemplateApiFilter apiFilter =
-        Json.fromJson(request().body().asJson(), AlertDefinitionTemplateApiFilter.class);
+    AlertDefinitionTemplateApiFilter apiFilter = parseJson(AlertDefinitionTemplateApiFilter.class);
     AlertDefinitionTemplateFilter filter = apiFilter.toFilter();
 
-    List<AlertDefinitionGroup> groups =
-        Arrays.stream(AlertDefinitionTemplate.values())
+    List<AlertDefinitionTemplate> groups =
+        Arrays.stream(AlertTemplate.values())
             .filter(filter::matches)
             .map(
-                template -> alertDefinitionGroupService.createGroupFromTemplate(customer, template))
+                template ->
+                    alertDefinitionGroupService.createDefinitionTemplate(customer, template))
             .collect(Collectors.toList());
 
     return YWResults.withData(groups);
@@ -197,8 +193,7 @@ public class AlertController extends AuthenticatedController {
   public Result pageDefinitionGroups(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinitionGroupPagedApiQuery apiQuery =
-        Json.fromJson(request().body().asJson(), AlertDefinitionGroupPagedApiQuery.class);
+    AlertDefinitionGroupPagedApiQuery apiQuery = parseJson(AlertDefinitionGroupPagedApiQuery.class);
     AlertDefinitionGroupApiFilter apiFilter = apiQuery.getFilter();
     AlertDefinitionGroupFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
@@ -223,8 +218,7 @@ public class AlertController extends AuthenticatedController {
   public Result listDefinitionGroups(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinitionGroupApiFilter apiFilter =
-        Json.fromJson(request().body().asJson(), AlertDefinitionGroupApiFilter.class);
+    AlertDefinitionGroupApiFilter apiFilter = parseJson(AlertDefinitionGroupApiFilter.class);
     AlertDefinitionGroupFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
@@ -243,8 +237,7 @@ public class AlertController extends AuthenticatedController {
   public Result createDefinitionGroup(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertDefinitionGroup group =
-        Json.fromJson(request().body().asJson(), AlertDefinitionGroup.class);
+    AlertDefinitionGroup group = parseJson(AlertDefinitionGroup.class);
 
     if (group.getUuid() != null) {
       throw new YWServiceException(BAD_REQUEST, "Can't create group with uuid set");
@@ -267,8 +260,7 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     alertDefinitionGroupService.getOrBadRequest(groupUUID);
 
-    AlertDefinitionGroup group =
-        Json.fromJson(request().body().asJson(), AlertDefinitionGroup.class);
+    AlertDefinitionGroup group = parseJson(AlertDefinitionGroup.class);
 
     if (group.getUuid() == null) {
       throw new YWServiceException(BAD_REQUEST, "Can't update group with missing uuid");
@@ -297,20 +289,6 @@ public class AlertController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  /**
-   * This function is needed to properly deserialize dynamic type of the params field.
-   *
-   * @return
-   */
-  private AlertReceiverFormData getFormData() {
-    try {
-      ObjectMapper mapper = new ObjectMapper();
-      return mapper.treeToValue(request().body().asJson(), AlertReceiverFormData.class);
-    } catch (RuntimeException | JsonProcessingException e) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid JSON");
-    }
-  }
-
   @ApiOperation(value = "createAlertReceiver", response = AlertReceiver.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -320,22 +298,10 @@ public class AlertController extends AuthenticatedController {
           required = true))
   public Result createAlertReceiver(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-
-    AlertReceiverFormData data = getFormData();
-    AlertReceiver receiver = new AlertReceiver();
-    receiver.setCustomerUUID(customerUUID);
-    receiver.setUuid(UUID.randomUUID());
-    receiver.setName(data.name);
-    receiver.setParams(data.params);
-
-    try {
-      AlertUtils.validate(receiver);
-    } catch (YWValidateException e) {
-      throw new YWServiceException(
-          BAD_REQUEST, "Unable to create alert receiver: " + e.getMessage());
-    }
-
-    receiver.save();
+    AlertReceiverFormData data = parseJson(AlertReceiverFormData.class);
+    AlertReceiver receiver =
+        new AlertReceiver().setCustomerUUID(customerUUID).setName(data.name).setParams(data.params);
+    alertReceiverService.save(receiver);
     auditService().createAuditEntryWithReqBody(ctx());
     return YWResults.withData(receiver);
   }
@@ -343,7 +309,8 @@ public class AlertController extends AuthenticatedController {
   @ApiOperation(value = "getAlertReceiver", response = AlertReceiver.class)
   public Result getAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID));
+    return YWResults.withData(
+        alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID));
   }
 
   @ApiOperation(value = "updateAlertReceiver", response = AlertReceiver.class)
@@ -355,20 +322,10 @@ public class AlertController extends AuthenticatedController {
           required = true))
   public Result updateAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
-    AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
-
-    AlertReceiverFormData data = getFormData();
-    receiver.setName(data.name);
-    receiver.setParams(data.params);
-
-    try {
-      AlertUtils.validate(receiver);
-    } catch (YWValidateException e) {
-      throw new YWServiceException(
-          BAD_REQUEST, "Unable to update alert receiver: " + e.getMessage());
-    }
-
-    receiver.save();
+    AlertReceiver receiver = alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID);
+    AlertReceiverFormData data = parseJson(AlertReceiverFormData.class);
+    receiver.setName(data.name).setParams(data.params);
+    alertReceiverService.save(receiver);
     auditService().createAuditEntryWithReqBody(ctx());
     return YWResults.withData(receiver);
   }
@@ -376,35 +333,9 @@ public class AlertController extends AuthenticatedController {
   @ApiOperation(value = "deleteAlertReceiver", response = YWResults.YWSuccess.class)
   public Result deleteAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
-    AlertReceiver receiver = AlertReceiver.getOrBadRequest(customerUUID, alertReceiverUUID);
-
-    List<String> blockingRoutes =
-        receiver
-            .getRoutesList()
-            .stream()
-            .filter(route -> route.getReceiversList().size() == 1)
-            .map(AlertRoute::getName)
-            .sorted()
-            .collect(Collectors.toList());
-    if (!blockingRoutes.isEmpty()) {
-      throw new YWServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Unable to delete alert receiver: %s. %d alert routes have it as a last receiver."
-                  + " Examples: %s",
-              alertReceiverUUID,
-              blockingRoutes.size(),
-              blockingRoutes.stream().limit(5).collect(Collectors.toList())));
-    }
-
-    log.info("Deleting alert receiver {} for customer {}", alertReceiverUUID, customerUUID);
-    if (!receiver.delete()) {
-      throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete alert receiver: " + alertReceiverUUID);
-    }
-
-    metricService.handleTargetRemoval(receiver.getCustomerUUID(), receiver.getUuid());
-
+    AlertReceiver receiver = alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID);
+    alertReceiverService.delete(customerUUID, alertReceiverUUID);
+    metricService.handleTargetRemoval(receiver.getCustomerUUID(), alertReceiverUUID);
     auditService().createAuditEntry(ctx(), request());
     return YWResults.YWSuccess.empty();
   }
@@ -415,7 +346,7 @@ public class AlertController extends AuthenticatedController {
       responseContainer = "List")
   public Result listAlertReceivers(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(AlertReceiver.list(customerUUID));
+    return YWResults.withData(alertReceiverService.list(customerUUID));
   }
 
   @ApiOperation(value = "createAlertRoute", response = AlertRoute.class)
@@ -432,7 +363,7 @@ public class AlertController extends AuthenticatedController {
         new AlertRoute()
             .setCustomerUUID(customerUUID)
             .setName(data.name)
-            .setReceiversList(AlertReceiver.getOrBadRequest(customerUUID, data.receivers))
+            .setReceiversList(alertReceiverService.getOrBadRequest(customerUUID, data.receivers))
             .setDefaultRoute(data.defaultRoute);
     alertRouteService.save(route);
     auditService().createAuditEntryWithReqBody(ctx());
@@ -459,7 +390,7 @@ public class AlertController extends AuthenticatedController {
     route
         .setName(data.name)
         .setDefaultRoute(data.defaultRoute)
-        .setReceiversList(AlertReceiver.getOrBadRequest(customerUUID, data.receivers));
+        .setReceiversList(alertReceiverService.getOrBadRequest(customerUUID, data.receivers));
     alertRouteService.save(route);
     auditService().createAuditEntryWithReqBody(ctx());
     return YWResults.withData(route);

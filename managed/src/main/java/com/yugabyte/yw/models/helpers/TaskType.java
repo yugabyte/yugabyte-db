@@ -106,6 +106,14 @@ public enum TaskType {
 
   SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
 
+  CreateXClusterReplication("CreateXClusterReplication"),
+
+  DeleteXClusterReplication("DeleteXClusterReplication"),
+
+  EditXClusterReplication("EditXClusterReplication"),
+
+  PauseOrResumeXClusterReplication("PauseOrResumeXClusterReplication"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -225,7 +233,16 @@ public enum TaskType {
 
   AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
 
-  ResetUniverseVersion("subtasks.ResetUniverseVersion");
+  ResetUniverseVersion("subtasks.ResetUniverseVersion"),
+
+  AlterXClusterReplicationAddTables("subtasks.AlterXClusterReplicationAddTables"),
+
+  AlterXClusterReplicationRemoveTables("subtasks.AlterXClusterReplicationRemoveTables"),
+
+  AlterXClusterReplicationChangeMasterAddresses(
+      "subtasks.AlterXClusterReplicationChangeMasterAddresses"),
+
+  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive");
 
   private String relativeClassPath;
 

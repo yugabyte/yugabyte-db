@@ -12,10 +12,12 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.paging.PagedQuery;
@@ -24,6 +26,8 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.Map;
 import java.util.Objects;
@@ -42,6 +46,7 @@ import play.data.validation.Constraints;
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
+@ApiModel(description = "Alert configuration group.")
 public class AlertDefinitionGroup extends Model {
 
   public enum SortBy implements PagedQuery.SortByIF {
@@ -89,55 +94,70 @@ public class AlertDefinitionGroup extends Model {
 
   @Id
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "Group uuid", accessMode = READ_ONLY)
   private UUID uuid;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
+  @ApiModelProperty(value = "Group name", accessMode = READ_WRITE)
   private String name;
 
   @Constraints.Required
   @Column(columnDefinition = "Text")
+  @ApiModelProperty(value = "Group description", accessMode = READ_WRITE)
   private String description;
 
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)
   private Date createTime = nowWithoutMillis();
 
   @Constraints.Required
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
+  @ApiModelProperty(value = "Group target type", accessMode = READ_ONLY)
   private TargetType targetType;
 
   @Constraints.Required
   @DbJson
   @Column(columnDefinition = "Text", nullable = false)
+  @ApiModelProperty(value = "Group target", accessMode = READ_WRITE)
   private AlertDefinitionGroupTarget target;
 
   @Constraints.Required
   @DbJson
   @Column(columnDefinition = "Text", nullable = false)
+  @ApiModelProperty(value = "Group thresholds", accessMode = READ_WRITE)
   private Map<Severity, AlertDefinitionGroupThreshold> thresholds;
 
   @Constraints.Required
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
+  @ApiModelProperty(value = "Thresholds unit", accessMode = READ_ONLY)
   private Unit thresholdUnit;
 
   @Constraints.Required
   @Column(columnDefinition = "Text", nullable = false)
   @Enumerated(EnumType.STRING)
-  private AlertDefinitionTemplate template;
+  @ApiModelProperty(value = "Template name", accessMode = READ_ONLY)
+  private AlertTemplate template;
 
   @Column(nullable = false)
-  private int durationSec = 15;
+  @ApiModelProperty(
+      value = "Duration in seconds, while condition is met to raise an alert",
+      accessMode = READ_WRITE)
+  private Integer durationSec = 15;
 
+  @ApiModelProperty(value = "Is group alerts raised or not", accessMode = READ_WRITE)
   private boolean active = true;
 
+  @ApiModelProperty(value = "Alert route uuid", accessMode = READ_WRITE)
   private UUID routeUUID;
 
   private static final Finder<UUID, AlertDefinitionGroup> find =

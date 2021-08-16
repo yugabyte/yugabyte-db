@@ -39,6 +39,7 @@ import javax.persistence.Transient;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
+import org.apache.commons.lang3.StringUtils;
 
 @Entity
 @Data
@@ -162,7 +163,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date notificationAttemptTime;
 
-  @ApiModelProperty(value = "Time of the nex notification attempt.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Time of the next notification attempt.", accessMode = READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date nextNotificationTime = nowWithoutMillis();
 
@@ -249,6 +250,9 @@ public class Alert extends Model implements AlertLabelsProvider {
     if (filter.getGroupUuid() != null) {
       query.eq("groupUuid", filter.getGroupUuid());
     }
+    if (!StringUtils.isEmpty(filter.getTargetName())) {
+      query.like("targetName", filter.getTargetName() + "%");
+    }
     appendInClause(query, "severity", filter.getSeverities());
     appendInClause(query, "groupType", filter.getGroupTypes());
 
@@ -258,6 +262,9 @@ public class Alert extends Model implements AlertLabelsProvider {
       } else {
         query.or().isNull("nextNotificationTime").gt("nextNotificationTime", new Date()).endOr();
       }
+    }
+    if (filter.getResolvedDateBefore() != null) {
+      query.le("resolvedTime", filter.getResolvedDateBefore());
     }
     return query;
   }
