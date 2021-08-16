@@ -10824,8 +10824,9 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
-					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
-					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $5;
@@ -10833,8 +10834,9 @@ TransactionStmt:
 				}
 			| ROLLBACK opt_transaction TO ColId
 				{
-					/* TODO(9219) -- conditionally enable once client supports aborted savepoints */
-					parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
+					if (!YBSavepointsEnabled()) {
+						parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
+					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
 					n->savepoint_name = $4;

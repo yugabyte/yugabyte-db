@@ -15,7 +15,7 @@ showAsideToc: true
 
 YSQL supports the following data types for values that represent a date, a time of day, a date-and-time-of-day pair, or a duration. These data types will be referred to jointly as the _date-time_ data types.
 
-| Data type                                                                  | Purpose                           | Internal format         | Min      | Max        | Resoltion     |
+| Data type                                                                  | Purpose                           | Internal format         | Min      | Max        | Resolution     |
 | -------------------------------------------------------------------------- | --------------------------------- | ----------------------- | -------- | ---------- | ------------- |
 | [date](./date-time-data-types-semantics/type-date/)                        | date moment (wall-clock)          | 4-bytes                 | 4713 BC  | 5874897 AD | 1 day         |
 | [time](./date-time-data-types-semantics/type-time/) [(p)]                  | time moment (wall-clock)          | 8-bytes                 | 00:00:00 | 24:00:00   | 1 microsecond |
@@ -64,5 +64,5 @@ However, if your purpose is only to write brand-new application code, and if you
 - **[The plain timestamp and timestamptz data types](./date-time-data-types-semantics/type-timestamp/)**
 - **[Sensitivity of converting between timestamptz and plain timestamp to the UTC offset](./timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/)**
 - **[Sensitivity of timestamptz-interval arithmetic to the current timezone](./timezones/timezone-sensitive-operations/timestamptz-interval-day-arithmetic/)**
-- **[Recommended practise for specifying the UTC offset](./timezones/recommendation/)**
+- **[Recommended practice for specifying the UTC offset](./timezones/recommendation/)**
 - **[Custom domain types for specializing the native interval functionality](./date-time-data-types-semantics/type-interval/custom-interval-domains/)**

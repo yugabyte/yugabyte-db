@@ -15,7 +15,10 @@
 
 #include <cds/init.h> // NOLINT
 
+#include "yb/client/tablet_server.h"
+
 #include "yb/common/common_flags.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
 
@@ -25,6 +28,9 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_memctx.h"
+
+#include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DECLARE_bool(client_suppress_created_logs);
 
@@ -798,6 +804,54 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
   return ToYBCStatus(pgapi->OperatorAppendArg(op_handle, arg));
 }
 
+YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
+                            bool is_null, size_t *type_size) {
+
+  if (typeentity == nullptr
+      || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA
+      || !typeentity->allow_for_primary_key) {
+    return YBCStatusNotSupport("");
+  }
+
+  if (typeentity->datum_fixed_size > 0) {
+    *type_size = typeentity->datum_fixed_size;
+    return YBCStatusOK();
+  }
+
+  QLValue val;
+  Status status = pggate::PgValueToPB(typeentity, data, is_null, &val);
+  if (!status.IsOk()) {
+    return ToYBCStatus(status);
+  }
+
+  string key_buf;
+  AppendToKey(val.value(), &key_buf);
+  *type_size = key_buf.size();
+  return YBCStatusOK();
+}
+
+
+YBCStatus YBCAppendDatumToKey(uint64_t data, const YBCPgTypeEntity *typeentity,
+                              bool is_null, char *key_ptr,
+                              size_t *bytes_written) {
+  QLValue val;
+
+  Status status = pggate::PgValueToPB(typeentity, data, is_null, &val);
+  if (!status.IsOk()) {
+    return ToYBCStatus(status);
+  }
+
+  string key_buf;
+  AppendToKey(val.value(), &key_buf);
+  memcpy(key_ptr, key_buf.c_str(), key_buf.size());
+  *bytes_written = key_buf.size();
+  return YBCStatusOK();
+}
+
+uint16_t YBCCompoundHash(const char *key, size_t length) {
+  return YBPartition::HashColumnCompoundValue(string(key, length));
+}
+
 //------------------------------------------------------------------------------------------------
 // Transaction operation.
 //------------------------------------------------------------------------------------------------
@@ -969,8 +1023,31 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   pgapi->SetTimeout(timeout_ms);
 }
 
-void YBCGetTabletServerHosts(YBCServerDescriptor **servers, int * count) {
-  pgapi->ListTabletServers(servers, count);
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, int *count) {
+  const auto result = pgapi->ListTabletServers();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto &servers_info = result.get();
+  *count = servers_info.size();
+  *servers = NULL;
+  if (!servers_info.empty()) {
+    *servers = static_cast<YBCServerDescriptor *>(
+        YBCPAlloc(sizeof(YBCServerDescriptor) * servers_info.size()));
+    YBCServerDescriptor *dest = *servers;
+    for (const auto &info : servers_info) {
+      new (dest) YBCServerDescriptor{
+          .host = YBCPAllocStdString(info->hostname()),
+          .cloud = YBCPAllocStdString(info->cloud()),
+          .region = YBCPAllocStdString(info->region()),
+          .zone = YBCPAllocStdString(info->zone()),
+          .publicIp = YBCPAllocStdString(info->publicIp()),
+          .isPrimary = info->isPrimary(),
+          .pgPort = info->pg_port()};
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
 }
 
 //------------------------------------------------------------------------------------------------

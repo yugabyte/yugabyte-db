@@ -197,12 +197,12 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       existing_value.consume_byte();
       auto existing_intent = VERIFY_RESULT(
           docdb::ParseIntentKey(intent_iter_.key(), existing_value));
-
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
             Slice(existing_value.data(), TransactionId::StaticSize())));
 
+        // TODO(savepoints) - if the intent corresponds to an aborted subtransaction, ignore.
         if (!context_->IgnoreConflictsWith(transaction_id)) {
           conflicts_.insert(transaction_id);
         }

@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -114,7 +115,8 @@ public class SessionControllerTest {
     AlertDefinitionGroupService alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    AlertReceiverService alertReceiverService = new AlertReceiverService();
+    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
   }
 
   @After

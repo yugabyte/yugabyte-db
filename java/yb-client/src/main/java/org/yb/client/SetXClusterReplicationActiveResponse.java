@@ -7,7 +7,7 @@ import org.yb.master.Master;
 public class SetXClusterReplicationActiveResponse extends YRpcResponse {
   private final Master.MasterErrorPB serverError;
 
-  SetXClusterReplicationActiveResponse(
+  public SetXClusterReplicationActiveResponse(
     long elapsedMillis, String tsUUID, Master.MasterErrorPB serverError) {
     super(elapsedMillis, tsUUID);
     this.serverError = serverError;

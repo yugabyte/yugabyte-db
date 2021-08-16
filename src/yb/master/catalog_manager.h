@@ -865,6 +865,13 @@ class CatalogManager :
   // to true (under state_lock_).
   void LoadSysCatalogDataTask();
 
+  // This method checks that resource such as keyspace is available for GrantRevokePermission
+  // request.
+  // Since this method takes lock on mutex_, it is separated out of permissions manager
+  // so that the thread safety relationship between the two managers is easy to reason about.
+  CHECKED_STATUS CheckResource(const GrantRevokePermissionRequestPB* req,
+                               GrantRevokePermissionResponsePB* resp);
+
   // Generated the default entry for the cluster config, that is written into sys_catalog on very
   // first leader election of the cluster.
   //
@@ -1102,7 +1109,7 @@ class CatalogManager :
                                     const scoped_refptr<TableInfo>& table);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
-  void SendSplitTabletRequest(
+  CHECKED_STATUS SendSplitTabletRequest(
       const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key);
 
@@ -1299,7 +1306,6 @@ class CatalogManager :
   using MutexType = rw_spinlock;
   using SharedLock = NonRecursiveSharedLock<MutexType>;
   using LockGuard = std::lock_guard<MutexType>;
-  using UniqueLock = std::unique_lock<MutexType>;
   mutable MutexType mutex_;
 
   // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore

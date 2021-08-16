@@ -40,6 +40,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -84,6 +85,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
   @Mock Config mockConfig;
+  @Mock ConfigHelper mockConfigHelper;
 
   @Mock private play.Configuration appConfig;
 
@@ -578,7 +580,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.uuid);
     assertYWSuccess(result, "Deleted provider: " + p.uuid);
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfig, mockConfigHelper).size());
     assertNull(Provider.get(p.uuid));
   }
 

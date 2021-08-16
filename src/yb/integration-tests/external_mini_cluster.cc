@@ -2073,6 +2073,12 @@ Status ExternalDaemon::Resume() {
   return process_->Kill(SIGCONT);
 }
 
+Status ExternalDaemon::Kill(int signal) {
+  if (!process_) return Status::OK();
+  VLOG(1) << "Kill " << ProcessNameAndPidStr() << " with " << signal;
+  return process_->Kill(signal);
+}
+
 bool ExternalDaemon::IsShutdown() const {
   return process_.get() == nullptr;
 }

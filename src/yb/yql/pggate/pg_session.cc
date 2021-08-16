@@ -56,6 +56,8 @@ DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60
 TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
+DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
+
 namespace yb {
 namespace pggate {
 
@@ -1213,45 +1215,23 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
         Slice(),
         PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
   } else {
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests || FLAGS_ysql_log_failed_docdb_requests)) {
+      LOG(INFO) << "Operation failed: " << op.ToString();
+    }
     s = STATUS(QLError, op.response().error_message(), Slice(),
                PgsqlError(pg_error_code));
   }
-  s = s.CloneAndAddErrorCode(TransactionError(txn_error_code));
-  return s;
+  return s.CloneAndAddErrorCode(TransactionError(txn_error_code));
 }
 
 Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
   return client_->TabletServerCount(tserver_count, primary_only, use_cache);
 }
 
-Status PgSession::ListTabletServers(YBCServerDescriptor **servers, int *numofservers) {
+Result<client::YBClient::TabletServersInfo> PgSession::ListTabletServers() {
   std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>> tablet_servers;
-  Status ret = client_->ListLiveTabletServers(&tablet_servers, false);
-  *numofservers = tablet_servers.size();
-  int cnt = *numofservers;
-  if (cnt > 0) {
-    for (int i = 0; i < cnt; i++) {
-      std::string host = tablet_servers.at(i)->hostname();
-      std::string cloud = tablet_servers.at(i)->cloud();
-      std::string region = tablet_servers.at(i)->region();
-      std::string zone = tablet_servers.at(i)->zone();
-      std::string publicIp = tablet_servers.at(i)->publicIp();
-      bool isPrimary = tablet_servers.at(i)->isPrimary();
-      const char *hostC = YBCPAllocStdString(host);
-      const char *cloudC = YBCPAllocStdString(cloud);
-      const char *regionC = YBCPAllocStdString(region);
-      const char *zoneC = YBCPAllocStdString(zone);
-      const char *publicIpC = YBCPAllocStdString(publicIp);
-      servers[i] = reinterpret_cast<YBCServerDescriptor *>(YBCPAlloc(sizeof(YBCServerDescriptor)));
-      servers[i]->host = hostC;
-      servers[i]->cloud = cloudC;
-      servers[i]->region = regionC;
-      servers[i]->zone = zoneC;
-      servers[i]->publicIp = publicIpC;
-      servers[i]->isPrimary = isPrimary;
-    }
-  }
-  return ret;
+  RETURN_NOT_OK(client_->ListLiveTabletServers(&tablet_servers, false));
+  return tablet_servers;
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {
@@ -1283,10 +1263,12 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgSession::RollbackSubTransaction(SubTransactionId id) {
-  // TODO(savepoints) -- update client-side aborted subtransaction bitset
   // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
   // eventually send this metadata.
-  return Status::OK();
+  // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
+  // SubTransactionMetadata.
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RollbackSubTransaction(id);
 }
 
 }  // namespace pggate

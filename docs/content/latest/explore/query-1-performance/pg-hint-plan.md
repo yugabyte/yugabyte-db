@@ -102,7 +102,7 @@ Indexes:
 
 ### Create a hint plan
 
-pg_hint_plan parses hinting phrases of a special form present in SQL statements. This special form begins with the character sequence "/*+" and ends with "*/". Hint phrases consist of hint names followed by hint parameters enclosed within parentheses delimited by spaces.
+pg_hint_plan parses hinting phrases of a special form present in SQL statements. This special form begins with the character sequence "/\*+" and ends with "\*/". Hint phrases consist of hint names followed by hint parameters enclosed within parentheses delimited by spaces.
 
 In the example below, `HashJoin` is selected as the joining method for joining `pg_bench_branches` and `pg_bench_accounts` and a `SeqScan` is used for scanning the table `pgbench_accounts`.
 

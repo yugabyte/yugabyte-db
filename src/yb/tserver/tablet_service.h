@@ -74,6 +74,8 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
 
+  void VerifyTableRowRange(const VerifyTableRowRangeRequestPB* req, VerifyTableRowRangeResponsePB* resp, rpc::RpcContext context) override;
+
   void NoOp(const NoOpRequestPB* req, NoOpResponsePB* resp, rpc::RpcContext context) override;
 
   void Publish(

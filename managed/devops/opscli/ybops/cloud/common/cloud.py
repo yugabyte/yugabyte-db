@@ -48,6 +48,7 @@ class AbstractCloud(AbstractCommandParser):
     CERT_VALID_DURATION = 365
     YSQLSH_CERT_DIR = os.path.join(YB_HOME_DIR, ".yugabytedb")
     ROOT_CERT_NAME = "ca.crt"
+    ROOT_CERT_NEW_NAME = "ca_new.crt"
     CLIENT_ROOT_NAME = "root.crt"
     CLIENT_CERT_NAME = "yugabytedb.crt"
     CLIENT_KEY_NAME = "yugabytedb.key"
@@ -214,33 +215,70 @@ class AbstractCloud(AbstractCommandParser):
             "-U postgres\"".format(master_addresses, init_db_path)
         )
 
-    def compare_root_certs(self, extra_vars, ssh_options):
-        has_openssl = True
-        root_cert_path = extra_vars["root_cert_path"]
-        certs_node_dir = extra_vars["certs_node_dir"]
-        yb_root_cert_path = os.path.join(certs_node_dir, self.ROOT_CERT_NAME)
+    # Compare certificate content and return
+    # 0 -> if cert1 equals to cert2
+    # 1 -> if cert1 is subset of cert2
+    # 2 -> if cert2 is subset of cert1
+    # 3 -> if none of the above satisfies
+    def compare_certs(self, cert1, cert2):
+        # Extract certificate values list from the string
+        cert1_re = re.findall(
+            "-----BEGIN.*?-----([\\s\\S]*?)-----END.*?-----", cert1, re.M)
+        cert2_re = re.findall(
+            "-----BEGIN.*?-----([\\s\\S]*?)-----END.*?-----", cert2, re.M)
+        # Trim spaces and newlines and form a set
+        cert1_set = \
+            {"".join(y.strip() for y in x.splitlines()) for x in cert1_re}
+        cert2_set = \
+            {"".join(y.strip() for y in x.splitlines()) for x in cert2_re}
+
+        if cert1_set == cert2_set:
+            return 0
+        if cert1_set < cert2_set:
+            return 1
+        if cert1_set > cert2_set:
+            return 2
+
+        return 3
+
+    def append_new_root_cert(self, ssh_options, root_cert_path,
+                             certs_location, certs_dir):
         remote_shell = RemoteShell(ssh_options)
-        try:
-            remote_shell.run_command('which openssl')
-        except YBOpsRuntimeError as e:
-            # No openssl, just compare files.
-            has_openssl = False
+        yb_root_cert_path = os.path.join(certs_dir, self.ROOT_CERT_NAME)
+        yb_root_cert_new_path = os.path.join(certs_dir, self.ROOT_CERT_NEW_NAME)
 
-        # Check if files exist. If not, let it error out (since the root files should be there.)
-        remote_shell.run_command('test -f {}'.format(root_cert_path))
-        remote_shell.run_command('test -f {}'.format(yb_root_cert_path))
+        # Give write permissions to cert directory
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+        # Copy the new root cert to ca_new.crt
+        if certs_location == self.CERT_LOCATION_NODE:
+            remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
+                                                           yb_root_cert_new_path))
+        if certs_location == self.CERT_LOCATION_PLATFORM:
+            remote_shell.put_file(root_cert_path, yb_root_cert_new_path)
+        # Append new cert content to ca.crt
+        remote_shell.run_command(
+            "cat '{}' >> '{}'".format(yb_root_cert_new_path, yb_root_cert_path))
+        # Reset the write permissions
+        remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
 
-        # Compare the openssl hash if openssl is present.
-        if has_openssl:
-            md5_cmd = "openssl x509 -noout -modulus -in '{}' | openssl md5"
-            curr_root = remote_shell.run_command(md5_cmd.format(yb_root_cert_path))
-            new_root = remote_shell.run_command(md5_cmd.format(root_cert_path))
-            if curr_root.stdout != new_root.stdout:
-                raise YBOpsRuntimeError("Root certs are different.")
-        # Openssl not present, just compare the files after removing whitespace.
-        else:
-            # If there is an error code, that means the files are different. Should fail.
-            remote_shell.run_command('diff -Z {} {}'.format(root_cert_path, yb_root_cert_path))
+    def remove_old_root_cert(self, ssh_options, certs_dir):
+        remote_shell = RemoteShell(ssh_options)
+        yb_root_cert_path = os.path.join(certs_dir, self.ROOT_CERT_NAME)
+        yb_root_cert_new_path = os.path.join(certs_dir, self.ROOT_CERT_NEW_NAME)
+        # Check if ca_new.crt is present, it will be present if
+        # APPEND_NEW_ROOT_CERT action was performed before
+        file_verify = remote_shell.run_command_raw(
+            "test -f '{}'".format(yb_root_cert_new_path))
+        # No action needed if ca_new.crt is not present
+        if not file_verify.exited:
+            # Give write permissions to cert directory
+            remote_shell.run_command(
+                'chmod -f 666 {}/* || true'.format(certs_dir))
+            # Remove ca.crt and rename ca_new.crt to ca.crt
+            remote_shell.run_command("mv '{}' '{}'".format(
+                yb_root_cert_new_path, yb_root_cert_path))
+            # Reset the write permissions
+            remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
 
     def __verify_certs_hostname(self, node_crt_path, ssh_options):
         host = ssh_options["ssh_host"]
@@ -317,31 +355,59 @@ class AbstractCloud(AbstractCommandParser):
             server_cert_path,
             server_key_path,
             certs_location,
-            certs_dir):
+            certs_dir,
+            rotate_certs):
         remote_shell = RemoteShell(ssh_options)
         node_ip = ssh_options["ssh_host"]
-        logging.info("Moving server certs located at {}, {}, {}.".format(
-            root_cert_path, server_cert_path, server_key_path))
         cert_file = 'node.{}.crt'.format(node_ip)
         key_file = 'node.{}.key'.format(node_ip)
+        yb_root_cert_path = os.path.join(certs_dir, self.ROOT_CERT_NAME)
+        yb_server_cert_path = os.path.join(certs_dir, cert_file)
+        yb_server_key_path = os.path.join(certs_dir, key_file)
+
+        copy_root = True
+        if rotate_certs:
+            root_cert = remote_shell.run_command(
+                "cat '{}'".format(yb_root_cert_path)).stdout
+            root_cert_new = None
+            if certs_location == self.CERT_LOCATION_NODE:
+                root_cert_new = remote_shell.run_command(
+                    "cat '{}'".format(root_cert_path)).stdout
+            if certs_location == self.CERT_LOCATION_PLATFORM:
+                with open(root_cert_path) as file:
+                    root_cert_new = file.read()
+            if root_cert is not None and root_cert_new is not None:
+                compare_result = self.compare_certs(root_cert_new, root_cert)
+                if compare_result == 0 or compare_result == 1:
+                    # Don't copy root certs if the new root cert is
+                    # same or subset of the existing root cert
+                    copy_root = False
+            else:
+                raise YBOpsRuntimeError(
+                    "Unable to fetch the certificate {}".format(root_cert_path))
+
+        logging.info("Moving server certs located at {}, {}, {}.".format(
+            root_cert_path, server_cert_path, server_key_path))
 
         remote_shell.run_command('mkdir -p ' + certs_dir)
-        # Give write permission in case file exists. If the command fails, ignore.
+        # Give write permissions. If the command fails, ignore.
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
 
         if certs_location == self.CERT_LOCATION_NODE:
-            self.verify_certs(root_cert_path, server_cert_path, ssh_options, verify_hostname=True)
-            remote_shell.run_command('cp {} {}'.format(root_cert_path,
-                                                       os.path.join(certs_dir,
-                                                                    self.ROOT_CERT_NAME)))
-            remote_shell.run_command('cp {} {}'.format(server_cert_path,
-                                                       os.path.join(certs_dir, cert_file)))
-            remote_shell.run_command('cp {} {}'.format(server_key_path,
-                                                       os.path.join(certs_dir, key_file)))
+            self.verify_certs(root_cert_path, server_cert_path,
+                              ssh_options, verify_hostname=True)
+            if copy_root:
+                remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
+                                                               yb_root_cert_path))
+            remote_shell.run_command("cp '{}' '{}'".format(server_cert_path,
+                                                           yb_server_cert_path))
+            remote_shell.run_command("cp '{}' '{}'".format(server_key_path,
+                                                           yb_server_key_path))
         if certs_location == self.CERT_LOCATION_PLATFORM:
-            remote_shell.put_file(root_cert_path, os.path.join(certs_dir, self.ROOT_CERT_NAME))
-            remote_shell.put_file(server_cert_path, os.path.join(certs_dir, cert_file))
-            remote_shell.put_file(server_key_path, os.path.join(certs_dir, key_file))
+            if copy_root:
+                remote_shell.put_file(root_cert_path, yb_root_cert_path)
+            remote_shell.put_file(server_cert_path, yb_server_cert_path)
+            remote_shell.put_file(server_key_path, yb_server_key_path)
 
         # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
@@ -354,34 +420,34 @@ class AbstractCloud(AbstractCommandParser):
             client_key_path,
             certs_location):
         remote_shell = RemoteShell(ssh_options)
-        node_ip = ssh_options["ssh_host"]
+        yb_root_cert_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.ROOT_CERT_NAME)
+        yb_client_cert_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_CERT_NAME)
+        yb_client_key_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_KEY_NAME)
+
         logging.info("Moving client certs located at {}, {}, {}.".format(
             root_cert_path, client_cert_path, client_key_path))
-        cert_file = 'node.{}.crt'.format(node_ip)
-        key_file = 'node.{}.key'.format(node_ip)
 
         remote_shell.run_command('mkdir -p ' + self.YSQLSH_CERT_DIR)
-        # Give write permission in case file exists. If the command fails, ignore.
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+        # Give write permissions. If the command fails, ignore.
+        remote_shell.run_command(
+            'chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
 
         if certs_location == self.CERT_LOCATION_NODE:
-            remote_shell.run_command('cp {} {}'.format(root_cert_path,
-                                                       os.path.join(self.YSQLSH_CERT_DIR,
-                                                                    self.ROOT_CERT_NAME)))
-            remote_shell.run_command('cp {} {}'.format(client_cert_path,
-                                                       os.path.join(self.YSQLSH_CERT_DIR,
-                                                                    self.CLIENT_CERT_NAME)))
-            remote_shell.run_command('cp {} {}'.format(client_key_path,
-                                                       os.path.join(self.YSQLSH_CERT_DIR,
-                                                                    self.CLIENT_KEY_NAME)))
+            remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
+                                                           yb_root_cert_path))
+            remote_shell.run_command("cp '{}' '{}'".format(client_cert_path,
+                                                           yb_client_cert_path))
+            remote_shell.run_command("cp '{}' '{}'".format(client_key_path,
+                                                           yb_client_key_path))
         if certs_location == self.CERT_LOCATION_PLATFORM:
-            remote_shell.put_file(root_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
-                                                               self.CLIENT_ROOT_NAME))
-            remote_shell.put_file(client_cert_path, os.path.join(self.YSQLSH_CERT_DIR,
-                                                                 self.CLIENT_CERT_NAME))
-            remote_shell.put_file(client_key_path, os.path.join(self.YSQLSH_CERT_DIR,
-                                                                self.CLIENT_KEY_NAME))
+            remote_shell.put_file(root_cert_path, yb_root_cert_path)
+            remote_shell.put_file(client_cert_path, yb_client_cert_path)
+            remote_shell.put_file(client_key_path, yb_client_key_path)
 
+        # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
     def create_encryption_at_rest_file(self, extra_vars, ssh_options):

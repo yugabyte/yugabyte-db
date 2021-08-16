@@ -1265,7 +1265,7 @@ bool IsDefinitelyPermanentError(const Status& s) {
 // ============================================================================
 AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-    std::function<void(const std::string&, const std::string&)> result_cb)
+    DataCallbackType result_cb)
     : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
 }
@@ -1312,8 +1312,12 @@ bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
 }
 
 void AsyncGetTabletSplitKey::Finished(const Status& status) {
-  if (status.ok()) {
-    result_cb_(resp_.split_encoded_key(), resp_.split_partition_key());
+  if (result_cb_) {
+    if (status.ok()) {
+      result_cb_(Data{resp_.split_encoded_key(), resp_.split_partition_key()});
+    } else {
+      result_cb_(status);
+    }
   }
 }
 
@@ -1323,8 +1327,9 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet) {
+    const std::string& split_encoded_key, const std::string& split_partition_key,
+    std::function<void(const Status&)> result_cb)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);
   req_.set_new_tablet2_id(new_tablet_ids[1]);
@@ -1361,6 +1366,12 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
       << "Sent split tablet request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
       << req_.DebugString();
   return true;
+}
+
+void AsyncSplitTablet::Finished(const Status& status) {
+  if (result_cb_) {
+    result_cb_(status);
+  }
 }
 
 }  // namespace master

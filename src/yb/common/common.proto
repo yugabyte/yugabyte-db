@@ -503,8 +503,14 @@ message TransactionMetadataPB {
   optional fixed64 metadata_write_time = 6;
 }
 
+message AbortedSubTransactionSetPB {
+  repeated uint32 set = 1;
+}
+
 message SubTransactionMetadataPB {
   optional uint32 subtransaction_id = 1;
+
+  optional AbortedSubTransactionSetPB aborted = 2;
 }
 
 // See ReadHybridTime for explation of this message.

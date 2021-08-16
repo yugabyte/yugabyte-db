@@ -83,8 +83,9 @@ public class Customer extends Model {
       accessMode = READ_ONLY)
   public Date creationDate;
 
+  // To be replaced with runtime config
   @Column(nullable = true, columnDefinition = "TEXT")
-  @ApiModelProperty(value = "Features", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
   @Column(columnDefinition = "TEXT", nullable = false)

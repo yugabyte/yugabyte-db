@@ -88,6 +88,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   CHECKED_STATUS Init();
 
+  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg,
+    server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
+
   // Waits for the tablet server to complete the initialization.
   CHECKED_STATUS WaitInited();
 

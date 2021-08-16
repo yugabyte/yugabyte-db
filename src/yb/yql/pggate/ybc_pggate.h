@@ -473,6 +473,15 @@ YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
                            YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
+YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
+                            bool is_null, size_t *type_size);
+
+YBCStatus YBCAppendDatumToKey(uint64_t data,  const YBCPgTypeEntity
+                            *typeentity, bool is_null, char *key_ptr,
+                            size_t *bytes_written);
+
+uint16_t YBCCompoundHash(const char *key, size_t length);
+
 // Referential Integrity Check Caching.
 void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
 void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
@@ -531,7 +540,7 @@ const void* YBCPgGetThreadLocalErrMsg();
 
 void YBCPgResetCatalogReadTime();
 
-void YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
 
 #ifdef __cplusplus
 }  // extern "C"

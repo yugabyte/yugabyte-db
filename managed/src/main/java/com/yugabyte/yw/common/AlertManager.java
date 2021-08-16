@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverInterface;
 import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
@@ -55,6 +56,7 @@ public class AlertManager {
 
   private final EmailHelper emailHelper;
   private final AlertDefinitionGroupService alertDefinitionGroupService;
+  private final AlertReceiverService alertReceiverService;
   private final AlertRouteService alertRouteService;
   private final AlertReceiverManager receiversManager;
   private final AlertService alertService;
@@ -65,58 +67,17 @@ public class AlertManager {
       EmailHelper emailHelper,
       AlertService alertService,
       AlertDefinitionGroupService alertDefinitionGroupService,
+      AlertReceiverService alertReceiverService,
       AlertRouteService alertRouteService,
       AlertReceiverManager receiversManager,
       MetricService metricService) {
     this.emailHelper = emailHelper;
     this.alertService = alertService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
+    this.alertReceiverService = alertReceiverService;
     this.alertRouteService = alertRouteService;
     this.receiversManager = receiversManager;
     this.metricService = metricService;
-  }
-
-  @VisibleForTesting
-  void scheduleAlertNotification(Alert alert) {
-    if ((alert.getNextNotificationTime() == null)
-        && (alert.getState() != State.ACKNOWLEDGED)
-        && (alert.getNotifiedState() != State.ACKNOWLEDGED)) {
-      alert.setNextNotificationTime(new Date());
-    }
-  }
-
-  /**
-   * A method to run a state transition for a given alert
-   *
-   * @param alert the alert to transition states on
-   * @return the alert in a new state
-   */
-  public Alert transitionAlert(Alert alert) {
-    try {
-      switch (alert.getState()) {
-        case CREATED:
-          log.info("Transitioning alert {} to active", alert.getUuid());
-          alert.setState(Alert.State.ACTIVE);
-          scheduleAlertNotification(alert);
-          break;
-        case ACTIVE:
-          log.info("Transitioning alert {} to resolved (with email)", alert.getUuid());
-          alert.setState(Alert.State.RESOLVED);
-          scheduleAlertNotification(alert);
-          break;
-        default:
-          log.warn(
-              "Unexpected alert state {} during notification for alert {}",
-              alert.getState().name(),
-              alert.getUuid());
-      }
-
-      alert.save();
-    } catch (Exception e) {
-      log.error("Error transitioning alert state for alert {}", alert.getUuid(), e);
-    }
-
-    return alert;
   }
 
   private Optional<AlertRoute> getRouteByAlert(Alert alert) {
@@ -152,8 +113,7 @@ public class AlertManager {
         // For now using fixed delay before the notification repeat. Later the behavior
         // can be adjusted using an amount of failed attempts (using progressive value).
         alert.setNextNotificationTime(
-            Date.from(
-                new Date().toInstant().plusSeconds(NOTIFICATION_REPEAT_AFTER_FAILURE_IN_SECS)));
+            nowPlusWithoutMillis(NOTIFICATION_REPEAT_AFTER_FAILURE_IN_SECS, ChronoUnit.SECONDS));
         log.trace(
             "Next time to send notification for alert {} is {}",
             alert.getUuid(),
@@ -180,7 +140,7 @@ public class AlertManager {
   public void sendNotifications() {
     AlertFilter filter =
         AlertFilter.builder()
-            .targetState(Alert.State.ACTIVE, Alert.State.RESOLVED)
+            .state(Alert.State.ACTIVE, Alert.State.RESOLVED)
             .notificationPending(true)
             .build();
     List<Alert> toNotify = alertService.list(filter);
@@ -266,7 +226,7 @@ public class AlertManager {
 
     for (AlertReceiver receiver : receivers) {
       try {
-        AlertUtils.validate(receiver);
+        alertReceiverService.validate(receiver);
       } catch (YWValidateException e) {
         if (report.failuresByReceiver(receiver.getUuid()) == 0) {
           log.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);

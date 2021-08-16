@@ -196,6 +196,33 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const uint64_t postgres_auth_key,
       std::string* backfilled_until);
 
+  CHECKED_STATUS VerifyTableConsistencyForCQL(
+    vector<IndexInfo>& indexes,
+    const std::string& start_key,
+    const int num_rows,
+    const CoarseTimePoint deadline,
+    const HybridTime read_time,
+    std::unordered_map<TableId, uint64>* consistency_stats,
+    std::string* verified_until);
+
+  CHECKED_STATUS VerifyIndexInBatches(
+    const QLTableRow& row,
+    const std::string& row_key,
+    const std::vector<IndexInfo>& indexes,
+    const HybridTime read_time,
+    std::vector<std::pair<const IndexInfo*, QLReadRequestPB>>* index_requests,
+    CoarseTimePoint* last_flushed_at,
+    std::unordered_set<TableId>* failed_indexes,
+    std::unordered_map<TableId, uint64>* consistency_stats);
+
+  CHECKED_STATUS FlushVerifyIndexBatchIfRequired(
+    bool force_flush,
+    const HybridTime read_time,
+    std::vector<std::pair<const IndexInfo*, QLReadRequestPB>>* index_requests,
+    CoarseTimePoint* last_flushed_at,
+    std::unordered_set<TableId>* failed_indexes,
+    std::unordered_map<TableId, uint64>* consistency_stats);
+
   // Performs backfill for the key range beginning from the row <backfill_from>,
   // until either it reaches the end of the tablet
   //    or the current time is past deadline.
@@ -221,16 +248,19 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes);
 
-  CHECKED_STATUS FlushIndexBatchIfRequired(
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      bool force_flush,
-      const HybridTime write_time,
-      CoarseTimePoint* last_flushed_at,
-      std::unordered_set<TableId>* failed_indexes);
+  Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill();
 
+  CHECKED_STATUS FlushWriteIndexBatchIfRequired(
+    bool force_flush,
+    const HybridTime write_time,
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    CoarseTimePoint* last_flushed_at,
+    std::unordered_set<TableId>* failed_indexes);
+
+  template <typename SomeYBqlOp>
   CHECKED_STATUS FlushWithRetries(
       std::shared_ptr<client::YBSession> session,
-      const std::vector<std::shared_ptr<client::YBqlWriteOp>>& write_ops,
+      const std::vector<std::shared_ptr<SomeYBqlOp>>& index_ops,
       int num_retries,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -323,6 +353,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result,
       size_t* num_rows_read) override;
 
@@ -537,6 +568,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS CreateReadIntents(
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
       const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
       docdb::KeyValueWriteBatchPB* out);
@@ -684,6 +716,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS OpenKeyValueTablet();
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
+  std::vector<yb::ColumnSchema> GetColumnSchemasForIndex(const std::vector<IndexInfo>& indexes);
+
   void DocDBDebugDump(std::vector<std::string> *lines);
 
   CHECKED_STATUS PrepareTransactionWriteBatch(
@@ -694,11 +728,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
       const TransactionMetadataPB& transaction_metadata,
-      bool is_ysql_catalog_table) const;
+      bool is_ysql_catalog_table,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
 
-  TransactionOperationContextOpt CreateTransactionOperationContext(
+  Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
-      bool is_ysql_catalog_table) const;
+      bool is_ysql_catalog_table,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
 
   // Pause abortable/non-abortable new read/write operations and wait for all
   // abortable/non-abortable pending read/write operations to finish.

@@ -5,21 +5,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.cloud.AZUInitializer;
-import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.CloudProviderFormData;
-import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.YWResults.YWSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
@@ -30,18 +25,16 @@ import java.util.UUID;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
-public class CloudProviderController extends AuthenticatedController {
+@Api(
+    value = "UI_ONLY",
+    hidden = true,
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+public class CloudProviderUiOnlyController extends AuthenticatedController {
+
   @Inject private CloudProviderHandler cloudProviderHandler;
 
-  @Inject private AWSInitializer awsInitializer;
-
-  @Inject private GCPInitializer gcpInitializer;
-
-  @Inject private AZUInitializer azuInitializer;
-
   /**
-   * POST endpoint for creating new providers
+   * POST UI Only endpoint for creating new providers
    *
    * @return JSON response of newly created provider
    */
@@ -61,30 +54,6 @@ public class CloudProviderController extends AuthenticatedController {
     return YWResults.withData(provider);
   }
 
-  // For creating the a multi-cluster kubernetes provider.
-  public Result createKubernetes(UUID customerUUID) throws IOException {
-    JsonNode requestBody = request().body().asJson();
-    KubernetesProviderFormData formData =
-        formFactory.getFormDataOrBadRequest(requestBody, KubernetesProviderFormData.class);
-
-    Provider provider =
-        cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
-    auditService().createAuditEntry(ctx(), request(), requestBody);
-    return YWResults.withData(provider);
-  }
-
-  @ApiOperation(
-      value = "getSuggestedKubernetesConfigs",
-      notes =
-          " Performs discovery of region, zones, pull secret, storageClass when running"
-              + " inside a Kubernetes cluster. Returns the discovered information as a JSON, which"
-              + " is similar to the one which is passed to the createKubernetes method.",
-      response = KubernetesProviderFormData.class)
-  public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
-    Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
-  }
-
   // TODO: This is temporary endpoint, so we can setup docker, will move this
   // to standard provider bootstrap route soon.
   @ApiOperation(value = "setupDocker", notes = "Unused", hidden = true)
@@ -101,17 +70,42 @@ public class CloudProviderController extends AuthenticatedController {
     return YWResults.withData(newProvider);
   }
 
-  @ApiOperation(value = "refreshPricing", notes = "Refresh Provider pricing info")
-  public Result initialize(UUID customerUUID, UUID providerUUID) {
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    if (provider.code.equals("gcp")) {
-      return gcpInitializer.initialize(customerUUID, providerUUID);
-    } else if (provider.code.equals("azu")) {
-      return azuInitializer.initialize(customerUUID, providerUUID);
-    }
-    return awsInitializer.initialize(customerUUID, providerUUID);
+  // For creating the a multi-cluster kubernetes provider.
+  @ApiOperation(value = "UI_ONLY", nickname = "createKubernetes", hidden = true)
+  public Result createKubernetes(UUID customerUUID) throws IOException {
+    JsonNode requestBody = request().body().asJson();
+    KubernetesProviderFormData formData =
+        formFactory.getFormDataOrBadRequest(requestBody, KubernetesProviderFormData.class);
+
+    Provider provider =
+        cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
+    auditService().createAuditEntry(ctx(), request(), requestBody);
+    return YWResults.withData(provider);
   }
 
+  @ApiOperation(
+      value = "UI_ONLY",
+      nickname = "getSuggestedKubernetesConfigs",
+      hidden = true,
+      notes =
+          " Performs discovery of region, zones, pull secret, storageClass when running"
+              + " inside a Kubernetes cluster. Returns the discovered information as a JSON, which"
+              + " is similar to the one which is passed to the createKubernetes method.",
+      response = KubernetesProviderFormData.class)
+  public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    return YWResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
+  }
+
+  /** @deprecated There is a bug here that */
+  @ApiOperation(value = "UI_ONLY", hidden = true)
+  public Result initialize(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    cloudProviderHandler.refreshPricing(customerUUID, provider);
+    return YWSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
+  }
+
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result bootstrap(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -138,24 +132,6 @@ public class CloudProviderController extends AuthenticatedController {
     // TODO: add customer task
     return new YWResults.YWTask(taskUUID).asResult();
     */
-  }
-
-  @ApiOperation(value = "editProvider", response = Provider.class, nickname = "editProvider")
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          value = "edit provider form data",
-          name = "EditProviderFormData",
-          dataType = "com.yugabyte.yw.forms.EditProviderRequest",
-          required = true,
-          paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
-    Customer.getOrBadRequest(customerUUID);
-    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    EditProviderRequest editProviderReq =
-        formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
-    cloudProviderHandler.editProvider(provider, editProviderReq);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
-    return YWResults.withData(provider);
   }
 
   @VisibleForTesting

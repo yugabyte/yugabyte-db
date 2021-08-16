@@ -815,6 +815,27 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<AlterXClusterReplicationResponse> alterXClusterReplicationAddTables(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDsToAdd) {
+    return alterXClusterReplication(
+      sourceUniverseUUID, sourceTableIDsToAdd, new ArrayList<>(), new ArrayList<>());
+  }
+
+  public Deferred<AlterXClusterReplicationResponse> alterXClusterReplicationRemoveTables(
+    UUID sourceUniverseUUID,
+    List<String> sourceTableIDsToRemove) {
+    return alterXClusterReplication(
+      sourceUniverseUUID, new ArrayList<>(), sourceTableIDsToRemove, new ArrayList<>());
+  }
+
+  public Deferred<AlterXClusterReplicationResponse>
+    alterXClusterReplicationChangeSourceMasterAddresses(
+      UUID sourceUniverseUUID, List<Common.HostPortPB> sourceMasterAddresses) {
+    return alterXClusterReplication(
+      sourceUniverseUUID, new ArrayList<>(), new ArrayList<>(), sourceMasterAddresses);
+  }
+
   /**
    * Alter existing xCluster replication relationships by modifying which tables to replicate from a
    * source universe, as well as the master addresses of the source universe
@@ -825,15 +846,24 @@ public class AsyncYBClient implements AutoCloseable {
    * @param sourceTableIDsToAdd Table IDs in the source universe to start replicating from
    * @param sourceTableIDsToRemove Table IDs in the source universe to stop replicating from
    * @param sourceMasterAddresses New list of master addresses for the source universe
-   *                              (optional, can pass an empty list)
+   *
+   * Note that exactly one of the params must be non empty, the rest must be empty lists
    *
    * @return a deferred object that yields an alter xCluster replication response.
    * */
-  public Deferred<AlterXClusterReplicationResponse> alterXClusterReplication(
+  private Deferred<AlterXClusterReplicationResponse> alterXClusterReplication(
     UUID sourceUniverseUUID,
     List<String> sourceTableIDsToAdd,
     List<String> sourceTableIDsToRemove,
     List<Common.HostPortPB> sourceMasterAddresses) {
+    int addedTables = sourceTableIDsToAdd.isEmpty() ? 0 : 1;
+    int removedTables = sourceTableIDsToRemove.isEmpty() ? 0 : 1;
+    int changedMasterAddresses = sourceMasterAddresses.isEmpty() ? 0 : 1;
+    if(addedTables + removedTables + changedMasterAddresses != 1) {
+      throw new IllegalArgumentException(
+        "Exactly one xCluster replication alteration per request is currently supported");
+    }
+
     checkIsClosed();
     AlterXClusterReplicationRequest request =
       new AlterXClusterReplicationRequest(

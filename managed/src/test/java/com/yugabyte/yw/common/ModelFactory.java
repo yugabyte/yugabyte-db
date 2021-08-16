@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.models.Users.Role;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -11,6 +9,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -32,6 +31,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -251,7 +251,7 @@ public class ModelFactory {
     params.setKeyspace("foo");
     params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
-    return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000);
+    return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000, null);
   }
 
   public static CustomerConfig setCallhomeLevel(Customer customer, String level) {
@@ -279,13 +279,13 @@ public class ModelFactory {
             .setTarget(
                 new AlertDefinitionGroupTarget()
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
-            .setTemplate(AlertDefinitionTemplate.MEMORY_CONSUMPTION)
+            .setTemplate(AlertTemplate.MEMORY_CONSUMPTION)
             .setThresholds(
                 ImmutableMap.of(
                     AlertDefinitionGroup.Severity.SEVERE,
                     new AlertDefinitionGroupThreshold()
                         .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
-                        .setThreshold(1)))
+                        .setThreshold(1D)))
             .setThresholdUnit(Unit.PERCENT)
             .generateUUID();
     modifier.accept(group);
@@ -317,7 +317,7 @@ public class ModelFactory {
   }
 
   public static Alert createAlert(Customer customer) {
-    return createAlert(customer, null, null);
+    return createAlert(customer, null, null, null);
   }
 
   public static Alert createAlert(Customer customer, Universe universe) {
@@ -329,7 +329,17 @@ public class ModelFactory {
   }
 
   public static Alert createAlert(
+      Customer customer, AlertDefinition definition, Consumer<Alert> modifier) {
+    return createAlert(customer, null, definition, modifier);
+  }
+
+  public static Alert createAlert(
       Customer customer, Universe universe, AlertDefinition definition) {
+    return createAlert(customer, universe, definition, a -> {});
+  }
+
+  public static Alert createAlert(
+      Customer customer, Universe universe, AlertDefinition definition, Consumer<Alert> modifier) {
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
@@ -360,15 +370,30 @@ public class ModelFactory {
       }
       alert.setLabels(labelsBuilder.getAlertLabels());
     }
+    if (modifier != null) {
+      modifier.accept(alert);
+    }
     alert.save();
     return alert;
   }
 
-  public static AlertReceiver createEmailReceiver(Customer customer, String name) {
+  public static AlertReceiver createAlertReceiver(
+      UUID customerUUID, String name, AlertReceiverParams params) {
+    AlertReceiver receiver =
+        new AlertReceiver()
+            .generateUUID()
+            .setCustomerUUID(customerUUID)
+            .setName(name)
+            .setParams(params);
+    receiver.save();
+    return receiver;
+  }
+
+  public static AlertReceiver createEmailReceiver(UUID customerUUID, String name) {
     AlertReceiverEmailParams params = new AlertReceiverEmailParams();
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = EmailFixtures.createSmtpData();
-    return AlertReceiver.create(customer.uuid, name, params);
+    return createAlertReceiver(customerUUID, name, params);
   }
 
   public static AlertRoute createAlertRoute(

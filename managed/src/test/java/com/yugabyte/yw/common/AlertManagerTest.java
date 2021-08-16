@@ -5,7 +5,6 @@ package com.yugabyte.yw.common;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,6 +22,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
@@ -40,7 +40,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.Collections;
@@ -97,6 +96,7 @@ public class AlertManagerTest extends FakeDBApplication {
   private AlertRoute defaultRoute;
   private AlertReceiver defaultReceiver;
 
+  private AlertReceiverService alertReceiverService;
   private AlertRouteService alertRouteService;
 
   @Before
@@ -114,12 +114,14 @@ public class AlertManagerTest extends FakeDBApplication {
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    alertReceiverService = new AlertReceiverService();
+    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
     am =
         new AlertManager(
             emailHelper,
             alertService,
             alertDefinitionGroupService,
+            alertReceiverService,
             alertRouteService,
             receiversManager,
             metricService);
@@ -128,40 +130,6 @@ public class AlertManagerTest extends FakeDBApplication {
     defaultReceiver = defaultRoute.getReceiversList().get(0);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
-  }
-
-  @Test
-  public void testResolveAlerts() {
-    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
-
-    assertThat(alert.getState(), is(State.CREATED));
-    assertThat(alert.getTargetState(), is(State.ACTIVE));
-
-    am.transitionAlert(alert);
-
-    alert = alertService.get(alert.getUuid());
-
-    assertThat(alert.getState(), is(State.ACTIVE));
-    assertThat(alert.getTargetState(), is(State.ACTIVE));
-
-    AlertFilter alertFilter =
-        AlertFilter.builder()
-            .customerUuid(defaultCustomer.getUuid())
-            .definitionUuid(alert.getDefinitionUuid())
-            .build();
-    alertService.markResolved(alertFilter);
-
-    alert = alertService.get(alert.getUuid());
-
-    assertThat(alert.getState(), is(State.ACTIVE));
-    assertThat(alert.getTargetState(), is(State.RESOLVED));
-
-    am.transitionAlert(alert);
-
-    alert = alertService.get(alert.getUuid());
-
-    assertThat(alert.getState(), is(State.RESOLVED));
-    assertThat(alert.getTargetState(), is(State.RESOLVED));
   }
 
   @Test
@@ -246,8 +214,10 @@ public class AlertManagerTest extends FakeDBApplication {
       throws MessagingException, YWNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
-    AlertReceiver receiver1 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 1");
-    AlertReceiver receiver2 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 2");
+    AlertReceiver receiver1 =
+        ModelFactory.createEmailReceiver(defaultCustomer.getUuid(), "AlertReceiver 1");
+    AlertReceiver receiver2 =
+        ModelFactory.createEmailReceiver(defaultCustomer.getUuid(), "AlertReceiver 2");
     AlertRoute route =
         ModelFactory.createAlertRoute(
             defaultCustomer.uuid, ALERT_ROUTE_NAME, ImmutableList.of(receiver1, receiver2));
@@ -355,42 +325,6 @@ public class AlertManagerTest extends FakeDBApplication {
       assertThat(updatedAlert.getNextNotificationTime(), nullValue());
       assertThat(updatedAlert.getNotificationAttemptTime(), notNullValue());
       assertThat(updatedAlert.getNotificationsFailed(), is(0));
-    }
-  }
-
-  @Parameters({
-    // @formatter:off
-    "false, null, ACTIVE, true",
-    "true, null, ACTIVE, false",
-    "false, ACKNOWLEDGED, ACTIVE, false",
-    "false, null, ACKNOWLEDGED, false",
-    // @formatter:on
-  })
-  @TestCaseName(
-      "{method}(Last sent state:{2}, current state:{3}, has nextNotTime:{0}, "
-          + "sendNotif:{1}, reschedule expected:{4})")
-  @Test
-  public void testScheduleAlertNotification(
-      boolean hasNextNotificationTime,
-      @Nullable State notifiedState,
-      State currentState,
-      boolean rescheduleExpected) {
-    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    alert
-        .setState(currentState)
-        .setDefinitionUuid(definition.getUuid())
-        .setNotifiedState(notifiedState);
-    Date prevDate = null;
-    if (hasNextNotificationTime) {
-      prevDate = new Date();
-      alert.setNextNotificationTime(prevDate);
-    }
-    alert.save();
-    am.scheduleAlertNotification(alert);
-    if (rescheduleExpected) {
-      assertThat(alert.getNextNotificationTime(), not(prevDate));
-    } else {
-      assertThat(alert.getNextNotificationTime(), is(prevDate));
     }
   }
 
