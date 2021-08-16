@@ -411,7 +411,7 @@ void pgss_startup(void);
 #define PGSM_HISTOGRAM_MAX get_conf(8)->guc_variable
 #define PGSM_HISTOGRAM_BUCKETS get_conf(9)->guc_variable
 #define PGSM_QUERY_SHARED_BUFFER get_conf(10)->guc_variable
-#define PGSM_OVERFLOW_TARGET get_conf(12)->guc_variable
+#define PGSM_OVERFLOW_TARGET get_conf(11)->guc_variable
 #define PGSM_QUERY_PLAN get_conf(12)->guc_variable
 #define PGSM_TRACK_PLANNING get_conf(13)->guc_variable
 
