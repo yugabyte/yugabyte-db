@@ -14,6 +14,7 @@ import static com.yugabyte.yw.controllers.TokenAuthenticator.API_TOKEN_HEADER;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.ApiKeyAuthDefinition;
@@ -23,6 +24,7 @@ import io.swagger.annotations.Info;
 import io.swagger.annotations.License;
 import io.swagger.annotations.SecurityDefinition;
 import io.swagger.annotations.SwaggerDefinition;
+import play.libs.Json;
 import play.mvc.Controller;
 import play.mvc.Http;
 
@@ -78,5 +80,15 @@ public abstract class AbstractPlatformController extends Controller {
   @VisibleForTesting
   public void setAuditService(AuditService auditService) {
     this.auditService = auditService;
+  }
+
+  protected <T> T parseJson(Class<T> expectedClass) {
+    try {
+      return Json.fromJson(request().body().asJson(), expectedClass);
+    } catch (Exception e) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Failed to parse " + expectedClass.getSimpleName() + " object: " + e.getMessage());
+    }
   }
 }

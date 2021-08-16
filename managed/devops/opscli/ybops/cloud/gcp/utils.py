@@ -793,6 +793,8 @@ class GoogleCloudAdmin():
             body.update({"labels": tags_dict})
             initial_params.update({"labels": tags_dict})
             boot_disk_init_params.update({"labels": tags_dict})
+            body["metadata"]["items"].append(
+                [{"key": k, "value": v} for (k, v) in tags_dict.items()])
 
         for _ in range(num_volumes):
             body["disks"].append(disk_config)

@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
@@ -95,6 +96,7 @@ public class AlertManagerTest extends FakeDBApplication {
   private AlertRoute defaultRoute;
   private AlertReceiver defaultReceiver;
 
+  private AlertReceiverService alertReceiverService;
   private AlertRouteService alertRouteService;
 
   @Before
@@ -112,12 +114,14 @@ public class AlertManagerTest extends FakeDBApplication {
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    alertReceiverService = new AlertReceiverService();
+    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
     am =
         new AlertManager(
             emailHelper,
             alertService,
             alertDefinitionGroupService,
+            alertReceiverService,
             alertRouteService,
             receiversManager,
             metricService);
@@ -210,8 +214,10 @@ public class AlertManagerTest extends FakeDBApplication {
       throws MessagingException, YWNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
-    AlertReceiver receiver1 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 1");
-    AlertReceiver receiver2 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 2");
+    AlertReceiver receiver1 =
+        ModelFactory.createEmailReceiver(defaultCustomer.getUuid(), "AlertReceiver 1");
+    AlertReceiver receiver2 =
+        ModelFactory.createEmailReceiver(defaultCustomer.getUuid(), "AlertReceiver 2");
     AlertRoute route =
         ModelFactory.createAlertRoute(
             defaultCustomer.uuid, ALERT_ROUTE_NAME, ImmutableList.of(receiver1, receiver2));

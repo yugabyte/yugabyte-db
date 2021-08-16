@@ -9,7 +9,7 @@
  */
 package com.yugabyte.yw.models.filters;
 
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import java.util.Collection;
 import java.util.HashSet;
@@ -27,7 +27,7 @@ public class AlertDefinitionGroupFilter {
   String name;
   Boolean active;
   AlertDefinitionGroup.TargetType targetType;
-  AlertDefinitionTemplate template;
+  AlertTemplate template;
   UUID targetUuid;
   UUID routeUuid;
 
@@ -96,7 +96,7 @@ public class AlertDefinitionGroupFilter {
       return this;
     }
 
-    public AlertDefinitionGroupFilterBuilder template(@NonNull AlertDefinitionTemplate template) {
+    public AlertDefinitionGroupFilterBuilder template(@NonNull AlertTemplate template) {
       this.template = template;
       return this;
     }

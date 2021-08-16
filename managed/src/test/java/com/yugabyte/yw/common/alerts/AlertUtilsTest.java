@@ -4,7 +4,6 @@ package com.yugabyte.yw.common.alerts;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
 
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -47,7 +46,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
     params.smtpData = EmailFixtures.createSmtpData();
-    return AlertReceiver.create(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
+    return ModelFactory.createAlertReceiver(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
   }
 
   private AlertReceiver createEmailReceiverWithEmptyTemplates() {
@@ -79,7 +78,7 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.iconUrl = "icon-url";
 
     AlertReceiver receiver =
-        AlertReceiver.create(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
+        ModelFactory.createAlertReceiver(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
     AlertReceiver fromDb = AlertReceiver.get(defaultCustomer.uuid, receiver.getUuid());
     assertNotNull(fromDb);
     assertEquals(receiver, fromDb);
@@ -160,21 +159,5 @@ public class AlertUtilsTest extends FakeDBApplication {
     assertEquals(
         substitutor.replace(AlertUtils.DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE),
         AlertUtils.getNotificationText(alert, receiver));
-  }
-
-  @Test
-  public void testValidateReceiver_EmptyParams() {
-    AlertReceiver receiver = new AlertReceiver();
-    try {
-      AlertUtils.validate(receiver);
-      fail("YWValidateException is expected.");
-    } catch (YWValidateException e) {
-      assertEquals("Incorrect parameters in AlertReceiver.", e.getMessage());
-    }
-  }
-
-  @Test
-  public void testValidateReceiver_HappyPath() throws YWValidateException {
-    AlertUtils.validate(createEmailReceiver());
   }
 }

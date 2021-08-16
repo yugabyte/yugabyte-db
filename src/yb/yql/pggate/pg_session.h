@@ -265,7 +265,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Smart driver functions.
   // -------------
-  CHECKED_STATUS ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
+  Result<client::YBClient::TabletServersInfo> ListTabletServers();
 
   //------------------------------------------------------------------------------------------------
   // Access functions.

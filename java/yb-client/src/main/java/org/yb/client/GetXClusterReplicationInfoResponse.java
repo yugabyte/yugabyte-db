@@ -8,7 +8,7 @@ public class GetXClusterReplicationInfoResponse extends YRpcResponse {
   private final Master.MasterErrorPB serverError;
   private final Master.SysUniverseReplicationEntryPB info;
 
-  GetXClusterReplicationInfoResponse(
+  public GetXClusterReplicationInfoResponse(
     long elapsedMillis,
     String tsUUID,
     Master.MasterErrorPB serverError,

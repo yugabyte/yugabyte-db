@@ -1361,10 +1361,9 @@ yb_servers(PG_FUNCTION_ARGS)
                        "public_ip", TEXTOID, -1, 0);
     funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
-    // Assuming not more than 1000 servers
-    YBCServerDescriptor **servers = (YBCServerDescriptor**)palloc0(1000 * sizeof(YBCServerDescriptor *));
+    YBCServerDescriptor *servers = NULL;
     int numservers = 0;
-    YBCGetTabletServerHosts(servers, &numservers);
+    HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
     funcctx->max_calls = numservers;
     funcctx->user_fctx = servers;
     MemoryContextSwitchTo(oldcontext);
@@ -1375,9 +1374,8 @@ yb_servers(PG_FUNCTION_ARGS)
     Datum		values[8];
     bool		nulls[8];
     HeapTuple	tuple;
-    YBCServerDescriptor** servers = (YBCServerDescriptor **)funcctx->user_fctx;
     int cntr = funcctx->call_cntr;
-    YBCServerDescriptor *server = *(servers + cntr);
+    YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
     bool is_primary = server->isPrimary;
     const char *node_type = is_primary ? "primary" : "read_replica";
     // TODO: Remove hard coding of port and num_connections
