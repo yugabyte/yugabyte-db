@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { FormControl } from 'react-bootstrap';
 import { isFunction } from 'lodash';
 import { YBLabel } from '../../../../components/common/descriptors';
-import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
+import { isDefinedNotNull, trimString } from '../../../../utils/ObjectUtils';
 
 // TODO: Make default export after checking all corresponding imports.
 export class YBTextInput extends Component {
@@ -40,10 +40,12 @@ export class YBTextInput extends Component {
 
     function onBlur(event) {
       if (isDefinedNotNull(self.props.input) && isFunction(self.props.input.onBlur)) {
+        const trimmedValue = trimString(event.target.value)
+        event.target.value = trimmedValue;
         if (isFunction(normalizeOnBlur)) {
-          self.props.input.onBlur(normalizeOnBlur(event.target.value));
+          self.props.input.onBlur(normalizeOnBlur(trimmedValue));
         } else {
-          self.props.input.onBlur(event.target.value);
+          self.props.input.onBlur(trimmedValue);
         }
       }
     }
