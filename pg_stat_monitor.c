@@ -76,7 +76,7 @@ static struct pg_hook_stats_t *pg_hook_stats;
 static void extract_query_comments(const char *query, char *comments, size_t max_len);
 static int  get_histogram_bucket(double q_time);
 static bool IsSystemInitialized(void);
-static void dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
+static bool dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
 static double time_diff(struct timeval end, struct timeval start);
 
 
@@ -3092,11 +3092,39 @@ SaveQueryText(uint64 bucketid,
 				return false;
 			case OVERFLOW_TARGET_DISK:
 			{
-				dump_queries_buffer(bucketid, buf, MAX_QUERY_BUFFER_BUCKET);
+				bool dump_ok;
+
+				/*
+				 * If the query buffer is empty, there is nothing to dump, this also
+				 * means that the current query length exceeds MAX_QUERY_BUFFER_BUCKET.
+				 */
+				if (buf_len <= sizeof (uint64))
+					return false;
+
+				dump_ok = dump_queries_buffer(bucketid, buf, buf_len);
 				buf_len = sizeof (uint64);
+
+				/*
+				 * We must check for overflow again, as the query length may
+				 * exceed the size allocated to the buffer (MAX_QUERY_BUFFER_BUCKET).
+				 */
+				if (QUERY_BUFFER_OVERFLOW(buf_len, query_len))
+				{
+					/*
+					 * If we successfully dumped the query buffer to disk, then
+					 * reset the buffer, otherwise we could end up dumping the
+					 * same buffer again.
+					 */
+					if (dump_ok)
+						*(uint64 *)buf = 0;
+
+					return false;
+				}
+
 			}
 			break;
 			default:
+				Assert(false);
 				break;
 		}
 	}
@@ -3287,27 +3315,37 @@ IsSystemInitialized(void)
 	return (system_init && IsHashInitialize());
 }
 
-static void
+static bool
 dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len)
 {
-    int  fd = 0;
+	int  fd = 0;
 	char file_name[1024];
+	bool success = true;
 
 	snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, bucket_id);
 	fd = OpenTransientFile(file_name, O_RDWR | O_CREAT | O_APPEND | PG_BINARY);
-    if (fd < 0)
+	if (fd < 0)
+	{
 		ereport(LOG,
             (errcode_for_file_access(),
              	errmsg("could not write file \"%s\": %m",
                     		file_name)));
+		return false;
+	}
 
     if (write(fd, buf, buf_len) != buf_len)
+	{
 		ereport(LOG,
             (errcode_for_file_access(),
              	errmsg("could not write file \"%s\": %m",
                     		file_name)));
+		success = false;
+	}
+
     if (fd > 0)
 		CloseTransientFile(fd);
+
+	return success;
 }
 
 int
