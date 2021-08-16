@@ -196,32 +196,52 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const uint64_t postgres_auth_key,
       std::string* backfilled_until);
 
+  CHECKED_STATUS VerifyIndexTableConsistencyForCQL(
+      const std::vector<IndexInfo>& indexes,
+      const std::string& start_key,
+      const int num_rows,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      std::unordered_map<TableId, uint64>* consistency_stats,
+      std::string* verified_until);
+
+  CHECKED_STATUS VerifyMainTableConsistencyForCQL(
+      const TableId& main_table_id,
+      const std::string& start_key,
+      const int num_rows,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      std::unordered_map<TableId, uint64>* consistency_stats,
+      std::string* verified_until);
+
   CHECKED_STATUS VerifyTableConsistencyForCQL(
-    vector<IndexInfo>& indexes,
-    const std::string& start_key,
-    const int num_rows,
-    const CoarseTimePoint deadline,
-    const HybridTime read_time,
-    std::unordered_map<TableId, uint64>* consistency_stats,
-    std::string* verified_until);
+      const std::vector<TableId>& table_ids,
+      const std::vector<yb::ColumnSchema>& columns,
+      const std::string& start_key,
+      const int num_rows,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      const bool is_main_table,
+      std::unordered_map<TableId, uint64>* consistency_stats,
+      std::string* verified_until);
 
-  CHECKED_STATUS VerifyIndexInBatches(
-    const QLTableRow& row,
-    const std::string& row_key,
-    const std::vector<IndexInfo>& indexes,
-    const HybridTime read_time,
-    std::vector<std::pair<const IndexInfo*, QLReadRequestPB>>* index_requests,
-    CoarseTimePoint* last_flushed_at,
-    std::unordered_set<TableId>* failed_indexes,
-    std::unordered_map<TableId, uint64>* consistency_stats);
+  CHECKED_STATUS VerifyTableInBatches(
+      const QLTableRow& row,
+      const std::vector<TableId>& table_ids,
+      const HybridTime read_time,
+      const bool is_main_table,
+      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes,
+      std::unordered_map<TableId, uint64>* consistency_stats);
 
-  CHECKED_STATUS FlushVerifyIndexBatchIfRequired(
-    bool force_flush,
-    const HybridTime read_time,
-    std::vector<std::pair<const IndexInfo*, QLReadRequestPB>>* index_requests,
-    CoarseTimePoint* last_flushed_at,
-    std::unordered_set<TableId>* failed_indexes,
-    std::unordered_map<TableId, uint64>* consistency_stats);
+  CHECKED_STATUS FlushVerifyBatchIfRequired(
+      bool force_flush,
+      const HybridTime read_time,
+      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes,
+      std::unordered_map<TableId, uint64>* index_consistency_states);
 
   // Performs backfill for the key range beginning from the row <backfill_from>,
   // until either it reaches the end of the tablet
@@ -251,11 +271,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill();
 
   CHECKED_STATUS FlushWriteIndexBatchIfRequired(
-    bool force_flush,
-    const HybridTime write_time,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    CoarseTimePoint* last_flushed_at,
-    std::unordered_set<TableId>* failed_indexes);
+      bool force_flush,
+      const HybridTime write_time,
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes);
 
   template <typename SomeYBqlOp>
   CHECKED_STATUS FlushWithRetries(

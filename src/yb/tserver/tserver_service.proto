@@ -42,7 +42,7 @@ import "yb/tablet/metadata.proto";
 service TabletServerService {
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
   rpc Read(ReadRequestPB) returns (ReadResponsePB);
-  rpc VerifyTableRowRange(VerifyTableRowRangeRequestPB) 
+  rpc VerifyTableRowRange(VerifyTableRowRangeRequestPB)
       returns (VerifyTableRowRangeResponsePB);
 
   rpc NoOp(NoOpRequestPB) returns (NoOpResponsePB);

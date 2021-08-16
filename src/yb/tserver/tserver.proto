@@ -269,8 +269,9 @@ message NoOpResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
-// A verification request to check if a range of rows in main table is consistent with
-// index table content. We will verify index table rows using the primary table.
+// A verification request to check if a range of rows in main table is
+// consistent with index table content. We will verify index table rows using
+// the primary table.
 message VerifyTableRowRangeRequestPB {
   required bytes tablet_id = 1;
 
