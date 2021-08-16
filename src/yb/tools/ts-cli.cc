@@ -203,10 +203,11 @@ class TsAdminClient {
 
   // Verify the given tablet against its indexes
   // Assume the tablet belongs to a main table
-  Status VerifyTablet(const std::string& tablet_id, 
-                      const std::vector<string>& index_ids,
-                      const string& start_key,
-                      const int num_rows);
+  Status VerifyTablet(
+      const std::string& tablet_id,
+      const std::vector<string>& index_ids,
+      const string& start_key,
+      const int num_rows);
 
  private:
   std::string addr_;
@@ -330,10 +331,11 @@ Status TsAdminClient::RefreshFlags() {
   return generic_proxy_->RefreshFlags(req, &resp, &rpc);
 }
 
-Status TsAdminClient::VerifyTablet(const std::string& tablet_id, 
-                                   const std::vector<string>& index_ids,
-                                   const string& start_key,
-                                   const int num_rows) {
+Status TsAdminClient::VerifyTablet(
+    const std::string& tablet_id,
+    const std::vector<string>& index_ids,
+    const string& start_key,
+    const int num_rows) {
   tserver::VerifyTableRowRangeRequestPB req;
   tserver::VerifyTableRowRangeResponsePB resp;
 
@@ -351,12 +353,13 @@ Status TsAdminClient::VerifyTablet(const std::string& tablet_id,
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  
+
   std::cout << "Reporting VerifyJob stats." << std::endl;
   for (auto it = resp.consistency_stats().begin(); it != resp.consistency_stats().end(); it++) {
-    std::cout << "VerifyJob found " << it->second << " mismatched rows for index " << it->first << std::endl; 
+    std::cout << "VerifyJob found " << it->second << " mismatched rows for index " << it->first
+              << std::endl;
   }
-  
+
   return Status::OK();
 }
 
@@ -535,7 +538,8 @@ void SetUsage(const char* argv0) {
       << "  " << kFlushAllTabletsOp << "\n"
       << "  " << kCompactTabletOp << " <tablet_id>\n"
       << "  " << kCompactAllTabletsOp << "\n"
-      << "  " << kVerifyTabletOp << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n";
+      << "  " << kVerifyTabletOp
+      << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -604,11 +608,11 @@ static int TsCliMain(int argc, char** argv) {
     }
     string start_key = argv[num_indexes + 4];
     int num_rows = std::stoi(argv[num_indexes + 5]);
-    
+
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.VerifyTablet(tablet_id, index_ids, start_key, num_rows),
         "Unable to verify tablet " + tablet_id);
-    
+
   } else if (op == kAreTabletsRunningOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
