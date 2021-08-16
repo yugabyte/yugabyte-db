@@ -196,10 +196,10 @@ DEFINE_int32(verify_index_read_batch_size, 128, "The batch size for reading the 
 TAG_FLAG(verify_index_read_batch_size, advanced);
 TAG_FLAG(verify_index_read_batch_size, runtime);
 
-DEFINE_int32(verify_index_rate_rows_per_sec, 0, "Rate of at which the "
-             "indexed table's entries are read during index consistency checks."
-             "This is a per-tablet flag, i.e. a tserver responsible for "
-             "multiple tablets could be processing more than this.");
+DEFINE_int32(verify_index_rate_rows_per_sec, 0,
+    "Rate of at which the indexed table's entries are read during index consistency checks."
+    "This is a per-tablet flag, i.e. a tserver responsible for multiple tablets could be "
+    "processing more than this.");
 TAG_FLAG(verify_index_rate_rows_per_sec, advanced);
 TAG_FLAG(verify_index_rate_rows_per_sec, runtime);
 
@@ -231,9 +231,14 @@ DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "unresponsive_ts_rpc_timeout_ms");
 
 DEFINE_test_flag(int32, backfill_sabotage_frequency, 0,
-                 "If set to value greater than 0, every nth row will be omitted in the backfill process "
-                 "to create an inconsistency between the index and the indexed tables where n is the "
-                 "input parameter given.");
+    "If set to value greater than 0, every nth row will be corrupted in the backfill process "
+    "to create an inconsistency between the index and the indexed tables where n is the "
+    "input parameter given.");
+
+DEFINE_test_flag(int32, backfill_drop_frequency, 0,
+    "If set to value greater than 0, every nth row will be dropped in the backfill process "
+    "to create an inconsistency between the index and the indexed tables where n is the "
+    "input parameter given.");
 
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
@@ -2351,7 +2356,8 @@ Status Tablet::BackfillIndexesForYsql(
   return Status::OK();
 }
 
-std::vector<yb::ColumnSchema> Tablet::GetColumnSchemasForIndex(const std::vector<IndexInfo>& indexes) {
+std::vector<yb::ColumnSchema> Tablet::GetColumnSchemasForIndex(
+    const std::vector<IndexInfo>& indexes) {
   std::unordered_set<yb::ColumnId> col_ids_set;
   std::vector<yb::ColumnSchema> columns;
 
@@ -2411,16 +2417,14 @@ std::vector<TableId> GetIndexIds(const std::vector<IndexInfo>& indexes) {
 
 template <typename SomeVector>
 void SleepToThrottleRate(
-    SomeVector* index_requests,
-    int32 row_access_rate_per_sec,
-    CoarseTimePoint* last_flushed_at) {
+    SomeVector* index_requests, int32 row_access_rate_per_sec, CoarseTimePoint* last_flushed_at) {
   auto now = CoarseMonoClock::Now();
   if (row_access_rate_per_sec > 0) {
     auto duration_since_last_batch = MonoDelta(now - *last_flushed_at);
-    auto expected_duration_ms = MonoDelta::FromMilliseconds(
-        index_requests->size() * 1000 / row_access_rate_per_sec);
-    DVLOG(3) << "Duration since last batch " << duration_since_last_batch
-             << " expected duration " << expected_duration_ms
+    auto expected_duration_ms =
+        MonoDelta::FromMilliseconds(index_requests->size() * 1000 / row_access_rate_per_sec);
+    DVLOG(3) << "Duration since last batch " << duration_since_last_batch << " expected duration "
+             << expected_duration_ms
              << " extra time so sleep: " << expected_duration_ms - duration_since_last_batch;
     if (duration_since_last_batch < expected_duration_ms) {
       SleepFor(expected_duration_ms - duration_since_last_batch);
@@ -2429,18 +2433,16 @@ void SleepToThrottleRate(
 }
 
 Result<client::YBTablePtr> GetTable(
-    const TableId& table_id,
-    const std::shared_ptr<client::YBMetaDataCache>& metadata_cache) {
+    const TableId& table_id, const std::shared_ptr<client::YBMetaDataCache>& metadata_cache) {
   // TODO create async version of GetTable.
   // It is ok to have sync call here, because we use cache and it should not take too long.
   client::YBTablePtr index_table;
   bool cache_used_ignored = false;
-  RETURN_NOT_OK(
-      metadata_cache->GetTable(table_id, &index_table, &cache_used_ignored));
+  RETURN_NOT_OK(metadata_cache->GetTable(table_id, &index_table, &cache_used_ignored));
   return index_table;
 }
 
-}
+}  // namespace
 
 // Should backfill the index with the information contained in this tablet.
 // Assume that we are already in the Backfilling mode.
@@ -2456,8 +2458,7 @@ Status Tablet::BackfillIndexes(
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
   }
-  VLOG(2) << "Begin BackfillIndexes at " << read_time << " for "
-            << AsString(indexes);
+  VLOG(2) << "Begin BackfillIndexes at " << read_time << " for " << AsString(indexes);
 
   std::vector<TableId> index_ids = GetIndexIds(indexes);
   std::vector<yb::ColumnSchema> columns = GetColumnSchemasForIndex(indexes);
@@ -2488,6 +2489,7 @@ Status Tablet::BackfillIndexes(
 
   string resume_backfill_from;
   *number_of_rows_processed = 0;
+  int TEST_number_rows_corrupted = 0;
   int TEST_number_rows_dropped = 0;
 
   while (VERIFY_RESULT(iter->HasNext())) {
@@ -2505,12 +2507,20 @@ Status Tablet::BackfillIndexes(
     RETURN_NOT_OK(iter->NextRow(&row));
     if (FLAGS_TEST_backfill_sabotage_frequency > 0 &&
         *number_of_rows_processed % FLAGS_TEST_backfill_sabotage_frequency == 0) {
-      ++(*number_of_rows_processed); // Increment here because we skipped it further below
-      VLOG(1) << "Skipping processing of fetched row: " << row.ToString();
+      VLOG(1) << "Corrupting fetched row: " << row.ToString();
+      // Corrupt first key column, since index should not be built on primary key
+      row.MarkTombstoned(schema()->column_id(0));
+      TEST_number_rows_corrupted++;
+    }
+
+    if (FLAGS_TEST_backfill_drop_frequency > 0 &&
+        *number_of_rows_processed % FLAGS_TEST_backfill_drop_frequency == 0) {
+      (*number_of_rows_processed)++;
+      VLOG(1) << "Dropping fetched row: " << row.ToString();
       TEST_number_rows_dropped++;
       continue;
     }
-  
+
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
     RETURN_NOT_OK(UpdateIndexInBatches(
         row, indexes, read_time, &index_requests, &last_flushed_at, failed_indexes));
@@ -2520,11 +2530,17 @@ Status Tablet::BackfillIndexes(
   }
 
   if (FLAGS_TEST_backfill_sabotage_frequency > 0) {
-    LOG(INFO) << "In total, " << TEST_number_rows_dropped << " rows were dropped in index backfill.";
+    LOG(INFO) << "In total, " << TEST_number_rows_corrupted
+              << " rows were corrupted in index backfill.";
+  }
+
+  if (FLAGS_TEST_backfill_drop_frequency > 0) {
+    LOG(INFO) << "In total, " << TEST_number_rows_dropped
+              << " rows were dropped in index backfill.";
   }
 
   RETURN_NOT_OK(FlushWriteIndexBatchIfRequired(
-      /* forced */ true, read_time,  &index_requests, &last_flushed_at, failed_indexes));
+      /* forced */ true, read_time, &index_requests, &last_flushed_at, failed_indexes));
 
   *backfilled_until = resume_backfill_from;
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
@@ -2560,8 +2576,6 @@ Status Tablet::UpdateIndexInBatches(
 Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill() {
   if (!client_future_.valid()) {
     return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
-  } else if (!YBMetaDataCache()) {
-    return STATUS(IllegalState, "Table metadata cache is not present for index update");
   }
 
   auto client = client_future_.get();
@@ -2579,7 +2593,10 @@ Status Tablet::FlushWriteIndexBatchIfRequired(
   if (!force_flush && index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
   }
-  
+
+  if (!YBMetaDataCache()) {
+    return STATUS(IllegalState, "Table metadata cache is not present for index update");
+  }
   std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill());
   session->SetHybridTimeForWrite(write_time);
 
@@ -2593,7 +2610,8 @@ Status Tablet::FlushWriteIndexBatchIfRequired(
   auto metadata_cache = YBMetaDataCache();
 
   for (auto& pair : *index_requests) {
-    client::YBTablePtr index_table = VERIFY_RESULT(GetTable(pair.first->table_id(), metadata_cache));
+    client::YBTablePtr index_table =
+        VERIFY_RESULT(GetTable(pair.first->table_id(), metadata_cache));
 
     shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
     index_op->mutable_request()->Swap(&pair.second);
@@ -2642,10 +2660,9 @@ Status Tablet::FlushWithRetries(
         continue;
       }
 
-      VLOG(2) << "Got response " << AsString(index_op->response())
-              << " for " << AsString(index_op->request());
-      if (index_op->response().status() !=
-          QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
+      VLOG(2) << "Got response " << AsString(index_op->response()) << " for "
+              << AsString(index_op->request());
+      if (index_op->response().status() != QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
         failed_indexes->insert(index_op->table()->id());
         const string& error_message = index_op->response().error_message();
         error_msg_cnts[error_message]++;
@@ -2680,23 +2697,52 @@ Status Tablet::FlushWithRetries(
       failed_indexes->empty()
           ? Status::OK()
           : STATUS_SUBSTITUTE(
-                IllegalState,
-                "Index op failed for $0 requests after $1 retries with errors: $2",
+                IllegalState, "Index op failed for $0 requests after $1 retries with errors: $2",
                 pending_ops.size(), num_retries, AsString(error_msg_cnts)));
 }
 
-Status Tablet::VerifyTableConsistencyForCQL(
-    vector<IndexInfo>& indexes,
+Status Tablet::VerifyIndexTableConsistencyForCQL(
+    const std::vector<IndexInfo>& indexes,
     const std::string& start_key,
     const int num_rows,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
     std::unordered_map<TableId, uint64>* consistency_stats,
     std::string* verified_until) {
+  std::vector<TableId> index_ids = GetIndexIds(indexes);
   std::vector<yb::ColumnSchema> columns = GetColumnSchemasForIndex(indexes);
+  return VerifyTableConsistencyForCQL(
+      index_ids, columns, start_key, num_rows, deadline, read_time, false, consistency_stats,
+      verified_until);
+}
+
+Status Tablet::VerifyMainTableConsistencyForCQL(
+    const TableId& main_table_id,
+    const std::string& start_key,
+    const int num_rows,
+    const CoarseTimePoint deadline,
+    const HybridTime read_time,
+    std::unordered_map<TableId, uint64>* consistency_stats,
+    std::string* verified_until) {
+  const std::vector<yb::ColumnSchema>& columns = schema()->columns();
+  const std::vector<TableId>& table_ids = {main_table_id};
+  return VerifyTableConsistencyForCQL(
+      table_ids, columns, start_key, num_rows, deadline, read_time, true, consistency_stats,
+      verified_until);
+}
+
+Status Tablet::VerifyTableConsistencyForCQL(
+    const std::vector<TableId>& table_ids,
+    const std::vector<yb::ColumnSchema>& columns,
+    const std::string& start_key,
+    const int num_rows,
+    const CoarseTimePoint deadline,
+    const HybridTime read_time,
+    const bool is_main_table,
+    std::unordered_map<TableId, uint64>* consistency_stats,
+    std::string* verified_until) {
   Schema projection(columns, {}, schema()->num_key_columns());
-  auto iter =
-      VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
+  auto iter = VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
 
   if (!start_key.empty()) {
     VLOG(2) << "Starting verify index from " << b2a_hex(start_key);
@@ -2707,140 +2753,187 @@ Status Tablet::VerifyTableConsistencyForCQL(
   CoarseTimePoint last_flushed_at;
 
   QLTableRow row;
-  std::vector<std::pair<const IndexInfo*, QLReadRequestPB>> index_requests;
+  std::vector<std::pair<const TableId, QLReadRequestPB>> requests;
   std::unordered_set<TableId> failed_indexes;
-  std::string row_key;
+  std::string resume_verified_from;
 
   int rows_verified = 0;
   while (VERIFY_RESULT(iter->HasNext()) && rows_verified < num_rows) {
-    row_key = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
+    resume_verified_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
     RETURN_NOT_OK(iter->NextRow(&row));
     VLOG(1) << "Verifying index for main table row: " << row.ToString();
 
-    RETURN_NOT_OK(VerifyIndexInBatches(
-        row, row_key, indexes, read_time, &index_requests,
-        &last_flushed_at, &failed_indexes, consistency_stats));
+    RETURN_NOT_OK(VerifyTableInBatches(
+        row, table_ids, read_time, is_main_table, &requests, &last_flushed_at, &failed_indexes,
+        consistency_stats));
     if (++rows_verified % kProgressInterval == 0) {
       VLOG(1) << "Verified " << rows_verified << " rows";
     }
-    *verified_until = row_key;
+    *verified_until = resume_verified_from;
   }
-  return FlushVerifyIndexBatchIfRequired(
-      true, read_time, &index_requests, 
-      &last_flushed_at, &failed_indexes, consistency_stats);
+  return FlushVerifyBatchIfRequired(
+      true, read_time, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
 }
 
+namespace {
 
-// Schema is index schema while key is row from main table
-Status WhereIndexToPB(const QLTableRow& key,
-                      const IndexInfo& index_info,
-                      const Schema& index_schema,
-                      QLReadRequestPB *req) {
+QLConditionPB* InitWhereOp(QLReadRequestPB* req) {
   // Add the hash column values
   DCHECK(req->hashed_column_values().empty());
 
   // Add the range column values to the where clause
-  QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+  QLConditionPB* where_pb = req->mutable_where_expr()->mutable_condition();
   if (!where_pb->has_op()) {
     where_pb->set_op(QL_OP_AND);
   }
   DCHECK_EQ(where_pb->op(), QL_OP_AND);
+  return where_pb;
+}
+
+void SetSelectedExprToTrue(QLReadRequestPB* req) {
+  // Set TRUE as selected exprs helps reduce
+  // the need for row retrieval in the index read request
+  req->add_selected_exprs()->mutable_value()->set_bool_value(true);
+  QLRSRowDescPB* rsrow_desc = req->mutable_rsrow_desc();
+  QLRSColDescPB* rscol_desc = rsrow_desc->add_rscol_descs();
+  rscol_desc->set_name("1");
+  rscol_desc->mutable_ql_type()->set_main(yb::DataType::BOOL);
+}
+
+Status WhereMainTableToPB(
+    const QLTableRow& key,
+    const IndexInfo& index_info,
+    const Schema& main_table_schema,
+    QLReadRequestPB* req) {
+  std::unordered_map<ColumnId, ColumnId> column_id_map;
+  for (const auto& col : index_info.columns()) {
+    column_id_map.insert({col.indexed_column_id, col.column_id});
+  }
+
+  auto column_refs = req->mutable_column_refs();
+  QLConditionPB* where_pb = InitWhereOp(req);
+
+  for (const auto& col_id : main_table_schema.column_ids()) {
+    if (main_table_schema.is_hash_key_column(col_id)) {
+      *req->add_hashed_column_values()->mutable_value() = *key.GetValue(column_id_map[col_id]);
+      column_refs->add_ids(col_id);
+    } else {
+      auto it = column_id_map.find(col_id);
+      if (it != column_id_map.end()) {
+        QLConditionPB* col_cond_pb = where_pb->add_operands()->mutable_condition();
+        col_cond_pb->set_op(QL_OP_EQUAL);
+        col_cond_pb->add_operands()->set_column_id(col_id);
+        *col_cond_pb->add_operands()->mutable_value() = *key.GetValue(it->second);
+        column_refs->add_ids(col_id);
+      }
+    }
+  }
+
+  SetSelectedExprToTrue(req);
+  return Status::OK();
+}
+
+// Schema is index schema while key is row from main table
+Status WhereIndexToPB(
+    const QLTableRow& key,
+    const IndexInfo& index_info,
+    const Schema& schema,
+    QLReadRequestPB* req) {
+  QLConditionPB* where_pb = InitWhereOp(req);
+  auto column_refs = req->mutable_column_refs();
 
   for (size_t idx = 0; idx < index_info.columns().size(); idx++) {
     const ColumnId& column_id = index_info.column(idx).column_id;
     const ColumnId& indexed_column_id = index_info.column(idx).indexed_column_id;
-    if (index_schema.is_hash_key_column(column_id)) {
+    if (schema.is_hash_key_column(column_id)) {
       *req->add_hashed_column_values()->mutable_value() = *key.GetValue(indexed_column_id);
     } else {
-      QLConditionPB *col_cond_pb = where_pb->add_operands()->mutable_condition();
+      QLConditionPB* col_cond_pb = where_pb->add_operands()->mutable_condition();
       col_cond_pb->set_op(QL_OP_EQUAL);
       col_cond_pb->add_operands()->set_column_id(column_id);
       *col_cond_pb->add_operands()->mutable_value() = *key.GetValue(indexed_column_id);
     }
-    req->mutable_column_refs()->add_ids(column_id);
+    column_refs->add_ids(column_id);
   }
 
-  // Set TRUE as selected exprs helps reduce
-  // the need for row retrieval in the index read request
-  req->add_selected_exprs()->mutable_value()->set_bool_value(true);
-  QLRSRowDescPB *rsrow_desc = req->mutable_rsrow_desc();
-  QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
-  rscol_desc->set_name("1");
-  rscol_desc->mutable_ql_type()->set_main(yb::DataType::BOOL);
+  SetSelectedExprToTrue(req);
   return Status::OK();
 }
 
-Status Tablet::VerifyIndexInBatches(
+}  // namespace
+
+Status Tablet::VerifyTableInBatches(
     const QLTableRow& row,
-    const std::string& row_key,
-    const std::vector<IndexInfo>& indexes,
+    const std::vector<TableId>& table_ids,
     const HybridTime read_time,
-    std::vector<std::pair<const IndexInfo*, QLReadRequestPB>>* index_requests,
+    const bool is_main_table,
+    std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
-
-  auto metadata_cache = YBMetaDataCache();
-  for (const IndexInfo& info : indexes) {
-    std::shared_ptr<client::YBTable> table =
-        VERIFY_RESULT(GetTable(info.table_id(), metadata_cache));
+  auto client = client_future_.get();
+  auto local_index_info = metadata_->primary_table_info()->index_info.get();
+  for (const TableId& table_id : table_ids) {
+    std::shared_ptr<client::YBTable> table;
+    RETURN_NOT_OK(client->OpenTable(table_id, &table));
     std::shared_ptr<client::YBqlReadOp> read_op(table->NewQLSelect());
 
     QLReadRequestPB* req = read_op->mutable_request();
-    RETURN_NOT_OK(WhereIndexToPB(row, info, table->InternalSchema(), req));
+    if (is_main_table) {
+      RETURN_NOT_OK(WhereMainTableToPB(row, *local_index_info, table->InternalSchema(), req));
+    } else {
+      RETURN_NOT_OK(WhereIndexToPB(row, table->index_info(), table->InternalSchema(), req));
+    }
 
-    index_requests->emplace_back(&info, *req);
+    requests->emplace_back(table_id, *req);
   }
 
-  std::vector<std::shared_ptr<client::YBqlReadOp>> index_ops;
-  return FlushVerifyIndexBatchIfRequired(
-      false, read_time, index_requests, 
-      last_flushed_at, failed_indexes, consistency_stats);
+  return FlushVerifyBatchIfRequired(
+      false, read_time, requests, last_flushed_at, failed_indexes, consistency_stats);
 }
 
-Status Tablet::FlushVerifyIndexBatchIfRequired(
+Status Tablet::FlushVerifyBatchIfRequired(
     bool force_flush,
     const HybridTime read_time,
-    std::vector<std::pair<const IndexInfo*, QLReadRequestPB>>* index_requests,
+    std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
-  if (!force_flush && index_requests->size() < FLAGS_verify_index_read_batch_size) {
+  if (!force_flush && requests->size() < FLAGS_verify_index_read_batch_size) {
     return Status::OK();
   }
 
   std::vector<client::YBqlReadOpPtr> read_ops;
   std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill());
 
-  auto metadata_cache = YBMetaDataCache();
-  for (auto& pair : *index_requests) {
-    client::YBTablePtr index_table = VERIFY_RESULT(GetTable(pair.first->table_id(), metadata_cache));
+  auto client = client_future_.get();
+  for (auto& pair : *requests) {
+    client::YBTablePtr table;
+    RETURN_NOT_OK(client->OpenTable(pair.first, &table));
 
-    client::YBqlReadOpPtr read_op(index_table->NewQLRead());
+    client::YBqlReadOpPtr read_op(table->NewQLRead());
     read_op->mutable_request()->Swap(&pair.second);
     read_op->SetReadTime(ReadHybridTime::SingleTime(read_time));
 
     RETURN_NOT_OK_PREPEND(session->Apply(read_op), "Could not Apply.");
 
-    // Note: always emplace at tail because row keys must 
+    // Note: always emplace at tail because row keys must
     // correspond sequentially with the read_ops in the vector
     read_ops.push_back(read_op);
   }
 
   RETURN_NOT_OK(FlushWithRetries(session, read_ops, 0, failed_indexes));
 
-  for (size_t idx = 0; idx < index_requests->size(); idx++) {
+  for (size_t idx = 0; idx < requests->size(); idx++) {
     const client::YBqlReadOpPtr& read_op = read_ops[idx];
     auto row_block = read_op->MakeRowBlock();
-    if (row_block && row_block->row_count() == 1) {
-      continue;
-    }
+    if (row_block && row_block->row_count() == 1) continue;
     (*consistency_stats)[read_op->table()->id()]++;
   }
-  
-  SleepToThrottleRate(index_requests, FLAGS_verify_index_rate_rows_per_sec, last_flushed_at);
+
+  SleepToThrottleRate(requests, FLAGS_verify_index_rate_rows_per_sec, last_flushed_at);
   *last_flushed_at = CoarseMonoClock::Now();
-  index_requests->clear();
+  requests->clear();
 
   return Status::OK();
 }

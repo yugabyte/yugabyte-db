@@ -250,25 +250,25 @@ using client::internal::ForwardReadRpc;
 using client::internal::ForwardWriteRpc;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
+using consensus::Consensus;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
-using consensus::Consensus;
 using consensus::ConsensusConfigType;
 using consensus::ConsensusRequestPB;
 using consensus::ConsensusResponsePB;
 using consensus::GetLastOpIdRequestPB;
 using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
+using consensus::LeaderLeaseStatus;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
-using consensus::LeaderLeaseStatus;
+using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
 using consensus::StartRemoteBootstrapResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
-using consensus::RaftPeerPB;
 
 using std::unique_ptr;
 using google::protobuf::RepeatedPtrField;
@@ -968,74 +968,89 @@ void TabletServiceImpl::VerifyTableRowRange(
     const VerifyTableRowRangeRequestPB* req,
     VerifyTableRowRangeResponsePB* resp,
     rpc::RpcContext context) {
-
   DVLOG(3) << "Received VerifyTableRowRange RPC: " << req->DebugString();
 
   server::UpdateClock(*req, server_->Clock());
 
-  auto peer_tablet = LookupTabletPeerOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  auto peer_tablet =
+      LookupTabletPeerOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!peer_tablet) {
     return;
   }
-  
+
   auto tablet = peer_tablet->tablet;
   bool is_pg_table = tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
   if (is_pg_table) {
-    SetupErrorAndRespond(resp->mutable_error(), STATUS(NotFound, "Verify operation not supported for PGSQL tables."), &context);
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(NotFound, "Verify operation not supported for PGSQL tables."),
+        &context);
     return;
   }
 
-  const CoarseTimePoint &deadline = context.GetClientDeadline();
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
 
   // Wait for SafeTime to get past read_at;
   const HybridTime read_at(req->read_time());
   DVLOG(1) << "Waiting for safe time to be past " << read_at;
-  const auto safe_time =
-      tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
+  const auto safe_time = tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
   DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
     LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
     return;
   }
-  
-  const IndexMap index_map =
-    peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
-  vector<IndexInfo> indexes;
-  vector<TableId> index_ids;
-  if (req->index_ids().empty()) {
-    for (auto it = index_map.begin(); it != index_map.end(); it++) {
-      indexes.push_back(it->second);
-    }
-  } else {
-    for (const auto& idx : req->index_ids()) {
-      auto result = index_map.FindIndex(idx);
-      if (result) {
-        const IndexInfo* index_info = *result;
-        indexes.push_back(*index_info);
-        index_ids.push_back(index_info->table_id());
-      } else {
-        LOG(WARNING) << "Index " << idx << " not found in tablet metadata";
-      }
-    }
-  }
-
-  std::unordered_map<TableId, uint64> consistency_stats;
-  std::string verified_until;
 
   auto valid_read_at = req->has_read_time() ? read_at : *safe_time;
-  Status verify_status = tablet->VerifyTableConsistencyForCQL(
-    indexes, req->start_key(), req->num_rows(), deadline,
-    valid_read_at, &consistency_stats, &verified_until);
-  if (!verify_status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
-    return;
-  }
+  std::string verified_until = "";
+  std::unordered_map<TableId, uint64> consistency_stats;
 
-  for (const IndexInfo& index : indexes) {
-    const auto& table_id = index.table_id();
+  if (peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_info) {
+    auto index_info =
+        *peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_info;
+    const auto& table_id = index_info.indexed_table_id();
+    Status verify_status = tablet->VerifyMainTableConsistencyForCQL(
+        table_id, req->start_key(), req->num_rows(), deadline, valid_read_at, &consistency_stats,
+        &verified_until);
+    if (!verify_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
+      return;
+    }
+
     (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
+  } else {
+    const IndexMap index_map =
+        peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
+    vector<IndexInfo> indexes;
+    vector<TableId> index_ids;
+    if (req->index_ids().empty()) {
+      for (auto it = index_map.begin(); it != index_map.end(); it++) {
+        indexes.push_back(it->second);
+      }
+    } else {
+      for (const auto& idx : req->index_ids()) {
+        auto result = index_map.FindIndex(idx);
+        if (result) {
+          const IndexInfo* index_info = *result;
+          indexes.push_back(*index_info);
+          index_ids.push_back(index_info->table_id());
+        } else {
+          LOG(WARNING) << "Index " << idx << " not found in tablet metadata";
+        }
+      }
+    }
+
+    Status verify_status = tablet->VerifyIndexTableConsistencyForCQL(
+        indexes, req->start_key(), req->num_rows(), deadline, valid_read_at, &consistency_stats,
+        &verified_until);
+    if (!verify_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
+      return;
+    }
+
+    for (const IndexInfo& index : indexes) {
+      const auto& table_id = index.table_id();
+      (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
+    }
   }
   resp->set_verified_until(verified_until);
   context.RespondSuccess();
