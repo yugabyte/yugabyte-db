@@ -766,6 +766,10 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
                                                        hostport);
   {
     std::lock_guard<decltype(mutex_)> l(mutex_);
+    auto it = cdc_service_map_.find(hostport);
+    if (it != cdc_service_map_.end()) {
+      return it->second;
+    }
     cdc_service_map_.emplace(hostport, cdc_service);
   }
   return cdc_service;
@@ -1432,17 +1436,25 @@ std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
 MemTrackerPtr CDCServiceImpl::GetMemTracker(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ProducerTabletInfo& producer_info) {
+  {
+    SharedLock<decltype(mutex_)> l(mutex_);
+    auto it = tablet_checkpoints_.find(producer_info);
+    if (it == tablet_checkpoints_.end()) {
+      return nullptr;
+    }
+    if (it->mem_tracker) {
+      return it->mem_tracker;
+    }
+  }
   std::lock_guard<rw_spinlock> l(mutex_);
   auto it = tablet_checkpoints_.find(producer_info);
-  if (it == tablet_checkpoints_.end()) {
-    return nullptr;
+  if (it->mem_tracker) {
+    return it->mem_tracker;
   }
-  if (!it->mem_tracker) {
-    auto cdc_mem_tracker = MemTracker::FindOrCreateTracker(
-        "CDC", tablet_peer->tablet()->mem_tracker());
-    const_cast<MemTrackerPtr&>(it->mem_tracker) = MemTracker::FindOrCreateTracker(
-        producer_info.stream_id, cdc_mem_tracker);
-  }
+  auto cdc_mem_tracker = MemTracker::FindOrCreateTracker(
+      "CDC", tablet_peer->tablet()->mem_tracker());
+  const_cast<MemTrackerPtr&>(it->mem_tracker) = MemTracker::FindOrCreateTracker(
+      producer_info.stream_id, cdc_mem_tracker);
   return it->mem_tracker;
 }
 
