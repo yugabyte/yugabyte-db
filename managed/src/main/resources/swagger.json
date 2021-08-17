@@ -5779,6 +5779,24 @@
         "tags" : [ "Node Instances" ]
       }
     },
+    "/api/v1/customers/{cUUID}/password_policy" : {
+      "get" : {
+        "operationId" : "getPasswordPolicy",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [ "Session" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/providers" : {
       "get" : {
         "description" : "",
