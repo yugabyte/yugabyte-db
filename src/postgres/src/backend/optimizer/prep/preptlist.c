@@ -52,6 +52,8 @@
 #include "rewrite/rewriteHandler.h"
 #include "utils/rel.h"
 
+/* YB includes. */
+#include "miscadmin.h"
 #include "pg_yb_utils.h"
 
 static List *expand_targetlist(List *tlist, int command_type,
@@ -285,9 +287,11 @@ expand_targetlist(List *tlist, int command_type,
 	List	   *new_tlist = NIL;
 	ListCell   *tlist_item;
 	int			attrno,
-				numattrs;
+				numattrs,
+				tlist_length;
 
 	tlist_item = list_head(tlist);
+	tlist_length = list_length(tlist);
 
 	/*
 	 * The rewriter should have already ensured that the TLEs are in correct
@@ -297,6 +301,25 @@ expand_targetlist(List *tlist, int command_type,
 	 * sure we have all the user attributes in the right order.
 	 */
 	numattrs = RelationGetNumberOfAttributes(rel);
+
+	/*
+	 * For YB during YSQL upgrade, the list might be prepended with the oid
+	 * column, so we deal with it first.
+	 */
+	if (IsYsqlUpgrade)
+	{
+		for (int i = 0; i < tlist_length; ++i)
+		{
+			TargetEntry *tle = lfirst_node(TargetEntry, tlist_item);
+			if (tle && tle->resno < 1)
+			{
+				new_tlist = lappend(new_tlist, tle);
+				tlist_item = lnext(tlist_item);
+			}
+			else
+				break;
+		}
+	}
 
 	for (attrno = 1; attrno <= numattrs; attrno++)
 	{

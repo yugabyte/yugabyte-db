@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -54,7 +55,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlUpgrade.class);
 
-  // Static in order to persist between tests.
+  /** Static in order to persist between tests. */
   private static int LAST_USED_SYS_OID = 9000;
 
   /** Tests are performed on a fresh database. */
@@ -72,6 +73,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE DATABASE " + customDbName);
+    }
+  }
+
+  @After
+  public void afterTestYsqlUpgrade() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      setSystemRelsModificationGuc(stmt, false);
     }
   }
 
@@ -114,7 +122,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
          Connection conUsr = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmtTpl = conTpl.createStatement();
          Statement stmtUsr = conUsr.createStatement()) {
-      enableSystemRelsModification(stmtTpl);
+      setSystemRelsModificationGuc(stmtTpl, true);
 
       String createSharedRelSql = "CREATE TABLE pg_catalog." + sharedRelName + " ("
           + "  c1 int"
@@ -162,6 +170,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           sharedRelName, ts1, ts2));
       assertQuery(stmtUsr, "SELECT * FROM " + sharedRelName,
           new Row(1, Timestamp.valueOf(ts1), new SimpleDateFormat("yyyy-MM-dd").parse(ts2)));
+
+      assertAllOidsAreSysGeneated(stmtUsr, sharedRelName);
     }
   }
 
@@ -181,7 +191,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     try (Connection connB = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmtA = connection.createStatement();
          Statement stmtB = connB.createStatement()) {
-      enableSystemRelsModification(stmtA);
+      setSystemRelsModificationGuc(stmtA, true);
 
       String createRelSql = "CREATE TABLE pg_catalog." + newTi.name + " ("
           + "  datname        name      NOT NULL"
@@ -239,7 +249,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmtA = conn.createStatement();
          Statement stmtB = conn.createStatement()) {
-      enableSystemRelsModification(stmtA);
+      setSystemRelsModificationGuc(stmtA, true);
 
       String createRelSql = "CREATE TABLE pg_catalog." + newTi.name + " ("
           + "  relname             name      NOT NULL"
@@ -329,7 +339,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmt.execute("CREATE EVENT TRIGGER evt_drop"
           + " ON sql_drop EXECUTE PROCEDURE evt_trig_fn()");
 
-      enableSystemRelsModification(stmt);
+      setSystemRelsModificationGuc(stmt, true);
 
       // Create a simple system relation.
       stmt.execute("CREATE TABLE pg_catalog.simple_system_table ("
@@ -359,7 +369,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   public void creatingSystemRelsAfterFailure() throws Exception {
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmt = conn.createStatement()) {
-      enableSystemRelsModification(stmt);
+      setSystemRelsModificationGuc(stmt, true);
 
       String ddlSql = "CREATE TABLE pg_catalog.simple_system_table ("
           + "  id int"
@@ -391,7 +401,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
          Connection conUsr = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmtTpl = conTpl.createStatement();
          Statement stmtUsr = conUsr.createStatement()) {
-      enableSystemRelsModification(stmtTpl);
+      setSystemRelsModificationGuc(stmtTpl, true);
 
       String createSharedRelSql = "CREATE TABLE pg_catalog." + sharedRelName + " ("
           + "  id int"
@@ -418,18 +428,37 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmtTpl.execute(createSharedIndexSql);
       LOG.info("Created shared index {}", sharedIndexName);
 
-      // write -> template1
-      // read  <- user DB
+      // Checking index flags.
+      String indexFlagsSql = "SELECT indislive, indisready, indisvalid FROM pg_index"
+          + " WHERE indexrelid = '" + sharedIndexName + "'::regclass";
+      assertQuery(stmtTpl, indexFlagsSql, new Row(true, true, true));
+      assertQuery(stmtUsr, indexFlagsSql, new Row(true, true, true));
+
+      // Checking if the index is shared.
+      String isSharedSql = "SELECT relisshared FROM pg_class"
+          + " WHERE relname = '" + sharedIndexName + "'";
+      assertQuery(stmtUsr, isSharedSql, new Row(true));
+      assertQuery(stmtTpl, isSharedSql, new Row(true));
+
       String query = "SELECT v FROM " + sharedRelName + " WHERE v > 15";
       assertTrue(isIndexOnlyScan(stmtUsr, query, sharedIndexName));
       assertQuery(stmtUsr, query,
           new Row(20),
           new Row(30));
+      assertTrue(isIndexOnlyScan(stmtTpl, query, sharedIndexName));
+      assertQuery(stmtTpl, query,
+          new Row(20),
+          new Row(30));
 
       // Another insert after index is in place already.
       // This time we write into user DB and read from template1.
-      enableSystemRelsModification(stmtUsr);
+      setSystemRelsModificationGuc(stmtUsr, true);
       stmtUsr.execute(String.format("INSERT INTO %s VALUES (4, 40)", sharedRelName));
+      assertTrue(isIndexOnlyScan(stmtUsr, query, sharedIndexName));
+      assertQuery(stmtUsr, query,
+          new Row(20),
+          new Row(30),
+          new Row(40));
       assertTrue(isIndexOnlyScan(stmtTpl, query, sharedIndexName));
       assertQuery(stmtTpl, query,
           new Row(20),
@@ -450,7 +479,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmtA = conn.createStatement();
          Statement stmtB = conn.createStatement()) {
-      enableSystemRelsModification(stmtA);
+      setSystemRelsModificationGuc(stmtA, true);
 
       String createViewSql = "CREATE VIEW pg_catalog." + newTi.name + " WITH ("
           + "  table_oid = " + newTi.oid
@@ -526,6 +555,96 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmtA.execute(createViewSql);
 
       assertTablesAreSimilar(origTi, newTi, stmtA, stmtB);
+    }
+  }
+
+  @Test
+  public void insertOnConflictWithOidsWorks() throws Exception {
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+
+      String commonCreateSqlPattern = "CREATE TABLE pg_catalog.%s ("
+          + "  v1 int  NOT NULL"
+          + ", v2 text NOT NULL"
+          + ", PRIMARY KEY (oid ASC) WITH (table_oid = %d)"
+          + ") WITH ("
+          + "  oids = true"
+          + ", table_oid = %d"
+          + ", row_type_oid = %d"
+          + ")";
+
+      String nonSharedRelName = "pg_yb_nonshared_insert";
+
+      {
+        String createSharedRelSql = String.format(commonCreateSqlPattern,
+            sharedRelName, newSysOid(), newSysOid(), newSysOid()) + " TABLESPACE pg_global";
+        LOG.info("Executing '{}'", createSharedRelSql);
+        stmt.execute(createSharedRelSql);
+      }
+
+      {
+        String createNonSharedRelSql = String.format(commonCreateSqlPattern,
+            nonSharedRelName, newSysOid(), newSysOid(), newSysOid());
+        LOG.info("Executing '{}'", createNonSharedRelSql);
+        stmt.execute(createNonSharedRelSql);
+      }
+
+      for (String tableName : Arrays.asList(nonSharedRelName, sharedRelName)) {
+        String selectSql = "SELECT oid, * FROM " + tableName;
+
+        assertNoRows(stmt, selectSql);
+
+        // Insert something.
+        stmt.execute("INSERT INTO " + tableName + " (oid, v1, v2) VALUES (123, 111, 't1')");
+        assertQuery(stmt, selectSql,
+            new Row(123, 111, "t1"));
+
+        // Insert something conflicting, with and without ON CONFLICT DO NOTHING.
+        String conflictingInsertSql = "INSERT INTO " + tableName + " (oid, v1, v2)"
+            + " VALUES (123, -1, 'Nope')";
+        runInvalidQuery(stmt, conflictingInsertSql,
+            "duplicate key value violates unique constraint \"" + tableName + "_pkey\"");
+        runInvalidQuery(stmt, conflictingInsertSql + " ON CONFLICT (oid) DO UPDATE SET v2 = 'No!'",
+            "only ON CONFLICT DO NOTHING can be used in YSQL upgrade");
+        stmt.execute(conflictingInsertSql + " ON CONFLICT DO NOTHING");
+        assertQuery(stmt, selectSql,
+            new Row(123, 111, "t1"));
+
+        // Insert with an oid out of bounds.
+        runInvalidQuery(stmt, "INSERT INTO " + tableName + " (oid, v1, v2) VALUES (17000, -1, 'x')",
+            "rows inserted during YSQL upgrade must have OIDs below user range");
+        assertQuery(stmt, selectSql,
+            new Row(123, 111, "t1"));
+
+        // Insert non-conflicting row with ON CONFLICT DO NOTHING.
+        stmt.execute("INSERT INTO " + tableName + " (oid, v1, v2) VALUES (234, 222, 't2')"
+            + " ON CONFLICT DO NOTHING");
+        assertQuery(stmt, selectSql,
+            new Row(123, 111, "t1"),
+            new Row(234, 222, "t2"));
+
+        stmt.execute("DELETE FROM " + tableName);
+        assertNoRows(stmt, selectSql);
+
+        // Insert without oid column.
+        stmt.execute("INSERT INTO " + tableName + " (v1, v2) VALUES (333, 't3')");
+        assertQuery(stmt, "SELECT * FROM " + tableName + " ORDER BY oid",
+            new Row(333, "t3"));
+        assertAllOidsAreSysGeneated(stmt, tableName);
+      }
+    }
+  }
+
+  /** Invalid stuff which doesn't belong to other test cases. */
+  @Test
+  public void invalidUpgradeActions() throws Exception {
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+
+      runInvalidQuery(stmt, "CREATE DATABASE " + customDbName + "_2",
+          "CREATE DATABASE is disallowed in YSQL upgrade mode");
     }
   }
 
@@ -756,14 +875,26 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
   }
 
-  private void enableSystemRelsModification(Statement stmt) throws Exception {
-    stmt.execute("SET ysql_upgrade_mode TO true");
-    stmt.execute("SET yb_test_system_catalogs_creation TO true");
+  private void setSystemRelsModificationGuc(Statement stmt, boolean value) throws Exception {
+    stmt.execute("SET ysql_upgrade_mode TO " + Boolean.toString(value));
+    stmt.execute("SET yb_test_system_catalogs_creation TO " + Boolean.toString(value));
   }
 
   /** Since YB expects OIDs to never get reused, we need to always pick a previously unused OID. */
   private long newSysOid() {
     return ++LAST_USED_SYS_OID;
+  }
+
+  private void assertAllOidsAreSysGeneated(Statement stmt, String tableName) throws Exception {
+    List<Row> rows = getRowList(stmt, "SELECT oid, * FROM " + tableName + " ORDER BY oid");
+    assertTrue("Expected all rows in " + tableName
+        + " to have system-generated OIDs assigned: " + rows,
+        rows.stream().allMatch(r -> isSysGeneratedOid(r.getLong(0))));
+  }
+
+  /** Whether this OID looks like it was auto-generated during initdb. */
+  private boolean isSysGeneratedOid(Long oid) {
+    return oid >= 10000 /* FirstBootstrapObjectId */ && oid < 16384 /* FirstNormalObjectId */;
   }
 
   @FunctionalInterface
