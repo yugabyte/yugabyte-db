@@ -138,6 +138,8 @@ export const DELETE_USER_RESPONSE = 'DELETE_USER_RESPONSE';
 
 export const CHANGE_USER_ROLE = 'CHANGE_USER_ROLE';
 
+export const TOGGLE_TLS = 'TOGGLE_TLS';
+
 export function validateToken() {
   let cUUID = Cookies.get('customerId');
   if (cUUID) {
@@ -894,5 +896,17 @@ export function deleteUserResponse(response) {
   return {
     type: DELETE_USER_RESPONSE,
     payload: response
+  };
+}
+
+export function toggleTLS(universeUuid, formValues) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(
+    `${ROOT_URL}/customers/${cUUID}/universes/${universeUuid}/upgrade/tls`,
+    formValues
+  );
+  return {
+    type: TOGGLE_TLS,
+    payload: request
   };
 }

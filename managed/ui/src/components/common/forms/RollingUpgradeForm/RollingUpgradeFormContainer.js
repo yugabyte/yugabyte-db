@@ -74,7 +74,8 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   const {
-    universe: { currentUniverse }
+    universe: { currentUniverse },
+    featureFlags: { test, released }
   } = state;
 
   const initialValues = {};
@@ -107,7 +108,9 @@ function mapStateToProps(state, ownProps) {
   let certificates = [];
   const allCertificates = state.customer.userCertificates;
   if (getPromiseState(allCertificates).isSuccess()) {
-    const rootCert = allCertificates.data.find((item) => item.uuid === initialValues.tlsCertificate);
+    const rootCert = allCertificates.data.find(
+      (item) => item.uuid === initialValues.tlsCertificate
+    );
     // show custom certs with same root cert only
     certificates = allCertificates.data.filter(
       (item) => item.certType === 'CustomCertHostPath' && item.checksum === rootCert?.checksum
@@ -123,7 +126,9 @@ function mapStateToProps(state, ownProps) {
     softwareVersions: state.customer.softwareVersions,
     initialValues,
     certificates,
-    formValues
+    formValues,
+    enableNewEncryptionInTransitModal:
+      test.enableNewEncryptionInTransitModal || released.enableNewEncryptionInTransitModal
   };
 }
 
