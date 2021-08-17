@@ -714,6 +714,17 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("active_tablets");
         jw.Int(active_tablets);
 
+        CloudInfoPB cloud_info = reg.common().cloud_info();
+
+        jw.String("cloud");
+        jw.String(cloud_info.placement_cloud());
+
+        jw.String("region");
+        jw.String(cloud_info.placement_region());
+
+        jw.String("zone");
+        jw.String(cloud_info.placement_zone());
+
         jw.EndObject();
       }
     }
