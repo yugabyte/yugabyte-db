@@ -465,6 +465,14 @@ TypeCreate(Oid newTypeOid,
 		/* Force the OID if requested by caller */
 		if (OidIsValid(newTypeOid))
 			HeapTupleSetOid(tup, newTypeOid);
+
+		/*
+		 * This is already checked by transformCreateStmt for system relations,
+		 * but just in case.
+		 */
+		else if (ybRelationIsShared && IsYsqlUpgrade)
+			elog(ERROR, "shared relations must have an explicit type OID");
+
 		/* Use binary-upgrade override for pg_type.oid, if supplied. */
 		else if (IsBinaryUpgrade)
 		{
