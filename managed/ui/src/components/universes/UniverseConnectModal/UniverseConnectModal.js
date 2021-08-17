@@ -13,7 +13,7 @@ import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
-import { isEnabled } from '../../../utils/LayoutUtils';
+import { isEnabled, getFeatureState } from '../../../utils/LayoutUtils';
 import _ from 'lodash';
 
 import './UniverseConnectModal.scss';
@@ -124,6 +124,13 @@ class UniverseConnectModal extends Component {
       const {
         universeDetails: { clusters, communicationPorts }
       } = universeInfo;
+
+      const tlsAvailability = getFeatureState(
+        currentCustomer.data.features,
+        'universes.details.overview.manageEncryption'
+      );
+      const isTLSEnabled = isEnabled(tlsAvailability);
+      const sslModeRequired = ' --sslmode=require';
       const primaryCluster = getPrimaryCluster(clusters);
       const userIntent = primaryCluster && primaryCluster.userIntent;
       const universeId = universeInfo.universeUUID;
@@ -154,6 +161,13 @@ class UniverseConnectModal extends Component {
         </Fragment>
       );
       const connectIp = this.state.connectIp || '127.0.0.1';
+      const jdbcConnection = `jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`;
+      const jdbcTLSConnection = jdbcConnection + sslModeRequired;
+      const ysqlConnection = 'bin/ysqlsh';
+      const ySqlTLSConnection = ysqlConnection + sslModeRequired;
+      const ycqlConnection = 'bin/ycqlsh';
+      const yCqlTLSConnection = `SSL_CERTFILE=<path to ca.crt> ycqlsh --ssl 172.151.37.101 9042`;
+
       content = (
         <Fragment>
           <h4>Services</h4>
@@ -164,7 +178,7 @@ class UniverseConnectModal extends Component {
                   <td>JDBC</td>
                   <td>:</td>
                   <td title={`jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`}>
-                    jdbc:postgresql://{connectIp}:{ysqlRpcPort}/yugabyte
+                    {isTLSEnabled ? jdbcTLSConnection : jdbcConnection}
                   </td>
                 </tr>
                 {(userIntent.enableYSQL ||
@@ -172,13 +186,13 @@ class UniverseConnectModal extends Component {
                   <tr>
                     <td>YSQL Shell</td>
                     <td>: </td>
-                    <td>bin/ysqlsh</td>
+                    <td>{isTLSEnabled ? ySqlTLSConnection : ysqlConnection}</td>
                   </tr>
                 )}
                 <tr>
                   <td>YCQL Shell</td>
                   <td>: </td>
-                  <td>bin/ycqlsh</td>
+                  <td>{isTLSEnabled ? yCqlTLSConnection : ycqlConnection}</td>
                 </tr>
                 {(userIntent.enableYEDIS ||
                   isEnabled(
