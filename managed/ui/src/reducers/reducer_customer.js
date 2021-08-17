@@ -129,7 +129,7 @@ const INITIAL_STATE = {
   importRelease: getInitialState({}),
   updateRelease: getInitialState({}),
   addCertificate: getInitialState({}),
-  userCertificates: getInitialState({}),
+  userCertificates: getInitialState([]),
   users: getInitialState([]),
   schedules: getInitialState([]),
   createUser: getInitialState({}),
