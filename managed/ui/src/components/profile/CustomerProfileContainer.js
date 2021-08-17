@@ -3,6 +3,8 @@
 import { connect } from 'react-redux';
 import { CustomerProfile } from '../profile';
 import {
+  addCustomerConfig,
+  addCustomerConfigResponse,
   updateProfile,
   updateProfileSuccess,
   updateProfileFailure,
@@ -14,7 +16,9 @@ import {
   getCustomerUsersFailure,
   updatePassword,
   updatePasswordSuccess,
-  updatePasswordFailure
+  updatePasswordFailure,
+  fetchPasswordPolicy,
+  fetchPasswordPolicyResponse
 } from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
@@ -50,6 +54,20 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
+    addCustomerConfig: (config) => {
+      dispatch(addCustomerConfig(config)).then((response) => {
+        if (!response.error) {
+          dispatch(addCustomerConfigResponse(response.payload));
+        }
+      });
+    },
+    validateRegistration: () => {
+      dispatch(fetchPasswordPolicy()).then((response) => {
+        if (response.payload.status === 200) {
+          dispatch(fetchPasswordPolicyResponse(response.payload));
+        }
+      });
+    },
     refreshApiToken: (authToken) => {
       dispatch(getApiTokenLoading());
       dispatch(getApiToken(authToken)).then((response) => {
@@ -67,7 +85,8 @@ function mapStateToProps(state) {
     customer: state.customer.currentCustomer,
     users: state.customer.users.data,
     apiToken: state.customer.apiToken,
-    customerProfile: state.customer ? state.customer.profile : null
+    customerProfile: state.customer ? state.customer.profile : null,
+    passwordValidationInfo: state.customer.passwordValidationInfo
   };
 }
 

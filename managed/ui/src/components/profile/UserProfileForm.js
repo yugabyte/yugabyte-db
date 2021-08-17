@@ -13,12 +13,19 @@ import * as Yup from 'yup';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
 
+const MIN_PASSWORD_LENGTH = 8;
+
 export default class UserProfileForm extends Component {
   constructor(props) {
     super(props);
     this.state = {
       statusUpdated: false
     };
+  }
+
+  componentDidMount() {
+    const { validateRegistration } = this.props;
+    validateRegistration();
   }
 
   handleRefreshApiToken = (e) => {
@@ -47,8 +54,10 @@ export default class UserProfileForm extends Component {
       users = [],
       apiToken,
       updateCustomerDetails,
-      changeUserPassword
+      changeUserPassword,
+      passwordValidationInfo
     } = this.props;
+    const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
 
     showOrRedirect(customer.data.features, 'main.profile');
 
@@ -69,9 +78,12 @@ export default class UserProfileForm extends Component {
 
       password: Yup.string()
         .notRequired()
-        .min(8, 'Password is too short - must be 8 characters minimum.')
+        .min(minPasswordLength, `Password is too short - must be ${minPasswordLength} characters minimum.`)
         .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
-          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.')
+        `Password must contain at least ${passwordValidationInfo?.minDigits} digit
+          , ${passwordValidationInfo?.minUppercase} capital
+          , ${passwordValidationInfo?.minLowercase} lowercase
+          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`)
         .oneOf([Yup.ref('confirmPassword')], "Passwords don't match"),
 
       confirmPassword: Yup.string()

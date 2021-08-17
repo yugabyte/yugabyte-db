@@ -16,20 +16,27 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.ValidationError;
+import play.libs.Json;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.ValidationError;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 @Singleton
 public class PasswordPolicyService {
-
   private static final char[] SPECIAL_CHARACTERS =
       "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".toCharArray();
   private static final String DEFAULT_MIN_LENGTH_PARAM = "yb.pwdpolicy.default_min_length";
@@ -65,21 +72,7 @@ public class PasswordPolicyService {
   }
 
   public void checkPasswordPolicy(UUID customerUUID, String password) {
-    PasswordPolicyFormData configuredPolicy =
-        PasswordPolicyFormData.fromCustomerConfig(
-            CustomerConfig.getPasswordPolicyConfig(customerUUID));
-
-    PasswordPolicyFormData effectivePolicy;
-    if (configuredPolicy == null) {
-      effectivePolicy = new PasswordPolicyFormData();
-      effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_PARAM));
-      effectivePolicy.setMinUppercase(config.getInt(DEFAULT_MIN_UPPERCASE_PARAM));
-      effectivePolicy.setMinLowercase(config.getInt(DEFAULT_MIN_LOWERCASE_PARAM));
-      effectivePolicy.setMinDigits(config.getInt(DEFAULT_MIN_DIGITS_PARAM));
-      effectivePolicy.setMinSpecialCharacters(config.getInt(DEFAULT_MIN_SPECIAL_CHAR_PARAM));
-    } else {
-      effectivePolicy = configuredPolicy;
-    }
+    PasswordPolicyFormData effectivePolicy = getCustomerPolicy(customerUUID);
 
     if (StringUtils.isEmpty(password)) {
       throw new YWServiceException(BAD_REQUEST, "Password shouldn't be empty.");
@@ -102,5 +95,42 @@ public class PasswordPolicyService {
 
       throw new YWServiceException(BAD_REQUEST, fullMessage);
     }
+  }
+
+  // Method to return the password policy
+  public PasswordPolicyFormData getPasswordPolicyData(UUID customerUUID) {
+    PasswordPolicyFormData effectivePolicy = getCustomerPolicy(customerUUID);
+    PasswordPolicyFormData policyData;
+    JsonNode effectivePolicyJson = Json.toJson(effectivePolicy);
+    ObjectMapper mapper = new ObjectMapper();
+
+    try {
+      policyData = mapper.treeToValue(effectivePolicyJson, PasswordPolicyFormData.class);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Can not pretty print a Json object.");
+    }
+
+    return policyData;
+  }
+
+  public PasswordPolicyFormData getCustomerPolicy(UUID customerUUID) {
+    PasswordPolicyFormData configuredPolicy =
+        PasswordPolicyFormData.fromCustomerConfig(
+            CustomerConfig.getPasswordPolicyConfig(customerUUID));
+
+    PasswordPolicyFormData effectivePolicy;
+
+    if (configuredPolicy == null) {
+      effectivePolicy = new PasswordPolicyFormData();
+      effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_PARAM));
+      effectivePolicy.setMinUppercase(config.getInt(DEFAULT_MIN_UPPERCASE_PARAM));
+      effectivePolicy.setMinLowercase(config.getInt(DEFAULT_MIN_LOWERCASE_PARAM));
+      effectivePolicy.setMinDigits(config.getInt(DEFAULT_MIN_DIGITS_PARAM));
+      effectivePolicy.setMinSpecialCharacters(config.getInt(DEFAULT_MIN_SPECIAL_CHAR_PARAM));
+    } else {
+      effectivePolicy = configuredPolicy;
+    }
+
+    return effectivePolicy;
   }
 }
