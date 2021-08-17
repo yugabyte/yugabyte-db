@@ -6,7 +6,7 @@
 #
 ###################################################################################################
 
-# Session specific API
+# -- Session specific API (UI ONLY)
 + nocsrf
 POST    /login                                                                 com.yugabyte.yw.controllers.SessionController.login()
 GET     /platform_config                                                       com.yugabyte.yw.controllers.SessionController.getPlatformConfig()
@@ -18,11 +18,16 @@ GET     /logout                                                                c
 + nocsrf
 POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register()
 GET     /customers/:cUUID/password_policy                                      com.yugabyte.yw.controllers.SessionController.getPasswordPolicy(cUUID: java.util.UUID)
+GET     /ui_theme                                                              com.yugabyte.yw.controllers.SessionController.getUITheme()
+
+# -- Session specific Public API:
+GET     /session_info                                                          com.yugabyte.yw.controllers.SessionController.getSessionInfo()
 GET     /customer_count                                                        com.yugabyte.yw.controllers.SessionController.customerCount()
-GET     /customers/:cUUID/host_info                                            com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 GET     /app_version                                                           com.yugabyte.yw.controllers.SessionController.appVersion()
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
-GET     /ui_theme                                                              com.yugabyte.yw.controllers.SessionController.getUITheme()
+# --
+
+GET     /customers/:cUUID/host_info                                            com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 
 GET     /prometheus_metrics                                                    com.yugabyte.yw.controllers.MetricsController.index()
 
