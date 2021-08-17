@@ -4188,7 +4188,7 @@
     "description" : "About Yugabyte Platform",
     "url" : "https://docs.yugabyte.com"
   },
-  "host" : "localhost",
+  "host" : "localhost:9000",
   "info" : {
     "contact" : {
       "name" : "https://docs.yugabyte.com"
