@@ -326,6 +326,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   client::YBClient& client();
 
+  const std::shared_future<client::YBClient*>& client_future();
+
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
   // Trigger asynchronous compactions concurrently on the provided tablets.

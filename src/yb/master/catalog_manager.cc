@@ -1180,7 +1180,8 @@ bool CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
       initial_snapshot_writer_.emplace();
     }
 
-    Status status = PgWrapper::InitDbForYSQL(master_addresses_str, "/tmp");
+    Status status = PgWrapper::InitDbForYSQL(
+        master_addresses_str, "/tmp", master_->GetSharedMemoryFd());
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
       Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
