@@ -96,9 +96,10 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
 }
 
 std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
+  LOG(INFO) << __func__ << ": " << YBCIsInitDbModeEnvVarSet() << ", "
+            << FLAGS_TEST_pggate_ignore_tserver_shm << ", " << FLAGS_pggate_tserver_shm_fd;
   // Do not use shared memory in initdb or if explicity set to be ignored.
-  if (YBCIsInitDbModeEnvVarSet() || FLAGS_TEST_pggate_ignore_tserver_shm ||
-      FLAGS_pggate_tserver_shm_fd == -1) {
+  if (FLAGS_TEST_pggate_ignore_tserver_shm || FLAGS_pggate_tserver_shm_fd == -1) {
     return nullptr;
   }
   return std::make_unique<tserver::TServerSharedObject>(CHECK_RESULT(

@@ -175,6 +175,7 @@ add_dependencies(tserver_util gen_proto)
 #########################################
 
 set(TSERVER_SRCS
+  db_server_base.cc
   heartbeater.cc
   heartbeater_factory.cc
   metrics_snapshotter.cc

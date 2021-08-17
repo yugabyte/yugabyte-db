@@ -136,7 +136,7 @@ namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-    : RpcAndWebServerBase(
+    : DbServerBase(
           "TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
@@ -144,8 +144,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
-      tablet_server_service_(nullptr),
-      shared_object_(CHECK_RESULT(TServerSharedObject::Create())) {
+      tablet_server_service_(nullptr) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 
@@ -257,12 +256,12 @@ Status TabletServer::Init() {
   if (!bound_addresses.empty()) {
     ServerRegistrationPB reg;
     RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
-    shared_object_->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
+    shared_object().SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
   }
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
   RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
-  shared_object_->SetPostgresAuthKey(RandomUniformInt<uint64_t>());
+  shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
 
   return Status::OK();
 }
@@ -506,12 +505,8 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
   return opts_.rocksdb_env;
 }
 
-int TabletServer::GetSharedMemoryFd() {
-  return shared_object_.GetFd();
-}
-
 uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
-  return shared_object_->postgres_auth_key();
+  return shared_object().postgres_auth_key();
 }
 
 void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
@@ -519,7 +514,7 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
 
   if (new_version > ysql_catalog_version_) {
     ysql_catalog_version_ = new_version;
-    shared_object_->SetYSQLCatalogVersion(new_version);
+    shared_object().SetYSQLCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
@@ -531,26 +526,16 @@ TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
   return tablet_manager_.get();
 }
 
-client::YBClient* TabletServer::client() {
-  return &tablet_manager_->client();
+const std::shared_future<client::YBClient*>& TabletServer::client_future() const {
+  return tablet_manager_->client_future();
 }
 
 client::TransactionPool* TabletServer::TransactionPool() {
-  auto result = transaction_pool_.load(std::memory_order_acquire);
-  if (result) {
-    return result;
-  }
-  std::lock_guard<decltype(transaction_pool_mutex_)> lock(transaction_pool_mutex_);
-  if (transaction_pool_holder_) {
-    return transaction_pool_holder_.get();
-  }
-  transaction_manager_holder_ = std::make_unique<client::TransactionManager>(
-      &tablet_manager()->client(), clock(),
-      std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1));
-  transaction_pool_holder_ = std::make_unique<client::TransactionPool>(
-      transaction_manager_holder_.get(), metric_entity().get());
-  transaction_pool_.store(transaction_pool_holder_.get(), std::memory_order_release);
-  return transaction_pool_holder_.get();
+  return DbServerBase::TransactionPool();
+}
+
+client::LocalTabletFilter TabletServer::CreateLocalTabletFilter() {
+  return std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1);
 }
 
 }  // namespace tserver

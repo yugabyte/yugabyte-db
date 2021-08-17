@@ -47,7 +47,11 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual client::TransactionPool* TransactionPool() = 0;
 
-  virtual client::YBClient* client() = 0;
+  virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
+
+  client::YBClient* client() const {
+    return client_future().get();
+  }
 };
 
 } // namespace tserver

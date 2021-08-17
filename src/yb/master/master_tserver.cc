@@ -13,6 +13,8 @@
 
 #include "yb/master/master_tserver.h"
 
+#include "yb/client/async_initializer.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog.h"
@@ -120,6 +122,10 @@ void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
                << s.ToUserMessage();
     fill_vers();
   }
+}
+
+const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
+  return master_->async_client_initializer().get_client_future();
 }
 
 } // namespace master

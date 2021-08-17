@@ -40,8 +40,8 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master.h"
-#include "yb/server/server_base.h"
 #include "yb/server/webserver_options.h"
+#include "yb/tserver/db_server_base.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -63,12 +63,7 @@ class MaintenanceManager;
 
 namespace tserver {
 
-class Heartbeater;
-class MetricsSnapshotter;
-class TabletServerPathHandlers;
-class TSTabletManager;
-
-class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
+class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
@@ -191,9 +186,6 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   virtual CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry);
 
-  // Returns the file descriptor of this tablet server's shared memory segment.
-  int GetSharedMemoryFd();
-
   uint64_t GetSharedMemoryPostgresAuthKey();
 
   // Currently only used by cdc.
@@ -203,13 +195,15 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   client::TransactionPool* TransactionPool() override;
 
-  client::YBClient* client() override;
+  const std::shared_future<client::YBClient*>& client_future() const override;
 
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
 
   const HostPort pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
+
+  client::LocalTabletFilter CreateLocalTabletFilter() override;
 
  protected:
   virtual CHECKED_STATUS RegisterServices();
@@ -272,14 +266,6 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
-
-  // Shared memory owned by the tablet server.
-  TServerSharedObject shared_object_;
-
-  std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
-  std::mutex transaction_pool_mutex_;
-  std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
-  std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
 
   std::string log_prefix_;
 

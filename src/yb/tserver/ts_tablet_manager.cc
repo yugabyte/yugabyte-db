@@ -2251,6 +2251,10 @@ client::YBClient& TSTabletManager::client() {
   return *async_client_init_->client();
 }
 
+const std::shared_future<client::YBClient*>& TSTabletManager::client_future() {
+  return async_client_init_->get_client_future();
+}
+
 void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {
   // First check that the global RBS limits are respected if the flag is non-zero.
   if (PREDICT_FALSE(FLAGS_TEST_crash_if_remote_bootstrap_sessions_greater_than > 0) &&

@@ -86,7 +86,8 @@ class PgWrapper {
   // Run initdb in a mode that sets up the required metadata in the YB cluster. This is done
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
   // create a temporary PostgreSQL directory that is later deleted.
-  static Status InitDbForYSQL(const string& master_addresses, const string& tmp_dir_base);
+  static Status InitDbForYSQL(
+      const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd);
 
  private:
   static std::string GetPostgresExecutablePath();
