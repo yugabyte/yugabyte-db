@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This document describes how to use [Sequelize](https://sequelize.org/) with YugabyteDB to enable promise-based Node.js object-relational mapping (ORM).
+This document describes how to use [Sequelize](https://sequelize.org/), a promise-based Node.js object-relational mapping (ORM), with YugabetyDB.
 
 ## Prerequisites
 
@@ -32,11 +32,13 @@ Before you can start using Sequelize, ensure that you have the following availab
   touch demo.js
   ```
 
-- A YugabyteDB-specific Sequelize package called  [sequelize-yugabytedb](https://www.npmjs.com/package/sequelize-yugabytedb). You can install this package by running the following command from the `demo_project` directory:
+- A YugabyteDB-specific Sequelize package called [sequelize-yugabytedb](https://www.npmjs.com/package/sequelize-yugabytedb). You can install this package by running the following command from the `demo_project` directory:
 
   ```shell
   npm install sequelize-yugabytedb
   ```
+
+  Currently, the `sequelize-yugabytedb` package extends Sequelize version 6.6.5.
 
 ## Using Sequelize
 
@@ -111,11 +113,3 @@ The following illustration presents the output:
 ![img](/images/ee/sequelize.png)
 
 The `createdAt` and `updatedAt` timestamp columns have been added automatically by Sequelize.
-
-## Limitations
-
-The following is not supported in the current release: 
-
-- Savepoints 
-- Skip locked rows
-- An index on column of a user-defined type
