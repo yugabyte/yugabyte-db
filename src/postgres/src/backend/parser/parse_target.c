@@ -32,6 +32,8 @@
 #include "utils/rel.h"
 #include "utils/typcache.h"
 
+/* YB includes. */
+#include "access/sysattr.h"
 
 static void markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 					 Var *var, int levelsup);
@@ -477,7 +479,7 @@ transformAssignedExpr(ParseState *pstate,
 	pstate->p_expr_kind = exprKind;
 
 	Assert(rd != NULL);
-	if (attrno <= 0)
+	if (!IsYsqlUpgrade && attrno <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot assign to system column \"%s\"",
@@ -1023,7 +1025,8 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 			int			attrno;
 
 			/* Lookup column name, ereport on failure */
-			attrno = attnameAttNum(pstate->p_target_relation, name, false);
+			attrno = attnameAttNum(pstate->p_target_relation, name,
+								   IsYsqlUpgrade /* sysColOK */);
 			if (attrno == InvalidAttrNumber)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -1038,15 +1041,23 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 			 */
 			if (col->indirection == NIL)
 			{
-				/* whole column; must not have any other assignment */
-				if (bms_is_member(attrno, wholecols) ||
-					bms_is_member(attrno, partialcols))
-					ereport(ERROR,
-							(errcode(ERRCODE_DUPLICATE_COLUMN),
-							 errmsg("column \"%s\" specified more than once",
-									name),
-							 parser_errposition(pstate, col->location)));
-				wholecols = bms_add_member(wholecols, attrno);
+				/*
+				 * In YSQL upgrade mode, we allow oid column for INSERT.
+				 * Bitmap sets can't handle negative values, so we skip
+				 * duplicate validation.
+				 */
+				if (!IsYsqlUpgrade || attrno >= 1)
+				{
+					/* whole column; must not have any other assignment */
+					if (bms_is_member(attrno, wholecols) ||
+						bms_is_member(attrno, partialcols))
+						ereport(ERROR,
+								(errcode(ERRCODE_DUPLICATE_COLUMN),
+								 errmsg("column \"%s\" specified more than once",
+										name),
+								 parser_errposition(pstate, col->location)));
+					wholecols = bms_add_member(wholecols, attrno);
+				}
 			}
 			else
 			{

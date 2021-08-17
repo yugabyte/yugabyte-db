@@ -39,8 +39,10 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
-#include "pg_yb_utils.h"
+/* YB includes. */
 #include "executor/ybcModifyTable.h"
+#include "miscadmin.h"
+#include "pg_yb_utils.h"
 
 /* We use a list of these to detect recursion in RewriteQuery */
 typedef struct rewrite_event
@@ -759,13 +761,30 @@ rewriteTargetListIU(List *targetList,
 		{
 			/* Normal attr: stash it into new_tles[] */
 			attrno = old_tle->resno;
-			if (attrno < 1 || attrno > numattrs)
+			if ((!IsYsqlUpgrade && attrno < 1) || attrno > numattrs)
 				elog(ERROR, "bogus resno %d in targetlist", attrno);
-			att_tup = TupleDescAttr(target_relation->rd_att, attrno - 1);
 
 			/* put attrno into attrno_list even if it's dropped */
 			if (attrno_list)
 				*attrno_list = lappend_int(*attrno_list, attrno);
+
+			/* Pass system column as-is. */
+			if (IsYsqlUpgrade && attrno < 1)
+			{
+				if (attrno != ObjectIdAttributeNumber)
+					elog(ERROR, "can't reference system columns other than oid");
+
+				if (commandType != CMD_INSERT)
+					elog(ERROR, "can't UPDATE oid");
+
+				if (old_tle == NULL || !old_tle->expr || IsA(old_tle->expr, SetToDefault))
+					elog(ERROR, "oid should have a value specified");
+
+				new_tlist = lappend(new_tlist, old_tle);
+				continue;
+			}
+
+			att_tup = TupleDescAttr(target_relation->rd_att, attrno - 1);
 
 			/* We can (and must) ignore deleted attributes */
 			if (att_tup->attisdropped)

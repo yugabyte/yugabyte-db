@@ -138,6 +138,8 @@ typedef struct TupleTableSlot
 
 	/* YugaByte support */
 	Datum tts_ybctid; /* selected ybctid value */
+	Datum tts_yb_insert_oid; /* OID specified in INSERT during YSQL upgrade,
+							  * should not be used for any other purpose. */
 } TupleTableSlot;
 
 #define TTS_HAS_PHYSICAL_TUPLE(slot)  \

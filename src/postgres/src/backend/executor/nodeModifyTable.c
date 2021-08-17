@@ -124,6 +124,9 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 		if (tle->resjunk)
 			continue;			/* ignore junk tlist items */
 
+		if (IsYsqlUpgrade && tle->resno == ObjectIdAttributeNumber)
+			continue;			/* ignore oid system column used in YSQL upgrade */
+
 		if (attno >= resultDesc->natts)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -329,9 +332,22 @@ ExecInsert(ModifyTableState *mtstate,
 	 * rows, this'd be the place to do it.  For the moment, we make a point of
 	 * doing this before calling triggers, so that a user-supplied trigger
 	 * could hack the OID if desired.
+	 *
+	 * YB note:
+	 * --------
+	 * YSQL upgrade introduces a hacky way for INSERT to set OID implemented
+	 * via tts_yb_insert_oid. It would become obsolete after upgrade to PG 12
+	 * which would make oid a regular column.
 	 */
 	if (resultRelationDesc->rd_rel->relhasoids)
-		HeapTupleSetOid(tuple, InvalidOid);
+	{
+		Oid tuple_oid = InvalidOid;
+
+		if (IsYsqlUpgrade && IsYBRelation(resultRelationDesc))
+			tuple_oid = slot->tts_yb_insert_oid;
+
+		HeapTupleSetOid(tuple, tuple_oid);
+	}
 
 	/*
 	 * BEFORE ROW INSERT Triggers.
@@ -601,7 +617,7 @@ ExecInsert(ModifyTableState *mtstate,
 		}
 	}
 
-  if (canSetTag)
+	if (canSetTag)
 	{
 		(estate->es_processed)++;
 		estate->es_lastoid = newId;

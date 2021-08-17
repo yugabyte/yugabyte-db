@@ -238,6 +238,9 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 			HeapTupleSetOid(tuple, GetNewOid(rel));
 	}
 
+	if (IsYsqlUpgrade && HeapTupleGetOid(tuple) >= FirstNormalObjectId)
+		elog(ERROR, "rows inserted during YSQL upgrade must have OIDs below user range");
+
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(dboid,
 	                              relid,

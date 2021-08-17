@@ -94,6 +94,10 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
+/* YB includes. */
+#include "access/sysattr.h"
+#include "miscadmin.h"
+
 
 static TupleDesc ExecTypeFromTLInternal(List *targetList,
 					   bool hasoid, bool skipjunk);
@@ -1060,6 +1064,23 @@ ExecTypeFromTLInternal(List *targetList, bool hasoid, bool skipjunk)
 		len = ExecCleanTargetListLength(targetList);
 	else
 		len = ExecTargetListLength(targetList);
+
+	/*
+	 * In YSQL upgrade mode, targetList might be prefixed with OID during INSERT.
+	 * System columns don't count toward nattrs.
+	 */
+	if (IsYsqlUpgrade)
+	{
+		foreach(l, targetList)
+		{
+			TargetEntry *tle = lfirst(l);
+			if (tle->resno < 1)
+				len--;
+			else
+				break;
+		}
+	}
+
 	typeInfo = CreateTemplateTupleDesc(len, hasoid);
 
 	foreach(l, targetList)
@@ -1068,6 +1089,11 @@ ExecTypeFromTLInternal(List *targetList, bool hasoid, bool skipjunk)
 
 		if (skipjunk && tle->resjunk)
 			continue;
+
+		/* System columns shouldn't be processed here. */
+		if (IsYsqlUpgrade && tle->resno == ObjectIdAttributeNumber)
+			continue;
+
 		TupleDescInitEntry(typeInfo,
 						   cur_resno,
 						   tle->resname,
