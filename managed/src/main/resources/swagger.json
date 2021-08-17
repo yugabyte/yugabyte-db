@@ -1751,6 +1751,16 @@
       "required" : [ "data" ],
       "type" : "object"
     },
+    "CustomerCountResp" : {
+      "properties" : {
+        "count" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "count" ],
+      "type" : "object"
+    },
     "CustomerDetailsData" : {
       "description" : "Customers features and Universe UUID.",
       "properties" : {
@@ -1810,18 +1820,6 @@
         }
       },
       "required" : [ "code", "name" ],
-      "type" : "object"
-    },
-    "CustomerLoginFormData" : {
-      "properties" : {
-        "email" : {
-          "type" : "string"
-        },
-        "password" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "email", "password" ],
       "type" : "object"
     },
     "CustomerTaskData" : {
@@ -2134,6 +2132,18 @@
         }
       },
       "required" : [ "airGapInstall", "installNodeExporter", "nodeExporterPort", "nodeExporterUser", "passwordlessSudoAccess", "privateKey", "provisionInstanceScript", "publicKey", "skipProvisioning", "sshPort", "sshUser", "vaultFile", "vaultPasswordFile" ],
+      "type" : "object"
+    },
+    "LogData" : {
+      "properties" : {
+        "lines" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "lines" ],
       "type" : "object"
     },
     "MasterNode" : {
@@ -3316,6 +3326,26 @@
       },
       "type" : "object"
     },
+    "SessionInfo" : {
+      "properties" : {
+        "apiToken" : {
+          "type" : "string"
+        },
+        "authToken" : {
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "userUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "apiToken", "authToken", "customerUUID", "userUUID" ],
+      "type" : "object"
+    },
     "SmtpData" : {
       "description" : "Customers SMTP data.",
       "properties" : {
@@ -4205,25 +4235,38 @@
   "paths" : {
     "/api/v1/app_version" : {
       "get" : {
+        "description" : "",
         "operationId" : "appVersion",
         "parameters" : [ ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "string"
+              },
+              "type" : "object"
+            }
           }
         },
+        "summary" : "appVersion",
         "tags" : [ "Session" ]
       }
     },
     "/api/v1/customer_count" : {
       "get" : {
+        "description" : "",
         "operationId" : "customerCount",
         "parameters" : [ ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerCountResp"
+            }
           }
         },
+        "summary" : "customerCount",
         "tags" : [ "Session" ]
       }
     },
@@ -5078,29 +5121,6 @@
         "tags" : [ "Alert" ]
       }
     },
-    "/api/v1/customers/{cUUID}/api_token" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "api_token",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        },
-        "summary" : "apiToken",
-        "tags" : [ "Session" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/backups" : {
       "delete" : {
         "description" : "",
@@ -5777,6 +5797,24 @@
         } ],
         "summary" : "Get node instance by UUID",
         "tags" : [ "Node Instances" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/password_policy" : {
+      "get" : {
+        "operationId" : "getPasswordPolicy",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [ "Session" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers" : {
@@ -6943,24 +6981,6 @@
         } ],
         "summary" : "delete",
         "tags" : [ "Schedule" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/security" : {
-      "put" : {
-        "operationId" : "set_security",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session" ]
       }
     },
     "/api/v1/customers/{cUUID}/tasks/{tUUID}" : {
@@ -9045,62 +9065,9 @@
         "tags" : [ "Node Instances" ]
       }
     },
-    "/api/v1/insecure_login" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "insecure_login",
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        },
-        "summary" : "insecureLogin",
-        "tags" : [ "Session" ]
-      }
-    },
-    "/api/v1/login" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "login",
-        "parameters" : [ {
-          "description" : "login form data",
-          "in" : "body",
-          "name" : "loginFormData",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CustomerLoginFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        },
-        "summary" : "login",
-        "tags" : [ "Session" ]
-      }
-    },
-    "/api/v1/logout" : {
-      "get" : {
-        "operationId" : "logout",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session" ]
-      }
-    },
     "/api/v1/logs/{maxLines}" : {
       "get" : {
+        "description" : "",
         "operationId" : "getLogs",
         "parameters" : [ {
           "format" : "int32",
@@ -9110,10 +9077,14 @@
           "type" : "integer"
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/LogData"
+            }
           }
         },
+        "summary" : "getLogs",
         "tags" : [ "Session" ]
       }
     },
@@ -9213,18 +9184,6 @@
         "tags" : [ "Tables" ]
       }
     },
-    "/api/v1/platform_config" : {
-      "get" : {
-        "operationId" : "getPlatformConfig",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session" ]
-      }
-    },
     "/api/v1/prometheus_metrics" : {
       "get" : {
         "description" : "",
@@ -9243,18 +9202,6 @@
         } ],
         "summary" : "index",
         "tags" : [ "Metrics" ]
-      }
-    },
-    "/api/v1/register" : {
-      "post" : {
-        "operationId" : "register",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session" ]
       }
     },
     "/api/v1/runtime_config/mutable_keys" : {
@@ -9280,27 +9227,20 @@
         "tags" : [ "RuntimeConfig" ]
       }
     },
-    "/api/v1/third_party_login" : {
+    "/api/v1/session_info" : {
       "get" : {
-        "operationId" : "thirdPartyLogin",
+        "description" : "",
+        "operationId" : "getSessionInfo",
         "parameters" : [ ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
           }
         },
-        "tags" : [ "Session" ]
-      }
-    },
-    "/api/v1/ui_theme" : {
-      "get" : {
-        "operationId" : "getUITheme",
-        "parameters" : [ ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
+        "summary" : "Get current user/customer uuid auth/api token",
         "tags" : [ "Session" ]
       }
     },
@@ -9328,29 +9268,6 @@
         } ],
         "summary" : "get masters list",
         "tags" : [ "Metamaster" ]
-      }
-    },
-    "/universes/{uniUUID}/proxy/{proxyUrl}" : {
-      "get" : {
-        "operationId" : "proxyRequest",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "proxyUrl",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "tags" : [ "Session" ]
       }
     }
   },
