@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverInterface;
 import com.yugabyte.yw.common.alerts.AlertReceiverManager;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
@@ -55,6 +56,7 @@ public class AlertManager {
 
   private final EmailHelper emailHelper;
   private final AlertDefinitionGroupService alertDefinitionGroupService;
+  private final AlertReceiverService alertReceiverService;
   private final AlertRouteService alertRouteService;
   private final AlertReceiverManager receiversManager;
   private final AlertService alertService;
@@ -65,12 +67,14 @@ public class AlertManager {
       EmailHelper emailHelper,
       AlertService alertService,
       AlertDefinitionGroupService alertDefinitionGroupService,
+      AlertReceiverService alertReceiverService,
       AlertRouteService alertRouteService,
       AlertReceiverManager receiversManager,
       MetricService metricService) {
     this.emailHelper = emailHelper;
     this.alertService = alertService;
     this.alertDefinitionGroupService = alertDefinitionGroupService;
+    this.alertReceiverService = alertReceiverService;
     this.alertRouteService = alertRouteService;
     this.receiversManager = receiversManager;
     this.metricService = metricService;
@@ -222,7 +226,7 @@ public class AlertManager {
 
     for (AlertReceiver receiver : receivers) {
       try {
-        AlertUtils.validate(receiver);
+        alertReceiverService.validate(receiver);
       } catch (YWValidateException e) {
         if (report.failuresByReceiver(receiver.getUuid()) == 0) {
           log.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);

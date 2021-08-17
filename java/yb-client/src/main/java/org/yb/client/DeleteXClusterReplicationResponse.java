@@ -7,7 +7,7 @@ import org.yb.master.Master;
 public class DeleteXClusterReplicationResponse extends YRpcResponse {
   private final Master.MasterErrorPB serverError;
 
-  DeleteXClusterReplicationResponse(
+  public DeleteXClusterReplicationResponse(
     long elapsedMillis, String tsUUID, Master.MasterErrorPB serverError) {
     super(elapsedMillis, tsUUID);
     this.serverError = serverError;
