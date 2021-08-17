@@ -15,17 +15,16 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
+import static com.yugabyte.yw.forms.YWResults.withData;
 import static com.yugabyte.yw.models.Users.Role;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
@@ -39,18 +38,18 @@ import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.YWResults.YWSuccess;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +61,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.persistence.PersistenceException;
+import lombok.Data;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -80,12 +80,14 @@ import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.mvc.Controller;
 import play.mvc.Http;
+import play.mvc.Http.Cookie;
 import play.mvc.Result;
 import play.mvc.Results;
 import play.mvc.With;
 
 @Api(value = "Session")
 public class SessionController extends Controller {
+
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
   static final Pattern PROXY_PATTERN = Pattern.compile("^(.+):([0-9]{1,5})/.*$");
@@ -117,7 +119,6 @@ public class SessionController extends Controller {
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
-  public static final String USER_UUID = "userUUID";
   private static final Integer FOREVER = 2147483647;
 
   private CommonProfile getProfile() {
@@ -128,20 +129,85 @@ public class SessionController extends Controller {
         .orElseThrow(() -> new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
 
-  @ApiOperation(value = "login", response = Object.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "loginFormData",
-          dataType = "com.yugabyte.yw.forms.CustomerLoginFormData",
-          required = true,
-          paramType = "body",
-          value = "login form data"))
+  @Data
+  public static class SessionInfo {
+    final String authToken;
+    final String apiToken;
+    final UUID customerUUID;
+    final UUID userUUID;
+  }
+
+  @ApiOperation(
+      nickname = "getSessionInfo",
+      value = "Get current user/customer uuid auth/api token",
+      response = SessionInfo.class)
+  @With(TokenAuthenticator.class)
+  public Result getSessionInfo() {
+    Users user = (Users) Http.Context.current().args.get("user");
+    Customer cust = Customer.get(user.customerUUID);
+    Cookie authCookie = request().cookie(AUTH_TOKEN);
+    SessionInfo sessionInfo =
+        new SessionInfo(
+            authCookie == null ? null : authCookie.value(),
+            user.getApiToken(),
+            cust.uuid,
+            user.uuid);
+    return withData(sessionInfo);
+  }
+
+  @Data
+  static class CustomerCountResp {
+    final int count;
+  }
+
+  @ApiOperation(value = "customerCount", response = CustomerCountResp.class)
+  public Result customerCount() {
+    int customerCount = Customer.find.all().size();
+    return YWResults.withData(new CustomerCountResp(customerCount));
+  }
+
+  @ApiOperation(value = "appVersion", responseContainer = "Map", response = String.class)
+  public Result appVersion() {
+    return withData(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
+  }
+
+  @Data
+  static class LogData {
+
+    final List<String> lines;
+  }
+
+  @ApiOperation(value = "getLogs", response = LogData.class)
+  @With(TokenAuthenticator.class)
+  public Result getLogs(Integer maxLines) {
+    String appHomeDir = appConfig.getString("application.home", ".");
+    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
+    File file = new File(String.format("%s/application.log", logDir));
+    // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
+    // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
+    try (ReversedLinesFileReader reader = new ReversedLinesFileReader(file)) {
+      int index = 0;
+      List<String> lines = new ArrayList<>();
+      while (index++ < maxLines) {
+        String line = reader.readLine();
+        if (line == null) { // No more lines.
+          break;
+        }
+        lines.add(line);
+      }
+      return YWResults.withData(new LogData(lines));
+    } catch (IOException ex) {
+      LOG.error("Log file open failed.", ex);
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Could not open log file with error " + ex.getMessage());
+    }
+  }
+
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result login() {
-    ObjectNode responseJson = Json.newObject();
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
     if (useOAuth) {
-      responseJson.put("error", "Platform login not supported when using SSO.");
-      return badRequest(responseJson);
+      throw new YWServiceException(BAD_REQUEST, "Platform login not supported when using SSO.");
     }
 
     CustomerLoginFormData data =
@@ -149,16 +215,12 @@ public class SessionController extends Controller {
     Users user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
 
     if (user == null) {
-      responseJson.put("error", "Invalid User Credentials");
-      return unauthorized(responseJson);
+      throw new YWServiceException(UNAUTHORIZED, "Invalid User Credentials");
     }
     Customer cust = Customer.get(user.customerUUID);
 
     String authToken = user.createAuthToken();
-    ObjectNode authTokenJson = Json.newObject();
-    authTokenJson.put(AUTH_TOKEN, authToken);
-    authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
-    authTokenJson.put(USER_UUID, user.uuid.toString());
+    SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.uuid, user.uuid);
     response()
         .setCookie(
             Http.Cookie.builder(AUTH_TOKEN, authToken)
@@ -174,9 +236,10 @@ public class SessionController extends Controller {
             Http.Cookie.builder("userId", user.uuid.toString())
                 .withSecure(ctx().request().secure())
                 .build());
-    return ok(authTokenJson);
+    return withData(sessionInfo);
   }
 
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result getPlatformConfig() {
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
     String platformConfig = "window.YB_Platform_Config = window.YB_Platform_Config || %s";
@@ -186,6 +249,7 @@ public class SessionController extends Controller {
     return ok(platformConfig);
   }
 
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin() {
     CommonProfile profile = getProfile();
@@ -224,57 +288,48 @@ public class SessionController extends Controller {
     }
   }
 
-  @ApiOperation(value = "insecureLogin", response = Object.class)
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result insecure_login() {
-    ObjectNode responseJson = Json.newObject();
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
-      responseJson.put("error", "Cannot allow insecure with multiple customers.");
-      return unauthorized(responseJson);
+      throw new YWServiceException(UNAUTHORIZED, "Cannot allow insecure with multiple customers.");
     }
     String securityLevel =
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
     if (securityLevel != null && securityLevel.equals("insecure")) {
       List<Users> users = Users.getAllReadOnly();
       if (users.isEmpty()) {
-        responseJson.put("error", "No read only customer exists.");
-        return unauthorized(responseJson);
+        throw new YWServiceException(UNAUTHORIZED, "No read only customer exists.");
       }
       Users user = users.get(0);
       if (user == null) {
-        responseJson.put("error", "Invalid User saved.");
-        return unauthorized(responseJson);
+        throw new YWServiceException(UNAUTHORIZED, "Invalid User saved.");
       }
       String apiToken = user.getApiToken();
       if (apiToken == null || apiToken.isEmpty()) {
         apiToken = user.upsertApiToken();
       }
 
-      ObjectNode apiTokenJson = Json.newObject();
-      apiTokenJson.put(API_TOKEN, apiToken);
-      apiTokenJson.put(CUSTOMER_UUID, user.customerUUID.toString());
-      apiTokenJson.put(USER_UUID, user.uuid.toString());
+      SessionInfo sessionInfo = new SessionInfo(null, apiToken, user.customerUUID, user.uuid);
       response()
           .setCookie(
               Http.Cookie.builder(API_TOKEN, apiToken)
                   .withSecure(ctx().request().secure())
                   .build());
-      return ok(apiTokenJson);
+      return withData(sessionInfo);
     }
-    responseJson.put("error", "Insecure login unavailable.");
-    return unauthorized(responseJson);
+    throw new YWServiceException(UNAUTHORIZED, "Insecure login unavailable.");
   }
 
   // Any changes to security should be authenticated.
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
   public Result set_security(UUID customerUUID) {
     Form<SetSecurityFormData> formData =
         formFactory.getFormDataOrBadRequest(SetSecurityFormData.class);
-    ObjectNode responseJson = Json.newObject();
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
-      responseJson.put("error", "Cannot allow insecure with multiple customers.");
-      return unauthorized(responseJson);
+      throw new YWServiceException(UNAUTHORIZED, "Cannot allow insecure with multiple customers.");
     }
 
     SetSecurityFormData data = formData.get();
@@ -295,30 +350,30 @@ public class SessionController extends Controller {
         LOG.error("Failed to parse sample feature config file for OSS mode.");
       }
     }
-    return ok();
+    return YWSuccess.empty();
   }
 
   @With(TokenAuthenticator.class)
-  @ApiOperation(value = "apiToken", response = Object.class)
+  @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
   public Result api_token(UUID customerUUID) {
     Users user = (Users) Http.Context.current().args.get("user");
 
     if (user == null) {
-      return ApiResponse.error(BAD_REQUEST, "Could not find User from given credentials.");
+      throw new YWServiceException(BAD_REQUEST, "Could not find User from given credentials.");
     }
 
     String apiToken = user.upsertApiToken();
-    ObjectNode apiTokenJson = Json.newObject();
-    apiTokenJson.put(API_TOKEN, apiToken);
+    SessionInfo sessionInfo = new SessionInfo(null, apiToken, customerUUID, user.uuid);
     response()
         .setCookie(
             Http.Cookie.builder(API_TOKEN, apiToken)
                 .withSecure(ctx().request().secure())
                 .withMaxAge(FOREVER)
                 .build());
-    return ok(apiTokenJson);
+    return withData(sessionInfo);
   }
 
+  @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
   public Result register() {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
@@ -326,34 +381,33 @@ public class SessionController extends Controller {
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
-      return ApiResponse.error(
-          BAD_REQUEST, "Cannot register multiple " + "accounts in Single tenancy.");
+      throw new YWServiceException(
+          BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
     }
     if (useOAuth && customerCount >= 1) {
-      return ApiResponse.error(
-          BAD_REQUEST, "Cannot register multiple " + "accounts with SSO enabled platform.");
+      throw new YWServiceException(
+          BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
     }
     if (customerCount == 0) {
-      return registerCustomer(data, true);
+      return withData(registerCustomer(data, true));
     } else {
       if (TokenAuthenticator.superAdminAuthentication(ctx())) {
-        return registerCustomer(data, false);
+        return withData(registerCustomer(data, false));
       } else {
-        return ApiResponse.error(BAD_REQUEST, "Only Super Admins can register tenant.");
+        throw new YWServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
       }
     }
   }
 
   public Result getPasswordPolicy(UUID customerUUID) {
-    // PasswordPolicyService passwordPolicyService;
     PasswordPolicyFormData validPolicy = passwordPolicyService.getPasswordPolicyData(customerUUID);
     if (validPolicy != null) {
       return YWResults.withData(validPolicy);
     }
-    return ApiResponse.error(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
+    throw new YWServiceException(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
   }
 
-  private Result registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
+  private SessionInfo registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
     try {
       Customer cust = Customer.create(data.getCode(), data.getName());
       Role role = Role.Admin;
@@ -375,21 +429,20 @@ public class SessionController extends Controller {
           Users.create(
               data.getEmail(), data.getPassword(), role, cust.uuid, /* Primary user*/ true);
       String authToken = user.createAuthToken();
-      ObjectNode authTokenJson = Json.newObject();
-      authTokenJson.put(AUTH_TOKEN, authToken);
-      authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
-      authTokenJson.put(USER_UUID, user.uuid.toString());
+      SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.uuid, user.uuid);
       response()
           .setCookie(
               Http.Cookie.builder(AUTH_TOKEN, authToken)
                   .withSecure(ctx().request().secure())
                   .build());
-      return ok(authTokenJson);
+      return sessionInfo;
     } catch (PersistenceException pe) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Customer already registered.");
+      // TODO: This needs to be more granular exception handling
+      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Customer already registered.");
     }
   }
 
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
   public Result logout() {
     response().discardCookie(AUTH_TOKEN);
@@ -397,118 +450,78 @@ public class SessionController extends Controller {
     if (user != null) {
       user.deleteAuthToken();
     }
-    return ok();
+    return YWSuccess.empty();
   }
 
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result getUITheme() {
     try {
       return Results.ok(environment.resourceAsStream("theme/theme.css"));
     } catch (NullPointerException ne) {
-      return ApiResponse.error(BAD_REQUEST, "Theme file doesn't exists.");
+      throw new YWServiceException(BAD_REQUEST, "Theme file doesn't exists.");
     }
   }
 
-  public Result customerCount() {
-    int customerCount = Customer.find.all().size();
-    ObjectNode response = Json.newObject();
-    response.put("count", customerCount);
-    return YWResults.withRawData(response);
-  }
-
-  public Result appVersion() {
-    return YWResults.withData(configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
-  }
-
-  @With(TokenAuthenticator.class)
-  public Result getLogs(Integer maxLines) {
-    String appHomeDir = appConfig.getString("application.home", ".");
-    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
-    File file = new File(String.format("%s/application.log", logDir));
-    // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
-    // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
-    try {
-      ReversedLinesFileReader reader = new ReversedLinesFileReader(file);
-      int index = 0;
-      ObjectNode result = Json.newObject();
-      ArrayNode lines = Json.newArray();
-      while (index++ < maxLines) {
-        String line = reader.readLine();
-        if (line != null) {
-          lines.add(line);
-        } else {
-          // No more lines.
-          break;
-        }
-      }
-      result.put("lines", lines);
-
-      return YWResults.withRawData(result);
-    } catch (IOException ex) {
-      LOG.error("Log file open failed.", ex);
-      return ApiResponse.error(
-          INTERNAL_SERVER_ERROR, "Could not open log file with error " + ex.getMessage());
-    }
-  }
-
+  @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
   public CompletionStage<Result> proxyRequest(UUID universeUUID, String requestUrl) {
     return CompletableFuture.supplyAsync(
         () -> {
           Universe universe = Universe.getOrBadRequest(universeUUID);
+          // Validate that the request is of <ip/hostname>:<port> format
+          Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
+          if (!matcher.matches()) {
+            LOG.error("Request {} does not match expected pattern", requestUrl);
+            throw new YWServiceException(BAD_REQUEST, "Invalid proxy request");
+          }
+
+          // Extract host + port from request
+          String host = matcher.group(1);
+          String port = matcher.group(2);
+          String addr = String.format("%s:%s", host, port);
+
+          // Validate that the proxy request is for a node from the specified universe
+          if (!universe.nodeExists(host, Integer.parseInt(port))) {
+            LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
+            throw new YWServiceException(BAD_REQUEST, "Invalid proxy request");
+          }
+
+          // Add query params to proxied request
+          final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
+
+          // Make the request
+          Duration timeout =
+              runtimeConfigFactory.globalRuntimeConf().getDuration("yb.proxy_endpoint_timeout");
+          WSRequest request = ws.url("http://" + finalRequestUrl).setRequestTimeout(timeout);
+          CompletionStage<? extends StandaloneWSResponse> response = request.get();
+          StandaloneWSResponse r;
           try {
-            // Validate that the request is of <ip/hostname>:<port> format
-            Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
-            if (!matcher.matches()) {
-              LOG.error("Request {} does not match expected pattern", requestUrl);
-              return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");
-            }
-
-            // Extract host + port from request
-            String host = matcher.group(1);
-            String port = matcher.group(2);
-            String addr = String.format("%s:%s", host, port);
-
-            // Validate that the proxy request is for a node from the specified universe
-            if (!universe.nodeExists(host, Integer.parseInt(port))) {
-              LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
-              return ApiResponse.error(BAD_REQUEST, "Invalid proxy request");
-            }
-
-            // Add query params to proxied request
-            final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
-
-            // Make the request
-            Duration timeout =
-                runtimeConfigFactory.globalRuntimeConf().getDuration("yb.proxy_endpoint_timeout");
-            WSRequest request = ws.url("http://" + finalRequestUrl).setRequestTimeout(timeout);
-            CompletionStage<? extends StandaloneWSResponse> response = request.get();
-            StandaloneWSResponse r = response.toCompletableFuture().get(1, TimeUnit.MINUTES);
-
-            // Format the response body
-            if (r.getStatus() == 200) {
-              Result result;
-              String url = request.getUrl();
-              if (url.contains(".png") || url.contains(".ico") || url.contains("fontawesome")) {
-                result = ok(r.getBodyAsBytes().toArray());
-              } else {
-                result = ok(apiHelper.replaceProxyLinks(r.getBody(), universeUUID, addr));
-              }
-
-              // Set response headers
-              for (Map.Entry<String, List<String>> entry : r.getHeaders().entrySet()) {
-                if (!entry.getKey().equals("Content-Length")
-                    && !entry.getKey().equals("Content-Type")) {
-                  result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
-                }
-              }
-
-              return result.as(r.getContentType());
-            } else {
-              return ApiResponse.error(BAD_REQUEST, r.getStatusText());
-            }
+            r = response.toCompletableFuture().get(1, TimeUnit.MINUTES);
           } catch (Exception e) {
             LOG.error("Error proxying request: " + requestUrl, e);
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+            throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+          }
+          // Format the response body
+          if (r.getStatus() == 200) {
+            Result result;
+            String url = request.getUrl();
+            if (url.contains(".png") || url.contains(".ico") || url.contains("fontawesome")) {
+              result = ok(r.getBodyAsBytes().toArray());
+            } else {
+              result = ok(apiHelper.replaceProxyLinks(r.getBody(), universeUUID, addr));
+            }
+
+            // Set response headers
+            for (Map.Entry<String, List<String>> entry : r.getHeaders().entrySet()) {
+              if (!entry.getKey().equals("Content-Length")
+                  && !entry.getKey().equals("Content-Type")) {
+                result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
+              }
+            }
+
+            return result.as(r.getContentType());
+          } else {
+            throw new YWServiceException(BAD_REQUEST, r.getStatusText());
           }
         },
         ec.current());
