@@ -3,13 +3,19 @@
 package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.EmailFixtures;
+import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import java.util.Collections;
 import org.junit.Test;
 import play.libs.Json;
 
@@ -55,15 +61,15 @@ public class CommonUtilsTest {
   @Test
   public void testMaskConfigWithNullData() {
     JsonNode maskedData = CommonUtils.maskConfig(null);
-    assertEquals(0, maskedData.size());
-    assertNotNull(maskedData);
+    assertThat(maskedData.size(), is(0));
+    assertThat(maskedData, notNullValue());
   }
 
   @Test
   public void testGetNodeProperty() {
     String propertyPath = "data.test.foo";
     JsonNode nullNode = CommonUtils.getNodeProperty(null, propertyPath);
-    assertNull(nullNode);
+    assertThat(nullNode, nullValue());
     JsonNode testObject = Json.newObject();
     nullNode = CommonUtils.getNodeProperty(testObject, propertyPath);
     ObjectMapper mapper = new ObjectMapper();
@@ -73,7 +79,7 @@ public class CommonUtilsTest {
     ObjectNode testNode = dataNode.putObject("test");
     testNode.put("foo", "success");
     JsonNode result = CommonUtils.getNodeProperty(rootNode, propertyPath);
-    assertEquals(result.asText(), "success");
+    assertThat(result.asText(), is("success"));
   }
 
   @Test
@@ -83,7 +89,7 @@ public class CommonUtilsTest {
 
     // 1. No changes.
     JsonNode unmaskedData = CommonUtils.unmaskConfig(config, maskedData);
-    assertEquals(config, unmaskedData);
+    assertThat(unmaskedData, equalTo(config));
 
     // 2. Two fields changed.
     ((ObjectNode) maskedData).put("MY_KEY_DATA", "SENSITIVE_DATA_2");
@@ -98,5 +104,20 @@ public class CommonUtilsTest {
     assertValue(unmaskedData, "DATA", "VALUE");
     assertValue(unmaskedData, "MY_KEY_DATA", "SENSITIVE_DATA_2");
     assertValue(unmaskedData, "MY_PASSWORD", "SENSITIVE_DATA_2");
+  }
+
+  @Test
+  public void testMaskComplexObject() {
+    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+    params.recipients = Collections.singletonList("test@test.com");
+    params.smtpData = EmailFixtures.createSmtpData();
+
+    AlertReceiverEmailParams maskedParams = CommonUtils.maskObject(params);
+    assertThat(maskedParams, not(params));
+    assertThat(maskedParams.smtpData.smtpPassword, not(params.smtpData.smtpPassword));
+
+    AlertReceiverEmailParams unmaskedParams = CommonUtils.unmaskObject(params, maskedParams);
+    assertThat(unmaskedParams, not(maskedParams));
+    assertThat(unmaskedParams, equalTo(params));
   }
 }
