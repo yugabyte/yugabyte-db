@@ -40,6 +40,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionTemplateFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedQuery;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
 import com.yugabyte.yw.models.paging.AlertPagedQuery;
@@ -310,7 +311,8 @@ public class AlertController extends AuthenticatedController {
   public Result getAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
     return YWResults.withData(
-        alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID));
+        CommonUtils.maskObject(
+            alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID)));
   }
 
   @ApiOperation(value = "updateAlertReceiver", response = AlertReceiver.class)
@@ -324,10 +326,12 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     AlertReceiver receiver = alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID);
     AlertReceiverFormData data = parseJson(AlertReceiverFormData.class);
-    receiver.setName(data.name).setParams(data.params);
+    receiver
+        .setName(data.name)
+        .setParams(CommonUtils.unmaskObject(receiver.getParams(), data.params));
     alertReceiverService.save(receiver);
     auditService().createAuditEntryWithReqBody(ctx());
-    return YWResults.withData(receiver);
+    return YWResults.withData(CommonUtils.maskObject(receiver));
   }
 
   @ApiOperation(value = "deleteAlertReceiver", response = YWResults.YWSuccess.class)
@@ -346,7 +350,12 @@ public class AlertController extends AuthenticatedController {
       responseContainer = "List")
   public Result listAlertReceivers(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(alertReceiverService.list(customerUUID));
+    return YWResults.withData(
+        alertReceiverService
+            .list(customerUUID)
+            .stream()
+            .map(receiver -> CommonUtils.maskObject(receiver))
+            .collect(Collectors.toList()));
   }
 
   @ApiOperation(value = "createAlertRoute", response = AlertRoute.class)
