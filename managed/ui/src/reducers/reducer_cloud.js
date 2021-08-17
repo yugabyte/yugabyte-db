@@ -21,6 +21,7 @@ import {
   INITIALIZE_PROVIDER,
   INITIALIZE_PROVIDER_SUCCESS,
   INITIALIZE_PROVIDER_FAILURE,
+  EDIT_PROVIDER_FAILURE,
   DELETE_PROVIDER,
   DELETE_PROVIDER_SUCCESS,
   DELETE_PROVIDER_FAILURE,
@@ -253,6 +254,11 @@ export default function (state = INITIAL_STATE, action) {
     case INITIALIZE_PROVIDER_FAILURE:
       return setFailureState(state, 'bootstrap', action.payload.response.data.error, {
         type: 'initialize'
+      });
+
+    case EDIT_PROVIDER_FAILURE:
+      return setFailureState(state, 'bootstrap', action.payload.response.data.error, {
+        type: 'edit'
       });
 
     case DELETE_PROVIDER:
