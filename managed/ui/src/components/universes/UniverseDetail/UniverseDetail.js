@@ -46,6 +46,7 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import './UniverseDetail.scss';
+import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
 
@@ -289,6 +290,11 @@ class UniverseDetail extends Component {
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
+    let manageKeyAvailability = getFeatureState(
+      currentCustomer.data.features,
+      'universes.details.overview.manageEncryption'
+    );
+
     // enable edit TLS menu item for onprem universes with rootCA of a "CustomCertHostPath" type
     if (isEnabled(editTLSAvailability)) {
       if (isOnpremUniverse(currentUniverse.data) && Array.isArray(customer.userCertificates.data)) {
@@ -724,25 +730,13 @@ class UniverseDetail extends Component {
                   subMenus={{
                     security: (backToMainMenu) => (
                       <>
-                        <MenuItem onClick={backToMainMenu}>
-                          <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
-                        </MenuItem>
-                        <MenuItem divider />
-                        <YBMenuItem
-                          onClick={showTLSConfigurationModal}
-                          availability={editTLSAvailability}
-                        >
-                          Encryption in-Transit
-                        </YBMenuItem>
-                        <YBMenuItem
-                          onClick={showManageKeyModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.manageEncryption'
-                          )}
-                        >
-                          Encryption at-Rest
-                        </YBMenuItem>
+                      <SecurityMenu
+                          backToMainMenu={backToMainMenu}
+                          showTLSConfigurationModal={showTLSConfigurationModal}
+                          editTLSAvailability={editTLSAvailability}
+                          showManageKeyModal={showManageKeyModal}
+                          manageKeyAvailability={manageKeyAvailability}
+                        />
                       </>
                     )
                   }}
