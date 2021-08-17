@@ -65,6 +65,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
@@ -201,7 +202,8 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(result.status(), equalTo(OK));
     JsonNode listedReceivers = Json.parse(contentAsString(result));
     assertThat(listedReceivers.size(), equalTo(1));
-    assertThat(receiverFromJson(listedReceivers.get(0)), equalTo(createdReceiver));
+    assertThat(
+        receiverFromJson(listedReceivers.get(0)), equalTo(CommonUtils.maskObject(createdReceiver)));
   }
 
   @Test
@@ -241,7 +243,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     AlertReceiver receiver = receiverFromJson(Json.parse(contentAsString(result)));
     assertThat(receiver, notNullValue());
-    assertThat(receiver, equalTo(createdReceiver));
+    assertThat(receiver, equalTo(CommonUtils.maskObject(createdReceiver)));
   }
 
   @Test
@@ -286,7 +288,7 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertReceiver updatedReceiver = receiverFromJson(Json.parse(contentAsString(result)));
 
     assertThat(updatedReceiver, notNullValue());
-    assertThat(updatedReceiver, equalTo(createdReceiver));
+    assertThat(updatedReceiver, equalTo(CommonUtils.maskObject(createdReceiver)));
   }
 
   @Test
