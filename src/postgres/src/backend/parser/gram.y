@@ -963,10 +963,20 @@ stmt :
 			/* BETA features */
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
+			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
+			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
+			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
 			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
 			/* Not supported in template0/template1 statements */
@@ -976,9 +986,6 @@ stmt :
 
 			/* Not supported statements */
 			| AlterCollationStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterFdwStmt
-			| AlterForeignServerStmt
-			| AlterForeignTableStmt
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
@@ -987,27 +994,20 @@ stmt :
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSConfigurationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterUserMappingStmt
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateFdwStmt
-			| CreateForeignServerStmt
-			| CreateForeignTableStmt
 			| CreateMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateUserMappingStmt
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropUserMappingStmt
-			| ImportForeignSchemaStmt
 			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
 			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
