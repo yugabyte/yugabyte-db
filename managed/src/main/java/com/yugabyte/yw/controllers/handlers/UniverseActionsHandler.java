@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
@@ -25,6 +24,7 @@ import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.ToggleTlsParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -194,7 +194,7 @@ public class UniverseActionsHandler {
 
     TaskType taskType = TaskType.UpgradeUniverse;
     UpgradeParams taskParams = new UpgradeParams();
-    taskParams.taskType = UpgradeUniverse.UpgradeTaskType.ToggleTls;
+    taskParams.taskType = UpgradeTaskType.ToggleTls;
     taskParams.upgradeOption = requestParams.upgradeOption;
     taskParams.universeUUID = universe.universeUUID;
     taskParams.expectedUniverseVersion = -1;
@@ -235,9 +235,7 @@ public class UniverseActionsHandler {
       taskParams.clientRootCA = universeDetails.clientRootCA;
       if (taskParams.clientRootCA == null) {
         if (requestParams.clientRootCA == null) {
-          if (taskParams.rootCA != null
-              && requestParams.rootAndClientRootCASame != null
-              && requestParams.rootAndClientRootCASame) {
+          if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
             // Setting ClientRootCA to RootCA incase rootAndClientRootCA is true
             taskParams.clientRootCA = taskParams.rootCA;
           } else {
@@ -254,18 +252,17 @@ public class UniverseActionsHandler {
           taskParams.clientRootCA = requestParams.clientRootCA;
         }
       }
+
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
       // This is necessary to set to ensure backward compatibity as existing parts of
       // codebase uses rootCA for Client to Node Encryption
-      if (taskParams.rootCA == null
-          && requestParams.rootAndClientRootCASame != null
-          && requestParams.rootAndClientRootCASame) {
+      if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
         taskParams.rootCA = taskParams.clientRootCA;
       }
 
       // If client encryption is enabled, generate the client cert file for each node.
-      CertificateInfo cert = CertificateInfo.get(taskParams.clientRootCA);
-      if (cert.certType == CertificateInfo.Type.SelfSigned) {
+      CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
+      if (taskParams.rootAndClientRootCASame && cert.certType == CertificateInfo.Type.SelfSigned) {
         CertificateHelper.createClientCertificate(
             taskParams.clientRootCA,
             String.format(

@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
@@ -58,6 +59,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.models.Backup;
@@ -98,10 +100,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     super(baseTaskDependencies);
   }
 
+  private Universe universe = null;
+
   // The task params.
   @Override
   protected UniverseTaskParams taskParams() {
     return (UniverseTaskParams) taskParams;
+  }
+
+  protected Universe getUniverse() {
+    return getUniverse(false);
+  }
+
+  protected Universe getUniverse(boolean fetchFromDB) {
+    if (fetchFromDB) {
+      return Universe.getOrBadRequest(taskParams().universeUUID);
+    } else {
+      if (universe == null) {
+        universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      }
+      return universe;
+    }
+  }
+
+  protected UserIntent getUserIntent() {
+    return getUserIntent(false);
+  }
+
+  protected UserIntent getUserIntent(boolean fetchFromDB) {
+    return getUniverse(fetchFromDB).getUniverseDetails().getPrimaryCluster().userIntent;
   }
 
   private UniverseUpdater getLockingUniverseUpdater(
@@ -386,6 +413,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.instanceType = instanceType;
     params.volumeSize = volumeSize;
     PersistResizeNode task = createTask(PersistResizeNode.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to persist changes by Systemd Upgrade task */
+  public SubTaskGroup createPersistSystemdUpgradeTask(Boolean useSystemd) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("PersistSystemdUpgrade", executor);
+    PersistSystemdUpgrade.Params params = new PersistSystemdUpgrade.Params();
+
+    params.universeUUID = taskParams().universeUUID;
+    params.useSystemd = useSystemd;
+    PersistSystemdUpgrade task = createTask(PersistSystemdUpgrade.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);

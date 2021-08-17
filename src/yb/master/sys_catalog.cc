@@ -757,6 +757,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   return Status::OK();
 }
 
+// TODO (Sanket): Change this function to use ExtractPgYbCatalogVersionRow.
 Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                uint64_t *catalog_version,
                                                uint64_t *last_breaking_version) {

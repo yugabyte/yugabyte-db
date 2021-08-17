@@ -1,7 +1,7 @@
 ---
 title: The date data type [YSQL]
 headerTitle: The date data type
-linkTitle: date data type
+linkTitle: Date data type
 description: The semantics of the date data type. [YSQL]
 menu:
   latest:

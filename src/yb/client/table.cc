@@ -127,7 +127,7 @@ const IndexInfo& YBTable::index_info() const {
   return kEmptyIndexInfo;
 }
 
-const bool YBTable::colocated() const {
+bool YBTable::colocated() const {
   return info_.colocated;
 }
 
@@ -368,6 +368,10 @@ std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlTruncateColocated() {
 
 std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSelect() {
   return YBPgsqlReadOp::NewSelect(shared_from_this());
+}
+
+std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSample() {
+  return YBPgsqlReadOp::NewSample(shared_from_this());
 }
 
 std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlRead() {

@@ -46,6 +46,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Region;
@@ -240,15 +242,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
 
-  private TaskInfo submitTask(
-      UpgradeUniverse.Params taskParams, UpgradeUniverse.UpgradeTaskType taskType) {
+  private TaskInfo submitTask(UpgradeUniverse.Params taskParams, UpgradeTaskType taskType) {
     return submitTask(taskParams, taskType, 2);
   }
 
   private TaskInfo submitTask(
-      UpgradeUniverse.Params taskParams,
-      UpgradeUniverse.UpgradeTaskType taskType,
-      int expectedVersion) {
+      UpgradeUniverse.Params taskParams, UpgradeTaskType taskType, int expectedVersion) {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.taskType = taskType;
     taskParams.expectedUniverseVersion = expectedVersion;
@@ -941,6 +940,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     int modifiedCount = Ebean.execute(update);
     assertEquals(modifiedCount, 1);
 
+    when(mockConfigHelper.getAWSInstancePrefixesSupported())
+        .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
+
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
 
@@ -990,8 +992,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     deviceInfo.volumeSize = intendedVolumeSize;
     taskParams.getPrimaryCluster().userIntent.deviceInfo = deviceInfo;
     taskParams.getPrimaryCluster().userIntent.instanceType = intendedInstanceType;
-    TaskInfo taskInfo =
-        submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ResizeNode, defaultUniverse.version);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskType.ResizeNode, defaultUniverse.version);
     verify(mockNodeManager, times(26)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1167,7 +1168,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
 
     TaskInfo taskInfo =
-        submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.VMImage, defaultUniverse.version);
+        submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.VMImage, defaultUniverse.version);
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1237,7 +1238,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.ybSoftwareVersion = "old-version";
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
@@ -1249,7 +1250,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testSoftwareUpgradeWithoutVersion() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
@@ -1262,7 +1263,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   public void testSoftwareUpgrade() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.ybSoftwareVersion = "new-version";
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software);
     verify(mockNodeManager, times(21)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1307,7 +1308,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.ybSoftwareVersion = "new-version";
     TaskInfo taskInfo =
-        submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software, defaultUniverse.version);
+        submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software, defaultUniverse.version);
     verify(mockNodeManager, times(33)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1335,7 +1336,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.ybSoftwareVersion = "new-version";
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software);
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(21)).nodeCommand(any(), commandParams.capture());
 
@@ -1361,7 +1362,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1386,7 +1387,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1409,7 +1410,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1431,7 +1432,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   public void testGFlagsUpgradeWithMasterGFlags() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1452,7 +1453,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   public void testGFlagsUpgradeWithTServerGFlags() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(9)).nodeCommand(any(), commandParams.capture());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1475,7 +1476,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1498,7 +1499,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testGFlagsUpgradeWithEmptyFlags() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
@@ -1537,7 +1538,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.masterGFlags = masterFlags;
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags, 3);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, 3);
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1589,7 +1590,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     ;
     taskParams.tserverGFlags = tserverFlags;
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags, 3);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, 3);
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1659,7 +1660,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
       int expectedVersion = serverType == MASTER ? 3 : 4;
       TaskInfo taskInfo =
-          submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags, expectedVersion);
+          submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, expectedVersion);
 
       int numInvocations = serverType == MASTER ? 9 : 18;
       verify(mockNodeManager, times(numInvocations)).nodeCommand(any(), any());
@@ -1716,7 +1717,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.tserverGFlags = tserverFlags;
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.GFlags, 3);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, 3);
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1734,7 +1735,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testRollingRestart() throws Exception {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Restart);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Restart);
     verify(mockNodeManager, times(12)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1775,7 +1776,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.certUUID = certUUID;
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Certs);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Certs);
     verify(mockNodeManager, times(15)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1820,7 +1821,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.certUUID = certUUID;
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Certs);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Certs);
     verify(mockNodeManager, times(15)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1863,7 +1864,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.certUUID = certUUID;
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Certs);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Certs);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
@@ -2012,7 +2013,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.enableNodeToNodeEncrypt = true;
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.ToggleTls, -1);
     if (taskInfo == null) {
       fail();
     }
@@ -2026,7 +2027,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testToggleTlsUpgradeWithoutChangeInParams() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.ToggleTls, -1);
     if (taskInfo == null) {
       fail();
     }
@@ -2041,7 +2042,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   public void testToggleTlsUpgradeWithoutRootCa() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.enableNodeToNodeEncrypt = true;
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.ToggleTls, -1);
     if (taskInfo == null) {
       fail();
     }
@@ -2133,7 +2134,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         getUpgradeOptionsForToggleTls(nodeToNodeChange, false);
     Pair<Integer, Integer> expectedValues = getExpectedValuesForToggleTls(taskParams);
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.ToggleTls, -1);
     if (taskInfo == null) {
       fail();
     }
@@ -2166,7 +2167,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    if (!rootAndClientRootCASame && clientToNode)
+      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     else assertNull(universe.getUniverseDetails().clientRootCA);
     assertEquals(
         nodeToNode,
@@ -2259,7 +2261,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         getUpgradeOptionsForToggleTls(nodeToNodeChange, true);
     Pair<Integer, Integer> expectedValues = getExpectedValuesForToggleTls(taskParams);
 
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.ToggleTls, -1);
+    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.ToggleTls, -1);
     if (taskInfo == null) {
       fail();
     }
@@ -2295,7 +2297,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (clientToNode) assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
+    if (!rootAndClientRootCASame && clientToNode)
+      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
     else assertNull(universe.getUniverseDetails().clientRootCA);
     assertEquals(
         nodeToNode,

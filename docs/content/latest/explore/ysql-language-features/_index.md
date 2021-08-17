@@ -5,6 +5,7 @@ linkTitle: YSQL vs PostgreSQL
 description: PostgreSQL features in YSQL
 headcontent: PostgreSQL features in YSQL
 image: /images/section_icons/api/ysql.png
+aliases:
 menu:
   latest:
     identifier: explore-ysql-language-features
@@ -51,13 +52,6 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
 | <span style="font-size:16px">[Advanced Topics](advanced-topics/)</span>     | Using `VIEWS`, PostgreSQL extensions supported in YSQL, temporary tables, etc. |
 -->
-See also:
-
-* [Distributed transactions](../transactions)
-
-<!--
-* [Indexes and constraints]()
--->
 
 ## What's Extra in YSQL?
 
@@ -65,8 +59,8 @@ Since YugabyteDB is a distributed SQL database, YSQL has a number of features th
 
 | YSQL Feature                                                 | Description                                                  |
 | :----------------------------------------------------------- | :----------------------------------------------------------- |
-| <span style="font-size:16px">Data distribution with `HASH`</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| <span style="font-size:16px">[`TABLESPACES`](tablespaces) for geographic placement</span> | Enables pinning of data in tables and table partitions to different geographic locations |
+| <span style="font-size:16px">[Data distribution with `HASH`](../linear-scalability/sharding-data/)</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
+| <span style="font-size:16px">[`TABLESPACES` for geographic placement](tablespaces)</span> | Enables pinning of data in tables and table partitions to different geographic locations |
 | <span style="font-size:16px">`TABLEGROUPS` for colocating tables</span> | Enables colocation of multiple smaller tables into one tablet for better performance |
 
 <!--

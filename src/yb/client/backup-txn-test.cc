@@ -307,7 +307,8 @@ TEST_F(BackupTxnTest, ImportMeta) {
   ASSERT_OK(client_->DeleteTable(kTableName));
   ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
 
-  auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots());
+  auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots(
+      snapshot_id, ListDeleted::kFalse, PrepareForBackup::kTrue));
   ASSERT_EQ(snapshots.size(), 1);
 
   auto import_data = ASSERT_RESULT(snapshot_util_->StartImportSnapshot(snapshots[0]));

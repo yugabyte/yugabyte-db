@@ -1,14 +1,14 @@
 ---
 title: Timezones and UTC offsets [YSQL]
 headerTitle: Timezones and UTC offsets
-linkTitle: timezones and UTC offsets
+linkTitle: Timezones and UTC offsets
 description: Explains everything about timezones and UTC offsets. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
   latest:
     identifier: timezones
     parent: api-ysql-datatypes-datetime
-    weight: 20
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -41,11 +41,11 @@ The _extended_timezone_names_ view joins the _tz&nbsp;database_ data to the _pg_
 
 **This page has these child pages:**
 
-- [Catalog views for timezone information—_pg_timezone_names_ and _pg_timezone_abbrevs_](./catalog-views/)
+- [The _pg_timezone_names_ and _pg_timezone_abbrevs_ catalog views](./catalog-views/)
 
 - [The _extended_timezone_names_ view](./extended-timezone-names/)
 
-- [Scenarios that are sensitive to the _UTC offset_ and possibly, additionally, to the timezone](./timezone-sensitive-operations/)
+- [Scenarios that are sensitive to the _UTC offset_ or explicitly to the timezone](./timezone-sensitive-operations/)
 
 - [Four ways to specify the _UTC offset_](./ways-to-spec-offset/)
 

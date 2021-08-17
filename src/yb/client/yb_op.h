@@ -379,7 +379,7 @@ class YBqlReadOp : public YBqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 
@@ -512,6 +512,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
  public:
   static std::unique_ptr<YBPgsqlReadOp> NewSelect(const std::shared_ptr<YBTable>& table);
 
+  static std::unique_ptr<YBPgsqlReadOp> NewSample(const std::shared_ptr<YBTable>& table);
+
   // Create a deep copy of this operation, copying all fields and request PB content.
   // Does NOT, however, copy response and rows data.
   std::unique_ptr<YBPgsqlReadOp> DeepCopy();
@@ -535,7 +537,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 

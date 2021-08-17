@@ -23,7 +23,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.YWServiceException;
@@ -109,15 +109,11 @@ public class CustomerController extends AuthenticatedController {
       response = CustomerDetailsData.class,
       nickname = "CustomerDetail")
   public Result index(UUID customerUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      ObjectNode responseJson = Json.newObject();
-      responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
-      return status(BAD_REQUEST, responseJson);
-    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     ObjectNode responseJson = (ObjectNode) Json.toJson(customer);
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
+    // TODO: get rid of this
     if (config != null) {
       responseJson.set("alertingData", config.getData());
     } else {
@@ -190,7 +186,7 @@ public class CustomerController extends AuthenticatedController {
             alertDefinitionGroupService.list(
                 AlertDefinitionGroupFilter.builder()
                     .customerUuid(customerUUID)
-                    .name(AlertDefinitionTemplate.CLOCK_SKEW.getName())
+                    .name(AlertTemplate.CLOCK_SKEW.getName())
                     .build());
         for (AlertDefinitionGroup group : groups) {
           group.setActive(alertingFormData.alertingData.enableClockSkew);
@@ -208,7 +204,7 @@ public class CustomerController extends AuthenticatedController {
             alertDefinitionGroupService.list(
                 AlertDefinitionGroupFilter.builder()
                     .customerUuid(customerUUID)
-                    .name(AlertDefinitionTemplate.BACKUP_FAILURE.getName())
+                    .name(AlertTemplate.BACKUP_FAILURE.getName())
                     .build());
         for (AlertDefinitionGroup group : groups) {
           group.setActive(alertingFormData.alertingData.reportBackupFailures);
@@ -270,6 +266,7 @@ public class CustomerController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Upsert features of customer by UUID",
+      hidden = true,
       responseContainer = "Map",
       response = Object.class)
   @ApiImplicitParams({

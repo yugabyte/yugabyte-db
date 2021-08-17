@@ -9,8 +9,9 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import io.ebean.Finder;
@@ -21,15 +22,21 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import javax.persistence.Transient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -236,6 +243,28 @@ public class CertificateInfo extends Model {
     return cert;
   }
 
+  public static CertificateInfo createCopy(
+      CertificateInfo certificateInfo, String label, String certFilePath)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo copy = new CertificateInfo();
+    copy.uuid = UUID.randomUUID();
+    copy.customerUUID = certificateInfo.customerUUID;
+    copy.label = label;
+    copy.startDate = certificateInfo.startDate;
+    copy.expiryDate = certificateInfo.expiryDate;
+    copy.privateKey = certificateInfo.privateKey;
+    copy.certificate = certFilePath;
+    copy.certType = certificateInfo.certType;
+    copy.checksum = Util.getFileChecksum(certFilePath);
+    copy.customCertInfo = certificateInfo.customCertInfo;
+    copy.save();
+    return copy;
+  }
+
+  public static boolean isTemporary(CertificateInfo certificateInfo) {
+    return certificateInfo.certificate.endsWith("ca.multi.root.crt");
+  }
+
   private static final Finder<UUID, CertificateInfo> find =
       new Finder<UUID, CertificateInfo>(CertificateInfo.class) {};
 
@@ -275,11 +304,23 @@ public class CertificateInfo extends Model {
   }
 
   public static List<CertificateInfo> getAllNoChecksum() {
-    return find.query().where().isNull("checksum").findList();
+    List<CertificateInfo> certificateInfoList = find.query().where().isNull("checksum").findList();
+    return certificateInfoList
+        .stream()
+        .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+        .collect(Collectors.toList());
   }
 
   public static List<CertificateInfo> getAll(UUID customerUUID) {
-    return find.query().where().eq("customer_uuid", customerUUID).findList();
+    List<CertificateInfo> certificateInfoList =
+        find.query().where().eq("customer_uuid", customerUUID).findList();
+    certificateInfoList =
+        certificateInfoList
+            .stream()
+            .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+            .collect(Collectors.toList());
+    populateUniverseData(customerUUID, certificateInfoList);
+    return certificateInfoList;
   }
 
   public static boolean isCertificateValid(UUID certUUID) {
@@ -297,20 +338,82 @@ public class CertificateInfo extends Model {
     return true;
   }
 
+  @VisibleForTesting @Transient Boolean inUse = null;
+
   @ApiModelProperty(
       value = "Indicates whether the Certificate is in use or not",
       accessMode = READ_ONLY)
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
-    return Universe.existsCertificate(this.uuid, this.customerUUID);
+    if (inUse == null) {
+      return Universe.existsCertificate(this.uuid, this.customerUUID);
+    } else {
+      return inUse;
+    }
   }
+
+  public void setInUse(boolean inUse) {
+    this.inUse = inUse;
+  }
+
+  @VisibleForTesting @Transient List<UniverseDetailSubset> universeDetailSubsets = null;
 
   @ApiModelProperty(
       value = "Associated universe details of the Certificate",
       accessMode = READ_ONLY)
-  public ArrayNode getUniverseDetails() {
-    Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
-    return Util.getUniverseDetails(universes);
+  public List<UniverseDetailSubset> getUniverseDetails() {
+    if (universeDetailSubsets == null) {
+      Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
+      return Util.getUniverseDetails(universes);
+    } else {
+      return universeDetailSubsets;
+    }
+  }
+
+  public void setUniverseDetails(List<UniverseDetailSubset> universeDetailSubsets) {
+    this.universeDetailSubsets = universeDetailSubsets;
+  }
+
+  public static void populateUniverseData(
+      UUID customerUUID, List<CertificateInfo> certificateInfoList) {
+    Set<Universe> universes = Customer.get(customerUUID).getUniverses();
+    Set<UUID> certificateInfoSet =
+        certificateInfoList.stream().map(e -> e.uuid).collect(Collectors.toSet());
+
+    Map<UUID, Set<Universe>> certificateUniverseMap = new HashMap<>();
+    universes.forEach(
+        universe -> {
+          UUID rootCA = universe.getUniverseDetails().rootCA;
+          UUID clientRootCA = universe.getUniverseDetails().clientRootCA;
+          if (rootCA != null) {
+            if (certificateInfoSet.contains(rootCA)) {
+              certificateUniverseMap.putIfAbsent(rootCA, new HashSet<>());
+              certificateUniverseMap.get(rootCA).add(universe);
+            } else {
+              LOG.error("Universe: {} has unknown rootCA: {}", universe.universeUUID, rootCA);
+            }
+          }
+          if (clientRootCA != null && !clientRootCA.equals(rootCA)) {
+            if (certificateInfoSet.contains(clientRootCA)) {
+              certificateUniverseMap.putIfAbsent(clientRootCA, new HashSet<>());
+              certificateUniverseMap.get(clientRootCA).add(universe);
+            } else {
+              LOG.error("Universe: {} has unknown clientRootCA: {}", universe.universeUUID, rootCA);
+            }
+          }
+        });
+
+    certificateInfoList.forEach(
+        certificateInfo -> {
+          if (certificateUniverseMap.containsKey(certificateInfo.uuid)) {
+            certificateInfo.setInUse(true);
+            certificateInfo.setUniverseDetails(
+                Util.getUniverseDetails(certificateUniverseMap.get(certificateInfo.uuid)));
+          } else {
+            certificateInfo.setInUse(false);
+            certificateInfo.setUniverseDetails(new ArrayList<>());
+          }
+        });
   }
 
   public static void delete(UUID certUUID, UUID customerUUID) {

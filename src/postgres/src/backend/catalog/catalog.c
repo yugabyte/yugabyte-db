@@ -51,6 +51,7 @@
 
 /* YB includes. */
 #include "access/htup_details.h"
+#include "catalog/pg_rewrite.h"
 #include "utils/syscache.h"
 #include "pg_yb_utils.h"
 
@@ -687,6 +688,58 @@ GetRowTypeOidFromRelOptions(List *relOptions)
 				heap_close(pg_type_desc, AccessExclusiveLock);
 
 				return row_type_oid;
+			}
+		}
+	}
+
+	return InvalidOid;
+}
+
+/*
+ * GetRewriteRuleOidFromRelOptions
+ *		Scans through relOptions for any 'rewrite_rule_oid' options, and ensures
+ *		that oid is available. Returns that oid, or InvalidOid if unspecified.
+ */
+Oid
+GetRewriteRuleOidFromRelOptions(List *relOptions)
+{
+	ListCell   *opt_cell;
+	Oid			rewrite_rule_oid;
+	Relation	pg_rewrite_desc;
+	ScanKeyData	skey[1];
+	SysScanDesc	rcscan;
+	HeapTuple	tuple;
+
+	foreach(opt_cell, relOptions)
+	{
+		DefElem *def = (DefElem *) lfirst(opt_cell);
+		if (strcmp(def->defname, "rewrite_rule_oid") == 0)
+		{
+			rewrite_rule_oid = strtol(defGetString(def), NULL, 10);
+			if (OidIsValid(rewrite_rule_oid))
+			{
+				/* Check there's no such rule yet. */
+				pg_rewrite_desc = heap_open(RewriteRelationId, RowExclusiveLock);
+
+				ScanKeyInit(&skey[0],
+							ObjectIdAttributeNumber,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(rewrite_rule_oid));
+
+				rcscan = systable_beginscan(pg_rewrite_desc, RewriteOidIndexId,
+							true, NULL, 1, skey);
+
+				tuple = systable_getnext(rcscan);
+
+				if (HeapTupleIsValid(tuple))
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("rewrite rule OID %d is in use", rewrite_rule_oid)));
+
+				systable_endscan(rcscan);
+				heap_close(pg_rewrite_desc, RowExclusiveLock);
+
+				return rewrite_rule_oid;
 			}
 		}
 	}

@@ -82,7 +82,6 @@
 template<class T> class scoped_refptr;
 
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
-YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
 
 namespace yb {
 
@@ -268,6 +267,8 @@ class YBClientBuilder {
 // This class is thread-safe.
 class YBClient {
  public:
+  using TabletServersInfo = std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>>;
+
   ~YBClient();
 
   std::unique_ptr<YBTableCreator> NewTableCreator();
@@ -289,8 +290,6 @@ class YBClient {
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
   CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
   CHECKED_STATUS TruncateTables(const std::vector<std::string>& table_ids, bool wait = true);
-
-  Result<master::AnalyzeTableResponsePB> AnalyzeTable(const std::string& table_id);
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   CHECKED_STATUS BackfillIndex(const TableId& table_id, bool wait = true);
@@ -565,9 +564,8 @@ class YBClient {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
-  CHECKED_STATUS ListLiveTabletServers(
-      std::vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers,
-      bool primary_only = false);
+  CHECKED_STATUS ListLiveTabletServers(TabletServersInfo* tablet_servers,
+                                       bool primary_only = false);
 
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,

@@ -43,7 +43,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -52,6 +51,7 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
@@ -748,7 +748,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
 
     ObjectNode bodyJson = getValidPayload(uUUID, "Rolling");
-    bodyJson.put("taskType", UpgradeUniverse.UpgradeTaskType.VMImage.toString());
+    bodyJson.put("taskType", UpgradeTaskType.VMImage.toString());
     InstanceType i =
         InstanceType.upsert(p.uuid, instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
     ObjectNode userIntentJson =
@@ -1137,7 +1137,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ObjectNode bodyJson =
         Json.newObject()
             .put("universeUUID", u.universeUUID.toString())
-            .put("taskType", UpgradeUniverse.UpgradeTaskType.ResizeNode.toString())
+            .put("taskType", UpgradeTaskType.ResizeNode.toString())
             .put("upgradeOption", "Rolling");
 
     ObjectNode deviceInfoJson = Json.newObject().put("volumeSize", 600);

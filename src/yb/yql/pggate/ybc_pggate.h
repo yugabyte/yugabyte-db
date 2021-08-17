@@ -58,7 +58,7 @@ YBCStatus YBCPgInvalidateCache();
 YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
-const bool YBCGetDisableTransparentCacheRefreshRetry();
+bool YBCGetDisableTransparentCacheRefreshRetry();
 
 // Set catalog_version to the local tserver's catalog version stored in shared memory.  Return error
 // if the shared memory has not been initialized (e.g. in initdb).
@@ -358,11 +358,18 @@ YBCStatus YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 void YBCPgDropBufferedOperations();
 
-YBCStatus YBCPgNewAnalyze(const YBCPgOid database_oid,
-                          const YBCPgOid table_oid,
-                          YBCPgStatement *handle);
+YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
+                         const YBCPgOid table_oid,
+                         const int targrows,
+                         YBCPgStatement *handle);
 
-YBCStatus YBCPgExecAnalyze(YBCPgStatement handle, int32_t* rows_count);
+YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state);
+
+YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more);
+
+YBCStatus YBCPgExecSample(YBCPgStatement handle);
+
+YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
@@ -466,6 +473,15 @@ YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
                            YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
+YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
+                            bool is_null, size_t *type_size);
+
+YBCStatus YBCAppendDatumToKey(uint64_t data,  const YBCPgTypeEntity
+                            *typeentity, bool is_null, char *key_ptr,
+                            size_t *bytes_written);
+
+uint16_t YBCCompoundHash(const char *key, size_t length);
+
 // Referential Integrity Check Caching.
 void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
 void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
@@ -524,7 +540,7 @@ const void* YBCPgGetThreadLocalErrMsg();
 
 void YBCPgResetCatalogReadTime();
 
-void YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
+YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* numservers);
 
 #ifdef __cplusplus
 }  // extern "C"

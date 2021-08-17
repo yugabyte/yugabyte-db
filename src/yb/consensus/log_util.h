@@ -49,6 +49,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/atomic.h"
+#include "yb/util/compare_util.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
@@ -117,8 +118,11 @@ struct LogEntryMetadata {
   uint64_t active_segment_sequence_number;
 
   std::string ToString() const {
-    return Format("{ entry_time: $0 offset: $1 active_segment_sequence_number: $2 }",
-                  entry_time, offset, active_segment_sequence_number);
+    return YB_STRUCT_TO_STRING(entry_time, offset, active_segment_sequence_number);
+  }
+
+  friend bool operator==(const LogEntryMetadata& lhs, const LogEntryMetadata& rhs) {
+    return YB_STRUCT_EQUALS(entry_time, offset, active_segment_sequence_number);
   }
 };
 

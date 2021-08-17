@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
+import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -64,6 +65,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
@@ -110,6 +112,7 @@ public class AlertControllerTest extends FakeDBApplication {
   private AlertService alertService;
   private AlertDefinitionService alertDefinitionService;
   private AlertDefinitionGroupService alertDefinitionGroupService;
+  private AlertReceiverService alertReceiverService;
   private AlertRouteService alertRouteService;
 
   private AlertDefinitionGroup alertDefinitionGroup;
@@ -129,7 +132,8 @@ public class AlertControllerTest extends FakeDBApplication {
     alertDefinitionGroupService =
         new AlertDefinitionGroupService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    alertReceiverService = new AlertReceiverService();
+    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
     alertDefinitionGroup = ModelFactory.createAlertDefinitionGroup(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertDefinitionGroup);
 
@@ -198,13 +202,15 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(result.status(), equalTo(OK));
     JsonNode listedReceivers = Json.parse(contentAsString(result));
     assertThat(listedReceivers.size(), equalTo(1));
-    assertThat(receiverFromJson(listedReceivers.get(0)), equalTo(createdReceiver));
+    assertThat(
+        receiverFromJson(listedReceivers.get(0)), equalTo(CommonUtils.maskObject(createdReceiver)));
   }
 
   @Test
   public void testCreateAlertReceiver_ErrorResult() {
     checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
     ObjectNode data = Json.newObject();
+    data.put("name", "name");
     data.put("params", Json.toJson(new AlertReceiverEmailParams()));
     Result result =
         assertYWSE(
@@ -237,7 +243,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     AlertReceiver receiver = receiverFromJson(Json.parse(contentAsString(result)));
     assertThat(receiver, notNullValue());
-    assertThat(receiver, equalTo(createdReceiver));
+    assertThat(receiver, equalTo(CommonUtils.maskObject(createdReceiver)));
   }
 
   @Test
@@ -282,7 +288,7 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertReceiver updatedReceiver = receiverFromJson(Json.parse(contentAsString(result)));
 
     assertThat(updatedReceiver, notNullValue());
-    assertThat(updatedReceiver, equalTo(createdReceiver));
+    assertThat(updatedReceiver, equalTo(CommonUtils.maskObject(createdReceiver)));
   }
 
   @Test
@@ -309,7 +315,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken,
                     data));
     AssertHelper.assertBadRequest(
-        result, "Unable to update alert receiver: Slack parameters: username is empty.");
+        result, "Unable to create/update alert receiver: Slack parameters: username is empty.");
   }
 
   @Test
@@ -421,12 +427,12 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private ObjectNode getAlertRouteJson(boolean isDefault) {
     AlertReceiver receiver1 =
-        AlertReceiver.create(
+        ModelFactory.createAlertReceiver(
             customer.getUuid(),
             getAlertReceiverName(),
             AlertUtils.createParamsInstance(TargetType.Email));
     AlertReceiver receiver2 =
-        AlertReceiver.create(
+        ModelFactory.createAlertReceiver(
             customer.getUuid(),
             getAlertReceiverName(),
             AlertUtils.createParamsInstance(TargetType.Slack));
@@ -449,7 +455,7 @@ public class AlertControllerTest extends FakeDBApplication {
       List<AlertReceiver> receivers =
           receiverUUIDs
               .stream()
-              .map(uuid -> AlertReceiver.getOrBadRequest(customer.getUuid(), uuid))
+              .map(uuid -> alertReceiverService.getOrBadRequest(customer.getUuid(), uuid))
               .collect(Collectors.toList());
 
       AlertRoute route = new AlertRoute();
@@ -793,9 +799,9 @@ public class AlertControllerTest extends FakeDBApplication {
     Alert acknowledged = Json.fromJson(alertsJson, Alert.class);
 
     initial.setState(Alert.State.ACKNOWLEDGED);
-    initial.setTargetState(Alert.State.ACKNOWLEDGED);
     initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());
     initial.setNotifiedState(Alert.State.ACKNOWLEDGED);
+    initial.setNextNotificationTime(null);
     assertThat(acknowledged, equalTo(initial));
   }
 
@@ -818,16 +824,16 @@ public class AlertControllerTest extends FakeDBApplication {
 
     Alert acknowledged = alertService.get(initial.getUuid());
     initial.setState(Alert.State.ACKNOWLEDGED);
-    initial.setTargetState(Alert.State.ACKNOWLEDGED);
     initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());
     initial.setNotifiedState(Alert.State.ACKNOWLEDGED);
+    initial.setNextNotificationTime(null);
     assertThat(acknowledged, equalTo(initial));
   }
 
   @Test
   public void testListTemplates() {
     AlertDefinitionTemplateApiFilter apiFilter = new AlertDefinitionTemplateApiFilter();
-    apiFilter.setName(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getName());
+    apiFilter.setName(AlertTemplate.MEMORY_CONSUMPTION.getName());
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -842,18 +848,15 @@ public class AlertControllerTest extends FakeDBApplication {
 
     assertThat(templates, hasSize(1));
     AlertDefinitionGroup template = templates.get(0);
-    assertThat(template.getName(), equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getName()));
-    assertThat(template.getTemplate(), equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION));
+    assertThat(template.getName(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getName()));
+    assertThat(template.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
     assertThat(
-        template.getDescription(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getDescription()));
-    assertThat(
-        template.getTargetType(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getTargetType()));
+        template.getDescription(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDescription()));
+    assertThat(template.getTargetType(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getTargetType()));
     assertThat(template.getTarget(), equalTo(new AlertDefinitionGroupTarget().setAll(true)));
     assertThat(
         template.getThresholdUnit(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getDefaultThresholdUnit()));
+        equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDefaultThresholdUnit()));
     assertThat(
         template.getThresholds(),
         equalTo(
@@ -861,10 +864,10 @@ public class AlertControllerTest extends FakeDBApplication {
                 AlertDefinitionGroup.Severity.SEVERE,
                 new AlertDefinitionGroupThreshold()
                     .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
-                    .setThreshold(90))));
+                    .setThreshold(90D))));
     assertThat(
         template.getDurationSec(),
-        equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION.getDefaultDurationSec()));
+        equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDefaultDurationSec()));
   }
 
   @Test
@@ -978,7 +981,7 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(group.getCreateTime(), notNullValue());
     assertThat(group.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(group.getName(), equalTo("alertDefinitionGroup"));
-    assertThat(group.getTemplate(), equalTo(AlertDefinitionTemplate.MEMORY_CONSUMPTION));
+    assertThat(group.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
     assertThat(group.getDescription(), equalTo("alertDefinitionGroup description"));
     assertThat(group.getTargetType(), equalTo(AlertDefinitionGroup.TargetType.UNIVERSE));
     assertThat(
@@ -994,7 +997,7 @@ public class AlertControllerTest extends FakeDBApplication {
                 AlertDefinitionGroup.Severity.SEVERE,
                 new AlertDefinitionGroupThreshold()
                     .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
-                    .setThreshold(1))));
+                    .setThreshold(1D))));
     assertThat(group.getDurationSec(), equalTo(15));
     assertThat(group.getRouteUUID(), equalTo(route.getUuid()));
   }

@@ -155,7 +155,7 @@ class PgCreateTable : public PgDdl {
   // For PgCreateIndex: the indexed (base) table id and if this is a unique index.
   virtual boost::optional<const PgObjectId&> indexed_table_id() const { return boost::none; }
   virtual bool is_unique_index() const { return false; }
-  virtual const bool skip_index_backfill() const { return false; }
+  virtual bool skip_index_backfill() const { return false; }
 
   CHECKED_STATUS AddColumn(const char *attr_name,
                            int attr_num,
@@ -277,7 +277,7 @@ class PgCreateIndex : public PgCreateTable {
     return is_unique_index_;
   }
 
-  const bool skip_index_backfill() const override {
+  bool skip_index_backfill() const override {
     return skip_index_backfill_;
   }
 
@@ -340,11 +340,15 @@ class PgAlterTable : public PgDdl {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
 
+  void AddTransaction(std::shared_future<Result<TransactionMetadata>> transaction) {
+    txn_future_ = transaction;
+  }
+
  private:
   const client::YBTableName table_name_;
   const PgObjectId table_id_;
   std::unique_ptr<client::YBTableAlterer> table_alterer;
-
+  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
 };
 
 }  // namespace pggate

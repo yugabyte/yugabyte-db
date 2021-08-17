@@ -46,7 +46,24 @@ public enum TaskType {
 
   ImportIntoTable("ImportIntoTable"),
 
+  // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
+
+  RestartUniverse("upgrade.RestartUniverse"),
+
+  SoftwareUpgrade("upgrade.SoftwareUpgrade"),
+
+  SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
+
+  GFlagsUpgrade("upgrade.GFlagsUpgrade"),
+
+  GFlagsKubernetesUpgrade("upgrade.GFlagsKubernetesUpgrade"),
+
+  CertsRotate("upgrade.CertsRotate"),
+
+  TlsToggle("upgrade.TlsToggle"),
+
+  VMImageUpgrade("upgrade.VMImageUpgrade"),
 
   CreateRootVolumes("subtasks.CreateRootVolumes"),
 
@@ -55,6 +72,8 @@ public enum TaskType {
   ChangeInstanceType("subtasks.ChangeInstanceType"),
 
   PersistResizeNode("subtasks.PersistResizeNode"),
+
+  PersistSystemdUpgrade("subtasks.PersistSystemdUpgrade"),
 
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
@@ -86,6 +105,14 @@ public enum TaskType {
   StartMasterOnNode("StartMasterOnNode"),
 
   SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
+
+  CreateXClusterReplication("CreateXClusterReplication"),
+
+  DeleteXClusterReplication("DeleteXClusterReplication"),
+
+  EditXClusterReplication("EditXClusterReplication"),
+
+  PauseOrResumeXClusterReplication("PauseOrResumeXClusterReplication"),
 
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
@@ -202,9 +229,20 @@ public enum TaskType {
 
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
+
   AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
 
-  ResetUniverseVersion("subtasks.ResetUniverseVersion");
+  ResetUniverseVersion("subtasks.ResetUniverseVersion"),
+
+  AlterXClusterReplicationAddTables("subtasks.AlterXClusterReplicationAddTables"),
+
+  AlterXClusterReplicationRemoveTables("subtasks.AlterXClusterReplicationRemoveTables"),
+
+  AlterXClusterReplicationChangeMasterAddresses(
+      "subtasks.AlterXClusterReplicationChangeMasterAddresses"),
+
+  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive");
 
   private String relativeClassPath;
 

@@ -27,7 +27,6 @@ import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.HashSet;
@@ -35,7 +34,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@ApiModel(value = "UniverseResource", description = "Universe Resource")
 public class UniverseResourceDetails {
   public static final int MIB_IN_GIB = 1024;
   public static final String GP3_FREE_PIOPS_PARAM = "yb.aws.storage.gp3_free_piops";

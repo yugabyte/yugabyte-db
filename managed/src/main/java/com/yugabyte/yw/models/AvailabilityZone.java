@@ -84,13 +84,13 @@ public class AvailabilityZone extends Model {
 
   public void setConfig(Map<String, String> configMap) {
     this.config = configMap;
-    this.save();
   }
 
   public void updateConfig(Map<String, String> configMap) {
     Map<String, String> config = getConfig();
     config.putAll(configMap);
     setConfig(config);
+    save();
   }
 
   @JsonIgnore

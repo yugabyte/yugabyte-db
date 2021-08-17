@@ -21,7 +21,6 @@
  *------------------------------------------------------------------------------
  */
 
-#include <stdint.h>
 #include "postgres.h"
 
 #include "miscadmin.h"
@@ -1144,18 +1143,10 @@ YBCDropIndex(Oid relationId)
 	}
 }
 
-int32_t
-YBCAnalyzeTable(Relation rel)
+bool
+YBCIsTableColocated(Oid dboid, Oid relationId)
 {
-	Oid            dboid    = YBCGetDatabaseOid(rel);
-	Oid            relid    = RelationGetRelid(rel);
-	YBCPgStatement analyze_stmt = NULL;
-	int32_t res = -1;
-
-	HandleYBStatus(YBCPgNewAnalyze(dboid, relid, &analyze_stmt));
-	HandleYBStatus(YBCPgExecAnalyze(analyze_stmt, &res));
-
-	analyze_stmt = NULL;
-
-	return res;
+	bool colocated;
+	HandleYBStatus(YBCPgIsTableColocated(dboid, relationId, &colocated));
+	return colocated;
 }

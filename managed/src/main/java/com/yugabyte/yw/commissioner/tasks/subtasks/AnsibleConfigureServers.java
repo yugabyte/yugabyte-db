@@ -11,18 +11,20 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
@@ -38,7 +40,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   }
 
   public static class Params extends NodeTaskParams {
-    public UpgradeUniverse.UpgradeTaskType type = UpgradeUniverse.UpgradeTaskType.Everything;
+    public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
 
     // Optional params.
@@ -60,6 +62,15 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // > 0 => node-to-node encryption is enabled
     // < 0 => node-to-node encryption is disabled
     public int nodeToNodeChange = 0;
+    // Systemd vs Cron Option (Default: Cron)
+    public boolean useSystemd = false;
+    // Cert rotation related params
+    public CertRotationType rootCARotationType = CertRotationType.None;
+    public CertRotationType clientRootCARotationType = CertRotationType.None;
+    public CertRotateAction certRotateAction = CertRotateAction.ROTATE_CERTS;
+
+    // For cron to systemd upgrades
+    public boolean isSystemdUpgrade = false;
   }
 
   @Override
@@ -69,19 +80,25 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
   @Override
   public void run() {
+    Universe universe_temp = Universe.getOrBadRequest(taskParams().universeUUID);
+    taskParams().useSystemd =
+        universe_temp.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     // Execute the ansible command.
     ShellResponse response =
         getNodeManager().nodeCommand(NodeManager.NodeCommandType.Configure, taskParams());
     processShellResponse(response);
 
-    if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything
+    if (taskParams().type == UpgradeTaskParams.UpgradeTaskType.Everything
         && !taskParams().updateMasterAddrsOnly) {
       // Check cronjob status if installing software.
-      response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
+      if (!taskParams().useSystemd) {
+        response =
+            getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
+      }
 
       // Create an alert if the cronjobs failed to be created on this node.
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      if (response.code != 0) {
+      if (response.code != 0 || taskParams().useSystemd) {
         String nodeName = taskParams().nodeName;
 
         // Persist node cronjob status into the DB.
@@ -101,11 +118,14 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         saveUniverseDetails(updater);
       }
 
-      long inactiveCronNodes =
-          universe.getNodes().stream().filter(node -> !node.cronsActive).count();
-      metricService.setMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
-          inactiveCronNodes);
+      if (!taskParams().useSystemd) {
+        long inactiveCronNodes =
+            universe.getNodes().stream().filter(node -> !node.cronsActive).count();
+        metricService.setMetric(
+            metricService.buildMetricTemplate(
+                PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+            inactiveCronNodes);
+      }
 
       // We set the node state to SoftwareInstalled when configuration type is Everything.
       // TODO: Why is upgrade task type used to map to node state update?

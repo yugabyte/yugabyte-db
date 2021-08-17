@@ -115,7 +115,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const IndexInfo& index_info() const;
 
   // Is the table colocated?
-  const bool colocated() const;
+  bool colocated() const;
 
   // Returns the replication info for the table.
   const boost::optional<master::ReplicationInfoPB>& replication_info() const;
@@ -153,6 +153,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   std::unique_ptr<YBPgsqlReadOp> NewPgsqlRead();
   std::unique_ptr<YBPgsqlReadOp> NewPgsqlSelect();
+  std::unique_ptr<YBPgsqlReadOp> NewPgsqlSample();
 
  private:
   friend class YBClient;

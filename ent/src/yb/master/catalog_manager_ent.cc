@@ -479,8 +479,34 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
     }
   }
 
-  return snapshot_coordinator_.ListSnapshots(
-      txn_snapshot_id, req->list_deleted_snapshots(), resp);
+  if (req->prepare_for_backup() && (!req->has_snapshot_id() || !txn_snapshot_id)) {
+    return STATUS(
+        InvalidArgument, "Request must have correct snapshot_id", (req->has_snapshot_id() ?
+        req->snapshot_id() : "None"), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshots(
+      txn_snapshot_id, req->list_deleted_snapshots(), resp));
+
+  if (req->prepare_for_backup()) {
+    // Repack & extend the backup row entries.
+    for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
+      snapshot.set_format_version(2);
+      SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
+      snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
+
+      for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+        BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+        backup_entry->mutable_entry()->Swap(&entry);
+        // Setup other BackupRowEntryPB fields.
+        // E.g.:  backup_entry->set_pg_schema_name(...);
+      }
+
+      sys_entry.clear_entries();
+    }
+  }
+
+  return Status::OK();
 }
 
 Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
@@ -716,11 +742,12 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
                                                 ImportSnapshotMetaResponsePB* resp,
                                                 NamespaceMap* namespace_map,
                                                 ExternalTableSnapshotDataMap* tables_data) {
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
       case SysRowEntry::NAMESPACE: // Recreate NAMESPACE.
         RETURN_NOT_OK(ImportNamespaceEntry(entry, namespace_map));
@@ -762,13 +789,14 @@ Status CatalogManager::ImportSnapshotPreprocess(const SysSnapshotEntryPB& snapsh
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotCreateObject(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot_pb,
                                                   ImportSnapshotMetaResponsePB* resp,
                                                   NamespaceMap* namespace_map,
                                                   ExternalTableSnapshotDataMap* tables_data,
                                                   CreateObjects create_objects) {
   // Create ONLY TABLES or ONLY INDEXES in accordance to the argument.
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntry::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if ((create_objects == CreateObjects::kOnlyIndexes) == data.is_index()) {
@@ -780,10 +808,11 @@ Status CatalogManager::ImportSnapshotCreateObject(const SysSnapshotEntryPB& snap
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotWaitForTables(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotWaitForTables(const SnapshotInfoPB& snapshot_pb,
                                                    ImportSnapshotMetaResponsePB* resp,
                                                    ExternalTableSnapshotDataMap* tables_data) {
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntry::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if (!data.is_index()) {
@@ -795,10 +824,11 @@ Status CatalogManager::ImportSnapshotWaitForTables(const SysSnapshotEntryPB& sna
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotProcessTablets(const SysSnapshotEntryPB& snapshot_pb,
+Status CatalogManager::ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
                                                     ImportSnapshotMetaResponsePB* resp,
                                                     ExternalTableSnapshotDataMap* tables_data) {
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+  for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
+    const SysRowEntry& entry = backup_entry.entry();
     if (entry.type() == SysRowEntry::TABLET) {
       // Create tablets IDs map.
       RETURN_NOT_OK(ImportTabletEntry(entry, tables_data));
@@ -878,7 +908,17 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
     }
   });
 
-  const SysSnapshotEntryPB& snapshot_pb = req->snapshot().entry();
+  const SnapshotInfoPB& snapshot_pb = req->snapshot();
+
+  if (!snapshot_pb.has_format_version() || snapshot_pb.format_version() != 2) {
+    return STATUS(InternalError, "Expected snapshot data in format 2",
+        snapshot_pb.ShortDebugString(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  if (snapshot_pb.backup_entries_size() == 0) {
+    return STATUS(InternalError, "Expected snapshot data prepared for backup",
+        snapshot_pb.ShortDebugString(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
 
   // PHASE 1: Recreate namespaces, create table's meta data.
   RETURN_NOT_OK(ImportSnapshotPreprocess(snapshot_pb, resp, &namespace_map, &tables_data));
@@ -1309,7 +1349,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
         l.Commit();
         // Update the new table schema in tablets.
-        SendAlterTableRequest(table);
+        RETURN_NOT_OK(SendAlterTableRequest(table));
       }
     }
   } else {
@@ -1471,21 +1511,16 @@ Status CatalogManager::RestoreSysCatalog(
   RETURN_NOT_OK(state.LoadExistingObjects(schema(), tablet->doc_db()));
   RETURN_NOT_OK(state.Process());
 
-  for (const auto& table : restoration->modified_tables) {
-    if (table.type != TableType::PGSQL_TABLE_TYPE) {
-      continue;
-    }
-    *complete_status = STATUS_EC_FORMAT(
-        NotSupported, MasterError(MasterErrorPB::INVALID_TABLE_TYPE),
-        "Unable to restore DDL for YSQL database: $0 $1", table.name, table.modification);
+  docdb::DocWriteBatch write_batch(
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
-    return Status::OK();
-  }
-
-  // Generate write batch.
-  docdb::DocWriteBatch write_batch(doc_db, docdb::InitMarkerBehavior::kOptional);
+  // Patch the pg_yb_catalog_version table.
+  RETURN_NOT_OK(state.PatchPgVersionTable(tablet, &write_batch));
+  // Restore the pg_catalog tables.
+  RETURN_NOT_OK(state.ProcessPgCatalogRestores(tablet, &write_batch));
+  // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
-  for (const auto& tablet_id : restoration->obsolete_tablets) {
+  for (const auto& tablet_id : restoration->non_system_obsolete_tablets) {
     auto info = GetTabletInfo(tablet_id);
     if (!info.ok()) {
       continue;
@@ -1493,7 +1528,7 @@ Status CatalogManager::RestoreSysCatalog(
     RETURN_NOT_OK(state.PrepareTabletCleanup(
         tablet_id, (**info).LockForRead()->pb, schema(), &write_batch));
   }
-  for (const auto& table_id : restoration->obsolete_tables) {
+  for (const auto& table_id : restoration->non_system_obsolete_tables) {
     auto info = GetTableInfo(table_id);
     if (!info) {
       continue;
@@ -1503,18 +1538,7 @@ Status CatalogManager::RestoreSysCatalog(
   }
 
   // Apply write batch to RocksDB.
-  docdb::KeyValueWriteBatchPB kv_write_batch;
-  write_batch.MoveToWriteBatchPB(&kv_write_batch);
-
-  rocksdb::WriteBatch rocksdb_write_batch;
-  PrepareNonTransactionWriteBatch(
-      kv_write_batch, restoration->write_time, nullptr, &rocksdb_write_batch, nullptr);
-  docdb::ConsensusFrontiers frontiers;
-  set_op_id(restoration->op_id, &frontiers);
-  set_hybrid_time(restoration->write_time, &frontiers);
-
-  tablet->WriteToRocksDB(
-      &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
+  state.WriteToRocksDB(&write_batch, restoration->write_time, restoration->op_id, tablet);
 
   // TODO(pitr) Handle master leader failover.
   RETURN_NOT_OK(ElectedAsLeaderCb());
@@ -1524,7 +1548,7 @@ Status CatalogManager::RestoreSysCatalog(
 
 Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
   auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(restoration.filter.tables().tables()));
-  auto objects_to_restore = restoration.objects_to_restore;
+  auto objects_to_restore = restoration.non_system_objects_to_restore;
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
   for (const auto& entry : entries.entries()) {
     VLOG_WITH_PREFIX(1)

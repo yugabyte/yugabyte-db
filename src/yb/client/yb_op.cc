@@ -600,6 +600,11 @@ CHECKED_STATUS SetRangePartitionBounds(const YBPgsqlReadOp& op,
   return Status::OK();
 }
 
+std::string ResponseSuffix(const PgsqlResponsePB& response) {
+  const auto str = response.ShortDebugString();
+  return str.empty() ? std::string() : (", response: " + str);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -651,8 +656,7 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
-  return "PGSQL_WRITE " + write_request_->ShortDebugString() +
-         ", response: " + response().ShortDebugString();
+  return "PGSQL_WRITE " + write_request_->ShortDebugString() + ResponseSuffix(response());
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
@@ -708,6 +712,17 @@ std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable
   return op;
 }
 
+std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSample(const shared_ptr<YBTable>& table) {
+  std::unique_ptr<YBPgsqlReadOp> op(new YBPgsqlReadOp(table));
+  PgsqlReadRequestPB *req = op->mutable_request();
+  req->set_client(YQL_CLIENT_PGSQL);
+  req->set_table_id(table->id());
+  req->set_schema_version(table->schema().version());
+  req->set_stmt_id(op->GetQueryId());
+
+  return op;
+}
+
 std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::DeepCopy() {
   auto op = NewSelect(table_);
   op->set_yb_consistency_level(yb_consistency_level());
@@ -718,7 +733,7 @@ std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::DeepCopy() {
 }
 
 std::string YBPgsqlReadOp::ToString() const {
-  return "PGSQL_READ " + read_request_->DebugString();
+  return "PGSQL_READ " + read_request_->ShortDebugString() + ResponseSuffix(response());
 }
 
 void YBPgsqlReadOp::SetHashCode(const uint16_t hash_code) {

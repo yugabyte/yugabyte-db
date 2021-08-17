@@ -230,6 +230,7 @@ const formFieldNames = [
   'primary.tlsCertificateId',
   'primary.mountPoints',
   'primary.awsArnString',
+  'primary.useSystemd',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -246,7 +247,10 @@ const formFieldNames = [
   'async.enableYEDIS',
   'async.enableNodeToNodeEncrypt',
   'async.enableClientToNodeEncrypt',
+  'async.diskIops',
+  'async.throughput',
   'async.mountPoints',
+  'async.useSystemd',
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
@@ -258,8 +262,8 @@ function getFormData(currentUniverse, formType, clusterType) {
     universeDetails: { clusters, encryptionAtRestConfig, rootCA }
   } = currentUniverse.data;
   const cluster = getClusterByType(clusters, clusterType);
-  const data = {};
   if (isDefinedNotNull(cluster)) {
+    const data = {};
     const userIntent = cluster.userIntent;
     data[clusterType] = {};
     data[clusterType].universeName = currentUniverse.data.name;
@@ -277,6 +281,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].replicationFactor = userIntent.replicationFactor;
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    data[clusterType].useSystemd = userIntent.useSystemd;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
     data[clusterType].throughput = userIntent.deviceInfo.throughput;
@@ -304,8 +309,9 @@ function getFormData(currentUniverse, formType, clusterType) {
       data[clusterType].enableEncryptionAtRest = encryptionAtRestConfig.encryptionAtRestEnabled;
       data[clusterType].selectEncryptionAtRestConfig = encryptionAtRestConfig.kmsConfigUUID;
     }
+    return data;
   }
-  return data;
+  return null;
 }
 
 function mapStateToProps(state, ownProps) {
@@ -322,6 +328,7 @@ function mapStateToProps(state, ownProps) {
       instanceType: 'c5.large',
       accessKeyCode: 'yugabyte-default',
       assignPublicIP: true,
+      useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
@@ -331,20 +338,25 @@ function mapStateToProps(state, ownProps) {
       enableClientToNodeEncrypt: true,
       enableEncryptionAtRest: false,
       awsArnString: '',
-      selectEncryptionAtRestConfig: null
+      selectEncryptionAtRestConfig: null,
+      diskIops: null,
+      throughput: null
     },
     async: {
       universeName: '',
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
+      useSystemd: false,
       useTimeSync: true,
       enableYSQL: true,
       enableIPV6: false,
       enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
       enableNodeToNodeEncrypt: true,
-      enableClientToNodeEncrypt: true
+      enableClientToNodeEncrypt: true,
+      diskIops: null,
+      throughput: null
     }
   };
 
@@ -355,7 +367,7 @@ function mapStateToProps(state, ownProps) {
       currentUniverse,
       ownProps.type,
       ownProps.type === 'Async' ? 'async' : 'primary'
-    );
+    ) ?? data;
   }
 
   const selector = formValueSelector('UniverseForm');
@@ -413,6 +425,7 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.useSystemd',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -437,6 +450,7 @@ function mapStateToProps(state, ownProps) {
       'async.enableClientToNodeEncrypt',
       'async.mountPoints',
       'async.useTimeSync',
+      'async.useSystemd',
       'masterGFlags',
       'tserverGFlags',
       'instanceTags'

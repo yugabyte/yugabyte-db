@@ -530,13 +530,6 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Result<master::AnalyzeTableResponsePB> YBClient::AnalyzeTable(const std::string& table_id) {
-  master::AnalyzeTableRequestPB req;
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  req.mutable_table()->set_table_id(table_id);
-  return data_->AnalyzeTable(this, req, deadline);
-}
-
 Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
   auto deadline = (CoarseMonoClock::Now()
                    + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));
@@ -810,9 +803,10 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& source_namespace_id,
                                             const boost::optional<uint32_t>& next_pg_oid,
                                             const bool colocated) {
-  Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
-                                                         : NamespaceExists(namespace_name));
-  if (VERIFY_RESULT(namespace_exists)) {
+  const auto namespace_exists = VERIFY_RESULT(
+      !namespace_id.empty() ? NamespaceIdExists(namespace_id)
+                            : NamespaceExists(namespace_name));
+  if (namespace_exists) {
     // Verify that the namespace we found is running so that, once this request returns,
     // the client can send operations without receiving a "namespace not found" error.
     return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, namespace_id,
@@ -1496,8 +1490,7 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
   return Status::OK();
 }
 
-Status YBClient::ListLiveTabletServers(
-    vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers, bool primary_only) {
+Status YBClient::ListLiveTabletServers(TabletServersInfo* tablet_servers, bool primary_only) {
   ListLiveTabletServersRequestPB req;
   if (primary_only) req.set_primary_only(true);
   ListLiveTabletServersResponsePB resp;
@@ -1510,6 +1503,12 @@ Status YBClient::ListLiveTabletServers(
     std::string region = "";
     std::string zone = "";
     int broadcast_sz = entry.registration().common().broadcast_addresses().size();
+    int private_ip_addresses_sz = entry.registration().common().private_rpc_addresses().size();
+
+    const auto privateIp =
+        private_ip_addresses_sz > 0
+            ? entry.registration().common().private_rpc_addresses().Get(0).host()
+            : DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host();
 
     std::string publicIp = "";
     if (broadcast_sz > 0) {
@@ -1528,9 +1527,9 @@ Status YBClient::ListLiveTabletServers(
     }
 
     auto ts = std::make_unique<YBTabletServerPlacementInfo>(
-        entry.instance_id().permanent_uuid(),
-        DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host(),
-        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary, publicIp);
+        entry.instance_id().permanent_uuid(), privateIp,
+        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary,
+        publicIp, entry.registration().common().pg_port());
     tablet_servers->push_back(std::move(ts));
   }
   return Status::OK();

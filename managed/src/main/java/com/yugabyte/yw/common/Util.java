@@ -8,7 +8,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -16,10 +15,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModel;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -30,6 +31,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -42,6 +44,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -357,18 +360,31 @@ public class Util {
     }
   }
 
-  public static ArrayNode getUniverseDetails(Set<Universe> universes) {
-    ArrayNode details = Json.newArray();
-    for (Universe universe : universes) {
-      ObjectNode universePayload = Json.newObject();
+  @ApiModel(description = "A small subset of universe information")
+  @Getter
+  public static class UniverseDetailSubset {
+    final UUID uuid;
+    final String name;
+    final boolean updateInProgress;
+    final boolean updateSucceeded;
+    final long creationDate;
+    final boolean universePaused;
+
+    public UniverseDetailSubset(Universe universe) {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      universePayload.put("name", universe.name);
-      universePayload.put("updateInProgress", universeDetails.updateInProgress);
-      universePayload.put("updateSucceeded", universeDetails.updateSucceeded);
-      universePayload.put("uuid", universe.universeUUID.toString());
-      universePayload.put("creationDate", universe.creationDate.getTime());
-      universePayload.put("universePaused", universeDetails.universePaused);
-      details.add(universePayload);
+      uuid = universe.universeUUID;
+      name = universe.name;
+      updateInProgress = universeDetails.updateInProgress;
+      updateSucceeded = universeDetails.updateSucceeded;
+      creationDate = universe.creationDate.getTime();
+      universePaused = universeDetails.universePaused;
+    }
+  }
+
+  public static List<UniverseDetailSubset> getUniverseDetails(Set<Universe> universes) {
+    List<UniverseDetailSubset> details = new ArrayList<>();
+    for (Universe universe : universes) {
+      details.add(new UniverseDetailSubset(universe));
     }
     return details;
   }
@@ -432,5 +448,20 @@ public class Util {
 
   public static void removeProcess(UUID uuid) {
     processMap.remove(uuid);
+  }
+
+  // It can be inferred that Platform only supports Base64 encryption
+  // for Slow Query Credentials for now
+  public static String decodeBase64(String input) {
+    byte[] decodedBytes = Base64.getDecoder().decode(input);
+    return new String(decodedBytes);
+  }
+
+  public static String encodeBase64(String input) {
+    return Base64.getEncoder().encodeToString(input.getBytes());
+  }
+
+  public static String doubleToString(double value) {
+    return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
   }
 }

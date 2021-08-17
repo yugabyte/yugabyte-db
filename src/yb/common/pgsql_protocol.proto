@@ -128,6 +128,22 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
+// Random sampling state
+message PgsqlSamplingStatePB {
+  // target number of rows to collect
+  optional int32 targrows = 1;
+  // number of rows collected so far across all blocks
+  optional int32 numrows = 2;
+  // number of rows considered for sample across all blocks
+  optional double samplerows = 3;
+  // current number of rows to skip
+  optional double rowstoskip = 4;
+  // reservoir state W
+  optional double rstate_w = 5;
+  // 48 bits of sampler random state
+  optional uint64 rand_state = 6;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Data Writing Instructions - INSERT, UPDATE, DELETE, colocated TRUNCATE.
 //--------------------------------------------------------------------------------------------------
@@ -379,6 +395,9 @@ message PgsqlReadRequestPB {
 
   // Does this request correspond to scanning the indexed table for backfill?
   optional bool is_for_backfill = 29 [default = false];
+
+  // If present, the request is to collect random sample
+  optional PgsqlSamplingStatePB sampling_state = 30;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -438,4 +457,7 @@ message PgsqlResponsePB {
   // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
   // of Status::ErrorData(TransactionErrorTag::kCategory)
   optional uint32 txn_error_code = 9;
+
+  // Random sample state to hand over to the next block
+  optional PgsqlSamplingStatePB sampling_state = 11;
 }

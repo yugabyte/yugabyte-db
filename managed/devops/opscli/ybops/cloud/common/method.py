@@ -132,6 +132,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Tags for instances being created.")
         self.parser.add_argument("--vpcId", required=False,
                                  help="name of the virtual network associated with the subnet")
+        self.parser.add_argument("--systemd_services",
+                                 action="store_true",
+                                 default=False,
+                                 help="check if systemd services is set")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -451,6 +455,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
         if args.remote_package_path:
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
+        self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
 
@@ -603,7 +608,7 @@ class CronCheckMethod(AbstractInstancesMethod):
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-        if not validate_cron_status(
+        if not args.systemd_services and not validate_cron_status(
                 ssh_options['ssh_host'], ssh_options['ssh_port'], ssh_options['ssh_user'],
                 ssh_options['private_key_file']):
             raise YBOpsRuntimeError(
@@ -612,6 +617,7 @@ class CronCheckMethod(AbstractInstancesMethod):
 
 class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
+    CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS', 'REMOVE_OLD_ROOT_CERT']
 
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
@@ -642,8 +648,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--certs_client_dir')
         self.parser.add_argument('--client_cert_path')
         self.parser.add_argument('--client_key_path')
-        self.parser.add_argument('--rotating_certs', action="store_true")
-        self.parser.add_argument('--adding_certs', action="store_true")
+        self.parser.add_argument('--cert_rotate_action', default=None,
+                                 choices=self.CERT_ROTATE_ACTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--encryption_key_source_file')
@@ -700,6 +706,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError("Supported types for this command are only: {}".format(
                 self.supported_types))
 
+        self.extra_vars["systemd_option"] = args.systemd_services
+
         # Make sure we set server_type so we pick the right configure.
         self.update_ansible_vars_with_args(args)
 
@@ -719,6 +727,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.root_cert_path is not None:
             self.extra_vars["root_cert_path"] = args.root_cert_path.strip()
+
+        if args.cert_rotate_action is not None:
+            if args.cert_rotate_action not in self.CERT_ROTATE_ACTIONS:
+                raise YBOpsRuntimeError(
+                    "Supported actions for this command are only: {}".format(
+                        self.CERT_ROTATE_ACTIONS))
 
         host_info = None
         if args.search_pattern != 'localhost':
@@ -772,9 +786,24 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
-        if args.rotating_certs:
-            logging.info("Verifying root certs are the same.")
-            self.cloud.compare_root_certs(self.extra_vars, ssh_options)
+        rotate_certs = False
+        if args.cert_rotate_action is not None:
+            if args.cert_rotate_action == "APPEND_NEW_ROOT_CERT":
+                self.cloud.append_new_root_cert(
+                    ssh_options,
+                    args.root_cert_path,
+                    args.certs_location,
+                    args.certs_node_dir
+                )
+                return
+            if args.cert_rotate_action == "REMOVE_OLD_ROOT_CERT":
+                self.cloud.remove_old_root_cert(
+                    ssh_options,
+                    args.certs_node_dir
+                )
+                return
+            if args.cert_rotate_action == "ROTATE_CERTS":
+                rotate_certs = True
 
         # Copying Server Certs
         logging.info("Copying certificates to {}.".format(args.search_pattern))
@@ -786,7 +815,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.server_cert_path,
                 args.server_key_path,
                 args.certs_location,
-                args.certs_node_dir)
+                args.certs_node_dir,
+                rotate_certs)
 
         if args.root_cert_path_client_to_server is not None:
             logging.info("Server clientRootCA Certificate Exists: {}.".format(
@@ -797,7 +827,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.server_cert_path_client_to_server,
                 args.server_key_path_client_to_server,
                 args.certs_location_client_to_server,
-                args.certs_client_dir)
+                args.certs_client_dir,
+                rotate_certs)
 
         # Copying client certs
         if args.client_cert_path is not None:
@@ -826,7 +857,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
         # If we are just rotating certs, we don't need to do any configuration changes.
-        if not args.rotating_certs and not args.adding_certs:
+        if not rotate_certs:
             self.cloud.setup_ansible(args).run(
                 "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 

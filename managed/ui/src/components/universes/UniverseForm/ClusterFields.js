@@ -125,6 +125,7 @@ const initialState = {
   enableNodeToNodeEncrypt: true,
   enableClientToNodeEncrypt: true,
   enableEncryptionAtRest: false,
+  useSystemd: false,
   customizePorts: false
 };
 
@@ -161,6 +162,7 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
+    this.toggleUseSystemd = this.toggleUseSystemd.bind(this);
     this.validateUserTags = this.validateUserTags.bind(this);
 
     this.currentInstanceType = _.get(
@@ -858,6 +860,12 @@ export default class ClusterFields extends Component {
 
   toggleCustomizePorts(event) {
     this.setState({ customizePorts: event.target.checked });
+  }
+
+  toggleUseSystemd(event) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.useSystemd`, event.target.checked);
+    this.setState({ useSystemd: event.target.checked });
   }
 
   handleAwsArnChange(event) {
@@ -2013,13 +2021,13 @@ export default class ClusterFields extends Component {
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
-                {selectTlsCert}
+                {this.props.type !== 'Edit' && selectTlsCert}
                 {assignPublicIP}
                 {useTimeSync}
                 {enableYSQL}
                 {enableYEDIS}
-                {enableNodeToNodeEncrypt}
-                {enableClientToNodeEncrypt}
+                {this.props.type !== 'Edit' && enableNodeToNodeEncrypt}
+                {this.props.type !== 'Edit' && enableClientToNodeEncrypt}
                 {enableEncryptionAtRest}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput} type="hidden" />
               </div>
@@ -2114,6 +2122,24 @@ export default class ClusterFields extends Component {
                     onToggle={this.toggleEnableExposingService}
                     label="Enable Public Network Access"
                     subLabel="Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+                  />
+                </div>
+              </Col>
+            </Row>
+          )}
+          {isDefinedNotNull(currentProvider) && (
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.useSystemd`}
+                    component={YBToggle}
+                    defaultChecked={false}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.useSystemd}
+                    onToggle={this.toggleUseSystemd}
+                    label="Enable Systemd Services"
+                    isReadOnly={isFieldReadOnly}
                   />
                 </div>
               </Col>

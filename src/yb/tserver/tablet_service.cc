@@ -237,6 +237,9 @@ DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
                  "If true, bypass any checks made to reject remote boostrap requests for post "
                  "split tablets whose parent tablets are still present.");
 
+DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
+                 "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -247,25 +250,25 @@ using client::internal::ForwardReadRpc;
 using client::internal::ForwardWriteRpc;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
+using consensus::Consensus;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
-using consensus::Consensus;
 using consensus::ConsensusConfigType;
 using consensus::ConsensusRequestPB;
 using consensus::ConsensusResponsePB;
 using consensus::GetLastOpIdRequestPB;
 using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
+using consensus::LeaderLeaseStatus;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
-using consensus::LeaderLeaseStatus;
+using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
 using consensus::StartRemoteBootstrapResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
-using consensus::RaftPeerPB;
 
 using std::unique_ptr;
 using google::protobuf::RepeatedPtrField;
@@ -957,12 +960,101 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 
-#define VERIFY_RESULT_OR_RETURN(expr) \
-  __extension__ ({ \
-    auto&& __result = (expr); \
-    if (!__result.ok()) { return; } \
-    std::move(*__result); \
-  })
+#define VERIFY_RESULT_OR_RETURN(expr) RESULT_CHECKER_HELPER( \
+    expr, \
+    if (!__result.ok()) { return; });
+
+void TabletServiceImpl::VerifyTableRowRange(
+    const VerifyTableRowRangeRequestPB* req,
+    VerifyTableRowRangeResponsePB* resp,
+    rpc::RpcContext context) {
+  DVLOG(3) << "Received VerifyTableRowRange RPC: " << req->DebugString();
+
+  server::UpdateClock(*req, server_->Clock());
+
+  auto peer_tablet =
+      LookupTabletPeerOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!peer_tablet) {
+    return;
+  }
+
+  auto tablet = peer_tablet->tablet;
+  bool is_pg_table = tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
+  if (is_pg_table) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(NotFound, "Verify operation not supported for PGSQL tables."),
+        &context);
+    return;
+  }
+
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
+
+  // Wait for SafeTime to get past read_at;
+  const HybridTime read_at(req->read_time());
+  DVLOG(1) << "Waiting for safe time to be past " << read_at;
+  const auto safe_time = tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
+  DVLOG(1) << "Got safe time " << safe_time.ToString();
+  if (!safe_time.ok()) {
+    LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
+    SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
+    return;
+  }
+
+  auto valid_read_at = req->has_read_time() ? read_at : *safe_time;
+  std::string verified_until = "";
+  std::unordered_map<TableId, uint64> consistency_stats;
+
+  if (peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_info) {
+    auto index_info =
+        *peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_info;
+    const auto& table_id = index_info.indexed_table_id();
+    Status verify_status = tablet->VerifyMainTableConsistencyForCQL(
+        table_id, req->start_key(), req->num_rows(), deadline, valid_read_at, &consistency_stats,
+        &verified_until);
+    if (!verify_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
+      return;
+    }
+
+    (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
+  } else {
+    const IndexMap index_map =
+        peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
+    vector<IndexInfo> indexes;
+    vector<TableId> index_ids;
+    if (req->index_ids().empty()) {
+      for (auto it = index_map.begin(); it != index_map.end(); it++) {
+        indexes.push_back(it->second);
+      }
+    } else {
+      for (const auto& idx : req->index_ids()) {
+        auto result = index_map.FindIndex(idx);
+        if (result) {
+          const IndexInfo* index_info = *result;
+          indexes.push_back(*index_info);
+          index_ids.push_back(index_info->table_id());
+        } else {
+          LOG(WARNING) << "Index " << idx << " not found in tablet metadata";
+        }
+      }
+    }
+
+    Status verify_status = tablet->VerifyIndexTableConsistencyForCQL(
+        indexes, req->start_key(), req->num_rows(), deadline, valid_read_at, &consistency_stats,
+        &verified_until);
+    if (!verify_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
+      return;
+    }
+
+    for (const IndexInfo& index : indexes) {
+      const auto& table_id = index.table_id();
+      (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
+    }
+  }
+  resp->set_verified_until(verified_until);
+  context.RespondSuccess();
+}
 
 void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           UpdateTransactionResponsePB* resp,
@@ -1436,6 +1528,15 @@ void TabletServiceAdminImpl::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
     return;
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_fail_tablet_split_probability > 0) &&
+      RandomActWithProbability(FLAGS_TEST_fail_tablet_split_probability)) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InvalidArgument,  // Use InvalidArgument to hit IsDefinitelyPermanentError().
+            "Failing tablet split due to FLAGS_TEST_fail_tablet_split_probability"),
+        TabletServerErrorPB::UNKNOWN_ERROR,
+        &context);
   }
   TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
 
@@ -2074,7 +2175,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
 
     auto* write_batch = write_req.mutable_write_batch();
     auto status = leader_peer.peer->tablet()->CreateReadIntents(
-        req->transaction(), req->ql_batch(), req->pgsql_batch(), write_batch);
+        req->transaction(), req->subtransaction(), req->ql_batch(), req->pgsql_batch(),
+        write_batch);
     if (!status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), status, &read_context->context);
       return;
@@ -2321,7 +2423,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoReadImpl(ReadContext* read_context) 
       RETURN_NOT_OK(read_context->tablet->HandlePgsqlReadRequest(
           read_context->context.GetClientDeadline(), read_time,
           !read_context->allow_retry /* is_explicit_request_read_time */, pgsql_read_req,
-          read_context->req->transaction(), &result, &num_rows_read));
+          read_context->req->transaction(), read_context->req->subtransaction(), &result,
+          &num_rows_read));
 
       total_num_rows_read += num_rows_read;
 

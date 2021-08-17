@@ -92,7 +92,7 @@ const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo) {
 }
 
 // Returns true if the type is allowed in keys.
-const bool IsTypeAllowableInKey(const TypeInfo* typeinfo) {
+bool IsTypeAllowableInKey(const TypeInfo* typeinfo) {
   return Singleton<EncoderResolver<faststring> >::get()->HasKeyEncoderForType(
       typeinfo->physical_type());
 }

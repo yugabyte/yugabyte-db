@@ -366,16 +366,6 @@ DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "from pg catalog tables. A value of -1 disables the refresh task.");
 TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
 
-DEFINE_int32(ysql_default_analyze_num_rows, 1000,
-             "The default number of rows in a table to provide when responding to an ANALYZE "
-             "request");
-TAG_FLAG(ysql_default_analyze_num_rows, hidden);
-
-DEFINE_test_flag(bool, disable_setting_tablespace_id_at_creation, false,
-                 "When set, placement of the tablets of a newly created table will not honor "
-                 "its tablespace placement policy until the loadbalancer runs.");
-TAG_FLAG(TEST_disable_setting_tablespace_id_at_creation, runtime);
-
 DEFINE_int64(tablet_split_size_threshold_bytes, 0,
              "DEPRECATED -- Threshold on tablet size after which tablet should be split. Automated "
              "splitting is disabled if this value is set to 0.");
@@ -433,6 +423,10 @@ DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
             "xCluster replication setup");
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
+
+DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
+                 "Slows down the alter table rpc's send and response handler so that the TServer "
+                 "has a heartbeat delay and triggers tablet leader change.");
 
 namespace yb {
 namespace master {
@@ -596,12 +590,11 @@ Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp
   return Status::OK();
 }
 
-#define VERIFY_NAMESPACE_FOUND(expr, resp) \
-  __extension__ ({ auto&& __result = (expr); \
-                   if (!__result.ok()) {   \
-                     return SetupError((resp)->mutable_error(), __result.status()); \
-                   } \
-                   WrapMove(std::move(__result)); })
+#define VERIFY_NAMESPACE_FOUND(expr, resp) RESULT_CHECKER_HELPER( \
+    expr, \
+    if (!__result.ok()) { \
+        return SetupError((resp)->mutable_error(), __result.status()); \
+    });
 
 MasterErrorPB_Code NamespaceMasterError(SysNamespaceEntryPB_State state) {
   switch (state) {
@@ -956,7 +949,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   // empty version 0.
   RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
-  permissions_manager_->BuildRecursiveRolesUnlocked();
+  permissions_manager_->BuildRecursiveRoles();
 
   if (FLAGS_enable_ysql) {
     // Number of TS to wait for before creating the txn table.
@@ -997,7 +990,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
     // If we are not running initdb, this is an existing cluster, and we need to check whether we
     // need to do a one-time migration to make YSQL system catalog tables transactional.
     RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
-        table_ids_map_.CheckOut().get_ptr(), sys_catalog_.get(), ysql_catalog_config_.get(), term));
+      table_ids_map_.CheckOut().get_ptr(), sys_catalog_.get(), ysql_catalog_config_.get(), term));
   }
 
   return Status::OK();
@@ -1033,9 +1026,6 @@ Status CatalogManager::RunLoaders(int64_t term) {
   // Clear the current cluster config.
   cluster_config_.reset();
 
-  // Clear the roles mapping.
-  permissions_manager()->ClearRolesUnlocked();
-
   // Clear redis config mapping.
   redis_config_map_.clear();
 
@@ -1054,15 +1044,62 @@ Status CatalogManager::RunLoaders(int64_t term) {
     ts_desc->set_has_tablet_report(false);
   }
 
+  {
+    LockGuard lock(permissions_manager()->mutex());
+
+    // Clear the roles mapping.
+    permissions_manager()->ClearRolesUnlocked();
+    RETURN_NOT_OK(Load<RoleLoader>("roles", term));
+    RETURN_NOT_OK(Load<SysConfigLoader>("sys config", term));
+  }
+  // Clear the hidden tablets vector.
+  hidden_tablets_.clear();
+
   RETURN_NOT_OK(Load<TableLoader>("tables", term));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", term));
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", term));
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", term));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", term));
-  RETURN_NOT_OK(Load<RoleLoader>("roles", term));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", term));
-  RETURN_NOT_OK(Load<SysConfigLoader>("sys config", term));
 
+  return Status::OK();
+}
+
+Status CatalogManager::CheckResource(
+    const GrantRevokePermissionRequestPB* req,
+    GrantRevokePermissionResponsePB* resp) {
+  scoped_refptr<TableInfo> table;
+
+  // Checking if resources exist.
+  if (req->resource_type() == ResourceType::TABLE ||
+      req->resource_type() == ResourceType::KEYSPACE) {
+    // We can't match Apache Cassandra's error because when a namespace is not provided, the error
+    // is detected by the semantic analysis in PTQualifiedName::AnalyzeName.
+    DCHECK(req->has_namespace_());
+    const auto& namespace_info = req->namespace_();
+    auto ns = FindNamespace(namespace_info);
+
+    if (req->resource_type() == ResourceType::KEYSPACE) {
+      if (!ns.ok()) {
+        // Matches Apache Cassandra's error.
+        Status s = STATUS_SUBSTITUTE(
+            NotFound, "Resource <keyspace $0> doesn't exist", namespace_info.name());
+        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      }
+    } else {
+      if (ns.ok()) {
+        CatalogManager::SharedLock l(mutex_);
+        table = FindPtrOrNull(table_names_map_, {(**ns).id(), req->resource_name()});
+      }
+      if (table == nullptr) {
+        // Matches Apache Cassandra's error.
+        Status s = STATUS_SUBSTITUTE(
+            NotFound, "Resource <object '$0.$1'> doesn't exist",
+            namespace_info.name(), req->resource_name());
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+      }
+    }
+  }
   return Status::OK();
 }
 
@@ -1106,7 +1143,10 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
 }
 
 Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
-  RETURN_NOT_OK(permissions_manager()->PrepareDefaultSecurityConfigUnlocked(term));
+  {
+    LockGuard lock(permissions_manager()->mutex());
+    RETURN_NOT_OK(permissions_manager()->PrepareDefaultSecurityConfigUnlocked(term));
+  }
 
   if (!ysql_catalog_config_) {
     SysYSQLCatalogConfigEntryPB ysql_catalog_config;
@@ -1830,7 +1870,7 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   // namespace.
   vector<NamespaceId> namespace_id_vec;
   {
-    LockGuard lock(mutex_);
+    SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
@@ -1989,7 +2029,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   TRACE("Committing in-memory state");
   l.Commit();
 
-  SendAlterTableRequest(indexed_table);
+  RETURN_NOT_OK(SendAlterTableRequest(indexed_table));
 
   return Status::OK();
 }
@@ -2285,8 +2325,8 @@ Status CatalogManager::DoSplitTablet(
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
-  SendSplitTabletRequest(
-      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key);
+  RETURN_NOT_OK(SendSplitTabletRequest(
+      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key));
 
   return Status::OK();
 }
@@ -2318,9 +2358,12 @@ void CatalogManager::SplitTabletWithKey(
   // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
   // if it failed to submit that task. In other words, any failures here are not retriable, and
   // success indicates that an async and automatically retrying task was submitted.
-  WARN_NOT_OK(
-    DoSplitTablet(tablet, split_encoded_key, split_partition_key),
-    Format("Failed to split tablet with GetSplitKey result for tablet: $0", tablet->tablet_id()));
+  auto s = DoSplitTablet(tablet, split_encoded_key, split_partition_key);
+  WARN_NOT_OK(s, Format("Failed to split tablet with GetSplitKey result for tablet: $0",
+                        tablet->tablet_id()));
+  if (!s.ok()) {
+    tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
+  }
 }
 
 Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
@@ -2332,8 +2375,13 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
           << tablet->tablet_id();
   auto call = std::make_shared<AsyncGetTabletSplitKey>(
       master_, AsyncTaskPool(), tablet,
-      [this, tablet](const std::string& split_encoded_key, const std::string& split_partition_key) {
-        SplitTabletWithKey(tablet, split_encoded_key, split_partition_key);
+      [this, tablet](const Result<AsyncGetTabletSplitKey::Data>& result) {
+        if (result.ok()) {
+          SplitTabletWithKey(tablet, result->split_encoded_key, result->split_partition_key);
+        } else {
+          LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
+          tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
+        }
       });
   tablet->table()->AddTask(call);
   return ScheduleTask(call);
@@ -3185,15 +3233,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
-  return Status::OK();
-}
-
-Status CatalogManager::AnalyzeTable(
-    const AnalyzeTableRequestPB* req,
-    AnalyzeTableResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  // TODO -- implement this with some estimate other than flag-determined default.
-  resp->set_rows(FLAGS_ysql_default_analyze_num_rows);
   return Status::OK();
 }
 
@@ -4132,7 +4171,7 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
 
   // Actual Deletion of the index info will happen asynchronously after all the
   // tablets move to the new IndexPermission of DELETE_ONLY_WHILE_REMOVING.
-  SendAlterTableRequest(indexed_table);
+  RETURN_NOT_OK(SendAlterTableRequest(indexed_table));
   return Status::OK();
 }
 
@@ -4846,7 +4885,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   if (!has_changes) {
     if (req->has_force_send_alter_request() && req->force_send_alter_request()) {
-      SendAlterTableRequest(table, req);
+      RETURN_NOT_OK(SendAlterTableRequest(table, req));
     }
     // Skip empty requests...
     return Status::OK();
@@ -4913,7 +4952,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   TRACE("Committing in-memory state");
   l.Commit();
 
-  SendAlterTableRequest(table, req);
+  RETURN_NOT_OK(SendAlterTableRequest(table, req));
 
   LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
             << table->ToString() << " per request from " << RequestorString(rpc);
@@ -5231,7 +5270,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     auto ns = FindNamespaceUnlocked(ns_identifier);
     if (!ns.ok() || (**ns).state() != SysNamespaceEntryPB::RUNNING) {
       if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
-        VERIFY_NAMESPACE_FOUND(ns, resp);
+        VERIFY_NAMESPACE_FOUND(std::move(ns), resp);
       }
       LOG(ERROR) << "Unable to find namespace with id " << ltm->namespace_id()
                  << " for table " << ltm->name();
@@ -5652,7 +5691,21 @@ bool CatalogManager::ProcessCommittedConsensusState(
     // It's possible that the tablet being reported is a laggy replica, and in fact
     // the leader has already received an AlterTable RPC. That's OK, though --
     // it'll safely ignore it if we send another.
-    rpcs->push_back(std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet));
+    TransactionId txn_id = TransactionId::Nil();
+    if (table_lock->pb.has_transaction() &&
+        table_lock->pb.transaction().has_transaction_id()) {
+      LOG(INFO) << "Parsing transaction ID for tablet ID " << tablet->tablet_id();
+      auto txn_id_res = FullyDecodeTransactionId(table_lock->pb.transaction().transaction_id());
+      if (!txn_id_res.ok()) {
+        LOG(WARNING) << "Parsing transaction ID failed for tablet ID " << tablet->tablet_id();
+        return false;
+      }
+      txn_id = txn_id_res.get();
+    }
+    LOG(INFO) << "Triggering AlterTable with transaction ID " << txn_id
+              << " due to heartbeat delay for tablet ID " << tablet->tablet_id();
+    rpcs->push_back(std::make_shared<AsyncAlterTable>(
+        master_, AsyncTaskPool(), tablet, tablet->table(), txn_id));
   }
 
   return tablet_was_mutated;
@@ -7762,16 +7815,62 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   return Status::OK();
 }
 
-void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
-                                           const AlterTableRequestPB* req) {
+CHECKED_STATUS CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
+                                                     const AlterTableRequestPB* req) {
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetAllTablets(&tablets);
 
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table);
-    tablet->table()->AddTask(call);
-    WARN_NOT_OK(ScheduleTask(call), "Failed to send alter table request");
+  bool is_ysql_table_with_transaction_metadata =
+      table->GetTableType() == TableType::PGSQL_TABLE_TYPE &&
+      req != nullptr &&
+      req->has_transaction() &&
+      req->transaction().has_transaction_id();
+
+  bool alter_table_has_add_or_drop_column_step = false;
+  if (req && (req->alter_schema_steps_size() || req->has_alter_properties())) {
+    for (const AlterTableRequestPB::Step& step : req->alter_schema_steps()) {
+      if (step.type() == AlterTableRequestPB::ADD_COLUMN ||
+          step.type() == AlterTableRequestPB::DROP_COLUMN) {
+        alter_table_has_add_or_drop_column_step = true;
+        break;
+      }
+    }
   }
+
+  TransactionId txn_id = TransactionId::Nil();
+  if (is_ysql_table_with_transaction_metadata && alter_table_has_add_or_drop_column_step) {
+    {
+      LOG(INFO) << "Persist transaction metadata into SysTableEntryPB for table ID " << table->id();
+      TRACE("Locking table");
+      auto l = table->LockForWrite();
+      auto& tablet_data = *l.mutable_data();
+      auto& table_pb = tablet_data.pb;
+      table_pb.mutable_transaction()->CopyFrom(req->transaction());
+
+      // Update sys-catalog with the transaction ID.
+      TRACE("Updating table metadata on disk");
+      RETURN_NOT_OK(master_->catalog_manager()->sys_catalog_->Upsert(
+          master_->catalog_manager()->leader_ready_term(), table.get()));
+
+      // Update the in-memory state.
+      TRACE("Committing in-memory state");
+      l.Commit();
+    }
+    txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()));
+  }
+
+  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+    auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id);
+    tablet->table()->AddTask(call);
+    if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
+      LOG(INFO) << "Sleeping for " << tablet->id()
+                << FLAGS_TEST_slowdown_alter_table_rpcs_ms
+                << "ms before sending async alter table request";
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_alter_table_rpcs_ms));
+    }
+    RETURN_NOT_OK(ScheduleTask(call));
+  }
+  return Status::OK();
 }
 
 void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
@@ -7781,17 +7880,21 @@ void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo
   WARN_NOT_OK(ScheduleTask(call), "Failed to send copartition table request");
 }
 
-void CatalogManager::SendSplitTabletRequest(
+Status CatalogManager::SendSplitTabletRequest(
     const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key) {
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
   auto call = std::make_shared<AsyncSplitTablet>(
-      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key);
+      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key,
+      [this, tablet](const Status& status) {
+        if (!status.ok()) {
+          LOG(WARNING) << "AsyncSplitTablet task failed with status: " << status;
+          tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
+        }
+      });
   tablet->table()->AddTask(call);
-  WARN_NOT_OK(
-      ScheduleTask(call),
-      Format("Failed to send split tablet request for tablet $0", tablet->tablet_id()));
+  return ScheduleTask(call);
 }
 
 void CatalogManager::DeleteTabletReplicas(
@@ -9769,7 +9872,7 @@ void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
                                         tablet_info.may_have_orphaned_post_split_data()};
       tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
       WARN_NOT_OK(
-          tablet_split_manager_.ScheduleSplitIfNeeded(*tablet, ts_uuid, drive_info),
+          tablet_split_manager_.ProcessLiveTablet(*tablet, ts_uuid, drive_info),
           "Failed to process tablet split candidate.");
     }
   }

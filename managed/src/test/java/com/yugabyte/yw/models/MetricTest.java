@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -15,7 +16,13 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -72,6 +79,32 @@ public class MetricTest extends FakeDBApplication {
     Metric metric = metricService.get(key);
 
     assertMetric(metric, 1.0);
+  }
+
+  @Test
+  public void testUpdateFromMultipleThreads() throws InterruptedException {
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    List<Future<Void>> futures = new ArrayList<>();
+    for (int i = 0; i < 2; i++) {
+      int value = i;
+      futures.add(
+          executor.submit(
+              () -> {
+                metricService.setMetric(
+                    metricService.buildMetricTemplate(
+                        PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+                    value);
+                return null;
+              }));
+    }
+    for (Future<Void> future : futures) {
+      try {
+        future.get();
+      } catch (ExecutionException e) {
+        fail("Exception occurred in worker: " + e);
+      }
+    }
+    executor.shutdown();
   }
 
   @Test

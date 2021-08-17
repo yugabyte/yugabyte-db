@@ -70,11 +70,14 @@ RedisConnectionContext::RedisConnectionContext(
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
-Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
+Result<rpc::ProcessCallsResult> RedisConnectionContext::ProcessCalls(
     const rpc::ConnectionPtr& connection, const IoVecs& data,
     rpc::ReadBufferFull read_buffer_full) {
   if (!can_enqueue()) {
-    return rpc::ProcessDataResult{0, Slice()};
+    return rpc::ProcessCallsResult{
+      .consumed = 0,
+      .buffer = Slice(),
+    };
   }
 
   if (!parser_) {
@@ -111,7 +114,10 @@ Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
   }
   parser.Consume(begin_of_batch);
   end_of_batch_ -= begin_of_batch;
-  return rpc::ProcessDataResult{begin_of_batch, Slice()};
+  return rpc::ProcessCallsResult{
+    .consumed = begin_of_batch,
+    .buffer = Slice(),
+  };
 }
 
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
@@ -361,7 +367,7 @@ RefCntBuffer SerializeResponses(const Collection& responses) {
   return result;
 }
 
-void RedisInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void RedisInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   output->push_back(SerializeResponses(responses_));
 }
 
@@ -388,7 +394,7 @@ void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* res
     // Did we get all responses and ready to send data.
     size_t responded = ready_count_.fetch_add(1, std::memory_order_release) + 1;
     if (responded == client_batch_.size()) {
-      RecordHandlingCompleted(/* handler_run_time */ nullptr);
+      RecordHandlingCompleted();
       QueueResponse(!had_failures_.load(std::memory_order_acquire));
     }
   }

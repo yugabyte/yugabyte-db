@@ -98,7 +98,7 @@ class Operation {
   CHECKED_STATUS Replicated(int64_t leader_term);
 
   // Abort operation. Release resources and notify callbacks.
-  void Aborted(const Status& status);
+  void Aborted(const Status& status, bool was_pending);
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const;
@@ -195,11 +195,11 @@ class Operation {
   // Initialize operation at leader side.
   // op_id - operation id.
   // committed_op_id - current committed operation id.
-  virtual void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+  void AddedToFollower();
 
-  virtual void AddedToFollower();
-  virtual void Aborted();
-  virtual void Replicated();
+  void Aborted(bool was_pending);
+  void Replicated();
 
   virtual ~Operation();
 

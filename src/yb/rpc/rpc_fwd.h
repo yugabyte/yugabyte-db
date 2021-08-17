@@ -47,6 +47,7 @@ class RpcService;
 class Rpcs;
 class Poller;
 class Protocol;
+class RefinedStream;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
@@ -59,7 +60,7 @@ class ThreadPoolTask;
 class LocalYBInboundCall;
 
 struct CallData;
-struct ProcessDataResult;
+struct ProcessCallsResult;
 struct RpcMethodMetrics;
 struct RpcMetrics;
 

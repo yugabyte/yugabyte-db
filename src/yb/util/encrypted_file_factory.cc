@@ -85,6 +85,10 @@ class EncryptedFileFactory : public FileFactoryWrapper {
     return EncryptedWritableFile::Create(result, header_manager_.get(), std::move(underlying));
   }
 
+  bool IsEncrypted() const override {
+    return true;
+  }
+
  private:
   std::unique_ptr<HeaderManager> header_manager_;
 };

@@ -69,7 +69,7 @@ public class Audit extends Model {
     return this.timestamp;
   }
 
-  @ApiModelProperty(value = "Audit uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Audit uuid", accessMode = READ_ONLY, dataType = "Object")
   @Column(columnDefinition = "TEXT")
   @DbJson
   private JsonNode payload;
