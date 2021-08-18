@@ -2000,7 +2000,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // has the transaction metadata, including the isolation level, and those requests expect us to
   // retrieve the isolation level from that metadata. Failure to do so was the cause of a
   // serialization anomaly tested by TestOneOrTwoAdmins
-  // (https://github.com/YugaByte/yugabyte-db/issues/1572).
+  // (https://github.com/yugabyte/yugabyte-db/issues/1572).
 
   bool serializable_isolation = false;
   TabletPeerTablet peer_tablet;
@@ -2054,7 +2054,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
               STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
                                         "processing this query. Try again."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
+          return;
         }
       }
       RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);

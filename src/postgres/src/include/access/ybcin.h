@@ -68,4 +68,4 @@ extern void ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 extern bool ybcingettuple(IndexScanDesc scan, ScanDirection dir);
 extern void ybcinendscan(IndexScanDesc scan);
 
-#endif							/* YBCINDEX_H */
+#endif							/* YBCIN_H */
