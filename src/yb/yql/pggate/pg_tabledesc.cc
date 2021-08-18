@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pggate_flags.h"
 
 #include "yb/client/table.h"
 
@@ -25,8 +26,26 @@ namespace pggate {
 
 using google::protobuf::RepeatedPtrField;
 
+namespace {
+
+client::VersionedTablePartitionListPtr RetrievePartitions(const client::YBTable *table) {
+  if (PREDICT_FALSE(FLAGS_TEST_index_read_multiple_partitions)) {
+    // In this test we assume there is only one partition from the YSQL side, however more than one
+    // partitions from the DocDB side. This is directed to test the scenario where partition list
+    // is outdated post tablet split.
+    auto partitions = table->GetVersionedPartitions();
+    auto result = std::make_shared<client::VersionedTablePartitionList>();
+    result->version = partitions->version;
+    result->keys = { partitions->keys.front() };
+    return result;
+  }
+  return table->GetVersionedPartitions();
+}
+
+} // namespace
+
 PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table)
-    : table_(pg_table), table_partitions_(table_->GetVersionedPartitions()) {
+    : table_(pg_table), table_partitions_(RetrievePartitions(table_.get())) {
   const auto& schema = pg_table->schema();
   const int num_columns = schema.num_columns();
   columns_.resize(num_columns);

@@ -113,7 +113,6 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
   auto desc  = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
   auto read_op = desc->NewPgsqlSelect();
   auto read_req = read_op->mutable_request();
-  read_req->set_unknown_ybctid_allowed(true);
   PgsqlExpressionPB* expr_pb = read_req->add_targets();
   expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
   auto doc_op = std::make_shared<PgDocReadOp>(session, desc, std::move(read_op));

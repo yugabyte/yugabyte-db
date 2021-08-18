@@ -329,7 +329,8 @@ message PgsqlReadRequestPB {
 
   // Indicates ybctids in batch_arguments may not exist.
   // If flag is false read operation will fail in case any of ybctids in batch will not be found.
-  optional bool unknown_ybctid_allowed = 26;
+  // Reserved for deprecated unknown_ybctid_allowed
+  reserved 26;
 
   //------------------------------------------------------------------------------------------------
   // Output Argument Specification (Tuple descriptor).
@@ -439,6 +440,7 @@ message PgsqlResponsePB {
   // NOTE: This variable could have been inside "paging state", but due to rolling upgrade I have
   // to place it here, separated from paging status for singular request.
   optional int64 batch_arg_count = 10 [ default = 1 ];
+  repeated int64 batch_orders = 12;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
