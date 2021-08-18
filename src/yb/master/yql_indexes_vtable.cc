@@ -34,6 +34,53 @@ const string& ColumnName(const Schema& schema, const ColumnId id) {
   return column->name();
 }
 
+string QLExpressionPBToPredicateString(const QLExpressionPB& where_expr, const Schema& schema) {
+  // TODO(Piyush): Move this to some sort of util file and handle more cases if later we support
+  // them in partial index predicate.
+  switch (where_expr.expr_case()) {
+    case yb::QLExpressionPB::EXPR_NOT_SET: return "NULL";
+    case QLExpressionPB::kValue:
+      return QLValue(where_expr.value()).ToValueString(QuotesType::kSingleQuotes);
+    case QLExpressionPB::kColumnId: return ColumnName(schema, ColumnId(where_expr.column_id()));
+    case QLExpressionPB::kCondition:
+    {
+      std::string res;
+      res += QLExpressionPBToPredicateString(where_expr.condition().operands(0), schema);
+      switch (where_expr.condition().op()) {
+        case QLOperator::QL_OP_AND:
+          res += " AND ";
+          break;
+        case QLOperator::QL_OP_EQUAL:
+          res += " = ";
+          break;
+        case QLOperator::QL_OP_NOT_EQUAL:
+          res += " != ";
+          break;
+        case QLOperator::QL_OP_GREATER_THAN:
+          res += " > ";
+          break;
+        case QLOperator::QL_OP_GREATER_THAN_EQUAL:
+          res += " >= ";
+          break;
+        case QLOperator::QL_OP_LESS_THAN:
+          res += " < ";
+          break;
+        case QLOperator::QL_OP_LESS_THAN_EQUAL:
+          res += " <= ";
+          break;
+        default:
+          LOG_IF(DFATAL, false) << "We should have handled anything required.";
+          break;
+      }
+      res += QLExpressionPBToPredicateString(where_expr.condition().operands(1), schema);
+      return res;
+    }
+    default:
+      LOG_IF(DFATAL, false) << "We should have handled anything required.";
+  }
+  return std::string();
+}
+
 } // namespace
 
 Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
@@ -116,6 +163,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
       }
     }
 
+    string predicate;
+    if (index_info.where_predicate_spec()) {
+      predicate = QLExpressionPBToPredicateString(index_info.where_predicate_spec()->where_expr(),
+                                                  indexed_schema);
+    }
+
     QLValue options;
     options.set_map_value();
     options.add_map_key()->set_string_value("target");
@@ -123,6 +176,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     if (!include.empty()) {
       options.add_map_key()->set_string_value("include");
       options.add_map_value()->set_string_value(include);
+    }
+    if (!predicate.empty()) {
+      options.add_map_key()->set_string_value("predicate");
+      options.add_map_value()->set_string_value(predicate);
     }
     RETURN_NOT_OK(SetColumnValue(kOptions, options.value(), &row));
 

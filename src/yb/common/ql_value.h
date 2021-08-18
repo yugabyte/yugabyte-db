@@ -23,6 +23,7 @@
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
 
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
@@ -431,6 +432,7 @@ class QLValue {
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
+  std::string ToValueString(const QuotesType quotes_type = QuotesType::kDoubleQuotes) const;
   std::string ToString() const;
 
  private:
