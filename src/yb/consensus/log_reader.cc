@@ -55,7 +55,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 
-DEFINE_bool(enable_log_retention_by_op_idx, false,
+DEFINE_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");
 
 DEFINE_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are older will be "

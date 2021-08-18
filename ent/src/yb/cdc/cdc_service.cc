@@ -50,6 +50,8 @@
 #include "yb/util/shared_lock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+constexpr uint32_t kUpdateIntervalMs = 15 * 1000;
+
 DEFINE_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
              "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
 TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
@@ -63,7 +65,7 @@ DEFINE_int32(cdc_ybclient_reactor_threads, 50,
              "requests for CDC.");
 TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
 
-DEFINE_int32(cdc_state_checkpoint_update_interval_ms, 15 * 1000,
+DEFINE_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
              "Rate at which CDC state's checkpoint is updated.");
 
 DEFINE_string(certs_for_cdc_dir, "",
@@ -76,7 +78,7 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
              "replicated index across all streams is sent to the other peers in the configuration. "
              "If flag enable_log_retention_by_op_idx is disabled, this flag has no effect.");
 
-DEFINE_int32(update_metrics_interval_ms, 1000,
+DEFINE_int32(update_metrics_interval_ms, kUpdateIntervalMs,
              "How often to update xDC cluster metrics.");
 
 DEFINE_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
