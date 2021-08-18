@@ -366,6 +366,11 @@ def get_download_url(
                 "Assuming that the compiler type of 'gcc' means 'gcc5'. "
                 "This will change when we stop using Linuxbrew and update the compiler.")
             return get_download_url(metadata, 'gcc5', os_type, architecture)
+        if os_type == 'ubuntu18.04' and compiler_type == 'gcc':
+            logging.info(
+                "Assuming that the compiler type of 'gcc' means 'gcc7'. "
+                "This will change when we stop using Linuxbrew and update the compiler.")
+            return get_download_url(metadata, 'gcc7', os_type, architecture)
 
         logging.info(f"Available release archives:\n{to_yaml_str(available_archives)}")
         raise ValueError(
