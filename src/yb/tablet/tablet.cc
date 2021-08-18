@@ -1733,9 +1733,18 @@ Status Tablet::HandlePgsqlReadRequest(
 //   (1) full table scan queries
 //   (2) queries that whose key conditions are such that the query will require a multi tablet
 //       scan.
-Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request) const {
-  if (!pgsql_read_request.ybctid_column_value().value().binary_value().empty() ||
-      !pgsql_read_request.partition_column_values().empty()) {
+//
+// Requests that are of the form batched index lookups of ybctids are sent only to a single tablet.
+// However there can arise situations where tablets splitting occurs after such requests are being
+// prepared by the pggate layer (specifically pg_doc_op.cc). Under such circumstances, if tablets
+// are split into two sub-tablets, then such batched index lookups of ybctid requests should be sent
+// to multiple tablets (the two sub-tablets). Hence, the request ends up not being a single tablet
+// request.
+Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
+    size_t row_count) const {
+  if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
+        pgsql_read_request.batch_arguments_size() == row_count) ||
+       !pgsql_read_request.partition_column_values().empty() ) {
     return true;
   }
 
@@ -1754,9 +1763,27 @@ Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_r
 }
 
 Result<bool> Tablet::HasScanReachedMaxPartitionKey(
-    const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const {
+    const PgsqlReadRequestPB& pgsql_read_request,
+    const string& partition_key,
+    size_t row_count) const {
   if (metadata_->schema()->num_hash_key_columns() > 0) {
     uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    // For batched index lookup of ybctids, check if the current partition hash is lesser than
+    // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
+    // occur when tablets split after request is prepared.
+    if (pgsql_read_request.has_ybctid_column_value() &&
+        pgsql_read_request.batch_arguments_size() > row_count) {
+      if (!pgsql_read_request.upper_bound().has_key()) {
+          return false;
+      }
+      uint16_t upper_bound_hash =
+          PartitionSchema::DecodeMultiColumnHashValue(pgsql_read_request.upper_bound().key());
+      uint16_t partition_hash =
+          PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+          return pgsql_read_request.upper_bound().is_inclusive() ?
+            partition_hash > upper_bound_hash :
+            partition_hash >= upper_bound_hash;
+    }
     if (pgsql_read_request.has_max_hash_code() &&
         next_hash_code > pgsql_read_request.max_hash_code()) {
       return true;
@@ -1788,7 +1815,8 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
   // haven't hit it, or we are asked to return paging state even when we have hit the limit.
   // Otherwise, leave the paging state empty which means we are completely done reading for the
   // whole SELECT statement.
-  const bool single_tablet_query = VERIFY_RESULT(IsQueryOnlyForTablet(pgsql_read_request));
+  const bool single_tablet_query =
+      VERIFY_RESULT(IsQueryOnlyForTablet(pgsql_read_request, row_count));
   if (!single_tablet_query &&
       !response->has_paging_state() &&
       (!pgsql_read_request.has_limit() || row_count < pgsql_read_request.limit() ||
@@ -1802,7 +1830,8 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
             : metadata_->partition()->partition_key_start();
     // Check we did not reach the last tablet.
     const bool end_scan = next_partition_key.empty() ||
-        VERIFY_RESULT(HasScanReachedMaxPartitionKey(pgsql_read_request, next_partition_key));
+        VERIFY_RESULT(HasScanReachedMaxPartitionKey(
+            pgsql_read_request, next_partition_key, row_count));
     if (!end_scan) {
       response->mutable_paging_state()->set_next_partition_key(next_partition_key);
     }
