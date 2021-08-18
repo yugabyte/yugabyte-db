@@ -44,7 +44,10 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,6 +65,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.persistence.PersistenceException;
 import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -129,17 +133,26 @@ public class SessionController extends Controller {
         .orElseThrow(() -> new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
 
-  @Data
+  @ApiModel(description = "Session information")
+  @RequiredArgsConstructor
   public static class SessionInfo {
-    final String authToken;
-    final String apiToken;
-    final UUID customerUUID;
-    final UUID userUUID;
+    @ApiModelProperty(value = "Auth token")
+    public final String authToken;
+
+    @ApiModelProperty(value = "API token")
+    public final String apiToken;
+
+    @ApiModelProperty(value = "Customer UUID")
+    public final UUID customerUUID;
+
+    @ApiModelProperty(value = "User UUID")
+    public final UUID userUUID;
   }
 
   @ApiOperation(
       nickname = "getSessionInfo",
       value = "Get current user/customer uuid auth/api token",
+      authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
   public Result getSessionInfo() {
