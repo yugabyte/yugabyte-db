@@ -3069,7 +3069,7 @@
     "Provider" : {
       "properties" : {
         "active" : {
-          "description" : "Cloud Provider code",
+          "description" : "Provider active status",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -3078,7 +3078,7 @@
           "type" : "boolean"
         },
         "code" : {
-          "description" : "Cloud Provider code",
+          "description" : "Provider cloud code",
           "type" : "string"
         },
         "config" : {
@@ -3095,7 +3095,7 @@
           "type" : "array"
         },
         "customerUUID" : {
-          "description" : "Cloud Provider code",
+          "description" : "Customer uuid",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -3123,7 +3123,7 @@
           "type" : "string"
         },
         "name" : {
-          "description" : "Cloud Provider code",
+          "description" : "Provider name",
           "type" : "string"
         },
         "regions" : {
@@ -3146,13 +3146,13 @@
           "type" : "string"
         },
         "uuid" : {
-          "description" : "Provide uuid",
+          "description" : "Provider uuid",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         }
       },
-      "required" : [ "hostedZoneId", "hostedZoneName", "regions" ],
+      "required" : [ "regions" ],
       "type" : "object"
     },
     "Region" : {
@@ -3213,7 +3213,7 @@
           "type" : "array"
         }
       },
-      "required" : [ "securityGroupId", "vnetName", "zones" ],
+      "required" : [ "zones" ],
       "type" : "object"
     },
     "RegionFormData" : {
@@ -3401,23 +3401,27 @@
       "type" : "object"
     },
     "SessionInfo" : {
+      "description" : "Session information",
       "properties" : {
         "apiToken" : {
+          "description" : "API token",
           "type" : "string"
         },
         "authToken" : {
+          "description" : "Auth token",
           "type" : "string"
         },
         "customerUUID" : {
+          "description" : "Customer UUID",
           "format" : "uuid",
           "type" : "string"
         },
         "userUUID" : {
+          "description" : "User UUID",
           "format" : "uuid",
           "type" : "string"
         }
       },
-      "required" : [ "apiToken", "authToken", "customerUUID", "userUUID" ],
       "type" : "object"
     },
     "SmtpData" : {
@@ -9414,6 +9418,9 @@
             }
           }
         },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
         "summary" : "Get current user/customer uuid auth/api token",
         "tags" : [ "Session" ]
       }
