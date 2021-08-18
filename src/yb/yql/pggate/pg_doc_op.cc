@@ -45,7 +45,6 @@ using std::move;
 using yb::client::YBPgsqlOp;
 using yb::client::YBPgsqlReadOp;
 using yb::client::YBPgsqlWriteOp;
-using yb::client::YBOperation;
 
 namespace yb {
 namespace pggate {
@@ -320,12 +319,40 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
     // Get total number of rows that are operated on.
     rows_affected_count_ += pgsql_op->response().rows_affected_count();
 
+    // A single batch of requests almost always is directed to fetch data from a single tablet.
+    // However, when tablets split, data can be sharded/distributed across multiple tablets.
+    // Due to automatic tablet splitting, there can exist scenarios where a pgsql_operation prepares
+    // a request for a single tablet before the split occurs and then a tablet can be split to
+    // multiple tablets. Hence, a single pgsql_op would potentially end up fetching data from
+    // multiple tablets.
+    //
+    // For example consider a query select * from table where i=1 order by j;
+    // where there exists a secondary index table_i_j_idx (i HASH, j ASC). Since, there is an
+    // ordering constraint, the ybctids are ordered on j;
+    //     ybctid[partition 1] contains (ybctid_1, ybctid_3, ybctid_4)
+    //     ybctid[partition 2] contains (ybctid_2, ybctid_6)
+    //     ybctid[partition 3] contains (ybctid_5, ybctid_7)
+    //
+    // say partition 1 splits into partition 1.1 and partition 1.2
+    // ybctid[partition 1.1] contains (ybctid_1, ybctid_4) -> pgsql_op for partition 1
+    // ybctid[partition 1.2] contains (ybctid_3) -> pgsql_op partition 1 with paging state
+    //
+    // In order to match the ordering constraints between the request and the responses, we
+    // obtain the orders of requests executed in each partition and send it along with the responses
+    // so that pg_gate can send responses to the postgres layer in the correct order.
+
     // Get contents.
     if (!pgsql_op->rows_data().empty()) {
       if (no_sorting_order) {
         result.emplace_back(pgsql_op->rows_data());
       } else {
-        result.emplace_back(pgsql_op->rows_data(), std::move(batch_row_orders_[op_index]));
+        const auto& batch_orders = pgsql_op->response().batch_orders();
+        if (!batch_orders.empty()) {
+          result.emplace_back(pgsql_op->rows_data(),
+                              std::list<int64_t>(batch_orders.begin(), batch_orders.end()));
+        } else {
+          result.emplace_back(pgsql_op->rows_data(), std::move(batch_row_orders_[op_index]));
+        }
       }
     }
   }
@@ -428,10 +455,10 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
   //
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
   RETURN_NOT_OK(InitializeYbctidOperators());
+  const auto& partition_keys = table_desc_->GetPartitions();
 
   // Begin a batch of ybctids.
   end_of_data_ = false;
-
   // Assign ybctid values.
   for (const Slice& ybctid : *ybctids) {
     // Find partition. The partition index is the boundary order minus 1.
@@ -440,7 +467,7 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
     SCHECK(ybctid.size() > 0, InternalError, "Invalid ybctid value");
     // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
     // the following lines?
-    size_t partition = VERIFY_RESULT(table_desc_->FindPartitionIndex(ybctid));
+    const size_t partition = VERIFY_RESULT(table_desc_->FindPartitionIndex(ybctid));
     SCHECK(partition < table_desc_->GetPartitionCount(), InternalError,
            "Ybctid value is not within partition boundary");
 
@@ -452,8 +479,22 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
       // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
       //   of ybctid-batching operation.
       read_op->set_active(true);
+      read_op->mutable_request()->set_is_forward_scan(true);
       read_op->mutable_request()->mutable_ybctid_column_value()->mutable_value()
         ->set_binary_value(ybctid.data(), ybctid.size());
+
+      // For every read operation set partition boundary. In case a tablet is split between
+      // preparing requests and executing them, docDB will return a paging state for pggate to
+      // contiunue till the end of current tablet is reached.
+      std::string upper_bound;
+      if (partition < partition_keys.size() - 1) {
+        upper_bound = partition_keys[partition + 1];
+      }
+      RETURN_NOT_OK(table_desc_->SetScanBoundary(read_op->mutable_request(),
+                                                 partition_keys[partition],
+                                                 /* lower_bound_is_inclusive */ true,
+                                                 upper_bound,
+                                                 /* upper_bound_is_inclusive */ false));
     }
 
     // Append ybctid and its order to batch_arguments.
@@ -478,8 +519,6 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
 }
 
 Status PgDocReadOp::InitializeYbctidOperators() {
-  // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
-  // the following lines?
   int op_count = table_desc_->GetPartitionCount();
 
   if (batch_row_orders_.size() == 0) {
@@ -897,6 +936,8 @@ Status PgDocReadOp::ResetInactivePgsqlOps() {
     read_req->clear_hash_code();
     read_req->clear_max_hash_code();
     read_req->clear_paging_state();
+    read_req->clear_lower_bound();
+    read_req->clear_upper_bound();
   }
 
   // Clear row orders.

@@ -1,0 +1,7 @@
+####################################################################################################
+# LARGE TABLE Testsuite
+# Test for table of 50K rows.
+####################################################################################################
+test: yb_create_large_table_tablet_split
+test: yb_large_copy
+test: yb_select_large

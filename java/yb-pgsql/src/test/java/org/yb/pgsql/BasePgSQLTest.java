@@ -43,6 +43,8 @@ import org.yb.minicluster.Metrics.YSQLStat;
 import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
 import org.yb.util.SanitizerUtil;
+import org.yb.util.YBBackupUtil;
+import org.yb.util.YBBackupException;
 import org.yb.master.Master;
 
 import java.io.File;
@@ -249,6 +251,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePostgres(true);
+  }
+
+  @Before
+  public void initYBBackupUtil() {
+    YBBackupUtil.setMasterAddresses(masterAddresses);
+    YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
   }
 
   @Before
@@ -615,6 +623,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
     }
     return count;
+  }
+
+  protected static List<String> getTabletsForTable(
+    String database, String tableName) throws Exception {
+    try {
+      return YBBackupUtil.getTabletsForTable("ysql." + database, tableName);
+    } catch (YBBackupException e) {
+      return new ArrayList<>();
+    }
   }
 
   protected long getMetricCounter(String metricName) throws Exception {

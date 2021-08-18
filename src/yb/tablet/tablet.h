@@ -789,10 +789,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
-  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request) const;
+  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
+      size_t row_count) const;
 
   Result<bool> HasScanReachedMaxPartitionKey(
-      const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const;
+      const PgsqlReadRequestPB& pgsql_read_request,
+      const string& partition_key,
+      size_t row_count) const;
 
   // Sets metadata_cache_ to nullptr. This is done atomically to avoid race conditions.
   void ResetYBMetaDataCache();

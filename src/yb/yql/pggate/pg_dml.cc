@@ -19,6 +19,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/util/debug-util.h"
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
@@ -272,6 +273,7 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
   RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(ybctids));
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }
 

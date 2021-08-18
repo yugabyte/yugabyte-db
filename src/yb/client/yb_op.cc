@@ -755,24 +755,24 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
 Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
   // Read partition key from read request.
   const Schema &schema = table_->InternalSchema();
-  const auto &ybctid = read_request_->ybctid_column_value().value();
 
   // Seek a specific partition_key from read_request.
   // 1. Not specified hash condition - Full scan.
-  // 2. ybctid -- Given to fetch one specific row.
-  // 3. paging_state -- Set by server to continue current request.
-  // 4. lower and upper bound -- Set by PgGate to query a specific set of hash values.
-  // 5. hash column values -- Given to scan ONE SET of specfic hash values.
-  // 6. range and regular condition - These are filter expression and will be processed by DocDB.
+  // 2. paging_state -- Set by server to continue current request.
+  // 3. lower and upper bound -- Set by PgGate to query a specific set of hash values.
+  // 4. hash column values -- Given to scan ONE SET of specfic hash values.
+  // 5. range and regular condition - These are filter expression and will be processed by DocDB.
   //    Shouldn't we able to set RANGE boundary here?
-  if (!IsNull(ybctid)) {
-    // If ybctid value is given, find its associated partition key.
-    const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
-    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
-    read_request_->set_hash_code(hash_code);
-    read_request_->set_max_hash_code(hash_code);
 
-  } else if (read_request_->has_paging_state() &&
+  // If primary index lookup using ybctid requests are batched, there is a possibility that tablets
+  // might get split after the batch of requests have been prepared. Hence, we need to execute the
+  // prepared request in both tablet partitions. For this purpose, we use paging state to continue
+  // executing the request in the second sub-partition after completing the first sub-partition.
+  //
+  // batched ybctids
+  // In order to represent a single ybctid or a batch of ybctids, we leverage the lower bound and
+  // upper bounds to set hash codes and max hash codes.
+  if (read_request_->has_paging_state() &&
              read_request_->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state. This is only
     // supported for forward scan.
