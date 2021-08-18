@@ -43,6 +43,8 @@ const validate = (values) => {
     values.regionsZonesList.forEach(function (regionZoneItem, rowIdx) {
       if (!isDefinedNotNull(regionZoneItem.code)) {
         errors.regionsZonesList[rowIdx] = { code: 'Required' };
+      } else if (regionZoneItem.code.length > 25) {
+        errors.regionsZonesList[rowIdx] = { code: 'max char limit is 25' };
       }
       if (!isDefinedNotNull(regionZoneItem.location)) {
         errors.regionsZonesList[rowIdx] = { location: 'Required' };

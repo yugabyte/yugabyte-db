@@ -269,6 +269,19 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateRegionsWithLongRegionName() {
+    ObjectNode regionJson = Json.newObject();
+    regionJson.put("code", "datacenter-azure-washington");
+    regionJson.put("name", "Gcp US West 1");
+    Result result = assertYWSE(() -> createRegion(provider.uuid, regionJson));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "success", "false");
+    assertNotNull(json.get("error"));
+    assertEquals(json.get("error").get("code").get(0).asText(), "Maximum length is 25");
+  }
+
+  @Test
   public void testDeleteRegionWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
     Result result = assertYWSE(() -> deleteRegion(provider.uuid, randomUUID));
