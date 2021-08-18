@@ -592,12 +592,60 @@ SELECT count(*) FROM simple_path;
 (1 row)
 
 --
+-- check the cypher CREATE clause inside of a BEGIN/END/COMMIT block
+--
+BEGIN;
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '670'}) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtype);
+                                          a                                           
+--------------------------------------------------------------------------------------
+ {"id": 3659174697238529, "label": "Part", "properties": {"part_num": "670"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '671'}) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '672'}) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtype);
+                                          a                                           
+--------------------------------------------------------------------------------------
+ {"id": 3659174697238529, "label": "Part", "properties": {"part_num": "670"}}::vertex
+ {"id": 3659174697238530, "label": "Part", "properties": {"part_num": "671"}}::vertex
+ {"id": 3659174697238531, "label": "Part", "properties": {"part_num": "672"}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '673'}) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtype);
+                                          a                                           
+--------------------------------------------------------------------------------------
+ {"id": 3659174697238529, "label": "Part", "properties": {"part_num": "670"}}::vertex
+ {"id": 3659174697238530, "label": "Part", "properties": {"part_num": "671"}}::vertex
+ {"id": 3659174697238531, "label": "Part", "properties": {"part_num": "672"}}::vertex
+ {"id": 3659174697238532, "label": "Part", "properties": {"part_num": "673"}}::vertex
+(4 rows)
+
+END;
+--
 -- Clean up
 --
 DROP TABLE simple_path;
 DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 12 other objects
+NOTICE:  drop cascades to 13 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
@@ -610,6 +658,7 @@ drop cascades to table cypher_create.new_vertex
 drop cascades to table cypher_create.existing_vlabel
 drop cascades to table cypher_create.existing_elabel
 drop cascades to table cypher_create.knows
+drop cascades to table cypher_create."Part"
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------

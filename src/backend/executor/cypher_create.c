@@ -143,7 +143,6 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
     if (estate->es_output_cid == 0)
         estate->es_output_cid = estate->es_snapshot->curcid;
 
-    CommandCounterIncrement();
     Increment_Estate_CommandId(estate);
 }
 
@@ -197,55 +196,59 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
     EState *estate = css->css.ss.ps.state;
     ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
     TupleTableSlot *slot;
+    bool terminal = CYPHER_CLAUSE_IS_TERMINAL(css->flags);
+    bool used = false;
 
-    if (CYPHER_CLAUSE_IS_TERMINAL(css->flags))
+    /*
+     * If the CREATE clause was the final cypher clause written then we aren't
+     * returning anything from this result node. So the exec_cypher_create
+     * function will only be called once. Therefore we will process all tuples
+     * from the subtree at once.
+     */
+    do
     {
-        /*
-         * If the CREATE clause was the final cypher clause written
-         * then we aren't returning anything from this result node.
-         * So the exec_cypher_create function will only be called once.
-         * Therefore we will process all tuples from the subtree at once.
-         */
-        while(true)
-        {
-            //Process the subtree first
-            Decrement_Estate_CommandId(estate)
-            slot = ExecProcNode(node->ss.ps.lefttree);
-            Increment_Estate_CommandId(estate)
-
-            if (TupIsNull(slot))
-                break;
-
-            // setup the scantuple that the process_pattern needs
-            econtext->ecxt_scantuple =
-                node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
-
-            process_pattern(css);
-        }
-
-        return NULL;
-    }
-    else
-    {
-        //Process the subtree first
+        /*Process the subtree first */
         Decrement_Estate_CommandId(estate)
         slot = ExecProcNode(node->ss.ps.lefttree);
         Increment_Estate_CommandId(estate)
-
+        /* break when there are no tuples */
         if (TupIsNull(slot))
-            return NULL;
-
-        // setup the scantuple that the process_delete_list needs
+        {
+            break;
+        }
+        /* setup the scantuple that the process_pattern needs */
         econtext->ecxt_scantuple =
             node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
-
         process_pattern(css);
-
-        econtext->ecxt_scantuple =
-            ExecProject(node->ss.ps.lefttree->ps_ProjInfo);
-
-        return ExecProject(node->ss.ps.ps_ProjInfo);
+        /*
+         * This may not be necessary. If we have an empty pattern, nothing was
+         * inserted and the current command Id was not used. So, only flag it
+         * if there is a non empty pattern.
+         */
+        if (list_length(css->pattern) > 0)
+        {
+            /* the current command Id has been used */
+            used = true;
+        }
+    } while (terminal);
+    /*
+     * If the current command Id wasn't used, nothing was inserted and we're
+     * done.
+     */
+    if (!used)
+    {
+        return NULL;
     }
+    /* update the current command Id */
+    CommandCounterIncrement();
+    /* if this was a terminal CREATE just return NULL */
+    if (terminal)
+    {
+        return NULL;
+    }
+
+    econtext->ecxt_scantuple = ExecProject(node->ss.ps.lefttree->ps_ProjInfo);
+    return ExecProject(node->ss.ps.ps_ProjInfo);
 }
 
 static void end_cypher_create(CustomScanState *node)
@@ -651,8 +654,8 @@ static HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
         ExecConstraints(resultRelInfo, elemTupleSlot, estate);
 
     // Insert the tuple normally
-    heap_insert(resultRelInfo->ri_RelationDesc, tuple, estate->es_output_cid,
-                0, NULL);
+    heap_insert(resultRelInfo->ri_RelationDesc, tuple,
+                GetCurrentCommandId(true), 0, NULL);
 
     // Insert index entries for the tuple
     if (resultRelInfo->ri_NumIndices > 0)

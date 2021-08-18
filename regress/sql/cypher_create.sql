@@ -283,6 +283,22 @@ INSERT INTO simple_path(SELECT * FROM cypher('cypher_create',
     $$) AS (u agtype, e agtype, v agtype));
 
 SELECT count(*) FROM simple_path;
+
+--
+-- check the cypher CREATE clause inside of a BEGIN/END/COMMIT block
+--
+BEGIN;
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '670'}) $$) as (a agtype);
+SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '671'}) $$) as (a agtype);
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '672'}) $$) as (a agtype);
+SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$ CREATE (a:Part {part_num: '673'}) $$) as (a agtype);
+SELECT * FROM cypher('cypher_create', $$ MATCH (a:Part) RETURN a $$) as (a agtype);
+END;
+
 --
 -- Clean up
 --
