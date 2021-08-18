@@ -10,7 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ModelFactory;
@@ -22,12 +21,10 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
-  @InjectMocks Commissioner commissioner;
 
   private TaskInfo submitTask() {
     Universe u = ModelFactory.createUniverse("test_universe", defaultCustomer.getCustomerId());

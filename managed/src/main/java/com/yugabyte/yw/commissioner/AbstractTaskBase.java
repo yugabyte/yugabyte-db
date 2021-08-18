@@ -15,15 +15,11 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -32,16 +28,6 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class AbstractTaskBase implements ITask {
-
-  // Number of threads to keep in the pool, even if they are idle
-  private static final int CORE_POOL_SIZE = 2;
-
-  // Maximum number of threads to allow in the pool at a time.
-  private static final int MAX_POOL_SIZE = 10;
-
-  // The maximum time that excess idle threads will wait for new tasks before terminating.
-  // The unit is specified in the API (and is seconds).
-  private static final long THREAD_ALIVE_TIME = 60L;
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -67,6 +53,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final AlertDefinitionGroupService alertDefinitionGroupService;
   protected final YBClientService ybService;
   protected final TableManager tableManager;
+  private final YBThreadPoolExecutorFactory ybThreadPoolExecutorFactory;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -79,6 +66,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.alertDefinitionGroupService = baseTaskDependencies.getAlertDefinitionGroupService();
     this.ybService = baseTaskDependencies.getYbService();
     this.tableManager = baseTaskDependencies.getTableManager();
+    this.ybThreadPoolExecutorFactory = baseTaskDependencies.getExecutorFactory();
   }
 
   protected ITaskParams taskParams() {
@@ -113,14 +101,7 @@ public abstract class AbstractTaskBase implements ITask {
   public void createThreadpool() {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor =
-        new ThreadPoolExecutor(
-            CORE_POOL_SIZE,
-            MAX_POOL_SIZE,
-            THREAD_ALIVE_TIME,
-            TimeUnit.SECONDS,
-            new LinkedBlockingQueue<Runnable>(),
-            namedThreadFactory);
+    executor = ybThreadPoolExecutorFactory.createExecutor("task", namedThreadFactory);
   }
 
   @Override
@@ -148,29 +129,27 @@ public abstract class AbstractTaskBase implements ITask {
   public UniverseUpdater nodeStateUpdater(
       final UUID universeUUID, final String nodeName, final NodeDetails.NodeState state) {
     UniverseUpdater updater =
-        new UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            NodeDetails node = universe.getNode(nodeName);
-            if (node == null) {
-              return;
-            }
-            log.info(
-                "Changing node {} state from {} to {} in universe {}.",
-                nodeName,
-                node.state,
-                state,
-                universeUUID);
-            node.state = state;
-            if (state == NodeDetails.NodeState.Decommissioned) {
-              node.cloudInfo.private_ip = null;
-              node.cloudInfo.public_ip = null;
-            }
-
-            // Update the node details.
-            universeDetails.nodeDetailsSet.add(node);
-            universe.setUniverseDetails(universeDetails);
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          NodeDetails node = universe.getNode(nodeName);
+          if (node == null) {
+            return;
           }
+          log.info(
+              "Changing node {} state from {} to {} in universe {}.",
+              nodeName,
+              node.state,
+              state,
+              universeUUID);
+          node.state = state;
+          if (state == NodeDetails.NodeState.Decommissioned) {
+            node.cloudInfo.private_ip = null;
+            node.cloudInfo.public_ip = null;
+          }
+
+          // Update the node details.
+          universeDetails.nodeDetailsSet.add(node);
+          universe.setUniverseDetails(universeDetails);
         };
     return updater;
   }
