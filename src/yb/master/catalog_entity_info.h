@@ -57,7 +57,6 @@ YB_STRONGLY_TYPED_BOOL(IncludeSplitTablets);
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
 struct TabletReplicaDriveInfo {
-  std::string ts_path;
   uint64 sst_files_size = 0;
   uint64 wal_files_size = 0;
   uint64 uncompressed_sst_file_size = 0;
@@ -77,6 +76,8 @@ struct TabletReplica {
   // where a tablet has just been split and still refers to data from its parent which is no longer
   // relevant, for example.
   bool should_disable_lb_move = false;
+
+  std::string fs_data_dir;
 
   TabletReplicaDriveInfo drive_info;
 

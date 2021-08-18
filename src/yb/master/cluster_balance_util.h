@@ -446,7 +446,7 @@ class PerTableLoadState {
       } else if (replica_is_stale) {
         VLOG(1) << "Replica is stale: " << replica.second.ToString();
       }
-      RETURN_NOT_OK(AddTabletOnTSPath(tablet_id, replica.second.drive_info.ts_path, ts_uuid));
+      RETURN_NOT_OK(AddTabletOnTSPath(tablet_id, replica.second.fs_data_dir, ts_uuid));
       if (replica.second.should_disable_lb_move) {
         RETURN_NOT_OK(AddDisabledByTSTablet(tablet_id, ts_uuid));
         VLOG(1) << "Replica was disabled by TS: " << replica.second.ToString();
