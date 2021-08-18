@@ -343,6 +343,12 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //     pgsql_op <partition 2> (ybctid_2, ybctid_6)
   //     pgsql_op <partition 2> (ybctid_5, ybctid_7)
   //
+  //  These respective ybctids are stored in batch_ybctid_ also.
+  //  In other words,
+  //     batch_ybctid_[partition 1] contains  (ybctid_1, ybctid_3, ybctid_4)
+  //     batch_ybctid_[partition 2] contains  (ybctid_2, ybctid_6)
+  //     batch_ybctid_[partition 3] contains  (ybctid_5, ybctid_7)
+  //
   //   After getting the rows of data from pgsql, the rows must be then ordered from 1 thru 7.
   //   To do so, for each pgsql_op we kept an array of orders, batch_row_orders_.
   //   For the above pgsql_ops_, the orders would be cached as the following.
