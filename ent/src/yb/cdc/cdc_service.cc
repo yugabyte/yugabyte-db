@@ -350,6 +350,11 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   cdc_enabled_.store(true, std::memory_order_release);
 
   auto session = async_client_init_->client()->NewSession();
+  CoarseTimePoint deadline = context.GetClientDeadline();
+  if (deadline == CoarseTimePoint::max()) { // Not specified by user.
+    deadline = CoarseMonoClock::now() + async_client_init_->client()->default_rpc_timeout();
+  }
+  session->SetDeadline(deadline);
   OpId op_id;
 
   if (req->has_from_checkpoint()) {
@@ -878,6 +883,11 @@ void CDCServiceImpl::GetCheckpoint(const GetCheckpointRequestPB* req,
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
   auto session = async_client_init_->client()->NewSession();
+  CoarseTimePoint deadline = context.GetClientDeadline();
+  if (deadline == CoarseTimePoint::max()) { // Not specified by user.
+    deadline = CoarseMonoClock::now() + async_client_init_->client()->default_rpc_timeout();
+  }
+  session->SetDeadline(deadline);
 
   auto result = GetLastCheckpoint(producer_tablet, session);
   RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
@@ -1109,6 +1119,11 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
     }
     bootstrap_ids.push_back(std::move(bootstrap_id));
   }
+  CoarseTimePoint deadline = context.GetClientDeadline();
+  if (deadline == CoarseTimePoint::max()) { // Not specified by user.
+    deadline = CoarseMonoClock::now() + async_client_init_->client()->default_rpc_timeout();
+  }
+  session->SetDeadline(deadline);
   Status s = session->ApplyAndFlush(ops);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
