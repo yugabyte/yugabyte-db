@@ -338,6 +338,18 @@ Status Socket::Bind(const Endpoint& endpoint, bool explain_addr_in_use) {
   return Status::OK();
 }
 
+Status CheckAcceptError(Socket *new_conn) {
+  if (new_conn->GetFd() < 0) {
+    if (IsTemporarySocketError(errno)) {
+      static const Status try_accept_again = STATUS(TryAgain, "Accept not yet ready");
+      return try_accept_again;
+    }
+    return STATUS(NetworkError, "Accept failed", Errno(errno));
+  }
+
+  return Status::OK();
+}
+
 Status Socket::Accept(Socket *new_conn, Endpoint* remote, int flags) {
   TRACE_EVENT0("net", "Socket::Accept");
   Endpoint temp;
@@ -349,18 +361,10 @@ Status Socket::Accept(Socket *new_conn, Endpoint* remote, int flags) {
     accept_flags |= SOCK_NONBLOCK;
   }
   new_conn->Reset(::accept4(fd_, temp.data(), &olen, accept_flags));
-  if (new_conn->GetFd() < 0) {
-    return STATUS(NetworkError, "accept4(2) error", Errno(errno));
-  }
+  RETURN_NOT_OK(CheckAcceptError(new_conn));
 #else
   new_conn->Reset(::accept(fd_, temp.data(), &olen));
-  if (new_conn->GetFd() < 0) {
-    if (IsTemporarySocketError(errno)) {
-      static const Status try_accept_again = STATUS(TryAgain, "Accept not yet ready");
-      return try_accept_again;
-    }
-    return STATUS(NetworkError, "accept(2) error", Errno(errno));
-  }
+  RETURN_NOT_OK(CheckAcceptError(new_conn));
   RETURN_NOT_OK(new_conn->SetNonBlocking(flags & FLAG_NONBLOCKING));
   RETURN_NOT_OK(new_conn->SetCloseOnExec());
 #endif // defined(__linux__)
