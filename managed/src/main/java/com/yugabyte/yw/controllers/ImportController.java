@@ -76,7 +76,7 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
-@Api(value = "Import a universe", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(value = "Import a universe", tags = "Universe actions", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class ImportController extends AuthenticatedController {
 

@@ -7207,7 +7207,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Import a universe",
-        "tags" : [ "Import a universe" ]
+        "tags" : [ "Universe actions" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}" : {
@@ -9374,8 +9374,6 @@
   }, {
     "name" : "Encryption at rest"
   }, {
-    "name" : "Import a universe"
-  }, {
     "name" : "Instance types"
   }, {
     "name" : "Metrics"
@@ -9401,6 +9399,8 @@
     "name" : "Universe Actions"
   }, {
     "name" : "Universe YB Database"
+  }, {
+    "name" : "Universe actions"
   }, {
     "name" : "Universe node metadata (metamaster)"
   }, {
