@@ -18,7 +18,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -36,7 +35,6 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.YBClient;
 import play.libs.Json;
@@ -44,23 +42,15 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class ResumeUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks private Commissioner commissioner;
-  private ShellResponse dummyShellResponse;
-  private ShellResponse preflightSuccessResponse;
-  private YBClient mockClient;
-
   private Universe defaultUniverse;
-  private String nodePrefix = "demo-universe";
-
-  Map<String, String> config = new HashMap<>();
 
   @Before
   public void setUp() {
     super.setUp();
-    mockClient = mock(YBClient.class);
+    YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    dummyShellResponse = new ShellResponse();
+    ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
@@ -79,6 +69,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     userIntent.universeName = "demo-universe";
 
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    String nodePrefix = "demo-universe";
     Universe.saveDetails(
         defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(
@@ -112,7 +103,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails =
-          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -133,14 +124,13 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testResumeUniverseSuccess() {
     setupUniverse(false);
-    ShellResponse response = new ShellResponse();
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.uuid;
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));

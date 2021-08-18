@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
@@ -68,8 +67,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     }
   }
 
-  @InjectMocks Commissioner commissioner;
-
   @InjectMocks VMImageUpgrade vmImageUpgrade;
 
   List<TaskType> UPGRADE_TASK_SEQUENCE =
@@ -91,6 +88,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+
     vmImageUpgrade.setUserTaskUUID(UUID.randomUUID());
   }
 

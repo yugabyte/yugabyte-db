@@ -11,7 +11,6 @@ import static org.mockito.Mockito.verify;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
@@ -31,8 +30,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 @RunWith(MockitoJUnitRunner.class)
 public class RestartUniverseTest extends UpgradeTaskTest {
 
-  @InjectMocks Commissioner commissioner;
-
   @InjectMocks RestartUniverse restartUniverse;
 
   List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
@@ -48,6 +45,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+
     restartUniverse.setUserTaskUUID(UUID.randomUUID());
   }
 
