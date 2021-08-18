@@ -708,6 +708,8 @@ message ReportedTabletPB {
 
   // Replica is reporting that load balancer moves should be disabled
   optional bool should_disable_lb_move = 7;
+
+  optional bytes fs_data_dir = 8;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.
@@ -774,20 +776,13 @@ message TabletForSplitPB {
   optional bytes OBSOLETE_split_encoded_key = 3;
 }
 
-message ListTabletsOnPathPB {
-  required bytes path_id = 1;
-  message TabletOnPath {
-    required bytes tablet_id = 1;
-    optional uint64 sst_file_size = 2;
-    optional uint64 wal_file_size = 3;
-    optional uint64 uncompressed_sst_file_size = 4;
-    optional bool may_have_orphaned_post_split_data = 5 [default = true];
-  }
-  repeated TabletOnPath tablet = 2;
-}
 
-message TabletPathInfoPB {
-  repeated ListTabletsOnPathPB list_path = 1;
+message TabletDriveStorageMetadataPB {
+  required bytes tablet_id = 1;
+  optional uint64 sst_file_size = 2;
+  optional uint64 wal_file_size = 3;
+  optional uint64 uncompressed_sst_file_size = 4;
+  optional bool may_have_orphaned_post_split_data = 5 [default = true];
 }
 
 message TSSnapshotScheduleInfoPB {
@@ -852,7 +847,9 @@ message TSHeartbeatRequestPB {
   // Roundtrip time for previous heartbeat in microseconds.
   optional int64 rtt_us = 12;
 
-  optional TabletPathInfoPB tablet_path_info = 13;
+  reserved 13;
+
+  repeated TabletDriveStorageMetadataPB storage_metadata = 14;
 }
 
 message TSHeartbeatResponsePB {
