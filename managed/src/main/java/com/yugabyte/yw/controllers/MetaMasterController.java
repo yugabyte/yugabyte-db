@@ -41,7 +41,7 @@ public class MetaMasterController extends Controller {
 
   @Inject KubernetesManager kubernetesManager;
 
-  @ApiOperation(value = "get masters list", response = MastersList.class)
+  @ApiOperation(value = "List a universe's master nodes", response = MastersList.class)
   public Result get(UUID universeUUID) {
     // Lookup the entry for the instanceUUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -53,22 +53,22 @@ public class MetaMasterController extends Controller {
     return YWResults.withData(masters);
   }
 
-  @ApiOperation(value = "get master address", response = String.class)
+  @ApiOperation(value = "List a master node's addresses", response = String.class)
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.MASTER);
   }
 
-  @ApiOperation(value = "get YQL server address", response = String.class)
+  @ApiOperation(value = "List a YQL server's addresses", response = String.class)
   public Result getYQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YQLSERVER);
   }
 
-  @ApiOperation(value = "get YSQL server address", response = String.class)
+  @ApiOperation(value = "List a YSQL server's addresses", response = String.class)
   public Result getYSQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YSQLSERVER);
   }
 
-  @ApiOperation(value = "get redis server address", response = String.class)
+  @ApiOperation(value = "List a REDIS server's addresses", response = String.class)
   public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
   }

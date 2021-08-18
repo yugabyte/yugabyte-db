@@ -708,7 +708,7 @@
       "properties" : {
         "alertingEmail" : {
           "description" : "Alert email id",
-          "example" : "test@gmail.com",
+          "example" : "test@example.com",
           "type" : "string"
         },
         "checkIntervalMs" : {
@@ -1672,7 +1672,7 @@
         },
         "email" : {
           "description" : "Alert email",
-          "example" : "test@gmail.com",
+          "example" : "test@example.com",
           "type" : "string"
         },
         "features" : {
@@ -3321,7 +3321,7 @@
       "properties" : {
         "emailFrom" : {
           "description" : "SMTP email id",
-          "example" : "test@gmail.com",
+          "example" : "test@example.com",
           "type" : "string"
         },
         "smtpPassword" : {
@@ -3337,7 +3337,7 @@
         },
         "smtpServer" : {
           "description" : "SMTP server",
-          "example" : "smtp.gmail.com",
+          "example" : "smtp.example.com",
           "type" : "string"
         },
         "smtpUsername" : {
@@ -4044,7 +4044,7 @@
         },
         "email" : {
           "description" : "User email address",
-          "example" : "test@gmail.com",
+          "example" : "test@example.com",
           "type" : "string"
         },
         "features" : {
@@ -4094,7 +4094,7 @@
         },
         "email" : {
           "description" : "User email id",
-          "example" : "username1@email.com",
+          "example" : "username1@example.com",
           "type" : "string"
         },
         "isPrimary" : {
@@ -5602,8 +5602,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List KMS config",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "List KMS configurations",
+        "tags" : [ "Encryption at rest" ]
       }
     },
     "/api/v1/customers/{cUUID}/kms_configs/{configUUID}" : {
@@ -5634,8 +5634,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete KMS config",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "Delete a KMS configuration",
+        "tags" : [ "Encryption at rest" ]
       },
       "get" : {
         "description" : "",
@@ -5667,8 +5667,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "KMS config detail by config UUID",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "Get details of a KMS configuration",
+        "tags" : [ "Encryption at rest" ]
       }
     },
     "/api/v1/customers/{cUUID}/kms_configs/{kmsProvider}" : {
@@ -5687,9 +5687,9 @@
           "required" : true,
           "type" : "string"
         }, {
-          "description" : "KMS Config to be created",
+          "description" : "KMS config to be created",
           "in" : "body",
-          "name" : "KMS Config",
+          "name" : "KMS config",
           "required" : true,
           "schema" : {
             "type" : "object"
@@ -5706,8 +5706,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create KMS config",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "Create a KMS configuration",
+        "tags" : [ "Encryption at rest" ]
       }
     },
     "/api/v1/customers/{cUUID}/metrics" : {
@@ -6069,7 +6069,7 @@
             }
           },
           "500" : {
-            "description" : "If there was a server or database issue when listing the backups",
+            "description" : "If there was a server or database issue when listing the instance types",
             "schema" : {
               "$ref" : "#/definitions/YWError"
             }
@@ -6078,8 +6078,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "list Instance Types for specific provider.",
-        "tags" : [ "Instance Type" ]
+        "summary" : "List a provider's instance types",
+        "tags" : [ "Instance types" ]
       },
       "post" : {
         "description" : "",
@@ -6097,9 +6097,9 @@
           "required" : true,
           "type" : "string"
         }, {
-          "description" : "instance type data of the instance to be stored",
+          "description" : "Instance type data of the instance to be stored",
           "in" : "body",
-          "name" : "instance type",
+          "name" : "Instance type",
           "required" : true,
           "schema" : {
             "$ref" : "#/definitions/InstanceType"
@@ -6116,8 +6116,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "create Instance type",
-        "tags" : [ "Instance Type" ]
+        "summary" : "Create an instance type",
+        "tags" : [ "Instance types" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/instance_types/{code}" : {
@@ -6153,8 +6153,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "delete",
-        "tags" : [ "Instance Type" ]
+        "summary" : "Delete an instance type",
+        "tags" : [ "Instance types" ]
       },
       "get" : {
         "description" : "",
@@ -6188,8 +6188,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get instance type through instance type code.",
-        "tags" : [ "Instance Type" ]
+        "summary" : "Get details of an instance type",
+        "tags" : [ "Instance types" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/instances/{instanceIP}" : {
@@ -7206,8 +7206,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "import",
-        "tags" : [ "Import" ]
+        "summary" : "Import a universe",
+        "tags" : [ "Import a universe" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}" : {
@@ -7568,8 +7568,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Remove key ref History",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "Remove a universe's key reference history",
+        "tags" : [ "Encryption at rest" ]
       },
       "get" : {
         "description" : "",
@@ -7601,8 +7601,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get key ref History",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "Get a universe's key reference history",
+        "tags" : [ "Encryption at rest" ]
       },
       "post" : {
         "description" : "",
@@ -7634,8 +7634,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Retrive KMS key",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "Retrive a universe's KMS key",
+        "tags" : [ "Encryption at rest" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/kms/key_ref" : {
@@ -7669,8 +7669,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get key ref",
-        "tags" : [ "Encryption At Rest" ]
+        "summary" : "Get a universe's key reference",
+        "tags" : [ "Encryption at rest" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/leader" : {
@@ -7797,7 +7797,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get master address",
+        "summary" : "List a master node's addresses",
         "tags" : [ "Metamaster" ]
       }
     },
@@ -7901,7 +7901,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get redis server address",
+        "summary" : "List a REDIS server's addresses",
         "tags" : [ "Metamaster" ]
       }
     },
@@ -8604,7 +8604,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get YQL server address",
+        "summary" : "List a YQL server's addresses",
         "tags" : [ "Metamaster" ]
       }
     },
@@ -8636,7 +8636,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get YSQL server address",
+        "summary" : "List a YSQL server's addresses",
         "tags" : [ "Metamaster" ]
       }
     },
@@ -9123,8 +9123,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get AZU types",
-        "tags" : [ "Instance Type" ]
+        "summary" : "List supported Azure disk types",
+        "tags" : [ "Instance types" ]
       }
     },
     "/api/v1/metadata/ebs_types" : {
@@ -9147,8 +9147,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get EBS types",
-        "tags" : [ "Instance Type" ]
+        "summary" : "List supported EBS volume types",
+        "tags" : [ "Instance types" ]
       }
     },
     "/api/v1/metadata/gcp_types" : {
@@ -9171,8 +9171,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get GCP types",
-        "tags" : [ "Instance Type" ]
+        "summary" : "List supported GCP disk types",
+        "tags" : [ "Instance types" ]
       }
     },
     "/api/v1/metadata/yql_data_types" : {
@@ -9227,7 +9227,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "index",
+        "summary" : "Get Prometheus metrics",
         "tags" : [ "Metrics" ]
       }
     },
@@ -9312,7 +9312,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get masters list",
+        "summary" : "List a universe's master nodes",
         "tags" : [ "Metamaster" ]
       }
     },
@@ -9372,11 +9372,11 @@
   }, {
     "name" : "Customer management"
   }, {
-    "name" : "Encryption At Rest"
+    "name" : "Encryption at rest"
   }, {
-    "name" : "Import"
+    "name" : "Import a universe"
   }, {
-    "name" : "Instance Type"
+    "name" : "Instance types"
   }, {
     "name" : "Metamaster"
   }, {
