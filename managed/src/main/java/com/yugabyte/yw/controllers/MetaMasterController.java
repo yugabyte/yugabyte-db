@@ -34,14 +34,17 @@ import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
 import play.mvc.Result;
 
-@Api(value = "Metamaster", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(value = "Universe node metadata (metamaster)", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
 
   @Inject KubernetesManager kubernetesManager;
 
-  @ApiOperation(value = "List a universe's master nodes", response = MastersList.class)
+  @ApiOperation(
+      value = "List a universe's master nodes",
+      response = MastersList.class,
+      nickname = "getUniverseMasterNodes")
   public Result get(UUID universeUUID) {
     // Lookup the entry for the instanceUUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);

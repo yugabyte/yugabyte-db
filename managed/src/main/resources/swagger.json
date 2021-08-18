@@ -7798,7 +7798,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a master node's addresses",
-        "tags" : [ "Metamaster" ]
+        "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/multi_table_backup" : {
@@ -7902,7 +7902,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a REDIS server's addresses",
-        "tags" : [ "Metamaster" ]
+        "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/resume" : {
@@ -8605,7 +8605,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a YQL server's addresses",
-        "tags" : [ "Metamaster" ]
+        "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/ysqlservers" : {
@@ -8637,7 +8637,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a YSQL server's addresses",
-        "tags" : [ "Metamaster" ]
+        "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/{nodeName}/download_logs" : {
@@ -9293,7 +9293,7 @@
     "/metamaster/universe/{universeUUID}" : {
       "get" : {
         "description" : "",
-        "operationId" : "get",
+        "operationId" : "getUniverseMasterNodes",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9313,7 +9313,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List a universe's master nodes",
-        "tags" : [ "Metamaster" ]
+        "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/universes/{uniUUID}/proxy/{proxyUrl}" : {
@@ -9378,8 +9378,6 @@
   }, {
     "name" : "Instance types"
   }, {
-    "name" : "Metamaster"
-  }, {
     "name" : "Metrics"
   }, {
     "name" : "Node Instances"
@@ -9403,6 +9401,8 @@
     "name" : "Universe Actions"
   }, {
     "name" : "Universe YB Database"
+  }, {
+    "name" : "Universe node metadata (metamaster)"
   }, {
     "name" : "UniverseInfo"
   }, {
