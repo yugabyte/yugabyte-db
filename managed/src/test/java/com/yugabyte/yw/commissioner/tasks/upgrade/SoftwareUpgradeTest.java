@@ -12,7 +12,6 @@ import static org.mockito.Mockito.verify;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -41,8 +40,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 @RunWith(MockitoJUnitRunner.class)
 public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
-  @InjectMocks Commissioner commissioner;
-
   @InjectMocks SoftwareUpgrade softwareUpgrade;
 
   List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
@@ -68,6 +65,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+
     softwareUpgrade.setUserTaskUUID(UUID.randomUUID());
   }
 

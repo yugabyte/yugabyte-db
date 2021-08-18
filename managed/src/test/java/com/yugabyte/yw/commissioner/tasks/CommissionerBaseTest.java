@@ -10,6 +10,8 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -77,8 +79,11 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
   protected Provider defaultProvider;
   protected Provider gcpProvider;
 
+  protected Commissioner commissioner;
+
   @Before
   public void setUp() {
+    commissioner = app.injector().instanceOf(Commissioner.class);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
@@ -100,6 +105,8 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
     when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(configFactory);
     when(mockBaseTaskDependencies.getAlertDefinitionGroupService())
         .thenReturn(alertDefinitionGroupService);
+    when(mockBaseTaskDependencies.getExecutorFactory())
+        .thenReturn(app.injector().instanceOf(YBThreadPoolExecutorFactory.class));
   }
 
   @Override

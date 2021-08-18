@@ -21,7 +21,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
@@ -51,7 +50,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.slf4j.Logger;
@@ -69,7 +67,6 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
   ShellResponse preflightSuccess;
@@ -83,6 +80,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     Master.SysClusterConfigEntryPB.Builder configBuilder =
         Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
@@ -133,30 +131,23 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
 
   // Updates one of the nodes using a passed consumer.
   private Universe.UniverseUpdater getNodeUpdater(String nodeName, Consumer<NodeDetails> consumer) {
-    return new Universe.UniverseUpdater() {
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
-        for (NodeDetails node : nodes) {
-          if (node.nodeName.equals(nodeName)) {
-            consumer.accept(node);
-            break;
-          }
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
+      for (NodeDetails node : nodes) {
+        if (node.nodeName.equals(nodeName)) {
+          consumer.accept(node);
+          break;
         }
-        universe.setUniverseDetails(universeDetails);
       }
+      universe.setUniverseDetails(universeDetails);
     };
   }
 
   private void setDefaultNodeState(
       Universe universe, final NodeState desiredState, String nodeName) {
     Universe.saveDetails(
-        universe.universeUUID,
-        getNodeUpdater(
-            nodeName,
-            node -> {
-              node.state = desiredState;
-            }));
+        universe.universeUUID, getNodeUpdater(nodeName, node -> node.state = desiredState));
   }
 
   private TaskInfo submitTask(UUID universeUUID, String nodeName, int version) {
@@ -271,7 +262,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
         assertEquals("At position: " + position, taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = WITH_MASTER_UNDER_REPLICATED_RESULTS.get(position);
         List<JsonNode> taskDetails =
-            tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+            tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
       }
@@ -282,7 +273,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
         assertEquals("At position: " + position, taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = ADD_NODE_TASK_EXPECTED_RESULTS.get(position);
         List<JsonNode> taskDetails =
-            tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+            tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
         LOG.info(taskDetails.get(0).toString());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
@@ -304,7 +295,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false);
 
     if (isHAConfig) {
@@ -323,18 +314,14 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe.saveDetails(
         defaultUniverse.universeUUID,
-        getNodeUpdater(
-            DEFAULT_NODE_NAME,
-            node -> {
-              node.isMaster = false;
-            }));
+        getNodeUpdater(DEFAULT_NODE_NAME, node -> node.isMaster = false));
 
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 4);
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
     verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, true);
   }
 
@@ -361,7 +348,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, true /* Master start is expected */);
   }
 
@@ -381,28 +368,25 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false /* Master start is unexpected */);
   }
 
   private void setDefaultGFlags(Universe universe) {
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            Map<String, String> gflags = new HashMap<>();
-            gflags.put("foo", "bar");
+        universe1 -> {
+          UniverseDefinitionTaskParams universeDetails = universe1.getUniverseDetails();
+          Map<String, String> gflags = new HashMap<>();
+          gflags.put("foo", "bar");
 
-            Cluster primaryCluster = universeDetails.getPrimaryCluster();
-            primaryCluster.userIntent.masterGFlags = gflags;
-            primaryCluster.userIntent.tserverGFlags = gflags;
+          Cluster primaryCluster = universeDetails.getPrimaryCluster();
+          primaryCluster.userIntent.masterGFlags = gflags;
+          primaryCluster.userIntent.tserverGFlags = gflags;
 
-            List<Cluster> readOnlyClusters = universeDetails.getReadOnlyClusters();
-            if (readOnlyClusters.size() > 0) {
-              readOnlyClusters.get(0).userIntent.masterGFlags = gflags;
-              readOnlyClusters.get(0).userIntent.tserverGFlags = gflags;
-            }
+          List<Cluster> readOnlyClusters = universeDetails.getReadOnlyClusters();
+          if (readOnlyClusters.size() > 0) {
+            readOnlyClusters.get(0).userIntent.masterGFlags = gflags;
+            readOnlyClusters.get(0).userIntent.tserverGFlags = gflags;
           }
         };
     Universe.saveDetails(universe.universeUUID, updater);

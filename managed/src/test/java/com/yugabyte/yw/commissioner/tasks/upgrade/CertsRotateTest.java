@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verify;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.TestHelper;
@@ -49,8 +48,6 @@ import org.mockito.junit.MockitoRule;
 public class CertsRotateTest extends UpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
-
-  @InjectMocks Commissioner commissioner;
 
   @InjectMocks CertsRotate certsRotate;
 

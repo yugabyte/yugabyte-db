@@ -17,7 +17,6 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.TestHelper;
@@ -57,8 +56,6 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks Commissioner commissioner;
-
   @InjectMocks TlsToggle tlsToggle;
 
   List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
@@ -91,6 +88,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+
     MockitoAnnotations.initMocks(this);
     try {
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))

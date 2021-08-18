@@ -29,7 +29,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
@@ -112,8 +111,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
   }
 
-  @InjectMocks Commissioner commissioner;
-
   @InjectMocks UpgradeUniverse upgradeUniverse;
 
   YBClient mockClient;
@@ -170,6 +167,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+
     MockitoAnnotations.initMocks(this);
     upgradeUniverse.setUserTaskUUID(UUID.randomUUID());
     region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
@@ -221,9 +219,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
               i -> {
                 Master.SysClusterConfigEntryPB.Builder configBuilder =
                     Master.SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.version);
-                GetMasterClusterConfigResponse mockConfigResponse =
-                    new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-                return mockConfigResponse;
+                return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
               });
     } catch (Exception ignored) {
     }
@@ -426,15 +422,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
     for (int nodeIdx : nodeOrder) {
       String nodeName = String.format("host-n%d", nodeIdx);
-      for (int j = 0; j < taskSequence.size(); j++) {
-        Map<String, Object> assertValues = new HashMap<String, Object>();
+      for (TaskType type : taskSequence) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
         TaskType taskType = tasks.get(0).getTaskType();
 
         assertEquals(1, tasks.size());
-        assertEquals(taskSequence.get(j), taskType);
+        assertEquals(type, taskType);
         if (!NON_NODE_TASKS.contains(taskType)) {
-          assertValues.putAll(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+          Map<String, Object> assertValues =
+              new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
           assertNodeSubTask(tasks, assertValues);
         }
         position++;
@@ -454,35 +450,34 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
-        for (int j = 0; j < taskSequence.size(); j++) {
-          Map<String, Object> assertValues = new HashMap<String, Object>();
+        for (TaskType type : taskSequence) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
 
           assertEquals(1, tasks.size());
-          assertEquals(taskSequence.get(j), taskType);
+          assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
-            assertValues.putAll(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+            Map<String, Object> assertValues =
+                new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
             assertNodeSubTask(tasks, assertValues);
           }
           position++;
         }
       }
     } else {
-      for (int j = 0; j < CERTS_NON_ROLLING_TASK_SEQUENCE.size(); j++) {
-        Map<String, Object> assertValues = new HashMap<String, Object>();
+      for (TaskType type : CERTS_NON_ROLLING_TASK_SEQUENCE) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
-        TaskType taskType = assertTaskType(tasks, CERTS_NON_ROLLING_TASK_SEQUENCE.get(j));
+        TaskType taskType = assertTaskType(tasks, type);
 
         if (NON_NODE_TASKS.contains(taskType)) {
           assertEquals(1, tasks.size());
         } else {
-          assertValues.putAll(
+          Map<String, Object> assertValues =
               ImmutableMap.of(
                   "nodeNames",
                   (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
                   "nodeCount",
-                  3));
+                  3);
           assertEquals(3, tasks.size());
           assertNodeSubTask(tasks, assertValues);
         }
@@ -504,15 +499,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
-        for (int j = 0; j < taskSequence.size(); j++) {
-          Map<String, Object> assertValues = new HashMap<String, Object>();
+        for (TaskType type : taskSequence) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
           UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
           assertEquals(1, tasks.size());
-          assertEquals(taskSequence.get(j), taskType);
+          assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
-            assertValues.putAll(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+            Map<String, Object> assertValues =
+                new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
               String version = "new-version";
@@ -530,20 +525,20 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         }
       }
     } else {
-      for (int j = 0; j < SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE.size(); j++) {
-        Map<String, Object> assertValues = new HashMap<String, Object>();
+      for (TaskType type : SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE) {
         List<TaskInfo> tasks = subTasksByPosition.get(position);
-        TaskType taskType = assertTaskType(tasks, SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE.get(j));
+        TaskType taskType = assertTaskType(tasks, type);
 
         if (NON_NODE_TASKS.contains(taskType)) {
           assertEquals(1, tasks.size());
         } else {
-          assertValues.putAll(
-              ImmutableMap.of(
-                  "nodeNames",
-                  (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
-                  "nodeCount",
-                  3));
+          Map<String, Object> assertValues =
+              new HashMap<>(
+                  ImmutableMap.of(
+                      "nodeNames",
+                      (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
+                      "nodeCount",
+                      3));
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
             String version = "new-version";
             assertValues.putAll(
@@ -592,14 +587,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
         for (int nodeIdx : nodeOrder) {
           String nodeName = String.format("host-n%d", nodeIdx);
-          for (int j = 0; j < taskSequence.size(); j++) {
-            Map<String, Object> assertValues = new HashMap<String, Object>();
+          for (TaskType type : taskSequence) {
             List<TaskInfo> tasks = subTasksByPosition.get(position);
             TaskType taskType = tasks.get(0).getTaskType();
             assertEquals(1, tasks.size());
-            assertEquals(taskSequence.get(j), taskType);
+            assertEquals(type, taskType);
             if (!NON_NODE_TASKS.contains(taskType)) {
-              assertValues.putAll(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+              Map<String, Object> assertValues =
+                  new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
               if (taskType.equals(TaskType.AnsibleConfigureServers)) {
                 if (!isDelete) {
@@ -617,20 +612,20 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         }
         break;
       case NON_ROLLING_UPGRADE:
-        for (int j = 0; j < GFLAGS_UPGRADE_TASK_SEQUENCE.size(); j++) {
-          Map<String, Object> assertValues = new HashMap<String, Object>();
+        for (TaskType value : GFLAGS_UPGRADE_TASK_SEQUENCE) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
-          TaskType taskType = assertTaskType(tasks, GFLAGS_UPGRADE_TASK_SEQUENCE.get(j));
+          TaskType taskType = assertTaskType(tasks, value);
 
           if (NON_NODE_TASKS.contains(taskType)) {
             assertEquals(1, tasks.size());
           } else {
-            assertValues.putAll(
-                ImmutableMap.of(
-                    "nodeNames",
-                    (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
-                    "nodeCount",
-                    3));
+            Map<String, Object> assertValues =
+                new HashMap<>(
+                    ImmutableMap.of(
+                        "nodeNames",
+                        (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
+                        "nodeCount",
+                        3));
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
               if (!isDelete) {
                 JsonNode gflagValue =
@@ -649,21 +644,20 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         break;
 
       case NON_RESTART_UPGRADE:
-        for (int j = 0; j < GFLAGS_NON_ROLLING_UPGRADE_TASK_SEQUENCE.size(); j++) {
-          Map<String, Object> assertValues = new HashMap<String, Object>();
+        for (TaskType type : GFLAGS_NON_ROLLING_UPGRADE_TASK_SEQUENCE) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
-          TaskType taskType =
-              assertTaskType(tasks, GFLAGS_NON_ROLLING_UPGRADE_TASK_SEQUENCE.get(j));
+          TaskType taskType = assertTaskType(tasks, type);
 
           if (NON_NODE_TASKS.contains(taskType)) {
             assertEquals(1, tasks.size());
           } else {
-            assertValues.putAll(
-                ImmutableMap.of(
-                    "nodeNames",
-                    (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
-                    "nodeCount",
-                    3));
+            Map<String, Object> assertValues =
+                new HashMap<>(
+                    ImmutableMap.of(
+                        "nodeNames",
+                        (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
+                        "nodeCount",
+                        3));
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
               if (!isDelete) {
                 JsonNode gflagValue =
@@ -775,11 +769,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   private int assertRollingRestartCommonTasks(
       Map<Integer, List<TaskInfo>> subTasksByPosition, int startPosition) {
     int position = startPosition;
-    List<TaskType> commonNodeTasks = new ArrayList<>();
-    commonNodeTasks.addAll(
-        ImmutableList.of(TaskType.LoadBalancerStateChange, TaskType.UniverseUpdateSucceeded));
-    for (int i = 0; i < commonNodeTasks.size(); i++) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTasks.get(i));
+    List<TaskType> commonNodeTasks =
+        new ArrayList<>(
+            ImmutableList.of(TaskType.LoadBalancerStateChange, TaskType.UniverseUpdateSucceeded));
+    for (TaskType commonNodeTask : commonNodeTasks) {
+      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
       position++;
     }
     return position;
@@ -801,8 +795,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       commonNodeTasks.addAll(
           ImmutableList.of(TaskType.UpdateAndPersistGFlags, TaskType.UniverseUpdateSucceeded));
     }
-    for (int i = 0; i < commonNodeTasks.size(); i++) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTasks.get(i));
+    for (TaskType commonNodeTask : commonNodeTasks) {
+      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
       position++;
     }
     return position;
@@ -825,8 +819,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       commonNodeTasks.addAll(
           ImmutableList.of(TaskType.UpdateSoftwareVersion, TaskType.UniverseUpdateSucceeded));
     }
-    for (int i = 0; i < commonNodeTasks.size(); i++) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTasks.get(i));
+    for (TaskType commonNodeTask : commonNodeTasks) {
+      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
       position++;
     }
     return position;
@@ -848,8 +842,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       commonNodeTasks.addAll(
           ImmutableList.of(TaskType.UnivSetCertificate, TaskType.UniverseUpdateSucceeded));
     }
-    for (int i = 0; i < commonNodeTasks.size(); i++) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTasks.get(i));
+    for (TaskType commonNodeTask : commonNodeTasks) {
+      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
       position++;
     }
     return position;
@@ -892,7 +886,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
 
     List<JsonNode> subTaskDetails =
-        subTasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+        subTasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
     assertValues.forEach(
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
@@ -947,40 +941,38 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
 
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            Cluster primaryCluster = universeDetails.getPrimaryCluster();
-            UserIntent userIntent = primaryCluster.userIntent;
-            userIntent.providerType = Common.CloudType.aws;
-            userIntent.provider = defaultProvider.uuid.toString();
-            userIntent.instanceType = "c5.large";
-            DeviceInfo deviceInfo = new DeviceInfo();
-            deviceInfo.volumeSize = 250;
-            deviceInfo.numVolumes = 1;
-            userIntent.deviceInfo = deviceInfo;
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Cluster primaryCluster = universeDetails.getPrimaryCluster();
+          UserIntent userIntent = primaryCluster.userIntent;
+          userIntent.providerType = Common.CloudType.aws;
+          userIntent.provider = defaultProvider.uuid.toString();
+          userIntent.instanceType = "c5.large";
+          DeviceInfo deviceInfo = new DeviceInfo();
+          deviceInfo.volumeSize = 250;
+          deviceInfo.numVolumes = 1;
+          userIntent.deviceInfo = deviceInfo;
 
-            for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
-              NodeDetails node = new NodeDetails();
-              node.nodeIdx = idx;
-              node.placementUuid = primaryCluster.uuid;
-              node.nodeName = "host-n" + idx;
-              node.isMaster = false;
-              node.isTserver = true;
-              node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.instance_type = userIntent.instanceType;
-              node.cloudInfo.private_ip = "1.2.3." + idx;
-              universeDetails.nodeDetailsSet.add(node);
-            }
-
-            for (NodeDetails node : universeDetails.nodeDetailsSet) {
-              node.nodeUuid = UUID.randomUUID();
-            }
-
-            userIntent.numNodes += 2;
-
-            universe.setUniverseDetails(universeDetails);
+          for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeIdx = idx;
+            node.placementUuid = primaryCluster.uuid;
+            node.nodeName = "host-n" + idx;
+            node.isMaster = false;
+            node.isTserver = true;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.instance_type = userIntent.instanceType;
+            node.cloudInfo.private_ip = "1.2.3." + idx;
+            universeDetails.nodeDetailsSet.add(node);
           }
+
+          for (NodeDetails node : universeDetails.nodeDetailsSet) {
+            node.nodeUuid = UUID.randomUUID();
+          }
+
+          userIntent.numNodes += 2;
+
+          universe.setUniverseDetails(universeDetails);
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
@@ -998,7 +990,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     List<TaskInfo> changeDiskSize = subTasksByPosition.get(position++);
@@ -1102,37 +1094,35 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
 
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            Cluster primaryCluster = universeDetails.getPrimaryCluster();
-            UserIntent userIntent = primaryCluster.userIntent;
-            userIntent.regionList = ImmutableList.of(region.uuid, secondRegion.uuid);
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Cluster primaryCluster = universeDetails.getPrimaryCluster();
+          UserIntent userIntent = primaryCluster.userIntent;
+          userIntent.regionList = ImmutableList.of(region.uuid, secondRegion.uuid);
 
-            PlacementInfo pi = primaryCluster.placementInfo;
-            PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 2, false);
-            universe.setUniverseDetails(universeDetails);
+          PlacementInfo pi = primaryCluster.placementInfo;
+          PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 2, false);
+          universe.setUniverseDetails(universeDetails);
 
-            for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
-              NodeDetails node = new NodeDetails();
-              node.nodeIdx = idx;
-              node.placementUuid = primaryCluster.uuid;
-              node.nodeName = "host-n" + idx;
-              node.isMaster = true;
-              node.isTserver = true;
-              node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.private_ip = "1.2.3." + idx;
-              node.cloudInfo.az = az4.code;
-              node.azUuid = az4.uuid;
-              universeDetails.nodeDetailsSet.add(node);
-            }
-
-            for (NodeDetails node : universeDetails.nodeDetailsSet) {
-              node.nodeUuid = UUID.randomUUID();
-            }
-
-            userIntent.numNodes += 2;
+          for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeIdx = idx;
+            node.placementUuid = primaryCluster.uuid;
+            node.nodeName = "host-n" + idx;
+            node.isMaster = true;
+            node.isTserver = true;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.private_ip = "1.2.3." + idx;
+            node.cloudInfo.az = az4.code;
+            node.azUuid = az4.uuid;
+            universeDetails.nodeDetailsSet.add(node);
           }
+
+          for (NodeDetails node : universeDetails.nodeDetailsSet) {
+            node.nodeUuid = UUID.randomUUID();
+          }
+
+          userIntent.numNodes += 2;
         };
 
     defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID, updater);
@@ -1172,7 +1162,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
@@ -1199,8 +1189,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     for (int nodeIdx : nodeOrder) {
       String nodeName = String.format("host-n%d", nodeIdx);
 
-      for (int j = 0; j < VM_IMAGE_UPGRADE_TASK_SEQUENCE.size(); j++) {
-        Map<String, Object> assertValues = new HashMap<String, Object>();
+      for (TaskType type : VM_IMAGE_UPGRADE_TASK_SEQUENCE) {
         List<TaskInfo> tasks = subTasksByPosition.get(position++);
 
         assertEquals(1, tasks.size());
@@ -1208,10 +1197,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         TaskInfo task = tasks.get(0);
         TaskType taskType = task.getTaskType();
 
-        assertEquals(VM_IMAGE_UPGRADE_TASK_SEQUENCE.get(j), taskType);
+        assertEquals(type, taskType);
 
         if (!NON_NODE_TASKS.contains(taskType)) {
-          assertValues.putAll(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+          Map<String, Object> assertValues =
+              new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
           assertNodeSubTask(tasks, assertValues);
         }
@@ -1268,7 +1258,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
@@ -1313,7 +1303,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
@@ -1342,7 +1332,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
@@ -1367,7 +1357,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     position =
@@ -1392,7 +1382,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     position =
@@ -1415,7 +1405,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     position =
@@ -1437,7 +1427,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     position =
@@ -1458,7 +1448,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(9)).nodeCommand(any(), commandParams.capture());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
@@ -1480,7 +1470,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     position =
@@ -1522,14 +1512,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> masterFlags = ImmutableMap.of("master-flag", "m123");
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-            userIntent.masterGFlags = masterFlags;
-            userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.masterGFlags = masterFlags;
+          userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+          universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
@@ -1542,7 +1530,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     List<TaskInfo> tasks = subTasksByPosition.get(0);
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
@@ -1573,28 +1561,25 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "m123");
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-            userIntent.masterGFlags = ImmutableMap.of("master-flag", "m1");
-            userIntent.tserverGFlags = tserverFlags;
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.masterGFlags = ImmutableMap.of("master-flag", "m1");
+          userIntent.tserverGFlags = tserverFlags;
+          universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
     // Upgrade with same master flags but different tserver flags should not run master tasks.
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m2");
-    ;
     taskParams.tserverGFlags = tserverFlags;
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, 3);
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
     position =
         assertGFlagsUpgradeSequence(
@@ -1637,14 +1622,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "t1");
       final Map<String, String> masterGFlags = ImmutableMap.of("master-flag", "m1");
       Universe.UniverseUpdater updater =
-          new Universe.UniverseUpdater() {
-            public void run(Universe universe) {
-              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-              userIntent.masterGFlags = masterGFlags;
-              userIntent.tserverGFlags = tserverFlags;
-              universe.setUniverseDetails(universeDetails);
-            }
+          universe -> {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+            userIntent.masterGFlags = masterGFlags;
+            userIntent.tserverGFlags = tserverFlags;
+            universe.setUniverseDetails(universeDetails);
           };
       Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
@@ -1667,7 +1650,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
       List<TaskInfo> subTasks = new ArrayList<>(taskInfo.getSubTasks());
       Map<Integer, List<TaskInfo>> subTasksByPosition =
-          subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+          subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
       int position = 0;
       if (serverType != MASTER) {
         assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
@@ -1696,14 +1679,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "t1");
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-            userIntent.masterGFlags = ImmutableMap.of("master-flag", "m1");
-            userIntent.tserverGFlags = tserverFlags;
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.masterGFlags = ImmutableMap.of("master-flag", "m1");
+          userIntent.tserverGFlags = tserverFlags;
+          universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
@@ -1713,7 +1694,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     // Upgrade with same master flags but different tserver flags should not run master tasks.
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m2");
-    ;
     taskParams.tserverGFlags = tserverFlags;
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
 
@@ -1721,7 +1701,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
     position =
         assertGFlagsUpgradeSequence(
@@ -1733,14 +1713,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testRollingRestart() throws Exception {
+  public void testRollingRestart() {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Restart);
     verify(mockNodeManager, times(12)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     position = assertRollingRestartSequence(subTasksByPosition, MASTER, position);
@@ -1781,7 +1761,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
@@ -1826,7 +1806,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);

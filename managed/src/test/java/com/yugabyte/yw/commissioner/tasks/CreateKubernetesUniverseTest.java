@@ -27,7 +27,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -47,7 +46,6 @@ import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common;
 import org.yb.client.ChangeMasterClusterConfigResponse;
@@ -59,8 +57,6 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks Commissioner commissioner;
-
   Universe defaultUniverse;
 
   YBClient mockClient;
@@ -70,10 +66,10 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   String nodePrefix1, nodePrefix2, nodePrefix3;
   String ns, ns1, ns2, ns3;
 
-  Map<String, String> config = new HashMap<String, String>();
-  Map<String, String> config1 = new HashMap<String, String>();
-  Map<String, String> config2 = new HashMap<String, String>();
-  Map<String, String> config3 = new HashMap<String, String>();
+  Map<String, String> config = new HashMap<>();
+  Map<String, String> config1 = new HashMap<>();
+  Map<String, String> config2 = new HashMap<>();
+  Map<String, String> config3 = new HashMap<>();
 
   private void setupUniverseMultiAZ(
       boolean setMasters, boolean enabledYEDIS, boolean setNamespace) {
@@ -290,15 +286,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         namespaceTasks, parallelTasks, parallelTasks, 0, 1, 3, 1, 1, 1, 1, 1, 1);
   }
 
-  private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks) {
-    assertTaskSequence(
-        subTasksByPosition,
-        KUBERNETES_CREATE_UNIVERSE_TASKS,
-        getExpectedCreateUniverseTaskResults(),
-        getTaskPositionsToSkip(/* skip namespace task */ false),
-        getTaskCountPerPosition(numTasks, numTasks));
-  }
-
   private void assertTaskSequence(
       Map<Integer, List<TaskInfo>> subTasksByPosition,
       List<TaskType> expectedTasks,
@@ -315,7 +302,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       JsonNode expectedResults = expectedTasksResult.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
       int expectedSize = taskCountPerPosition.get(position);
       assertEquals(expectedSize, tasks.size());
       assertEquals(taskType, tasks.get(0).getTaskType());
@@ -403,7 +390,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int numNamespaces = setNamespace ? 1 : 3;
     assertTaskSequence(
         subTasksByPosition,
@@ -454,7 +441,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int numNamespaces = setNamespace ? 0 : 1;
     assertTaskSequence(
         subTasksByPosition,
@@ -505,7 +492,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(
         subTasksByPosition,
         createUniverseTasks,

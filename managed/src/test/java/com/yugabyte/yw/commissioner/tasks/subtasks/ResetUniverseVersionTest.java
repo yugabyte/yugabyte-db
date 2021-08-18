@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -34,6 +35,8 @@ public class ResetUniverseVersionTest extends FakeDBApplication {
     universe = ModelFactory.createUniverse("universe", defaultCustomer.getCustomerId());
 
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
+    when(baseTaskDependencies.getExecutorFactory())
+        .thenReturn(app.injector().instanceOf(YBThreadPoolExecutorFactory.class));
 
     params = new UniverseDefinitionTaskParams();
     params.universeUUID = universe.universeUUID;

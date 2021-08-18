@@ -14,7 +14,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -46,13 +45,10 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   private CustomerConfig s3StorageConfig;
 
-  @InjectMocks private Commissioner commissioner;
-
   @InjectMocks private MetricService metricService;
 
   private Universe defaultUniverse;
   private CertificateInfo certInfo;
-  private ShellResponse dummyShellResponse;
   private File certFolder;
 
   @Before
@@ -87,7 +83,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
         defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
 
-    dummyShellResponse = new ShellResponse();
+    ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }

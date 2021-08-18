@@ -7,6 +7,7 @@ import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -36,9 +37,10 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
   @Mock private BaseTaskDependencies baseTaskDependencies;
   @Mock private RuntimeConfigFactory runtimeConfigFactory;
 
-  private AlertService alertService = new AlertService();
-  private AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
-  private AlertDefinitionGroupService alertDefinitionGroupService =
+  private final AlertService alertService = new AlertService();
+  private final AlertDefinitionService alertDefinitionService =
+      new AlertDefinitionService(alertService);
+  private final AlertDefinitionGroupService alertDefinitionGroupService =
       new AlertDefinitionGroupService(alertDefinitionService, runtimeConfigFactory);
 
   private Customer customer;
@@ -52,6 +54,8 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
     when(baseTaskDependencies.getAlertDefinitionGroupService())
         .thenReturn(alertDefinitionGroupService);
+    when(baseTaskDependencies.getExecutorFactory())
+        .thenReturn(app.injector().instanceOf(YBThreadPoolExecutorFactory.class));
 
     customer = ModelFactory.testCustomer();
     u = ModelFactory.createUniverse(customer.getCustomerId());
