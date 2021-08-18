@@ -1633,7 +1633,7 @@
         },
         "universeUUIDs" : {
           "description" : "Universe UUIDs",
-          "example" : "[\"c3595ca7-68a3-47f0-b1b2-1725886d5ed5\", \"9e0bb733-556c-4935-83dd-6b742a2c32e6\"]",
+          "example" : "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -1752,7 +1752,7 @@
       "type" : "object"
     },
     "CustomerDetailsData" : {
-      "description" : "Customers features and Universe UUID.",
+      "description" : "Customer details and universe UUIDs.",
       "properties" : {
         "alertingData" : {
           "$ref" : "#/definitions/AlertingData",
@@ -1771,21 +1771,21 @@
           "type" : "string"
         },
         "creationDate" : {
-          "description" : "Creation time",
+          "description" : "Creation timestamp",
           "example" : "2021-06-17 15:00:05",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "customerId" : {
-          "description" : "Customer id",
+          "description" : "Customer ID",
           "format" : "int32",
           "readOnly" : true,
           "type" : "integer"
         },
         "name" : {
-          "description" : "Name of customer",
-          "example" : "sridhar",
+          "description" : "Customer name",
+          "example" : "Sridhar",
           "type" : "string"
         },
         "smtpData" : {
@@ -1794,8 +1794,8 @@
           "readOnly" : true
         },
         "universeUUIDs" : {
-          "description" : "Associated Universe Id's",
-          "example" : "[\"c3595ca7-68a3-47f0-b1b2-1725886d5ed5\", \"9e0bb733-556c-4935-83dd-6b742a2c32e6\"]",
+          "description" : "Associated Universe IDs",
+          "example" : "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -1804,7 +1804,7 @@
           "type" : "array"
         },
         "uuid" : {
-          "description" : "User uuid",
+          "description" : "User UUID",
           "readOnly" : true,
           "type" : "string"
         }
@@ -4246,8 +4246,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List customer",
-        "tags" : [ "Customer" ]
+        "summary" : "List customers",
+        "tags" : [ "Customer management" ]
       }
     },
     "/api/v1/customers/{cUUID}" : {
@@ -4272,8 +4272,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete customer by UUID",
-        "tags" : [ "Customer" ]
+        "summary" : "Delete a customer",
+        "tags" : [ "Customer management" ]
       },
       "get" : {
         "description" : "",
@@ -4296,8 +4296,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get customer by UUID",
-        "tags" : [ "Customer" ]
+        "summary" : "Get a customer's details",
+        "tags" : [ "Customer management" ]
       },
       "put" : {
         "description" : "",
@@ -4328,8 +4328,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update customer by UUID",
-        "tags" : [ "Customer" ]
+        "summary" : "Update a customer",
+        "tags" : [ "Customer management" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_definition_groups" : {
@@ -4361,8 +4361,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "createDefinitionGroup",
-        "tags" : [ "Alert" ]
+        "summary" : "Create an alert group",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_definition_groups/list" : {
@@ -4397,8 +4397,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listDefinitionGroups",
-        "tags" : [ "Alert" ]
+        "summary" : "Get filtered list of definition groups",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_definition_groups/page" : {
@@ -4430,8 +4430,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "pageDefinitionGroups",
-        "tags" : [ "Alert" ]
+        "summary" : "List all alert groups (paginated)",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_definition_groups/{groupUUID}" : {
@@ -4462,8 +4462,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "deleteDefinitionGroup",
-        "tags" : [ "Alert" ]
+        "summary" : "Delete an alert group",
+        "tags" : [ "Alerts" ]
       },
       "get" : {
         "description" : "",
@@ -4492,8 +4492,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getDefinitionGroup",
-        "tags" : [ "Alert" ]
+        "summary" : "Get an alert group",
+        "tags" : [ "Alerts" ]
       },
       "put" : {
         "description" : "",
@@ -4529,8 +4529,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "updateDefinitionGroup",
-        "tags" : [ "Alert" ]
+        "summary" : "Update an alert group",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_definition_templates" : {
@@ -4565,8 +4565,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listDefinitionGroupTemplates",
-        "tags" : [ "Alert" ]
+        "summary" : "List all alert groups",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_receivers" : {
@@ -4594,8 +4594,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listAlertReceivers",
-        "tags" : [ "Alert" ]
+        "summary" : "List all alert receivers",
+        "tags" : [ "Alerts" ]
       },
       "post" : {
         "description" : "",
@@ -4625,8 +4625,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "createAlertReceiver",
-        "tags" : [ "Alert" ]
+        "summary" : "Create an alert receiver",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_receivers/{arcUUID}" : {
@@ -4657,8 +4657,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "deleteAlertReceiver",
-        "tags" : [ "Alert" ]
+        "summary" : "Delete an alert receiver",
+        "tags" : [ "Alerts" ]
       },
       "get" : {
         "description" : "",
@@ -4687,8 +4687,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getAlertReceiver",
-        "tags" : [ "Alert" ]
+        "summary" : "Get an alert receiver",
+        "tags" : [ "Alerts" ]
       },
       "put" : {
         "description" : "",
@@ -4724,8 +4724,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "updateAlertReceiver",
-        "tags" : [ "Alert" ]
+        "summary" : "Update an alert receiver",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_routes" : {
@@ -4753,8 +4753,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listAlertRoutes",
-        "tags" : [ "Alert" ]
+        "summary" : "List alert routes",
+        "tags" : [ "Alerts" ]
       },
       "post" : {
         "description" : "",
@@ -4784,8 +4784,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "createAlertRoute",
-        "tags" : [ "Alert" ]
+        "summary" : "Create an alert route",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_routes/{artUUID}" : {
@@ -4816,8 +4816,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "deleteAlertRoute",
-        "tags" : [ "Alert" ]
+        "summary" : "Delete an alert route",
+        "tags" : [ "Alerts" ]
       },
       "get" : {
         "description" : "",
@@ -4846,8 +4846,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getAlertRoute",
-        "tags" : [ "Alert" ]
+        "summary" : "Get an alert route",
+        "tags" : [ "Alerts" ]
       },
       "put" : {
         "description" : "",
@@ -4883,8 +4883,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "updateAlertRoute",
-        "tags" : [ "Alert" ]
+        "summary" : "Update an alert route",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts" : {
@@ -4912,8 +4912,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listAlerts",
-        "tags" : [ "Alert" ]
+        "summary" : "List all alerts",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/acknowledge" : {
@@ -4948,8 +4948,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "acknowledgeAlerts",
-        "tags" : [ "Alert" ]
+        "summary" : "Acknowledge all alerts",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/active" : {
@@ -4977,8 +4977,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listActiveAlerts",
-        "tags" : [ "Alert" ]
+        "summary" : "List active alerts",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/page" : {
@@ -5010,8 +5010,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "pageAlerts",
-        "tags" : [ "Alert" ]
+        "summary" : "List alerts (paginated)",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/{alertUUID}" : {
@@ -5042,8 +5042,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getAlert",
-        "tags" : [ "Alert" ]
+        "summary" : "Get details of an alert",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/{alertUUID}/acknowledge" : {
@@ -5074,8 +5074,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "acknowledgeAlert",
-        "tags" : [ "Alert" ]
+        "summary" : "Acknowledge an alert",
+        "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/api_token" : {
@@ -5123,7 +5123,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "delete",
+        "summary" : "Delete a backup",
         "tags" : [ "Backups" ]
       }
     },
@@ -5185,7 +5185,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "list Certificates for a specific customer",
+        "summary" : "List a customer's certificates",
         "tags" : [ "Certificate Info" ]
       },
       "post" : {
@@ -5218,7 +5218,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "restore Backups",
+        "summary" : "Restore a certificate from backup",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -5250,7 +5250,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get certificate UUID",
+        "summary" : "Get a certificate's UUID",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -5282,7 +5282,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "delete certificate",
+        "summary" : "Delete a certificate",
         "tags" : [ "Certificate Info" ]
       },
       "post" : {
@@ -5320,7 +5320,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "post certificate info",
+        "summary" : "Add a client certificate",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -5352,7 +5352,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get root certificate",
+        "summary" : "Get a customer's root certificate",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -5384,7 +5384,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "update empty certs",
+        "summary" : "Update an empty certificate",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -5413,8 +5413,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List of customer configuration",
-        "tags" : [ "Customer Config" ]
+        "summary" : "List all customer configurations",
+        "tags" : [ "Customer Configuration" ]
       },
       "post" : {
         "description" : "",
@@ -5445,8 +5445,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create customer configuration",
-        "tags" : [ "Customer Config" ]
+        "summary" : "Create a customer configuration",
+        "tags" : [ "Customer Configuration" ]
       }
     },
     "/api/v1/customers/{cUUID}/configs/{configUUID}" : {
@@ -5477,8 +5477,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete customer configuration",
-        "tags" : [ "Customer Config" ]
+        "summary" : "Delete a customer configuration",
+        "tags" : [ "Customer Configuration" ]
       },
       "put" : {
         "description" : "",
@@ -5515,8 +5515,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List of customer configuration",
-        "tags" : [ "Customer Config" ]
+        "summary" : "Update a customer configuration",
+        "tags" : [ "Customer Configuration" ]
       }
     },
     "/api/v1/customers/{cUUID}/cost" : {
@@ -5573,8 +5573,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get host info by customer UUID",
-        "tags" : [ "Customer" ]
+        "summary" : "Get a customer's host info",
+        "tags" : [ "Customer management" ]
       }
     },
     "/api/v1/customers/{cUUID}/kms_configs" : {
@@ -5743,8 +5743,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Add metrics of customer by UUID",
-        "tags" : [ "Customer" ]
+        "summary" : "Add metrics to a customer",
+        "tags" : [ "Customer management" ]
       }
     },
     "/api/v1/customers/{cUUID}/nodes/{nodeUUID}/list" : {
@@ -5822,8 +5822,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listProvider",
-        "tags" : [ "Provider" ]
+        "summary" : "List cloud providers",
+        "tags" : [ "Cloud providers" ]
       },
       "post" : {
         "description" : "",
@@ -5853,40 +5853,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "createProvider",
-        "tags" : [ "Provider" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
-      "delete" : {
-        "description" : "This endpoint we are using only for deleting provider for integration test purpose.",
-        "operationId" : "delete",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "deleteProvider",
-        "tags" : [ "Provider" ]
+        "summary" : "Create a provider",
+        "tags" : [ "Cloud providers" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_keys" : {
@@ -5917,8 +5885,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "list AccessKeys for a specific provider",
-        "tags" : [ "AccessKey" ]
+        "summary" : "List access keys for a specific provider",
+        "tags" : [ "Access Keys" ]
       },
       "post" : {
         "description" : "",
@@ -5947,8 +5915,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "create access Key",
-        "tags" : [ "AccessKey" ]
+        "summary" : "Create an access key",
+        "tags" : [ "Access Keys" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_keys/{keyCode}" : {
@@ -5984,8 +5952,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "delete access Key",
-        "tags" : [ "AccessKey" ]
+        "summary" : "Delete an access key",
+        "tags" : [ "Access Keys" ]
       },
       "get" : {
         "description" : "",
@@ -6019,8 +5987,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get access Key",
-        "tags" : [ "AccessKey" ]
+        "summary" : "Get an access key",
+        "tags" : [ "Access Keys" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/edit" : {
@@ -6059,8 +6027,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "editProvider",
-        "tags" : [ "Provider" ]
+        "summary" : "Update a provider",
+        "tags" : [ "Cloud providers" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/instance_types" : {
@@ -6295,7 +6263,7 @@
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/refresh_pricing" : {
       "put" : {
-        "description" : "Refresh Provider pricing info",
+        "description" : "Refresh provider pricing info",
         "operationId" : "refreshPricing",
         "parameters" : [ {
           "format" : "uuid",
@@ -6318,8 +6286,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "refreshPricing",
-        "tags" : [ "Provider" ]
+        "summary" : "Refresh pricing",
+        "tags" : [ "Cloud providers" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions" : {
@@ -6476,8 +6444,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "listAZ",
-        "tags" : [ "AvailabilityZone" ]
+        "summary" : "List availability zones",
+        "tags" : [ "Availability Zones" ]
       },
       "post" : {
         "description" : "",
@@ -6501,7 +6469,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "description" : "az form data",
+          "description" : "Availability zone form data",
           "in" : "body",
           "name" : "azFormData",
           "required" : true,
@@ -6523,8 +6491,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "createAZ",
-        "tags" : [ "AvailabilityZone" ]
+        "summary" : "Create an availability zone",
+        "tags" : [ "Availability Zones" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones/{azUUID}" : {
@@ -6567,8 +6535,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "deleteAZ",
-        "tags" : [ "AvailabilityZone" ]
+        "summary" : "Delete an availability zone",
+        "tags" : [ "Availability Zones" ]
       }
     },
     "/api/v1/customers/{cUUID}/regions" : {
@@ -7012,11 +6980,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Status of task",
-        "tags" : [ "Customer Task" ]
+        "summary" : "Get a task's status",
+        "tags" : [ "Customer Tasks" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "Retry a Create Universe task.",
         "operationId" : "retryTask",
         "parameters" : [ {
           "format" : "uuid",
@@ -7042,8 +7010,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Retry task",
-        "tags" : [ "Customer Task" ]
+        "summary" : "Retry a task",
+        "tags" : [ "Customer Tasks" ]
       }
     },
     "/api/v1/customers/{cUUID}/tasks/{tUUID}/audit_info" : {
@@ -7074,7 +7042,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get",
+        "summary" : "Get audit info for a task",
         "tags" : [ "Audit" ]
       }
     },
@@ -7106,7 +7074,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "get user from task",
+        "summary" : "Get the user associated with a task",
         "tags" : [ "Audit" ]
       }
     },
@@ -7141,8 +7109,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get failed sub task",
-        "tags" : [ "Customer Task" ]
+        "summary" : "Get a task's failed subtasks",
+        "tags" : [ "Customer Tasks" ]
       }
     },
     "/api/v1/customers/{cUUID}/tasks_list" : {
@@ -7178,7 +7146,7 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List task",
-        "tags" : [ "Customer Task" ]
+        "tags" : [ "Customer Tasks" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes" : {
@@ -7353,7 +7321,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "list Backups for a specific customer",
+        "summary" : "List a customer's backups",
         "tags" : [ "Backups" ]
       }
     },
@@ -7374,7 +7342,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "description" : "backup params of the backup to be restored",
+          "description" : "Parameters of the backup to be restored",
           "in" : "body",
           "name" : "backup",
           "required" : true,
@@ -7393,7 +7361,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "restore Backups",
+        "summary" : "Restore from a backup",
         "tags" : [ "Backups" ]
       }
     },
@@ -7440,7 +7408,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "list Backups for a specific task",
+        "summary" : "List a task's backups",
         "tags" : [ "Backups" ]
       }
     },
@@ -8941,7 +8909,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "list",
+        "summary" : "List a user's audit entries",
         "tags" : [ "Audit" ]
       }
     },
@@ -9384,23 +9352,25 @@
   },
   "swagger" : "2.0",
   "tags" : [ {
-    "name" : "AccessKey"
+    "name" : "Access Keys"
   }, {
-    "name" : "Alert"
+    "name" : "Alerts"
   }, {
     "name" : "Audit"
   }, {
-    "name" : "AvailabilityZone"
+    "name" : "Availability Zones"
   }, {
     "name" : "Backups"
   }, {
     "name" : "Certificate Info"
   }, {
-    "name" : "Customer"
+    "name" : "Cloud providers"
   }, {
-    "name" : "Customer Config"
+    "name" : "Customer Configuration"
   }, {
-    "name" : "Customer Task"
+    "name" : "Customer Tasks"
+  }, {
+    "name" : "Customer management"
   }, {
     "name" : "Encryption At Rest"
   }, {
@@ -9413,8 +9383,6 @@
     "name" : "Metrics"
   }, {
     "name" : "Node Instances"
-  }, {
-    "name" : "Provider"
   }, {
     "name" : "Region"
   }, {
