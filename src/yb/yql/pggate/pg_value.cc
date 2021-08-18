@@ -32,7 +32,7 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
   }
 
   *is_null = false;
-  switch(type_entity->yb_type) {
+  switch (type_entity->yb_type) {
     case YB_YQL_DATA_TYPE_INT8: {
       SCHECK(ql_value.has_int8_value(), InternalError, "Unexpected type in the QL value");
       int8_t val = ql_value.int8_value();
@@ -163,12 +163,12 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
                    QLValue* ql_value) {
-    if (is_null) {
-      ql_value->SetNull();
-      return Status::OK();
-    }
+  if (is_null) {
+    ql_value->SetNull();
+    return Status::OK();
+  }
 
-    switch (type_entity->yb_type) {
+  switch (type_entity->yb_type) {
     case YB_YQL_DATA_TYPE_INT8: {
       int8_t value;
       type_entity->datum_to_yb(datum, &value, nullptr);
