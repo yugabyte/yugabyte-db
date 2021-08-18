@@ -4,15 +4,20 @@ package com.yugabyte.yw.commissioner;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import akka.actor.ActorSystem;
+import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -20,60 +25,36 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.inject.ApplicationLifecycle;
 import play.libs.Json;
+import scala.concurrent.ExecutionContext;
 
 @Singleton
 public class Commissioner {
 
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
-  // Minimum number of concurrent tasks to execute at a time.
-  private static final int TASK_THREADS = 200;
-
-  // The maximum time that excess idle threads will wait for new tasks before terminating.
-  // The unit is specified in the API (and is seconds).
-  private static final long THREAD_ALIVE_TIME = 60L;
-
-  // The interval after which progress monitor wakes up and does work.
-  private final long PROGRESS_MONITOR_SLEEP_INTERVAL = 300;
-
-  // The background progress monitor for the tasks.
-  static ProgressMonitor progressMonitor;
-
-  // Threadpool to run user submitted tasks.
-  static ExecutorService executor;
+  private final ExecutorService executor;
 
   // A map of all task UUID's to the task runner objects for all the user tasks that are currently
   // active. Recently completed tasks are also in this list, their completion percentage should be
   // persisted before removing the task from this map.
-  static Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<UUID, TaskRunner>();
+  private final Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<>();
 
-  public Commissioner() {
-    // Initialize the tasks threadpool.
+  @Inject
+  public Commissioner(
+      ProgressMonitor progressMonitor,
+      ApplicationLifecycle lifecycle,
+      YBThreadPoolExecutorFactory ybThreadPoolExecutorFactory) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
-    // Create an task pool which can handle an unbounded number of tasks, while using an initial set
-    // of threads that get spawned upto TASK_THREADS limit.
-    executor =
-        new ThreadPoolExecutor(
-            TASK_THREADS,
-            TASK_THREADS,
-            THREAD_ALIVE_TIME,
-            TimeUnit.SECONDS,
-            new LinkedBlockingQueue<Runnable>(),
-            namedThreadFactory);
+    executor = ybThreadPoolExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
-
-    // TODO: Conisder replacing simple thread sleep with ScheduledExecutorService
-    // Initialize the task manager.
-    progressMonitor = new ProgressMonitor();
-    progressMonitor.start();
+    progressMonitor.start(runningTasks);
     LOG.info("Started TaskProgressMonitor thread.");
   }
 
@@ -156,43 +137,69 @@ public class Commissioner {
    * A progress monitor to constantly write a last updated timestamp in the DB so that this process
    * and all its subtasks are considered to be alive.
    */
-  private class ProgressMonitor extends Thread {
+  @Slf4j
+  @Singleton
+  private static class ProgressMonitor {
 
-    public ProgressMonitor() {
-      setName("TaskProgressMonitor");
+    private static final String YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL =
+        "yb.commissioner.progress_check_interval";
+    private final Scheduler scheduler;
+    private final RuntimeConfigFactory runtimeConfigFactory;
+    private final ExecutionContext executionContext;
+
+    @Inject
+    public ProgressMonitor(
+        ActorSystem actorSystem,
+        RuntimeConfigFactory runtimeConfigFactory,
+        ExecutionContext executionContext) {
+      this.scheduler = actorSystem.scheduler();
+      this.runtimeConfigFactory = runtimeConfigFactory;
+      this.executionContext = executionContext;
     }
 
-    @Override
-    public void run() {
-      while (true) {
-        // Loop through all the active tasks.
-        Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
-        while (iter.hasNext()) {
-          Entry<UUID, TaskRunner> entry = iter.next();
-          TaskRunner taskRunner = entry.getValue();
+    public void start(Map<UUID, TaskRunner> runningTasks) {
+      Duration checkInterval = this.progressCheckInterval();
+      if (checkInterval.isZero()) {
+        log.info(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL + " set to 0.");
+        log.warn("!!! TASK GC DISABLED !!!");
+      } else {
+        log.info("Scheduling Progress Check every " + checkInterval);
+        scheduler.schedule(
+            Duration.ZERO, // InitialDelay
+            checkInterval,
+            () -> scheduleRunner(runningTasks),
+            this.executionContext);
+      }
+    }
 
-          // If the task is still running, update its latest timestamp as a part of the heartbeat.
-          if (taskRunner.isTaskRunning()) {
-            taskRunner.doHeartbeat();
-          } else if (taskRunner.hasTaskSucceeded()) {
-            LOG.info("Task " + taskRunner.toString() + " has succeeded.");
-            // Remove task from the set of live tasks.
-            iter.remove();
-          } else if (taskRunner.hasTaskFailed()) {
-            LOG.info("Task " + taskRunner.toString() + " has failed.");
-            // Remove task from the set of live tasks.
-            iter.remove();
-          }
-        }
+    private void scheduleRunner(Map<UUID, TaskRunner> runningTasks) {
+      // Loop through all the active tasks.
+      Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
+      while (iter.hasNext()) {
+        Entry<UUID, TaskRunner> entry = iter.next();
+        TaskRunner taskRunner = entry.getValue();
 
-        // TODO: Scan the DB for tasks that have failed to make progress and claim one if possible.
-
-        // Sleep for the required interval.
-        try {
-          Thread.sleep(PROGRESS_MONITOR_SLEEP_INTERVAL);
-        } catch (InterruptedException e) {
+        // If the task is still running, update its latest timestamp as a part of the heartbeat.
+        if (taskRunner.isTaskRunning()) {
+          taskRunner.doHeartbeat();
+        } else if (taskRunner.hasTaskSucceeded()) {
+          LOG.info("Task " + taskRunner.toString() + " has succeeded.");
+          // Remove task from the set of live tasks.
+          iter.remove();
+        } else if (taskRunner.hasTaskFailed()) {
+          LOG.info("Task " + taskRunner.toString() + " has failed.");
+          // Remove task from the set of live tasks.
+          iter.remove();
         }
       }
+
+      // TODO: Scan the DB for tasks that have failed to make progress and claim one if possible.
+    }
+
+    private Duration progressCheckInterval() {
+      return runtimeConfigFactory
+          .staticApplicationConf()
+          .getDuration(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL);
     }
   }
 }

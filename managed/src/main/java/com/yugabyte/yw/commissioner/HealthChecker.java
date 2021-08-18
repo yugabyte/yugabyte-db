@@ -500,6 +500,7 @@ public class HealthChecker {
       return this.executor;
     }
 
+    // TODO: use YBThreadPoolExecutorFactory
     int numParallelism = this.getThreadpoolParallelism();
 
     // Initialize the health check thread pool.
