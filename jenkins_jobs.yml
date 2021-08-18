@@ -18,10 +18,10 @@ jobs:
   - os: centos7
     compiler: gcc5
     build_type: release
-  - os: centos7
+  - os: alma8
     compiler: gcc9
     build_type: debug    
-  - os: centos7
+  - os: alma8
     compiler: gcc9
     build_type: release
   - os: macos
