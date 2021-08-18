@@ -9,7 +9,7 @@ import {
   StorageConfigurationContainer,
   SecurityConfiguration
 } from '../../config';
-import { Tab, Row, Col } from 'react-bootstrap';
+import { Tab } from 'react-bootstrap';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../../panels';
 import awsLogo from './images/aws.svg';
 import azureLogo from './images/azure.svg';

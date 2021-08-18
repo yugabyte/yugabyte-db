@@ -156,7 +156,7 @@ export default class NodeDetailsTable extends Component {
           foundNonZero === true || (duration[0] !== 0 && (foundNonZero = true)));
         if (filteredDurations.length === 1) {
           const diffEntry = filteredDurations[0];
-          uptime = `${diffEntry[0]} ${pluralize(diffEntry[1], diffEntry[0])}`
+          uptime = `${diffEntry[0]} ${pluralize(diffEntry[1], diffEntry[0])}`;
         } else if (filteredDurations.length > 1) {
           const firstEntry = filteredDurations[0];
           const secondEntry = filteredDurations[1];

@@ -1,6 +1,6 @@
 // Copyright YugaByte Inc.
 
-import { UniverseOverview } from '../../universes';
+import { UniverseOverview } from './UniverseOverview';
 import { connect } from 'react-redux';
 
 function mapStateToProps(state) {

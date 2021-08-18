@@ -1,7 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '../../../test-utils';
-import userEvent from '@testing-library/user-event';
-import { within } from '@testing-library/dom';
+import { render, screen } from '../../../test-utils';
 import OnPremNodesList from './OnPremNodesList';
 
 jest.mock('axios');
