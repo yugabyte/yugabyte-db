@@ -15,7 +15,7 @@ public class AlertingFormData {
   @ApiModelProperty(value = "Alert code")
   public String code;
 
-  @ApiModelProperty(value = "Alert email", example = "test@gmail.com")
+  @ApiModelProperty(value = "Alert email", example = "test@example.com")
   public String email;
 
   @ApiModelProperty(value = "Email password", example = "XurenRknsc")
@@ -34,7 +34,7 @@ public class AlertingFormData {
   public static class AlertingData {
     @Constraints.Email
     @Constraints.MinLength(5)
-    @ApiModelProperty(value = "Alert email id", example = "test@gmail.com")
+    @ApiModelProperty(value = "Alert email id", example = "test@example.com")
     public String alertingEmail;
 
     @ApiModelProperty(value = "Is alert has sent to YB")

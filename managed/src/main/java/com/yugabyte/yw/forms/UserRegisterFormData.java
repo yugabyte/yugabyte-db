@@ -13,7 +13,7 @@ import play.data.validation.Constraints;
 @ApiModel(value = "UserRegistrationData", description = "User registration data")
 public class UserRegisterFormData {
   @Constraints.Required()
-  @ApiModelProperty(value = "User email address", example = "test@gmail.com", required = true)
+  @ApiModelProperty(value = "User email address", example = "test@example.com", required = true)
   @Constraints.Email
   private String email;
 

@@ -84,7 +84,7 @@ public class Users extends Model {
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
-  @ApiModelProperty(value = "User email id", example = "username1@email.com", required = true)
+  @ApiModelProperty(value = "User email id", example = "username1@example.com", required = true)
   public String email;
 
   public String getEmail() {
