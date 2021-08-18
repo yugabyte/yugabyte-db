@@ -789,8 +789,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
     const std::string table_id = VERIFY_RESULT(
         GetTableIdByTableName(client.get(), table_name.namespace_name(), table_name.table_name()));
-    RETURN_NOT_OK(
-        WaitForBackfillSafeTimeOn(cluster_->GetLeaderMasterProxy(), table_name, table_id));
+    RETURN_NOT_OK(WaitForBackfillSafeTimeOn(cluster_->GetLeaderMasterProxy(), table_id));
 
     return Status::OK();
   }
