@@ -1218,6 +1218,9 @@ class CatalogManager :
   // Report metrics.
   void ReportMetrics();
 
+  // Reset metrics.
+  void ResetMetrics();
+
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
 
