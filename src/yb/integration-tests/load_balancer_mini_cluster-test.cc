@@ -126,7 +126,7 @@ void WaitForAllTabletsDataSize(yb::MiniCluster* mini_cluster,
     for (const auto& tablet : tablets) {
       auto replica_map = tablet->GetReplicaLocations();
       for (const auto& replica : *replica_map.get()) {
-        if (!replica.second.drive_info.ts_path.empty()) {
+        if (!replica.second.fs_data_dir.empty()) {
           ++updated;
         }
       }
@@ -160,11 +160,11 @@ CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
       if (replica.second.role == consensus::RaftPeerPB::LEADER) {
         ++ts->second.second;
       }
-      if (!replica.second.drive_info.ts_path.empty()) {
+      if (!replica.second.fs_data_dir.empty()) {
         auto& ts_map = ts->second.first;
-        auto path = ts_map.find(replica.second.drive_info.ts_path);
+        auto path = ts_map.find(replica.second.fs_data_dir);
         if (path == ts_map.end()) {
-          ts_map.insert({replica.second.drive_info.ts_path, 1});
+          ts_map.insert({replica.second.fs_data_dir, 1});
         } else {
           ++path->second;
         }
@@ -428,7 +428,8 @@ TEST_F_EX(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData,
   for (const auto& tablet : tablets) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
-      ASSERT_TRUE(replica.second.drive_info.ts_path.empty());
+      ASSERT_EQ(replica.second.drive_info.sst_files_size, 0);
+      ASSERT_EQ(replica.second.drive_info.wal_files_size, 0);
     }
   }
 }
