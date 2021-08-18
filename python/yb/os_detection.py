@@ -16,6 +16,10 @@ import os
 from yb.common_util import read_file
 
 
+def get_arch() -> str:
+    return platform.machine()
+
+
 def get_short_os_name() -> str:
     platform_system = platform.system()
     os_name = ''
