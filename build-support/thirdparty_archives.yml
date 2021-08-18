@@ -1,69 +1,90 @@
-sha_for_local_checkout: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+sha_for_local_checkout: 9a29e269659a6b46eb05747b4431afdc34e59695
 archives:
   - os_type: centos7
+    architecture: x86_64
     compiler_type: clang11
-    tag: v20210708193826-e7937bbf4a-centos7-clang11
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185027-9a29e26965-centos7-x86_64-clang11
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: centos7
+    architecture: x86_64
     compiler_type: clang12
-    tag: v20210708193836-e7937bbf4a-centos7-clang12
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185033-9a29e26965-centos7-x86_64-clang12
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: centos7
+    architecture: x86_64
     compiler_type: clang7
-    tag: v20210708193823-e7937bbf4a-centos7-clang7
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185027-9a29e26965-centos7-x86_64-clang7
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: centos7
+    architecture: x86_64
     compiler_type: gcc5
-    tag: v20210708193820-e7937bbf4a-centos7-linuxbrew-gcc5
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185108-9a29e26965-centos7-x86_64-linuxbrew-gcc5
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: centos7
+    architecture: x86_64
     compiler_type: gcc8
-    tag: v20210708193829-e7937bbf4a-centos7-gcc8
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185034-9a29e26965-centos7-x86_64-gcc8
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: centos7
+    architecture: x86_64
     compiler_type: gcc9
-    tag: v20210708193826-e7937bbf4a-centos7-gcc9
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185040-9a29e26965-centos7-x86_64-gcc9
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: centos8
+    architecture: aarch64
+    compiler_type: gcc9
+    tag: v20210817191252-9a29e26965-centos8-aarch64-gcc9
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
+  - os_type: centos8
+    architecture: x86_64
     compiler_type: gcc8
-    tag: v20210708193842-e7937bbf4a-centos8-gcc8
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185041-9a29e26965-centos8-x86_64-gcc8
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: centos8
+    architecture: x86_64
     compiler_type: gcc9
-    tag: v20210708193838-e7937bbf4a-centos8-gcc9
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185023-9a29e26965-centos8-x86_64-gcc9
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: macos
+    architecture: x86_64
     compiler_type: clang
-    tag: v20210708193827-e7937bbf4a-macos
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185121-9a29e26965-macos-x86_64
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: clang10
-    tag: v20210708193917-e7937bbf4a-ubuntu1804-clang10
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185035-9a29e26965-ubuntu1804-x86_64-clang10
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: clang11
-    tag: v20210708194034-e7937bbf4a-ubuntu1804-clang11
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185048-9a29e26965-ubuntu1804-x86_64-clang11
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: gcc7
-    tag: v20210708193921-e7937bbf4a-ubuntu1804-gcc7
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185043-9a29e26965-ubuntu1804-x86_64-gcc7
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   # Added manually to un-break the Ubuntu build on Jenkins. Instead of this, if the compiler type
   # does not specify a version, we should detect the actual compiler version and match based on
   # its major version (https://github.com/yugabyte/yugabyte-db/issues/9195).
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: gcc
-    tag: v20210708193921-e7937bbf4a-ubuntu1804-gcc7
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185043-9a29e26965-ubuntu1804-x86_64-gcc7
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: gcc8
-    tag: v20210708193821-e7937bbf4a-ubuntu1804-gcc8
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185043-9a29e26965-ubuntu1804-x86_64-gcc8
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: ubuntu20.04
+    architecture: x86_64
     compiler_type: clang11
-    tag: v20210708193832-e7937bbf4a-ubuntu2004-clang11
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185034-9a29e26965-ubuntu2004-x86_64-clang11
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
   - os_type: ubuntu20.04
+    architecture: x86_64
     compiler_type: gcc9
-    tag: v20210708193815-e7937bbf4a-ubuntu2004-gcc9
-    sha: e7937bbf4abff79c1216594cd65a6dd1a47adebb
+    tag: v20210813185037-9a29e26965-ubuntu2004-x86_64-gcc9
+    sha: 9a29e269659a6b46eb05747b4431afdc34e59695
