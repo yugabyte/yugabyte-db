@@ -9,11 +9,11 @@ import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertChannel.ChannelType;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
@@ -157,7 +157,9 @@ public class AlertUtilsTest extends FakeDBApplication {
 
     AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
     assertEquals(
-        substitutor.replace(AlertUtils.DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE),
+        substitutor.replace(AlertUtils.DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE)
+            + "\n\n"
+            + alert.getMessage(),
         AlertUtils.getNotificationText(alert, channel));
   }
 }

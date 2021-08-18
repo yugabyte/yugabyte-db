@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.alerts;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
@@ -62,6 +63,9 @@ public class AlertUtils {
         return getDefaultNotificationText(alert);
       }
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
+      if (alert.getState() == State.ACTIVE) {
+        template = template + "\n\n" + StringUtils.abbreviate(alert.getMessage(), 500);
+      }
     }
     return alertSubstitutions(alert, template);
   }
