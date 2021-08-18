@@ -262,7 +262,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         else:
             # stdout will be returned as a list of lines, which should just be one line of json.
             stdout = json.loads(stdout[0])
-            stdout = {k: v == "true" for k, v in stdout.iteritems()}
+            stdout = {k: v == "true" for k, v in iteritems(stdout)}
             results.update(stdout)
 
         output = json.dumps(results, indent=2)
