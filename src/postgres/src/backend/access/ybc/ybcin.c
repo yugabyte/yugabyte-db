@@ -219,7 +219,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 								  isnull,
 								  ybctid,
 								  false /* is_backfill */,
-								  NULL /* read_time */);
+								  NULL /* write_time */);
 	}
 
 	return index->rd_index->indisunique ? true : false;
