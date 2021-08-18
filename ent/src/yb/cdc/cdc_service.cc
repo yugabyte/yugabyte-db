@@ -81,6 +81,8 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
 DEFINE_int32(update_metrics_interval_ms, kUpdateIntervalMs,
              "How often to update xDC cluster metrics.");
 
+DEFINE_bool(enable_cdc_state_table_caching, true, "Enable caching the cdc_state table schema.");
+
 DEFINE_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
@@ -484,13 +486,12 @@ void CDCServiceImpl::UpdateLagMetrics() {
     tablet_checkpoints = tablet_checkpoints_;
   }
 
-  client::TableHandle table;
-  auto s = table.Open(kCdcStateTableName, async_client_init_->client());
-  if (!s.ok()) {
+  auto cdc_state_table_result = GetCdcStateTable();
+  if (!cdc_state_table_result.ok()) {
     // It is possible that this runs before the cdc_state table is created. This is
     // ok. It just means that this is the first time the cluster starts.
-    YB_LOG_EVERY_N_SECS(WARNING, 30) << "Unable to open table " << kCdcStateTableName.table_name()
-                                     << " for metrics update.";
+    YB_LOG_EVERY_N_SECS(WARNING, 30)
+        << "Unable to open table " << kCdcStateTableName.table_name() << " for metrics update.";
     return;
   }
 
@@ -504,7 +505,7 @@ void CDCServiceImpl::UpdateLagMetrics() {
     failed = true;
   };
   // First go through tablets in the cdc_state table and update metrics for each one.
-  for (const auto& row : client::TableRange(table, options)) {
+  for (const auto& row : client::TableRange(**cdc_state_table_result, options)) {
     auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
     auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
     std::shared_ptr<tablet::TabletPeer> tablet_peer;
@@ -538,6 +539,7 @@ void CDCServiceImpl::UpdateLagMetrics() {
     }
   }
   if (failed) {
+    RefreshCdcStateTable();
     return;
   }
 
@@ -574,6 +576,49 @@ bool CDCServiceImpl::CDCEnabled() {
   return cdc_enabled_.load(std::memory_order_acquire);
 }
 
+Result<std::shared_ptr<yb::client::TableHandle>> CDCServiceImpl::GetCdcStateTable() {
+  bool use_cache = GetAtomicFlag(&FLAGS_enable_cdc_state_table_caching);
+  {
+    SharedLock<decltype(mutex_)> l(mutex_);
+    if (cdc_state_table_ && use_cache) {
+      return cdc_state_table_;
+    }
+    if (cdc_service_stopped_) {
+      return STATUS(ShutdownInProgress, "");
+    }
+  }
+
+  auto cdc_state_table = std::make_shared<yb::client::TableHandle>();
+  auto s = cdc_state_table->Open(kCdcStateTableName, async_client_init_->client());
+  // It is possible that this runs before the cdc_state table is created.
+  RETURN_NOT_OK(s);
+
+  {
+    std::lock_guard<decltype(mutex_)> l(mutex_);
+    if (cdc_state_table_ && use_cache) {
+      return cdc_state_table_;
+    }
+    if (cdc_service_stopped_) {
+      return STATUS(ShutdownInProgress, "");
+    }
+    cdc_state_table_ = cdc_state_table;
+    return cdc_state_table_;
+  }
+}
+
+void CDCServiceImpl::RefreshCdcStateTable() {
+  // Set cached value to null so we regenerate it on the next call.
+  std::lock_guard<decltype(mutex_)> l(mutex_);
+  cdc_state_table_ = nullptr;
+}
+
+Status CDCServiceImpl::RefreshCacheOnFail(const Status& s) {
+  if (!s.ok()) {
+    RefreshCdcStateTable();
+  }
+  return s;
+}
+
 MicrosTime CDCServiceImpl::GetLastReplicatedTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
   yb::tablet::RemoveIntentsData data;
@@ -590,10 +635,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     int min_sleep_ms = std::min(100, GetAtomicFlag(&FLAGS_update_metrics_interval_ms));
     auto sleep_period = MonoDelta::FromMilliseconds(min_sleep_ms);
     SleepFor(sleep_period);
-    if (cdc_service_stopped_.load(std::memory_order_acquire)) {
-      return false;
-    }
-    return true;
+
+    SharedLock<decltype(mutex_)> l(mutex_);
+    return !cdc_service_stopped_;
   };
 
   do {
@@ -618,9 +662,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     time_since_update_peers = MonoTime::Now();
     LOG(INFO) << "Started to read minimum replicated indices for all tablets";
 
-    client::TableHandle table;
-    auto s = table.Open(kCdcStateTableName, async_client_init_->client());
-    if (!s.ok()) {
+    auto cdc_state_table_result = GetCdcStateTable();
+    if (!cdc_state_table_result.ok()) {
       // It is possible that this runs before the cdc_state table is created. This is
       // ok. It just means that this is the first time the cluster starts.
       YB_LOG_EVERY_N_SECS(WARNING, 3600) << "Unable to open table "
@@ -639,7 +682,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     };
     options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId,
         master::kCdcCheckpoint, master::kCdcLastReplicationTime};
-    for (const auto& row : client::TableRange(table, options)) {
+    for (const auto& row : client::TableRange(**cdc_state_table_result, options)) {
       count++;
       auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
       auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
@@ -672,6 +715,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       }
     }
     if (failed) {
+      RefreshCdcStateTable();
       continue;
     }
     LOG(INFO) << "Read " << count << " records from " << kCdcStateTableName.table_name();
@@ -1000,7 +1044,7 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
                              CDCErrorPB::INVALID_REQUEST,
                              context);
 
-  client::TableHandle cdc_state_table;
+  std::shared_ptr<yb::client::TableHandle> cdc_state_table;
 
   std::vector<client::YBOperationPtr> ops;
   auto session = async_client_init_->client()->NewSession();
@@ -1059,9 +1103,11 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
     const std::string& bootstrap_id = *result;
     created_cdc_streams.push_back(bootstrap_id);
 
-    if (!cdc_state_table.table()) {
-      Status s = cdc_state_table.Open(kCdcStateTableName, async_client_init_->client());
-      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    if (cdc_state_table == nullptr) {
+      auto res = GetCdcStateTable();
+      RPC_CHECK_AND_RETURN_ERROR(res.ok(), res.status(), resp->mutable_error(),
+          CDCErrorPB::INTERNAL_ERROR, context);
+      cdc_state_table = *res;
     }
 
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -1098,12 +1144,12 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
                                 context);
       }
 
-      const auto op = cdc_state_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      const auto op = cdc_state_table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
       auto *const write_req = op->mutable_request();
 
       QLAddStringHashValue(write_req, tablet.tablet_id());
       QLAddStringRangeValue(write_req, bootstrap_id);
-      cdc_state_table.AddStringColumnValue(write_req, master::kCdcCheckpoint, op_id.ToString());
+      cdc_state_table->AddStringColumnValue(write_req, master::kCdcCheckpoint, op_id.ToString());
       ops.push_back(std::move(op));
 
       {
@@ -1124,7 +1170,7 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
     deadline = CoarseMonoClock::now() + async_client_init_->client()->default_rpc_timeout();
   }
   session->SetDeadline(deadline);
-  Status s = session->ApplyAndFlush(ops);
+  Status s = RefreshCacheOnFail(session->ApplyAndFlush(ops));
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   for (const auto& bootstrap_id : bootstrap_ids) {
@@ -1140,8 +1186,12 @@ void CDCServiceImpl::Shutdown() {
   if (async_client_init_) {
     async_client_init_->Shutdown();
     rpcs_.Shutdown();
+    {
+      std::lock_guard<decltype(mutex_)> l(mutex_);
+      cdc_service_stopped_ = true;
+      cdc_state_table_ = nullptr;
+    }
     if (update_peers_and_metrics_thread_) {
-      cdc_service_stopped_.store(true, std::memory_order_release);
       update_peers_and_metrics_thread_->join();
     }
     async_client_init_ = boost::none;
@@ -1164,10 +1214,10 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
     }
   }
 
-  client::TableHandle table;
-  RETURN_NOT_OK(table.Open(kCdcStateTableName, async_client_init_->client()));
+  auto cdc_state_table_result = GetCdcStateTable();
+  RETURN_NOT_OK(cdc_state_table_result);
 
-  const auto op = table.NewReadOp();
+  const auto op = (*cdc_state_table_result)->NewReadOp();
   auto* const req = op->mutable_request();
   DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
   QLAddStringHashValue(req, producer_tablet.tablet_id);
@@ -1178,9 +1228,9 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
       QL_OP_EQUAL, producer_tablet.stream_id);
   req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
   req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
-  table.AddColumns({master::kCdcCheckpoint}, req);
+  (*cdc_state_table_result)->AddColumns({master::kCdcCheckpoint}, req);
 
-  RETURN_NOT_OK(session->ReadSync(op));
+  RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(op)));
   auto row_block = ql::RowsResult(op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
     return OpId(0, 0);
@@ -1225,22 +1275,21 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
   }
 
   if (update_cdc_state) {
-    client::TableHandle table;
-    RETURN_NOT_OK(table.Open(kCdcStateTableName, async_client_init_->client()));
-    const auto op = table.NewUpdateOp();
+    auto res = GetCdcStateTable();
+    RETURN_NOT_OK(res);
+    const auto op = (*res)->NewUpdateOp();
     auto* const req = op->mutable_request();
     DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
     QLAddStringHashValue(req, producer_tablet.tablet_id);
     QLAddStringRangeValue(req, producer_tablet.stream_id);
-    table.AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
+    (*res)->AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
     // If we have a last record hybrid time, use that for physical time. If not, it means we're
     // caught up, so the current time.
     uint64_t last_replication_time_micros = last_record_hybrid_time != 0 ?
         HybridTime(last_record_hybrid_time).GetPhysicalValueMicros() : GetCurrentTimeMicros();
-    table.AddTimestampColumnValue(
-        req, master::kCdcLastReplicationTime,
-        last_replication_time_micros);
-    RETURN_NOT_OK(session->ApplyAndFlush(op));
+    (*res)->AddTimestampColumnValue(req, master::kCdcLastReplicationTime,
+                                                last_replication_time_micros);
+    RETURN_NOT_OK(RefreshCacheOnFail(session->ApplyAndFlush(op)));
   }
 
   return Status::OK();
@@ -1341,20 +1390,20 @@ OpId CDCServiceImpl::GetMinAppliedCheckpointForTablet(
   // We didn't find any streams for this tablet in the cache.
   // Let's read the cdc_state table and save this information in the cache so that it can be used
   // next time.
-  client::TableHandle table;
-  auto s = table.Open(kCdcStateTableName, async_client_init_->client());
-  if (!s.ok()) {
+  auto cdc_state_table_result = GetCdcStateTable();
+  if (!cdc_state_table_result.ok()) {
     YB_LOG_EVERY_N(WARNING, 30) << "Unable to open table " << kCdcStateTableName.table_name();
     // Return consensus::MinimumOpId()
     return min_op_id;
   }
 
-  const auto op = table.NewReadOp();
+  const auto op = (*cdc_state_table_result)->NewReadOp();
   auto* const req = op->mutable_request();
   QLAddStringHashValue(req, tablet_id);
-  table.AddColumns({master::kCdcCheckpoint, master::kCdcStreamId}, req);
+  (*cdc_state_table_result)->AddColumns({master::kCdcCheckpoint, master::kCdcStreamId}, req);
   if (!session->ApplyAndFlush(op).ok()) {
     YB_LOG_EVERY_N(WARNING, 30) << "Unable to read table " << kCdcStateTableName.table_name();
+    RefreshCdcStateTable();
     // Return consensus::MinimumOpId()
     return min_op_id;
   }
@@ -1385,6 +1434,7 @@ OpId CDCServiceImpl::GetMinAppliedCheckpointForTablet(
     if (index < min_index) {
       min_op_id.term = term;
       min_op_id.index = index;
+      min_index = index;
     }
 
     // If the checkpoints cache hasn't been updated yet, update it so we don't have to read
