@@ -90,6 +90,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
     MiniClusterOptions opts;
     SetAtomicFlag(false, &FLAGS_enable_ysql);
     SetAtomicFlag(GetParam(), &FLAGS_cdc_enable_replicate_intents);
+    SetAtomicFlag(1000, &FLAGS_update_metrics_interval_ms);
     opts.num_tablet_servers = server_count();
     opts.num_masters = 1;
     cluster_.reset(new MiniCluster(opts));
