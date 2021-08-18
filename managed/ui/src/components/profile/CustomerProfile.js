@@ -10,6 +10,7 @@ import UserProfileForm from './UserProfileForm';
 import UserList from './UserList';
 import { YBLoading } from '../common/indicators';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import AlertProfileForm from './AlertProfileForm';
 
 export default class CustomerProfile extends Component {
   constructor(props) {
@@ -23,6 +24,7 @@ export default class CustomerProfile extends Component {
   componentDidMount() {
     const { customer } = this.props;
     this.props.getCustomerUsers();
+    this.props.validateRegistration();
     if (isNonAvailable(customer.features, 'main.profile')) browserHistory.push('/');
   }
 
@@ -82,6 +84,22 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, 'main.profile')}
             >
               <UserProfileForm
+                customer={this.props.customer}
+                customerProfile={customerProfile}
+                apiToken={apiToken}
+                handleProfileUpdate={this.handleProfileUpdate}
+                {...this.props}
+              />
+            </Tab.Pane>,
+            <Tab.Pane
+              eventKey={'health-alerting'}
+              tabtitle="Health & Alerting"
+              key="health-alerting-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(customer.data.features, 'main.profile')}
+            >
+              <AlertProfileForm
                 customer={this.props.customer}
                 customerProfile={customerProfile}
                 apiToken={apiToken}

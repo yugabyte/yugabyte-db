@@ -1180,7 +1180,8 @@ bool CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
       initial_snapshot_writer_.emplace();
     }
 
-    Status status = PgWrapper::InitDbForYSQL(master_addresses_str, "/tmp");
+    Status status = PgWrapper::InitDbForYSQL(
+        master_addresses_str, "/tmp", master_->GetSharedMemoryFd());
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
       Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
@@ -9207,6 +9208,12 @@ void CatalogManager::ReportMetrics() {
   master_->ts_manager()->GetAllDescriptors(&ts_descs);
   metric_num_tablet_servers_dead_->set_value(ts_descs.size() - num_live_servers);
 }
+
+void CatalogManager::ResetMetrics() {
+  metric_num_tablet_servers_live_->set_value(0);
+  metric_num_tablet_servers_dead_->set_value(0);
+}
+
 
 std::string CatalogManager::LogPrefix() const {
   if (tablet_peer()) {

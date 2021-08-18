@@ -6,7 +6,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.Iterables;
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
+import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -47,6 +52,12 @@ public class CommonUtils {
   public static final int DB_IN_CLAUSE_TO_WARN = 50000;
   public static final int DB_OR_CHAIN_TO_WARN = 100;
 
+  private static final Configuration JSONPATH_CONFIG =
+      Configuration.builder()
+          .jsonProvider(new JacksonJsonNodeJsonProvider())
+          .mappingProvider(new JacksonMappingProvider())
+          .build();
+
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
    *
@@ -86,7 +97,10 @@ public class CommonUtils {
    */
   public static JsonNode maskConfig(JsonNode config) {
     return processData(
-        config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
+        "$",
+        config,
+        CommonUtils::isSensitiveField,
+        (key, value, path) -> getMaskedValue(key, value));
   }
 
   public static Map<String, String> maskConfigNew(Map<String, String> config) {
@@ -98,6 +112,31 @@ public class CommonUtils {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
         : value.replaceAll(maskRegex, "*");
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> T maskObject(T object) {
+    try {
+      JsonNode updatedJson = CommonUtils.maskConfig(Json.toJson(object));
+      return Json.fromJson(updatedJson, (Class<T>) object.getClass());
+    } catch (Exception e) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Failed to parse " + object.getClass().getSimpleName() + " object: " + e.getMessage());
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> T unmaskObject(T originalObject, T object) {
+    try {
+      JsonNode updatedJson =
+          CommonUtils.unmaskConfig(Json.toJson(originalObject), Json.toJson(object));
+      return Json.fromJson(updatedJson, (Class<T>) object.getClass());
+    } catch (Exception e) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Failed to parse " + object.getClass().getSimpleName() + " object: " + e.getMessage());
+    }
   }
 
   /**
@@ -112,25 +151,37 @@ public class CommonUtils {
     return originalData == null
         ? data
         : processData(
+            "$",
             data,
             CommonUtils::isSensitiveField,
-            (key, value) ->
-                StringUtils.equals(value, getMaskedValue(key, value))
-                    ? originalData.get(key).textValue()
-                    : value);
+            (key, value, path) -> {
+              JsonPath jsonPath = JsonPath.compile(path + "." + key);
+              return StringUtils.equals(value, getMaskedValue(key, value))
+                  ? ((TextNode) jsonPath.read(originalData, JSONPATH_CONFIG)).asText()
+                  : value;
+            });
   }
 
   private static JsonNode processData(
-      JsonNode data, Predicate<String> selector, BiFunction<String, String, String> getter) {
+      String path,
+      JsonNode data,
+      Predicate<String> selector,
+      TriFunction<String, String, String, String> getter) {
     if (data == null) {
       return Json.newObject();
     }
     JsonNode result = data.deepCopy();
     for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
       Entry<String, JsonNode> entry = it.next();
+      if (entry.getValue().isObject()) {
+        ((ObjectNode) result)
+            .put(
+                entry.getKey(),
+                processData(path + "." + entry.getKey(), entry.getValue(), selector, getter));
+      }
       if (selector.test(entry.getKey())) {
         ((ObjectNode) result)
-            .put(entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue()));
+            .put(entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue(), path));
       }
     }
     return result;
@@ -340,5 +391,10 @@ public class CommonUtils {
 
   public static Date nowPlusWithoutMillis(long amount, TemporalUnit timeUnit) {
     return Date.from(Instant.now().plus(amount, timeUnit).truncatedTo(ChronoUnit.SECONDS));
+  }
+
+  @FunctionalInterface
+  private interface TriFunction<A, B, C, R> {
+    R apply(A a, B b, C c);
   }
 }
