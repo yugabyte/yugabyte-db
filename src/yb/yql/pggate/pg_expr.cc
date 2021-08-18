@@ -375,7 +375,7 @@ void PgExpr::InitializeTranslateData() {
 //--------------------------------------------------------------------------------------------------
 
 PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
-    PgExpr::Opcode opcode)
+                       PgExpr::Opcode opcode)
     : PgExpr(opcode, type_entity) {
 
   switch (type_entity_->yb_type) {
@@ -667,7 +667,7 @@ Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
 //--------------------------------------------------------------------------------------------------
 
 PgOperator::PgOperator(const char *opname, const YBCPgTypeEntity *type_entity)
-  : PgExpr(NameToOpcode(opname), type_entity), opname_(opname) {
+    : PgExpr(NameToOpcode(opname), type_entity), opname_(opname) {
   InitializeTranslateData();
 }
 

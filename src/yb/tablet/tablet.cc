@@ -2293,8 +2293,7 @@ Status Tablet::BackfillIndexesForYsql(
     index_oids.pop_back();
   }
   std::string partition_key = metadata_->partition()->partition_key_start();
-  // Ignoring the current situation where users can run BACKFILL INDEX queries themselves, this
-  // should be safe from injection attacks because the parameters only consist of characters
+  // This should be safe from injection attacks because the parameters only consist of characters
   // [,0-9a-f].
   // TODO(jason): pass deadline
   std::string query_str = Format(

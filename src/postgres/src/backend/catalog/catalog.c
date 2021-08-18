@@ -618,7 +618,7 @@ IsTableOidUnused(Oid table_oid,
 Oid
 GetTableOidFromRelOptions(List *relOptions,
 						  Oid reltablespace,
-				  		  char relpersistence)
+						  char relpersistence)
 {
 	ListCell   *opt_cell;
 	Oid			table_oid;

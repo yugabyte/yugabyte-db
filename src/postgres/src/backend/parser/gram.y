@@ -6725,9 +6725,8 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 					n->removeType = $2;
 					n->missing_ok = true;
 					n->objects = $5;
-          if (list_length($5) > 1 && n->removeType != OBJECT_TABLE) {
-            parser_ybc_signal_unsupported(@5, "DROP multiple objects", 880);
-          }
+					if (list_length($5) > 1 && n->removeType != OBJECT_TABLE)
+						parser_ybc_signal_unsupported(@5, "DROP multiple objects", 880);
 					n->behavior = $6;
 					n->concurrent = false;
 					$$ = (Node *)n;
@@ -6738,9 +6737,8 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 					n->removeType = $2;
 					n->missing_ok = false;
 					n->objects = $3;
-          if (list_length($3) > 1 && n->removeType != OBJECT_TABLE) {
-            parser_ybc_signal_unsupported(@3, "DROP multiple objects", 880);
-          }
+					if (list_length($3) > 1 && n->removeType != OBJECT_TABLE)
+						parser_ybc_signal_unsupported(@3, "DROP multiple objects", 880);
 					n->behavior = $4;
 					n->concurrent = false;
 					$$ = (Node *)n;
@@ -6751,9 +6749,8 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 					n->removeType = $2;
 					n->missing_ok = true;
 					n->objects = $5;
-          if (list_length($5) > 1 && n->removeType != OBJECT_TABLE) {
-            parser_ybc_signal_unsupported(@5, "DROP multiple objects", 880);
-          }
+					if (list_length($5) > 1 && n->removeType != OBJECT_TABLE)
+						parser_ybc_signal_unsupported(@5, "DROP multiple objects", 880);
 					n->behavior = $6;
 					n->concurrent = false;
 					$$ = (Node *)n;
@@ -6764,9 +6761,8 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 					n->removeType = $2;
 					n->missing_ok = false;
 					n->objects = $3;
-          if (list_length($3) > 1 && n->removeType != OBJECT_TABLE) {
-            parser_ybc_signal_unsupported(@3, "DROP multiple objects", 880);
-          }
+					if (list_length($3) > 1 && n->removeType != OBJECT_TABLE)
+						parser_ybc_signal_unsupported(@3, "DROP multiple objects", 880);
 					n->behavior = $4;
 					n->concurrent = false;
 					$$ = (Node *)n;
