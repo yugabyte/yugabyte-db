@@ -32,7 +32,7 @@ from datetime import datetime
 
 from yb.common_util import (
     init_env, YB_SRC_ROOT, read_file, load_yaml_file, write_yaml_file, to_yaml_str)
-from yb.os_detection import get_short_os_name
+from yb.os_detection import get_short_os_name, get_arch
 
 
 THIRDPARTY_ARCHIVES_REL_PATH = os.path.join('build-support', 'thirdparty_archives.yml')
@@ -44,8 +44,9 @@ TAG_RE = re.compile(
     r'^v(?:(?P<branch_name>[0-9.]+)-)?'
     r'(?P<timestamp>[0-9]+)-'
     r'(?P<sha_prefix>[0-9a-f]+)'
-    r'(?:-(?P<architecture>x86_64|arm64))?'
+    r'(?:-(?:x86_64|arm64))?'
     r'(?:-(?P<os>(?:ubuntu|centos|macos|alpine)[a-z0-9.]*))'
+    r'(?:-(?P<architecture>x86_64|aarch64))?'
     r'(?:-(?P<is_linuxbrew>linuxbrew))?'
     # "devtoolset" really means just "gcc" here. We should replace it with "gcc" in release names.
     r'(?:-(?P<compiler_type>(?:gcc|clang|devtoolset-?)[a-z0-9.]+))?'
@@ -80,7 +81,7 @@ def compatible_os(archive_os: str, target_os: str) -> bool:
 
 class YBDependenciesRelease:
 
-    FIELDS_TO_PERSIST = ['os_type', 'compiler_type', 'tag', 'sha']
+    FIELDS_TO_PERSIST = ['os_type', 'architecture', 'compiler_type', 'tag', 'sha']
 
     github_release: GitRelease
     sha: str
@@ -89,6 +90,7 @@ class YBDependenciesRelease:
     url: str
     compiler_type: str
     os_type: str
+    architecture: str
     tag: str
     branch_name: Optional[str]
 
@@ -111,6 +113,7 @@ class YBDependenciesRelease:
 
         self.timestamp = group_dict['timestamp']
         self.os_type = adjust_os_type(group_dict['os'])
+        self.architecture = group_dict['architecture']
         self.is_linuxbrew = bool(group_dict.get('is_linuxbrew'))
 
         compiler_type = group_dict.get('compiler_type')
@@ -221,6 +224,10 @@ def parse_args() -> argparse.Namespace:
         '--os-type',
         help='Operating system type, to help us decide which third-party archive to choose. '
              'The default value is determined automatically based on the current OS.')
+    parser.add_argument(
+        '--architecture',
+        help='Machine architecture, to help us decide which third-party archive to choose. '
+             'The default value is determined automatically based on the current platform.')
     parser.add_argument(
         '--verbose',
         help='Verbose debug information')
@@ -334,14 +341,19 @@ def load_metadata() -> Dict[str, Any]:
 def get_download_url(
         metadata: Dict[str, Any],
         compiler_type: str,
-        os_type: Optional[str]) -> str:
+        os_type: Optional[str],
+        architecture: Optional[str]) -> str:
     if not os_type:
         os_type = get_short_os_name()
+    if not architecture:
+        architecture = get_arch()
 
     candidates: List[Any] = []
     available_archives = metadata['archives']
     for archive in available_archives:
-        if compatible_os(archive['os_type'], os_type) and archive['compiler_type'] == compiler_type:
+        if compatible_os(archive['os_type'], os_type) \
+           and archive['compiler_type'] == compiler_type \
+           and archive['architecture'] == architecture:
             candidates.append(archive)
 
     if len(candidates) == 1:
@@ -353,7 +365,7 @@ def get_download_url(
             logging.info(
                 "Assuming that the compiler type of 'gcc' means 'gcc5'. "
                 "This will change when we stop using Linuxbrew and update the compiler.")
-            return get_download_url(metadata, 'gcc5', os_type)
+            return get_download_url(metadata, 'gcc5', os_type, architecture)
 
         logging.info(f"Available release archives:\n{to_yaml_str(available_archives)}")
         raise ValueError(
@@ -383,7 +395,8 @@ def main() -> None:
         url = get_download_url(
             metadata=metadata,
             compiler_type=args.compiler_type,
-            os_type=args.os_type)
+            os_type=args.os_type,
+            architecture=args.architecture)
         if url is None:
             raise RuntimeError("Could not determine download URL")
         logging.info(f"Download URL for the third-party dependencies: {url}")
