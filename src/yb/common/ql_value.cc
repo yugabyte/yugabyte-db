@@ -36,19 +36,6 @@ using yb::operator"" _MB;
 DEFINE_int32(yql_max_value_size, 64_MB,
              "Maximum size of a value in the Yugabyte Query Layer");
 
-// The list of unsupported datatypes to use in switch statements
-#define QL_UNSUPPORTED_TYPES_IN_SWITCH \
-  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case TUPLE: FALLTHROUGH_INTENDED;     \
-  case TYPEARGS: FALLTHROUGH_INTENDED;  \
-  case UNKNOWN_DATA
-
-#define QL_INVALID_TYPES_IN_SWITCH     \
-  case UINT8:  FALLTHROUGH_INTENDED;    \
-  case UINT16: FALLTHROUGH_INTENDED;    \
-  case UINT32: FALLTHROUGH_INTENDED;    \
-  case UINT64
-
 namespace yb {
 
 using std::string;
@@ -117,12 +104,12 @@ int QLValue::CompareTo(const QLValue& other) const {
       return GenericCompare(timeuuid_value(), other.timeuuid_value());
     case InternalType::kDateValue: return GenericCompare(date_value(), other.date_value());
     case InternalType::kTimeValue: return GenericCompare(time_value(), other.time_value());
-    case QLValuePB::kFrozenValue: {
+    case InternalType::kFrozenValue: {
       return Compare(frozen_value(), other.frozen_value());
     }
-    case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
-    case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
-    case QLValuePB::kListValue:
+    case InternalType::kMapValue: FALLTHROUGH_INTENDED;
+    case InternalType::kSetValue: FALLTHROUGH_INTENDED;
+    case InternalType::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
 
@@ -130,7 +117,7 @@ int QLValue::CompareTo(const QLValue& other) const {
       LOG(FATAL) << "Internal error: value should not be null";
       break;
 
-    case QLValuePB::kVirtualValue:
+    case InternalType::kVirtualValue:
       if (IsMax()) {
         return other.IsMax() ? 0 : 1;
       } else {

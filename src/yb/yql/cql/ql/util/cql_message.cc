@@ -120,10 +120,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
           case DataType::FROZEN: FALLTHROUGH_INTENDED;
           case DataType::DATE: FALLTHROUGH_INTENDED;
           case DataType::TIME: FALLTHROUGH_INTENDED;
-          case DataType::UINT8: FALLTHROUGH_INTENDED;
-          case DataType::UINT16: FALLTHROUGH_INTENDED;
-          case DataType::UINT32: FALLTHROUGH_INTENDED;
-          case DataType::UINT64:
+          QL_INVALID_TYPES_IN_SWITCH:
             break;
         }
         return STATUS_SUBSTITUTE(
@@ -145,7 +142,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
 }
 
 Status CQLMessage::QueryParameters::ValidateConsistency() {
-  switch(consistency) {
+  switch (consistency) {
     case Consistency::LOCAL_ONE: FALLTHROUGH_INTENDED;
     case Consistency::QUORUM: {
       // We are repurposing cassandra's "QUORUM" consistency level to indicate "STRONG"
@@ -1312,15 +1309,8 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
       return;
     }
     case DataType::FROZEN: FALLTHROUGH_INTENDED;
-    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case DataType::TUPLE: FALLTHROUGH_INTENDED;
-    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
-
-    case DataType::UINT8:  FALLTHROUGH_INTENDED;
-    case DataType::UINT16: FALLTHROUGH_INTENDED;
-    case DataType::UINT32: FALLTHROUGH_INTENDED;
-    case DataType::UINT64: FALLTHROUGH_INTENDED;
-    case DataType::UNKNOWN_DATA:
+    QL_UNSUPPORTED_TYPES_IN_SWITCH: FALLTHROUGH_INTENDED;
+    QL_INVALID_TYPES_IN_SWITCH:
       break;
 
     // default: fall through
