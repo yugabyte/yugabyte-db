@@ -77,6 +77,8 @@ import json
 import logging
 import os
 import sys
+import subprocess
+
 import yugabyte_pycommon  # type: ignore
 
 from json.decoder import JSONDecodeError
@@ -140,13 +142,45 @@ def add_counters(dest: Dict[str, int], src: Dict[str, int]) -> None:
         dest[k] = dest.get(k, 0) + src[k]
 
 
+def compute_percentage(n: int, total: int) -> float:
+    if total == 0:
+        return 0
+    return n * 100.0 / total
+
+
+def postprocess_stats(stats: Dict[str, Any]):
+    num_errors = stats.get('errors', 0)
+    num_failures = stats.get('failures', 0)
+    num_run = stats.get('run', 0)
+    num_unsuccessful = num_errors + num_failures
+    num_successful = num_run - num_unsuccessful
+    stats['successful_percentage'] = compute_percentage(num_successful, num_run)
+    stats['unsuccessful_percentage'] = compute_percentage(num_unsuccessful, num_run)
+    stats['successful'] = num_successful
+    stats['unsuccessful'] = num_unsuccessful
+
+
 def aggregate_test_reports(args: argparse.Namespace) -> None:
     all_test_reports = []
     failure_reports = []
     errors = []
 
-    for file_path in sys.stdin:
-        file_path = os.path.realpath(file_path.strip())
+    test_report_file_paths = subprocess.check_output([
+        'find',
+        args.build_root,
+        os.path.join(args.yb_src_root, 'java'),
+        '-type',
+        'f',
+        '-and',
+        '-name',
+        '*_test_report.json'
+    ]).decode('utf-8').strip().split('\n')
+
+    for file_path in test_report_file_paths:
+        file_path = file_path.strip()
+        if not file_path:
+            continue
+        file_path = os.path.realpath(file_path)
         try:
             with open(file_path) as input_file:
                 report = json.load(input_file)
@@ -187,6 +221,10 @@ def aggregate_test_reports(args: argparse.Namespace) -> None:
             by_language[language] = {}
         add_counters(totals, deltas)
         add_counters(by_language[language], deltas)
+
+    postprocess_stats(totals)
+    for k, v in by_language.items():
+        postprocess_stats(v)
 
     top_level_details = {
         "totals": totals,
