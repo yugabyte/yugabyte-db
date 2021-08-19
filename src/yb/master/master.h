@@ -45,6 +45,7 @@
 #include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/server/server_base.h"
+#include "yb/tserver/db_server_base.h"
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
@@ -71,7 +72,7 @@ class TSManager;
 class MasterPathHandlers;
 class FlushManager;
 
-class Master : public server::RpcAndWebServerBase {
+class Master : public tserver::DbServerBase {
  public:
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
@@ -91,7 +92,7 @@ class Master : public server::RpcAndWebServerBase {
 
   void Shutdown();
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
@@ -152,7 +153,7 @@ class Master : public server::RpcAndWebServerBase {
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
-  void DisplayGeneralInfoIcons(std::stringstream* output);
+  void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
  private:
   friend class MasterTest;
@@ -163,6 +164,10 @@ class Master : public server::RpcAndWebServerBase {
   // Initialize registration_.
   // Requires that the web server and RPC server have been started.
   CHECKED_STATUS InitMasterRegistration();
+
+  const std::shared_future<client::YBClient*>& client_future() const override;
+
+  client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   enum MasterState {
     kStopped,

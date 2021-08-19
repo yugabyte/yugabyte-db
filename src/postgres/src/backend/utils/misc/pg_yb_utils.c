@@ -104,7 +104,6 @@ CheckIsYBSupportedRelationByKind(char relkind)
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
 		  relkind == RELKIND_PARTITIONED_INDEX))
-
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));

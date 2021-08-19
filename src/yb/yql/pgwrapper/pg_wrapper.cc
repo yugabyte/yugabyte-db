@@ -396,6 +396,7 @@ Status PgWrapper::InitDb(bool yb_enabled) {
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
+  initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&initdb_subprocess, yb_enabled);
   int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
@@ -430,7 +431,9 @@ Result<int> PgWrapper::Wait() {
   return pg_proc_->Wait();
 }
 
-Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tmp_dir_base) {
+Status PgWrapper::InitDbForYSQL(
+    const string& master_addresses, const string& tmp_dir_base,
+    int tserver_shm_fd) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -438,6 +441,7 @@ Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tm
   conf.pg_port = 0;  // We should not use this port.
   std::mt19937 rng{std::random_device()()};
   conf.data_dir = Format("$0/tmp_pg_data_$1", tmp_dir_base, rng());
+  conf.tserver_shm_fd = tserver_shm_fd;
   auto se = ScopeExit([&conf] {
     auto is_dir = Env::Default()->IsDirectory(conf.data_dir);
     if (is_dir.ok()) {
@@ -489,10 +493,10 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
   proc->SetEnv("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
   proc->SetEnv("YB_PG_ALLOW_RUNNING_AS_ANY_USER", "1");
+  proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
   if (yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);
-    proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
     // Postgres process can't compute default certs dir by itself
     // as it knows nothing about t-server's root data directory.
     // Solution is to specify it explicitly.

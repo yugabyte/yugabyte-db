@@ -175,6 +175,9 @@ void CatalogManagerBgTasks::Run() {
 
       // Start the tablespace background task.
       catalog_manager_->StartTablespaceBgTaskIfStopped();
+    } else {
+      // Reset Metrics when leader_status is not ok.
+      catalog_manager_->ResetMetrics();
     }
     WARN_NOT_OK(catalog_manager_->encryption_manager_->
                 GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),

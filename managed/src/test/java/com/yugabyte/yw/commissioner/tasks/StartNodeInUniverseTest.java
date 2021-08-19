@@ -38,9 +38,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -54,14 +52,9 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
     } catch (Exception e) {
     }

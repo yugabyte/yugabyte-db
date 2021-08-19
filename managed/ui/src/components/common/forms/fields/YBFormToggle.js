@@ -5,8 +5,25 @@ import Toggle from 'react-toggle';
 import { YBLabel, DescriptionItem } from '../../../../components/common/descriptors';
 import 'react-toggle/style.css';
 import './stylesheets/YBToggle.scss';
+import { isFunction } from 'lodash';
+import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 
 export default class YBFormToggle extends Component {
+
+  handleOnChange = (event) => {
+
+    const { field, onChange } = this.props;
+
+    if (isDefinedNotNull(field) && isFunction(field.onChange)) {
+      field.onChange(event);
+    }
+
+    if (isFunction(onChange)) {
+      onChange(this.props, event);
+    }
+
+  };
+
   render() {
     const {
       label,
@@ -18,11 +35,6 @@ export default class YBFormToggle extends Component {
       infoTitle,
       field
     } = this.props;
-    const onChange = (event) => {
-      if (field.onChange) {
-        field.onChange(event);
-      }
-    };
     return (
       <YBLabel
         label={label}
@@ -36,7 +48,7 @@ export default class YBFormToggle extends Component {
             checked={field.value}
             name={field.name}
             className="yb-toggle"
-            onChange={onChange}
+            onChange={this.handleOnChange}
             disabled={isReadOnly}
           />
         </DescriptionItem>
