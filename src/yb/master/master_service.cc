@@ -394,7 +394,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (IsLoadBalancerIdle)
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
-    (DeleteTablet)
+    (DeleteNotServingTablet)
     (DdlLog)
 )
 
