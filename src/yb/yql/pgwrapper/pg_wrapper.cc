@@ -124,7 +124,7 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
   string copy = boost::replace_all_copy(src, " ", "");
   copy = boost::erase_first_copy(copy, "shared_preload_libraries");
   // According to the documentation in postgresql.conf file,
-  // the '=' is optional hence it needs to be handled separate.
+  // the '=' is optional hence it needs to be handled separately.
   copy = boost::erase_first_copy(copy, "=");
   copy = boost::trim_copy_if(copy, boost::is_any_of("'\""));
   vector<string> new_items;
@@ -379,10 +379,10 @@ Status PgWrapper::Start() {
 
   // Gather the default extensions:
   vector<string> metricsLibs;
-  metricsLibs.push_back("pg_stat_statements");
   if (FLAGS_pg_stat_statements_enabled) {
-    metricsLibs.push_back("yb_pg_metrics");
+    metricsLibs.push_back("pg_stat_statements");
   }
+  metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
 
@@ -393,7 +393,7 @@ Status PgWrapper::Start() {
   } else if (!FLAGS_ysql_pg_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &pgConfLines);
   }
-  
+
   // If the user has given any shared_preload_libraries -> merge them in
   for (string &value : pgConfLines) {
     if (boost::starts_with(value, "shared_preload_libraries")) {
