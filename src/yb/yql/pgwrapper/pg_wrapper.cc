@@ -195,6 +195,15 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
         ErrnoToString(errno));
   }
 
+  // Gather the default extensions:
+  vector<string> metricsLibs;
+  if (FLAGS_pg_stat_statements_enabled) {
+    metricsLibs.push_back("pg_stat_statements");
+  }
+  metricsLibs.push_back("yb_pg_metrics");
+  metricsLibs.push_back("pgaudit");
+  metricsLibs.push_back("pg_hint_plan");
+
   vector<string> lines;
   string line;
   while (std::getline(conf_file, line)) {
@@ -207,6 +216,20 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   } else if (!FLAGS_ysql_pg_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &lines);
   }
+
+  // If the user has given any shared_preload_libraries -> merge them in
+  for (string &value : lines) {
+    if (boost::starts_with(value, "shared_preload_libraries")) {
+      MergeSharedPreloadLibraries(value, &metricsLibs);
+    }
+  }
+
+  // make sure we do not have the line duplicated in the config:
+  lines.erase(std::remove_if(lines.begin(), lines.end(), [](const std::string& s) {
+    return boost::starts_with(s, "shared_preload_libraries");
+  }));
+
+  lines.push_back(Format("shared_preload_libraries='$0'", boost::join(metricsLibs, ",")));
 
   if (conf.enable_tls) {
     lines.push_back("ssl=on");
@@ -374,34 +397,6 @@ Status PgWrapper::Start() {
     argv.push_back("-c");
     argv.push_back("log_directory=" + FLAGS_log_dir);
   }
-
-  argv.push_back("-c");
-
-  // Gather the default extensions:
-  vector<string> metricsLibs;
-  if (FLAGS_pg_stat_statements_enabled) {
-    metricsLibs.push_back("pg_stat_statements");
-  }
-  metricsLibs.push_back("yb_pg_metrics");
-  metricsLibs.push_back("pgaudit");
-  metricsLibs.push_back("pg_hint_plan");
-
-  // Once again parse the pg conf:
-  vector<string> pgConfLines;
-  if (!FLAGS_ysql_pg_conf_csv.empty()) {
-    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &pgConfLines));
-  } else if (!FLAGS_ysql_pg_conf.empty()) {
-    ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &pgConfLines);
-  }
-
-  // If the user has given any shared_preload_libraries -> merge them in
-  for (string &value : pgConfLines) {
-    if (boost::starts_with(value, "shared_preload_libraries")) {
-      MergeSharedPreloadLibraries(value, &metricsLibs);
-    }
-  }
-
-  argv.push_back(string("shared_preload_libraries=").append(boost::join(metricsLibs, ",")));
 
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);
