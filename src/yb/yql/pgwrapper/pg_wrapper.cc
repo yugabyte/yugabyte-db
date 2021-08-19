@@ -217,18 +217,19 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
     ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &lines);
   }
 
-  // If the user has given any shared_preload_libraries -> merge them in
+  // If the user has given any shared_preload_libraries, merge them in.
   for (string &value : lines) {
     if (boost::starts_with(value, "shared_preload_libraries")) {
       MergeSharedPreloadLibraries(value, &metricsLibs);
     }
   }
 
-  // make sure we do not have the line duplicated in the config:
+  // Ensure we do not have the line duplicated in the config.
   lines.erase(std::remove_if(lines.begin(), lines.end(), [](const std::string& s) {
     return boost::starts_with(s, "shared_preload_libraries");
   }));
 
+  // Add shared_preload_libraries to the ysql_pg.conf.
   lines.push_back(Format("shared_preload_libraries='$0'", boost::join(metricsLibs, ",")));
 
   if (conf.enable_tls) {
