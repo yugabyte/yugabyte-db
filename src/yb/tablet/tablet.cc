@@ -47,6 +47,7 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/optional.hpp>
 
+#include "yb/common/transaction.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/metadata.h"
@@ -2046,8 +2047,9 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 
   rocksdb::WriteBatch regular_write_batch;
   auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      tablet_id(), data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state, data.log_ht,
-      &regular_write_batch, intents_db_.get(), nullptr /* intents_write_batch */));
+      tablet_id(), data.transaction_id, data.aborted, data.commit_ht, &key_bounds_,
+      data.apply_state, data.log_ht, &regular_write_batch, intents_db_.get(),
+      nullptr /* intents_write_batch */));
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
@@ -2067,8 +2069,15 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          tablet_id(), id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(),
-          HybridTime(), nullptr /* regular_write_batch */, intents_db_.get(),
+          tablet_id(),
+          id,
+          AbortedSubTransactionSet(),
+          HybridTime() /* commit_ht */,
+          &key_bounds_,
+          apply_state.get_ptr(),
+          HybridTime(),
+          nullptr /* regular_write_batch */,
+          intents_db_.get(),
           &intents_write_batch));
       if (new_apply_state.key.empty()) {
         break;

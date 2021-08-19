@@ -710,6 +710,10 @@ class YBTransaction::Impl final {
       return;
     }
 
+    if (subtransaction_) {
+      subtransaction_->aborted.ToPB(state.mutable_aborted()->mutable_set());
+    }
+
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
             deadline,

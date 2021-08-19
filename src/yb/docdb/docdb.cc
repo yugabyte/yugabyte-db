@@ -1036,6 +1036,7 @@ void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* o
 
 CHECKED_STATUS IntentToWriteRequest(
     const Slice& transaction_id_slice,
+    const AbortedSubTransactionSet& aborted,
     HybridTime commit_ht,
     const Slice& reverse_index_key,
     const Slice& reverse_index_value,
@@ -1071,7 +1072,10 @@ CHECKED_STATUS IntentToWriteRequest(
       return Status::OK();
     }
 
-    // TODO(savepoints) -- if subtransaction_id is aborted, skip applying this intent.
+    // Intents from aborted subtransactions should not be written as regular records.
+    if (aborted.Test(decoded_value.subtransaction_id)) {
+      return Status::OK();
+    }
 
     // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
     // Time will be added when writing batch to RocksDB.
@@ -1126,13 +1130,16 @@ void PutApplyState(
 
 ApplyTransactionState StoreApplyState(
     const Slice& transaction_id_slice, const Slice& key, IntraTxnWriteId write_id,
-    HybridTime commit_ht, rocksdb::WriteBatch* regular_batch) {
+    const AbortedSubTransactionSet& aborted, HybridTime commit_ht,
+    rocksdb::WriteBatch* regular_batch) {
   auto result = ApplyTransactionState {
     .key = key.ToBuffer(),
     .write_id = write_id,
+    .aborted = aborted,
   };
   ApplyTransactionStatePB pb;
   result.ToPB(&pb);
+  aborted.ToPB(pb.mutable_aborted()->mutable_set());
   pb.set_commit_ht(commit_ht.ToUint64());
   faststring encoded_pb;
   pb_util::SerializeToString(pb, &encoded_pb);
@@ -1148,6 +1155,7 @@ ApplyTransactionState StoreApplyState(
 Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     const TabletId& tablet_id,
     const TransactionId& transaction_id,
+    const AbortedSubTransactionSet& aborted,
     HybridTime commit_ht,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* apply_state,
@@ -1155,9 +1163,14 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* intents_batch) {
-  // TODO(savepoints) -- skip applying intents belonging to aborted subtransactions.
   SCHECK_EQ((regular_batch != nullptr) + (intents_batch != nullptr), 1, InvalidArgument,
             "Exactly one write batch should be non-null, either regular or intents");
+
+  // In case we have passed in a non-null apply_state, it's aborted set will have been loaded from
+  // persisted apply state, and the passed in aborted set will correspond to the aborted set at
+  // commit time. Rather then copy that set upstream so it is passed in as aborted, we simply grab
+  // a reference to it here, if it is defined, to use in this method.
+  const auto& latest_aborted_set = apply_state ? apply_state->aborted : aborted;
 
   // regular_batch or intents_batch could be null. In this case we don't fill apply batch for
   // appropriate DB.
@@ -1218,8 +1231,9 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
             << (regular_batch ? "R" : "") << (intents_batch ? "I" : "")
             << "]: " << EntryToString(reverse_index_iter, StorageDbType::kIntents);
 
-    // If the key ends at the transaction id then it is transaction metadata (status tablet,
-    // isolation level etc.).
+    // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
+    // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
+    // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       auto reverse_index_value = reverse_index_iter.value();
       if (!reverse_index_value.empty() && reverse_index_value[0] == ValueTypeAsChar::kBitSet) {
@@ -1235,10 +1249,11 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
         // So doing this check here, instead of right after write_id was incremented.
         if (write_id >= write_id_limit) {
           return StoreApplyState(
-              transaction_id_slice, key_slice, write_id, commit_ht, regular_batch);
+              transaction_id_slice, key_slice, write_id, latest_aborted_set, commit_ht,
+              regular_batch);
         }
         RETURN_NOT_OK(IntentToWriteRequest(
-            transaction_id_slice, commit_ht, key_slice, reverse_index_value,
+            transaction_id_slice, latest_aborted_set, commit_ht, key_slice, reverse_index_value,
             &intent_iter, regular_batch, &write_id));
       }
 
@@ -1249,6 +1264,7 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
 
     if (intents_batch) {
       if (intents_batch->Count() >= max_records) {
+        // No need to return with .aborted, since this branch is only hit during intent clean-up.
         return ApplyTransactionState {
           .key = key_slice.ToBuffer(),
           .write_id = write_id,
@@ -1275,7 +1291,8 @@ Result<ApplyTransactionState> PrepareApplyIntentsBatch(
 }
 
 std::string ApplyTransactionState::ToString() const {
-  return Format("{ key: $0 write_id: $1 }", Slice(key).ToDebugString(), write_id);
+  return Format(
+      "{ key: $0 write_id: $1 aborted: $2 }", Slice(key).ToDebugString(), write_id, aborted);
 }
 
 void CombineExternalIntents(

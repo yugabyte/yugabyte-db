@@ -382,6 +382,9 @@ message TransactionStatePB {
   // Relevant only in CLEANUP and APPLYING status, true when we perform request
   // for a transaction that was previously sealed.
   optional bool sealed = 6;
+
+  // Set of subtransaction IDs which are aborted.
+  optional AbortedSubTransactionSetPB aborted = 7;
 }
 
 // Truncate tablet request.

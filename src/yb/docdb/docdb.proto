@@ -59,4 +59,7 @@ message ApplyTransactionStatePB {
 
   // Transaction commit hybrid time.
   optional fixed64 commit_ht = 3;
+
+  // Set of aborted subtransactions.
+  optional AbortedSubTransactionSetPB aborted = 4;
 }

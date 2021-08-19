@@ -29,6 +29,7 @@
 #include "yb/client/transaction_cleanup.h"
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
@@ -100,6 +101,7 @@ namespace {
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
+  const AbortedSubTransactionSetPB& aborted;
   HybridTime commit_time;
   bool sealed;
 
@@ -435,6 +437,7 @@ class TransactionState {
             context_.NotifyApplying({
                 .tablet = tablet.first,
                 .transaction = id_,
+                .aborted = aborted_,
                 .commit_time = commit_time_,
                 .sealed = status_ == TransactionStatus::SEALED });
           }
@@ -670,6 +673,8 @@ class TransactionState {
     commit_time_ = data.hybrid_time;
     // TODO(dtxn) Not yet implemented
     next_abort_after_sealing_ = CoarseMonoClock::now() + FLAGS_avoid_abort_after_sealing_ms * 1ms;
+    // TODO(savepoints) Savepoints with sealed transactions is not yet tested
+    aborted_ = data.state.aborted();
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
     status_ = TransactionStatus::SEALED;
 
@@ -706,6 +711,8 @@ class TransactionState {
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
+    aborted_ = data.state.aborted();
+
     involved_tablets_.reserve(data.state.tablets().size());
     for (const auto& tablet : data.state.tablets()) {
       InvolvedTabletState state = {
@@ -777,6 +784,7 @@ class TransactionState {
         context_.NotifyApplying({
             .tablet = tablet.first,
             .transaction = id_,
+            .aborted = aborted_,
             .commit_time = commit_time_,
             .sealed = status_ == TransactionStatus::SEALED});
       }
@@ -837,6 +845,9 @@ class TransactionState {
   // Don't resend applying until this time.
   MonoTime resend_applying_time_;
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
+
+  // Metadata tracking aborted subtransaction IDs in this transaction.
+  AbortedSubTransactionSetPB aborted_;
 
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
@@ -1263,6 +1274,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     state.add_tablets(context_.tablet_id());
     state.set_commit_hybrid_time(action.commit_time.ToUint64());
     state.set_sealed(action.sealed);
+    *state.mutable_aborted() = action.aborted;
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {
