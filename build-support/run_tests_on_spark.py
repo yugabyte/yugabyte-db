@@ -67,6 +67,7 @@ import traceback
 import tempfile
 import errno
 import signal
+from datetime import datetime
 
 from collections import defaultdict
 
@@ -202,7 +203,10 @@ def is_pid_running(pid):
 def delete_if_exists_log_errors(file_path):
     if os.path.exists(file_path):
         try:
-            os.remove(file_path)
+            if os.path.isdir(file_path):
+                subprocess.check_call(['rm', '-rf', file_path])
+            else:
+                os.remove(file_path)
         except OSError as os_error:
             logging.error("Error deleting file %s: %s", file_path, os_error)
 
@@ -301,6 +305,13 @@ def parallel_run_test(test_descriptor_str):
 
     os.environ['YB_TEST_STARTED_RUNNING_FLAG_FILE'] = test_started_running_flag_file
     os.environ['YB_TEST_EXTRA_ERROR_LOG_PATH'] = test_descriptor.error_output_path
+
+    timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S%f')
+    random_part = ''.join([str(random.randint(0, 9)) for i in range(10)])
+    test_tmp_dir = os.path.join(
+            os.environ.get('YB_TEST_TMP_BASE_DIR', '/tmp'),
+            f'yb_test.{test_descriptor.str_for_file_name()}.{timestamp_str}.{random_part}')
+    os.environ['TEST_TMPDIR'] = test_tmp_dir
 
     artifact_list_path = yb_dist_tests.get_tmp_filename(
             prefix='yb_test_artifact_list', suffix='.txt')
@@ -451,6 +462,7 @@ def parallel_run_test(test_descriptor_str):
                 artifact_paths=rel_artifact_paths,
                 num_errors_copying_artifacts=num_errors_copying_artifacts)
     finally:
+        delete_if_exists_log_errors(test_tmp_dir)
         delete_if_exists_log_errors(test_started_running_flag_file)
         delete_if_exists_log_errors(artifact_list_path)
         os.umask(old_umask)
@@ -1167,6 +1179,7 @@ def main():
         else:
             yb_dist_tests.compute_archive_sha256sum()
 
+    propagate_env_vars()
     if test_list_path:
         test_descriptors = load_test_list(test_list_path)
     else:
@@ -1175,8 +1188,6 @@ def main():
     if not test_descriptors and not args.allow_no_tests:
         logging.info("No tests to run")
         return
-
-    propagate_env_vars()
 
     num_tests = len(test_descriptors)
 

@@ -38,6 +38,7 @@ from yb.common_util import get_build_type_from_build_root, \
 #
 # This must match the constant with the same name in common-test-env.sh.
 TEST_DESCRIPTOR_SEPARATOR = ":::"
+BINARY_AND_TEST_NAME_SEPARATOR = "__"
 
 JAVA_TEST_DESCRIPTOR_RE = re.compile(r'^([a-z0-9-]+)/src/test/(?:java|scala)/(.*)$')
 
@@ -128,7 +129,7 @@ class TestDescriptor:
                 self.args_for_run_test += " " + test_name
             output_file_name = rel_test_binary
             if test_name:
-                output_file_name += '__' + test_name
+                output_file_name += BINARY_AND_TEST_NAME_SEPARATOR + test_name
 
         output_file_name = re.sub(r'[\[\]/#]', '_', output_file_name)
         self.error_output_path = os.path.join(
@@ -142,6 +143,9 @@ class TestDescriptor:
             TEST_DESCRIPTOR_ATTEMPT_PREFIX,
             self.attempt_index
             ]
+
+    def str_for_file_name(self):
+        return str(self).replace('/', '__').replace(':', '_')
 
     def __eq__(self, other):
         return self.descriptor_str == other.descriptor_str
