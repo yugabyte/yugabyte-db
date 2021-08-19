@@ -36,7 +36,7 @@ using yb::operator"" _MB;
 DEFINE_int32(yql_max_value_size, 64_MB,
              "Maximum size of a value in the Yugabyte Query Layer");
 
-// The list of unsupported datypes to use in switch statements
+// The list of unsupported datatypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
   case TUPLE: FALLTHROUGH_INTENDED;     \

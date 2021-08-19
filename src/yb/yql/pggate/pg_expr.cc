@@ -19,6 +19,7 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/util/string_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/flag_tags.h"
@@ -351,23 +352,8 @@ void PgExpr::InitializeTranslateData() {
       translate_data_ = TranslateDecimal;
       break;
 
-    case YB_YQL_DATA_TYPE_VARINT:
-    case YB_YQL_DATA_TYPE_INET:
-    case YB_YQL_DATA_TYPE_LIST:
-    case YB_YQL_DATA_TYPE_MAP:
-    case YB_YQL_DATA_TYPE_SET:
-    case YB_YQL_DATA_TYPE_UUID:
-    case YB_YQL_DATA_TYPE_TIMEUUID:
-    case YB_YQL_DATA_TYPE_TUPLE:
-    case YB_YQL_DATA_TYPE_TYPEARGS:
-    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
-    case YB_YQL_DATA_TYPE_FROZEN:
-    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_JSONB:
-    case YB_YQL_DATA_TYPE_UINT8:
-    case YB_YQL_DATA_TYPE_UINT16:
-    default:
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
       LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
   }
 }
@@ -493,23 +479,8 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
       }
       break;
 
-    case YB_YQL_DATA_TYPE_VARINT:
-    case YB_YQL_DATA_TYPE_INET:
-    case YB_YQL_DATA_TYPE_LIST:
-    case YB_YQL_DATA_TYPE_MAP:
-    case YB_YQL_DATA_TYPE_SET:
-    case YB_YQL_DATA_TYPE_UUID:
-    case YB_YQL_DATA_TYPE_TIMEUUID:
-    case YB_YQL_DATA_TYPE_TUPLE:
-    case YB_YQL_DATA_TYPE_TYPEARGS:
-    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
-    case YB_YQL_DATA_TYPE_FROZEN:
-    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_JSONB:
-    case YB_YQL_DATA_TYPE_UINT8:
-    case YB_YQL_DATA_TYPE_UINT16:
-    default:
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
       LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
   }
 

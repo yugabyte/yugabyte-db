@@ -13,6 +13,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -135,23 +136,8 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
       break;
     }
 
-    case YB_YQL_DATA_TYPE_VARINT:
-    case YB_YQL_DATA_TYPE_INET:
-    case YB_YQL_DATA_TYPE_LIST:
-    case YB_YQL_DATA_TYPE_MAP:
-    case YB_YQL_DATA_TYPE_SET:
-    case YB_YQL_DATA_TYPE_UUID:
-    case YB_YQL_DATA_TYPE_TIMEUUID:
-    case YB_YQL_DATA_TYPE_TUPLE:
-    case YB_YQL_DATA_TYPE_TYPEARGS:
-    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
-    case YB_YQL_DATA_TYPE_FROZEN:
-    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_JSONB:
-    case YB_YQL_DATA_TYPE_UINT8:
-    case YB_YQL_DATA_TYPE_UINT16:
-    default:
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
       return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
   }
 
@@ -250,23 +236,8 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
       ql_value->set_decimal_value(yb_decimal.EncodeToComparable());
       break;
     }
-    case YB_YQL_DATA_TYPE_VARINT:
-    case YB_YQL_DATA_TYPE_INET:
-    case YB_YQL_DATA_TYPE_LIST:
-    case YB_YQL_DATA_TYPE_MAP:
-    case YB_YQL_DATA_TYPE_SET:
-    case YB_YQL_DATA_TYPE_UUID:
-    case YB_YQL_DATA_TYPE_TIMEUUID:
-    case YB_YQL_DATA_TYPE_TUPLE:
-    case YB_YQL_DATA_TYPE_TYPEARGS:
-    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
-    case YB_YQL_DATA_TYPE_FROZEN:
-    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_JSONB:
-    case YB_YQL_DATA_TYPE_UINT8:
-    case YB_YQL_DATA_TYPE_UINT16:
-    default:
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
       return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
   }
   return Status::OK();
