@@ -108,7 +108,7 @@ function mapStateToProps(state, ownProps) {
     const rootCert = allCertificates.data.find((item) => item.uuid === initialValues.tlsCertificate);
     // show custom certs with same root cert only
     certificates = allCertificates.data.filter(
-      (item) => item.certType === 'CustomCertHostPath' && item.checksum === rootCert?.checksum
+      (item) => item.certType === 'CustomCertHostPath'
     );
   }
 
