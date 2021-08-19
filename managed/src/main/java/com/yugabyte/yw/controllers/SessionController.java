@@ -84,7 +84,7 @@ import play.mvc.Result;
 import play.mvc.Results;
 import play.mvc.With;
 
-@Api(value = "Session")
+@Api(value = "Session management")
 public class SessionController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
@@ -128,14 +128,17 @@ public class SessionController extends Controller {
         .orElseThrow(() -> new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
 
-  @ApiOperation(value = "login", response = Object.class)
+  @ApiOperation(
+      value = "Log in",
+      nickname = "login",
+      response = Object.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "loginFormData",
           dataType = "com.yugabyte.yw.forms.CustomerLoginFormData",
           required = true,
           paramType = "body",
-          value = "login form data"))
+          value = "Login form data"))
   public Result login() {
     ObjectNode responseJson = Json.newObject();
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
@@ -224,7 +227,10 @@ public class SessionController extends Controller {
     }
   }
 
-  @ApiOperation(value = "insecureLogin", response = Object.class)
+  @ApiOperation(
+      value = "Log in (no security)",
+      nickname = "insecureLogin",
+      response = Object.class)
   public Result insecure_login() {
     ObjectNode responseJson = Json.newObject();
     List<Customer> allCustomers = Customer.getAll();
@@ -299,7 +305,10 @@ public class SessionController extends Controller {
   }
 
   @With(TokenAuthenticator.class)
-  @ApiOperation(value = "apiToken", response = Object.class)
+  @ApiOperation(
+      value = "Get an API token",
+      nickname = "apiToken",
+      response = Object.class)
   public Result api_token(UUID customerUUID) {
     Users user = (Users) Http.Context.current().args.get("user");
 

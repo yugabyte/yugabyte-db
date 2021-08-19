@@ -16,15 +16,15 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Schedule", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(value = "Backup schedule management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
   @ApiOperation(
-      value = "list",
+      value = "List backup schedules",
       response = Schedule.class,
       responseContainer = "List",
-      nickname = "listOfSchedule")
+      nickname = "listBackupSchedules")
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -32,7 +32,10 @@ public class ScheduleController extends AuthenticatedController {
     return YWResults.withData(schedules);
   }
 
-  @ApiOperation(value = "delete", response = YWResults.class, nickname = "deleteSchedule")
+  @ApiOperation(
+      value = "Delete a backup schedule",
+      response = YWResults.class,
+      nickname = "deleteBackupSchedule")
   public Result delete(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
 
