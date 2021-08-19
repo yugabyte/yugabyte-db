@@ -22,6 +22,7 @@
 
 #include <boost/function.hpp>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/util/result.h"
@@ -68,8 +69,6 @@ using FlushCallback = boost::function<void(FlushStatus*)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
-typedef std::string PartitionKey;
-typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
 typedef std::vector<PartitionKey> TablePartitionList;
 typedef uint32_t PartitionListVersion;
 struct VersionedTablePartitionList;

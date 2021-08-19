@@ -758,13 +758,15 @@ class CatalogManager :
   CHECKED_STATUS SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
 
-  CHECKED_STATUS DeleteTablet(
-      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
+  // Deletes a tablet that is no longer serving user requests. This would require that the tablet
+  // has been split and both of its children are now in RUNNING state and serving user requests
+  // instead.
+  CHECKED_STATUS DeleteNotServingTablet(
+      const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   CHECKED_STATUS DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
-
-  CHECKED_STATUS DeleteTablets(const std::vector<TabletId>& tablet_ids);
 
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
