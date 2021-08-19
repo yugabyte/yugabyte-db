@@ -246,9 +246,6 @@ SELECT
   BOOL_OR(NOT b3)  AS "t"
 FROM bool_test;
 
--- drop temp table
-DROP TABLE bool_test;
-
 --
 -- Test cases that should be optimized into indexscans instead of
 -- the generic aggregate implementation.
@@ -576,6 +573,17 @@ select sum(unique1) FILTER (WHERE
 select aggfns(distinct a,b,c order by a,c using ~<~,b) filter (where a > 1)
     from (values (1,3,'foo'),(0,null,null),(2,2,'bar'),(3,1,'baz')) v(a,b,c),
     generate_series(1,2) i;
+
+-- check handling of bare boolean Var in FILTER
+select max(0) filter (where b1) from bool_test;
+select (select max(0) filter (where b1)) from bool_test;
+
+-- check for correct detection of nested-aggregate errors in FILTER
+select max(unique1) filter (where sum(ten) > 0) from tenk1;
+select (select max(unique1) filter (where sum(ten) > 0) from int8_tbl) from tenk1;
+select max(unique1) filter (where bool_or(ten > 0)) from tenk1;
+select (select max(unique1) filter (where bool_or(ten > 0)) from int8_tbl) from tenk1;
+
 
 -- ordered-set aggregates
 
