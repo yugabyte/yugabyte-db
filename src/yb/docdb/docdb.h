@@ -218,6 +218,7 @@ void PrepareTransactionWriteBatch(
 struct ApplyTransactionState {
   std::string key;
   IntraTxnWriteId write_id = 0;
+  AbortedSubTransactionSet aborted;
 
   bool active() const {
     return !key.empty();
@@ -229,13 +230,15 @@ struct ApplyTransactionState {
   void ToPB(PB* pb) const {
     pb->set_key(key);
     pb->set_write_id(write_id);
+    aborted.ToPB(pb->mutable_aborted()->mutable_set());
   }
 
   template <class PB>
-  static ApplyTransactionState FromPB(const PB& pb) {
+  static Result<ApplyTransactionState> FromPB(const PB& pb) {
     return ApplyTransactionState {
       .key = pb.key(),
       .write_id = pb.write_id(),
+      .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(pb.aborted().set())),
     };
   }
 };
@@ -243,6 +246,7 @@ struct ApplyTransactionState {
 Result<ApplyTransactionState> PrepareApplyIntentsBatch(
     const TabletId& tablet_id,
     const TransactionId& transaction_id,
+    const AbortedSubTransactionSet& aborted,
     HybridTime commit_ht,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* apply_state,

@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
@@ -60,6 +61,7 @@ DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 
+DECLARE_bool(enable_pg_savepoints);
 
 namespace yb {
 namespace pgwrapper {
@@ -1879,6 +1881,64 @@ TEST_F_EX(
   end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ASSERT_GT(end_num_tablets, start_num_tablets);
   DestroyTable(table_name);
+}
+
+class PgMiniTestWithSavepoints : public PgMiniTest {
+ protected:
+  void SetUp() override {
+    FLAGS_enable_pg_savepoints = true;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart),
+    PgMiniTestWithSavepoints) {
+  FLAGS_apply_intents_task_injected_delay_ms = 200;
+
+  constexpr int64_t kRowNumModToAbort = 7;
+  constexpr int64_t kNumBatches = 10;
+  constexpr int64_t kNumRows = RegularBuildVsSanitizers(10000, 1000);
+  FLAGS_txn_max_apply_batch_records = kNumRows / kNumBatches;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  for (int64_t rowNum = 0; rowNum < kNumRows; ++rowNum) {
+    auto shouldAbort = rowNum % kRowNumModToAbort == 0;
+    if (shouldAbort) {
+      ASSERT_OK(conn.Execute("SAVEPOINT A"));
+    }
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0)", rowNum));
+    if (shouldAbort) {
+      ASSERT_OK(conn.Execute("ROLLBACK TO A"));
+    }
+  }
+
+  ASSERT_OK(conn.CommitTransaction());
+
+  LOG(INFO) << "Restart cluster";
+  ASSERT_OK(cluster_->RestartSync());
+
+  ASSERT_OK(WaitFor([this] {
+    auto intents_count = CountIntents(cluster_.get());
+    LOG(INFO) << "Intents count: " << intents_count;
+
+    return intents_count == 0;
+  }, 60s * kTimeMultiplier, "Intents cleanup", 200ms));
+
+  for (int64_t rowNum = 0; rowNum < kNumRows; ++rowNum) {
+    auto shouldAbort = rowNum % kRowNumModToAbort == 0;
+
+    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", rowNum));
+    if (shouldAbort) {
+      EXPECT_NOT_OK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << rowNum;
+    } else {
+      int64_t value = EXPECT_RESULT(GetInt32(res.get(), 0, 0));
+      EXPECT_EQ(value, rowNum) << "Expected to find " << rowNum << ", found " << value << ".";
+    }
+  }
 }
 
 } // namespace pgwrapper
