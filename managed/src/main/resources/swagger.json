@@ -7417,7 +7417,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/config_alerts" : {
       "post" : {
         "description" : "",
-        "operationId" : "configureAlerts",
+        "operationId" : "configureUniverseAlerts",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7442,8 +7442,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Configure Alerts for a universe",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Configure alerts for a universe",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/cost" : {
@@ -7742,7 +7742,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/mark_helm3_compatible" : {
       "put" : {
         "description" : "",
-        "operationId" : "setHelm3Compatible",
+        "operationId" : "setUniverseHelm3Compatible",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7767,8 +7767,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Set the universe as helm3 compatible",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Flag a universe as Helm 3-compatible",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/masters" : {
@@ -7846,7 +7846,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/pause" : {
       "post" : {
         "description" : "",
-        "operationId" : "pause",
+        "operationId" : "pauseUniverse",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7871,8 +7871,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Pause the universe",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Pause a universe",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/redisservers" : {
@@ -7910,7 +7910,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/resume" : {
       "post" : {
         "description" : "",
-        "operationId" : "resume",
+        "operationId" : "resumeUniverse",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7935,8 +7935,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Resume the universe",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Resume a paused universe",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_in_shell" : {
@@ -8031,14 +8031,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "setUniverseKey",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Set a universe's key",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/setup_universe_2dc" : {
       "put" : {
         "description" : "",
-        "operationId" : "resetVersion",
+        "operationId" : "resetUniverseVersion",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8063,8 +8063,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "resetVersion",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Reset universe version",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/slow_queries" : {
@@ -8479,8 +8479,8 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/toggle_tls" : {
       "post" : {
-        "description" : "Can enable/disable node to node and client to node encryption. Supports rolling and non-rolling upgrade of the universe.",
-        "operationId" : "toggleTls",
+        "description" : "Enable or disable node-to-node and client-to-node encryption. Supports rolling and non-rolling universe upgrades.",
+        "operationId" : "toggleUniverseTLS",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8505,14 +8505,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "API that toggles TLS state of the universe.",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Toggle a universe's TLS state",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_backup_state" : {
       "put" : {
         "description" : "",
-        "operationId" : "setBackupFlag",
+        "operationId" : "setUniverseBackupFlag",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8542,8 +8542,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Set backup Flag for a universe",
-        "tags" : [ "Universe Actions" ]
+        "summary" : "Set a universe's backup flag",
+        "tags" : [ "Universe management", "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_db_credentials" : {
@@ -9398,11 +9398,11 @@
   }, {
     "name" : "Universe"
   }, {
-    "name" : "Universe Actions"
-  }, {
     "name" : "Universe YB Database"
   }, {
     "name" : "Universe actions"
+  }, {
+    "name" : "Universe management"
   }, {
     "name" : "Universe node metadata (metamaster)"
   }, {
