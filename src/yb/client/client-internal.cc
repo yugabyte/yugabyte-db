@@ -1780,10 +1780,11 @@ void GetCDCStreamRpc::ProcessResponse(const Status& status) {
   user_cb_(status);
 }
 
-class DeleteTabletRpc
-    : public ClientMasterRpc<master::DeleteTabletRequestPB, master::DeleteTabletResponsePB> {
+class DeleteNotServingTabletRpc
+    : public ClientMasterRpc<
+          master::DeleteNotServingTabletRequestPB, master::DeleteNotServingTabletResponsePB> {
  public:
-  DeleteTabletRpc(
+  DeleteNotServingTabletRpc(
       YBClient* client,
       const TabletId& tablet_id,
       StdStatusCallback user_cb,
@@ -1797,16 +1798,17 @@ class DeleteTabletRpc
 
   std::string ToString() const override {
     return Format(
-        "DeleteTabletRpc(tablet_id: $0, num_attempts: $1)", req_.tablet_id(), num_attempts());
+        "DeleteNotServingTabletRpc(tablet_id: $0, num_attempts: $1)", req_.tablet_id(),
+        num_attempts());
   }
 
-  virtual ~DeleteTabletRpc() = default;
+  virtual ~DeleteNotServingTabletRpc() = default;
 
  private:
   void CallRemoteMethod() override {
-    master_proxy()->DeleteTabletAsync(
+    master_proxy()->DeleteNotServingTabletAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
-        std::bind(&DeleteTabletRpc::Finished, this, Status::OK()));
+        std::bind(&DeleteNotServingTabletRpc::Finished, this, Status::OK()));
   }
 
   void ProcessResponse(const Status& status) override {
@@ -2105,10 +2107,10 @@ void YBClient::Data::GetCDCStream(
       proxy_cache_.get());
 }
 
-void YBClient::Data::DeleteTablet(
+void YBClient::Data::DeleteNotServingTablet(
     YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
     StdStatusCallback callback) {
-  auto rpc = rpc::StartRpc<internal::DeleteTabletRpc>(
+  auto rpc = rpc::StartRpc<internal::DeleteNotServingTabletRpc>(
       client,
       tablet_id,
       callback,

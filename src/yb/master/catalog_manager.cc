@@ -151,6 +151,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
@@ -427,6 +428,9 @@ TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
 DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
                  "Slows down the alter table rpc's send and response handler so that the TServer "
                  "has a heartbeat delay and triggers tablet leader change.");
+
+DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
+                 "Whether to reject DeleteNotServingTablet RPC.");
 
 namespace yb {
 namespace master {
@@ -2407,33 +2411,27 @@ Status CatalogManager::SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
-Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
-  std::vector<TabletInfoPtr> tablet_infos;
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
+Status CatalogManager::DeleteNotServingTablet(
+    const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const auto& tablet_id = req->tablet_id();
+  const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
 
-    for (const auto& id : tablet_ids) {
-      auto it = tablet_map_->find(id);
-      if (it == tablet_map_->end()) {
-        return STATUS_FORMAT(NotFound, "Tablet $0 not found", id);
-      }
-      tablet_infos.push_back(it->second);
-    }
+  if (PREDICT_FALSE(FLAGS_TEST_reject_delete_not_serving_tablet_rpc)) {
+    TEST_SYNC_POINT("CatalogManager::DeleteNotServingTablet:Reject");
+    return STATUS(
+        InvalidArgument, "Rejecting due to FLAGS_TEST_reject_delete_not_serving_tablet_rpc");
   }
 
-  for (const auto& tablet_info : tablet_infos) {
-    RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(tablet_info->table()));
-    RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
-  }
+  const auto& table_info = tablet_info->table();
 
+  RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(table_info));
+
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
+
+  // TODO(pitr) TODO(tsplit) pass retained_by_snapshot_schedules?
   return DeleteTabletListAndSendRequests(
-      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString(), {});
-}
-
-Status CatalogManager::DeleteTablet(
-    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
-  return DeleteTablets({ req->tablet_id() });
+      { tablet_info }, "Not serving tablet deleted upon request at " + LocalTimeAsString(), {});
 }
 
 Status CatalogManager::DdlLog(
@@ -7929,7 +7927,7 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
   }
 
   vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
+  table->GetAllTablets(&tablets, IncludeSplitTablets::kTrue);
 
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
@@ -7992,6 +7990,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     } else {
       LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
       tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      tablet->table()->RemoveSplitTablet(tablet->id());
     }
     if (tablet_lock->ListedAsHidden() && !was_hidden) {
       marked_as_hidden.push_back(tablet);

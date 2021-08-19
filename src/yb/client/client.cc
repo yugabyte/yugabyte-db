@@ -137,8 +137,6 @@ using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::DeleteRoleRequestPB;
 using yb::master::DeleteRoleResponsePB;
-using yb::master::DeleteTabletRequestPB;
-using yb::master::DeleteTabletResponsePB;
 using yb::master::GetPermissionsRequestPB;
 using yb::master::GetPermissionsResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
@@ -1446,9 +1444,9 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
 
-void YBClient::DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback) {
+void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->DeleteTablet(this, tablet_id, deadline, callback);
+  data_->DeleteNotServingTablet(this, tablet_id, deadline, callback);
 }
 
 void YBClient::GetTableLocations(

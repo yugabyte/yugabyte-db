@@ -29,6 +29,9 @@ class TransactionStatusManager;
 class Schema;
 typedef std::shared_ptr<Schema> SchemaPtr;
 
+typedef std::string PartitionKey;
+typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
+
 class PgsqlBCallPB;
 class PgsqlConditionPB;
 class PgsqlExpressionPB;

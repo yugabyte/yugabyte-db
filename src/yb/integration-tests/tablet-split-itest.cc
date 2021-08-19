@@ -1323,7 +1323,6 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   ASSERT_EQ(workload.rows_read_empty(), 0);
 
   // TODO(tsplit): Check with different isolation levels.
-  // TODO(tsplit): Add more splits during writes, so we have tablets with split_depth > 1.
 
   ASSERT_OK(cluster_->RestartSync());
 }

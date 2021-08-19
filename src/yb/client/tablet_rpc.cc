@@ -220,8 +220,6 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   // Put another way, we don't care about the lookup results at all; we're
   // just using it to fetch the latest consensus configuration information.
   //
-  // TODO(tsplit): When we support tablet splits, we should let the lookup shift
-  // the write to another tablet (i.e. if it's since been split).
   if (!current_ts_) {
     client_->LookupTabletById(tablet_id_,
                               table_,

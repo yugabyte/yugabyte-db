@@ -338,6 +338,7 @@ inline bool operator==(const CassandraJson& lhs, const CassandraJson& rhs) {
 }
 
 extern const MonoDelta kCassandraTimeOut;
+extern const std::string kCqlTestKeyspace;
 
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver);
 

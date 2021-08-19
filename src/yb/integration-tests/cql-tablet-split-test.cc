@@ -14,6 +14,8 @@
 #include <atomic>
 #include <thread>
 
+#include <boost/range/adaptors.hpp>
+
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus.h"
@@ -22,9 +24,13 @@
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -49,6 +55,7 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 
 DECLARE_double(TEST_simulate_lookup_partition_list_mismatch_probability);
 DECLARE_bool(TEST_disable_split_tablet_candidate_processing);
+DECLARE_bool(TEST_reject_delete_not_serving_tablet_rpc);
 
 namespace yb {
 
@@ -80,6 +87,9 @@ Result<size_t> GetNumActiveTablets(
 
 } // namespace
 
+const auto kSecondaryIndexTestTableName =
+    client::YBTableName(YQL_DATABASE_CQL, kCqlTestKeyspace, "cql_test_table");
+
 class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
@@ -92,6 +102,9 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
     // Split as soon as we get tablet to split on master.
     FLAGS_process_split_tablet_candidates_interval_msec = 1;
     FLAGS_heartbeat_interval_ms = 1000;
+
+    // Reduce cleanup waiting time, so tests are completed faster.
+    FLAGS_cleanup_split_tablets_interval_sec = 1;
 
     FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
     FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
@@ -140,7 +153,7 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
 
   int writer_threads_ = 2;
   int reader_threads_ = 4;
-  int value_size_bytes_ = 128;
+  int value_size_bytes_ = 1024;
   int max_write_errors_ = 100;
   int max_read_errors_ = 100;
   CassandraSession session_;
@@ -149,6 +162,13 @@ class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
   std::unique_ptr<load_generator::MultiThreadedWriter> writer_;
   std::unique_ptr<load_generator::MultiThreadedReader> reader_;
   int start_num_active_tablets_;
+};
+
+class CqlTabletSplitTestMultiMaster : public CqlTabletSplitTest {
+ public:
+  int num_masters() override {
+    return 3;
+  }
 };
 
 class CqlSecondaryIndexWriter : public load_generator::SingleThreadedWriter {
@@ -170,7 +190,8 @@ class CqlSecondaryIndexWriter : public load_generator::SingleThreadedWriter {
 
 void CqlSecondaryIndexWriter::ConfigureSession() {
   session_ = CHECK_RESULT(EstablishSession(driver_));
-  prepared_insert_ = CHECK_RESULT(session_.Prepare("INSERT INTO t (k, v) VALUES (?, ?)"));
+  prepared_insert_ = CHECK_RESULT(session_.Prepare(Format(
+      "INSERT INTO $0 (k, v) VALUES (?, ?)", kSecondaryIndexTestTableName.table_name())));
 }
 
 void CqlSecondaryIndexWriter::CloseSession() {
@@ -212,7 +233,8 @@ class CqlSecondaryIndexReader : public load_generator::SingleThreadedReader {
 
 void CqlSecondaryIndexReader::ConfigureSession() {
   session_ = CHECK_RESULT(EstablishSession(driver_));
-  prepared_select_ = CHECK_RESULT(session_.Prepare("SELECT k, v FROM t WHERE v = ?"));
+  prepared_select_ = CHECK_RESULT(session_.Prepare(
+      Format("SELECT k, v FROM $0 WHERE v = ?", kSecondaryIndexTestTableName.table_name())));
 }
 
 void CqlSecondaryIndexReader::CloseSession() {
@@ -277,11 +299,13 @@ void CqlTabletSplitTest::StartSecondaryIndexTest() {
   const auto kNumRows = std::numeric_limits<int64_t>::max();
 
   session_ = ASSERT_RESULT(EstablishSession(driver_.get()));
-  ASSERT_OK(session_.ExecuteQuery(
-      "CREATE TABLE t (k varchar PRIMARY KEY, v varchar) WITH transactions = "
-      "{ 'enabled' : true }"));
-  ASSERT_OK(session_.ExecuteQuery(
-      "CREATE INDEX t_by_value ON t(v) WITH transactions = { 'enabled' : true }"));
+  ASSERT_OK(session_.ExecuteQuery(Format(
+      "CREATE TABLE $0 (k varchar PRIMARY KEY, v varchar) WITH transactions = "
+      "{ 'enabled' : true }",
+      kSecondaryIndexTestTableName.table_name())));
+  ASSERT_OK(session_.ExecuteQuery(Format(
+      "CREATE INDEX $0_by_value ON $0(v) WITH transactions = { 'enabled' : true }",
+      kSecondaryIndexTestTableName.table_name())));
 
   start_num_active_tablets_ = GetNumActiveTablets(cluster_.get());
   LOG(INFO) << "Number of active tablets at workload start: " << start_num_active_tablets_;
@@ -344,25 +368,73 @@ TEST_F(CqlTabletSplitTest, SecondaryIndex) {
   ASSERT_NO_FATALS(CompleteSecondaryIndexTest(kNumSplits, 300s * kTimeMultiplier));
 }
 
-TEST_F(CqlTabletSplitTest, SecondaryIndexWithDrop) {
+TEST_F_EX(CqlTabletSplitTest, SecondaryIndexWithDrop, CqlTabletSplitTestMultiMaster) {
   const auto kNumSplits = 3;
   const auto kNumTestIters = 2;
 
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"CatalogManager::DeleteNotServingTablet:Reject",
+        "CqlTabletSplitTest::SecondaryIndexWithDrop:WaitForReject"}});
+#endif // NDEBUG
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
   for (auto iter = 1; iter <= kNumTestIters; ++iter) {
-    LOG(INFO) << "Iteration: " << iter;
+    LOG(INFO) << "Iteration " << iter;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_reject_delete_not_serving_tablet_rpc) = true;
+#ifndef NDEBUG
+    SyncPoint::GetInstance()->EnableProcessing();
+#endif // NDEBUG
+
     ASSERT_NO_FATALS(StartSecondaryIndexTest());
+    const auto table_info =
+        ASSERT_RESULT(client->GetYBTableInfo(kSecondaryIndexTestTableName));
     ASSERT_NO_FATALS(CompleteSecondaryIndexTest(kNumSplits, 300s * kTimeMultiplier));
 
-    // TODO(tsplit): Remove this workaround after
-    // https://github.com/yugabyte/yugabyte-db/issues/8034 is fixed.
-    {
-      StopSplitsAndWait();
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+    TEST_SYNC_POINT("CqlTabletSplitTest::SecondaryIndexWithDrop:WaitForReject");
+
+    if (iter > 1) {
+      // Test tracking split tablets in case of leader master failover.
+      const auto leader_master_idx = cluster_->LeaderMasterIdx();
+      const auto sys_catalog_tablet_peer_leader = cluster_->mini_master(leader_master_idx)
+                                                ->master()
+                                                ->catalog_manager()
+                                                ->sys_catalog()
+                                                ->tablet_peer();
+      const auto sys_catalog_tablet_peer_follower =
+          cluster_->mini_master((leader_master_idx + 1) % cluster_->num_masters())
+              ->master()
+              ->catalog_manager()
+              ->sys_catalog()
+              ->tablet_peer();
+      LOG(INFO) << "Iteration " << iter << ": stepping down master leader";
+      ASSERT_OK(StepDown(
+          sys_catalog_tablet_peer_leader, sys_catalog_tablet_peer_follower->permanent_uuid(),
+          ForceStepDown::kFalse));
+      LOG(INFO) << "Iteration " << iter << ": stepping down master leader - done";
     }
 
-    LOG(INFO) << "Iteration: " << iter << " deleting test table";
-    ASSERT_OK(session_.ExecuteQuery("DROP TABLE t"));
-    LOG(INFO) << "Iteration: " << iter << " deleted test table";
+    LOG(INFO) << "Iteration " << iter << ": deleting test table";
+    ASSERT_OK(session_.ExecuteQuery("DROP TABLE " + kSecondaryIndexTestTableName.table_name()));
+    LOG(INFO) << "Iteration " << iter << ": deleted test table";
+
+    // Make sure all table tablets deleted on all tservers.
+    auto peer_to_str = [](const tablet::TabletPeerPtr& peer) { return peer->LogPrefix(); };
+    std::vector<tablet::TabletPeerPtr> tablet_peers;
+    auto s = LoggedWaitFor([&]() -> Result<bool> {
+      tablet_peers = ListTableTabletPeers(cluster_.get(), table_info.table_id);
+      return tablet_peers.size() == 0;
+    }, 10s * kTimeMultiplier, "Waiting for tablets to be deleted");
+    ASSERT_TRUE(s.ok()) << AsString(s) + ": expected tablets to be deleted, but following left:\n"
+                        << JoinStrings(
+                               tablet_peers | boost::adaptors::transformed(peer_to_str), "\n");
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_reject_delete_not_serving_tablet_rpc) = false;
+#ifndef NDEBUG
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearTrace();
+#endif // NDEBUG
   }
 }
 

@@ -279,7 +279,7 @@ class YBClient::Data {
                     CoarseTimePoint deadline,
                     StdStatusCallback callback);
 
-  void DeleteTablet(
+  void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
       StdStatusCallback callback);
 
