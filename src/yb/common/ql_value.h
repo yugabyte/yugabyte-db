@@ -31,6 +31,19 @@
 #include "yb/util/yb_partition.h"
 #include "yb/util/varint.h"
 
+// The list of unsupported datatypes to use in switch statements
+#define QL_UNSUPPORTED_TYPES_IN_SWITCH \
+  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
+  case TUPLE: FALLTHROUGH_INTENDED;     \
+  case TYPEARGS: FALLTHROUGH_INTENDED;  \
+  case UNKNOWN_DATA
+
+#define QL_INVALID_TYPES_IN_SWITCH     \
+  case UINT8:  FALLTHROUGH_INTENDED;    \
+  case UINT16: FALLTHROUGH_INTENDED;    \
+  case UINT32: FALLTHROUGH_INTENDED;    \
+  case UINT64
+
 namespace yb {
 
 //--------------------------------------------------------------------------------------------------
