@@ -5123,13 +5123,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a backup",
+        "summary" : "Delete backups",
         "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/backups/{backupUUID}/stop" : {
       "post" : {
-        "operationId" : "stop",
+        "description" : "Stop an in-progress backup",
+        "operationId" : "stopBackup",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -5151,6 +5152,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
+        "summary" : "Stop a backup",
         "tags" : [ "Backups" ]
       }
     },

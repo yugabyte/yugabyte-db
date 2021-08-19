@@ -209,7 +209,7 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID).asResult();
   }
 
-  @ApiOperation(value = "Delete a backup", response = YWResults.YWTask.class, nickname = "deleteBackups")
+  @ApiOperation(value = "Delete backups", response = YWResults.YWTask.class, nickname = "deleteBackups")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // TODO(API): Let's get rid of raw Json.
@@ -246,6 +246,10 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTasks(taskUUIDList).asResult();
   }
 
+  @ApiOperation(
+      value = "Stop a backup",
+      notes = "Stop an in-progress backup",
+      nickname = "stopBackup")
   public Result stop(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);
