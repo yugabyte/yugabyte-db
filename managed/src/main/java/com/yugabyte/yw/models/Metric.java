@@ -12,6 +12,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
@@ -36,6 +37,7 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Entity
 @Data
@@ -82,8 +84,9 @@ public class Metric extends Model {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date expireTime;
 
-  @Column(nullable = false)
-  private UUID targetUuid;
+  @Column private UUID targetUuid;
+
+  @Column private String targetLabels;
 
   @OneToMany(mappedBy = "metric", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<MetricLabel> labels;
@@ -126,7 +129,20 @@ public class Metric extends Model {
   }
 
   public Metric setLabel(String name, String value) {
+    return setLabel(name, value, false);
+  }
+
+  public Metric setKeyLabel(KnownAlertLabels label, String value) {
+    return setKeyLabel(label.labelName(), value);
+  }
+
+  public Metric setKeyLabel(String name, String value) {
+    return setLabel(name, value, true);
+  }
+
+  public Metric setLabel(String name, String value, boolean keyLabel) {
     MetricLabel toAdd = new MetricLabel(this, name, value);
+    toAdd.setTargetLabel(keyLabel);
     this.labels = setUniqueListValue(labels, toAdd);
     return this;
   }
@@ -153,24 +169,29 @@ public class Metric extends Model {
     if (filter.getTargetUuid() != null) {
       query.eq("targetUuid", filter.getTargetUuid());
     }
-    if (!CollectionUtils.isEmpty(filter.getKeys())) {
-      if (filter.getKeys().size() > DB_OR_CHAIN_TO_WARN) {
+    List<String> metricNames =
+        filter.getMetrics().stream().map(PlatformMetrics::name).collect(Collectors.toList());
+    appendInClause(query, "name", metricNames);
+    if (!CollectionUtils.isEmpty(filter.getKeys())
+        || !CollectionUtils.isEmpty(filter.getTargetKeys())) {
+      if (filter.getKeys().size() + filter.getTargetKeys().size() > DB_OR_CHAIN_TO_WARN) {
         log.warn("Querying for {} metric keys - may affect performance", filter.getKeys().size());
       }
       Junction<Metric> orExpr = query.or();
       for (MetricKey key : filter.getKeys()) {
         Junction<Metric> andExpr = orExpr.and();
-        andExpr.eq("name", key.getName());
-        if (key.getCustomerUuid() != null) {
-          andExpr.eq("customerUUID", key.getCustomerUuid());
+        MetricTargetKey targetKey = key.getTargetKey();
+        appendMetricTargetKey(andExpr, targetKey);
+        if (!StringUtils.isEmpty(key.getTargetLabels())) {
+          andExpr.eq("targetLabels", key.getTargetLabels());
         } else {
-          andExpr.isNull("customerUUID");
+          andExpr.isNull("targetLabels");
         }
-        if (key.getTargetUuid() != null) {
-          andExpr.eq("targetUuid", key.getTargetUuid());
-        } else {
-          andExpr.isNull("targetUuid");
-        }
+        orExpr.endAnd();
+      }
+      for (MetricTargetKey targetKey : filter.getTargetKeys()) {
+        Junction<Metric> andExpr = orExpr.and();
+        appendMetricTargetKey(andExpr, targetKey);
         orExpr.endAnd();
       }
       query.endOr();
@@ -183,5 +204,30 @@ public class Metric extends Model {
       }
     }
     return query;
+  }
+
+  private static void appendMetricTargetKey(Junction<Metric> andExpr, MetricTargetKey key) {
+    andExpr.eq("name", key.getName());
+    if (key.getCustomerUuid() != null) {
+      andExpr.eq("customerUUID", key.getCustomerUuid());
+    } else {
+      andExpr.isNull("customerUUID");
+    }
+    if (key.getTargetUuid() != null) {
+      andExpr.eq("targetUuid", key.getTargetUuid());
+    } else {
+      andExpr.isNull("targetUuid");
+    }
+  }
+
+  public static String getTargetLabelsStr(List<MetricLabel> labels) {
+    if (CollectionUtils.isEmpty(labels)) {
+      return null;
+    }
+    return labels
+        .stream()
+        .sorted(Comparator.comparing(MetricLabel::getName))
+        .map(label -> label.getName() + ":" + label.getValue())
+        .collect(Collectors.joining(","));
   }
 }
