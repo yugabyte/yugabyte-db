@@ -152,6 +152,27 @@ public class ReleaseControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateGCSRelease() {
+    ObjectNode pathsNode =
+        (ObjectNode)
+            Json.newObject()
+                .put(
+                    "x86_64",
+                    "gs://my-gcs-buucket/2.7.2.0-b137/"
+                        + "yugabyte-2.7.2.0-b137-centos-x86_64.tar.gz");
+    ObjectNode gcs =
+        (ObjectNode) Json.newObject().put("credentialsJson", "{}").set("paths", pathsNode);
+
+    ObjectNode body = (ObjectNode) Json.newObject().set("foo", Json.newObject().set("gcs", gcs));
+    Result result = createRelease(customer.uuid, body);
+    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(anyString(), anyObject());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertTrue(json.get("success").asBoolean());
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
   public void testCreateReleaseWithInvalidCustomer() {
     ObjectNode body = Json.newObject();
     UUID randomUUID = UUID.randomUUID();

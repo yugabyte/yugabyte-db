@@ -1977,6 +1977,15 @@
       },
       "type" : "object"
     },
+    "GCSLocation" : {
+      "properties" : {
+        "paths" : {
+          "$ref" : "#/definitions/PackagePaths",
+          "description" : "package paths"
+        }
+      },
+      "type" : "object"
+    },
     "HttpLocation" : {
       "properties" : {
         "paths" : {
@@ -3251,6 +3260,9 @@
     "ReleaseFormData" : {
       "description" : "Specification for release locations",
       "properties" : {
+        "gcs" : {
+          "$ref" : "#/definitions/GCSLocation"
+        },
         "http" : {
           "$ref" : "#/definitions/HttpLocation"
         },
@@ -3261,7 +3273,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "http", "s3", "version" ],
+      "required" : [ "gcs", "http", "s3", "version" ],
       "type" : "object"
     },
     "ReleaseMetadata" : {
@@ -3274,6 +3286,10 @@
         "filePath" : {
           "description" : "Release file path",
           "type" : "string"
+        },
+        "gcs" : {
+          "$ref" : "#/definitions/GCSLocation",
+          "description" : "GCS link and credentials"
         },
         "http" : {
           "$ref" : "#/definitions/HttpLocation",

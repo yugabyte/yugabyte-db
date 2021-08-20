@@ -72,7 +72,11 @@ public class ReleaseManager {
     @ApiModelProperty(value = "S3 link and credentials")
     public S3Location s3;
 
-    // S3 link and credentials for remote downloading of the release
+    // GCS link and credentials for remote downloading of the release
+    @ApiModelProperty(value = "GCS link and credentials")
+    public GCSLocation gcs;
+
+    // HTTP link for remote downloading of the release
     @ApiModelProperty(value = "HTTP link to the release")
     public HttpLocation http;
 
@@ -81,8 +85,8 @@ public class ReleaseManager {
     public static class PackagePaths {
       @ApiModelProperty(value = "Path to x86_64 package")
       @Constraints.Pattern(
-          message = "Must be prefixed with s3:// or http(s)://",
-          value = "\\b(?:(https|s3):\\/\\/).+\\b")
+          message = "Must be prefixed with s3://, gs://, or http(s)://",
+          value = "\\b(?:(https|s3|gs):\\/\\/).+\\b")
       public String x86_64;
 
       @ApiModelProperty(required = false, value = "Checksum for x86_64 package")
@@ -114,6 +118,20 @@ public class ReleaseManager {
       @ApiModelProperty(value = "access key secret", hidden = true)
       @Constraints.Required
       public String secretAccessKey;
+    }
+
+    @lombok.Getter
+    @lombok.Setter
+    public static class GCSLocation {
+      @ApiModelProperty(value = "package paths")
+      @Constraints.Required
+      @Valid
+      public PackagePaths paths;
+
+      // S3 credentials.
+      @ApiModelProperty(value = "gcs service key json", hidden = true)
+      @Constraints.Required
+      public String credentialsJson;
     }
 
     @lombok.Getter
@@ -231,8 +249,8 @@ public class ReleaseManager {
       }
 
       // At list one link should be available.
-      if (versionData.s3 == null && versionData.http == null) {
-        throw new RuntimeException("S3 link or HTTP link must be specified");
+      if (versionData.s3 == null && versionData.gcs == null && versionData.http == null) {
+        throw new RuntimeException("S3 link, GCS link, or HTTP link must be specified");
       }
 
       if (versionData.s3 != null) {
@@ -246,6 +264,19 @@ public class ReleaseManager {
         }
         if (!versionData.s3.paths.x86_64.startsWith("s3://")) {
           throw new RuntimeException("S3 path should be prefixed with s3://");
+        }
+      }
+
+      if (versionData.gcs != null) {
+        if (versionData.gcs.paths == null) {
+          throw new RuntimeException("No paths provided for GCS packages");
+        }
+        if (StringUtils.isBlank(versionData.gcs.paths.x86_64)
+            || StringUtils.isBlank(versionData.gcs.credentialsJson)) {
+          throw new RuntimeException("GCS needs non-empty path and credentials JSON");
+        }
+        if (!versionData.gcs.paths.x86_64.startsWith("gs://")) {
+          throw new RuntimeException("GCS path should be prefixed with gs://");
         }
       }
 
@@ -269,6 +300,11 @@ public class ReleaseManager {
       if (versionData.s3 != null) {
         metadata.s3 = versionData.s3;
         metadata.filePath = metadata.s3.paths.x86_64;
+      }
+
+      if (versionData.gcs != null) {
+        metadata.gcs = versionData.gcs;
+        metadata.filePath = metadata.gcs.paths.x86_64;
       }
 
       if (versionData.http != null) {

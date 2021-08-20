@@ -487,6 +487,11 @@ public class NodeManager extends DevopsBase {
           subcommand.add(releaseMetadata.s3.accessKeyId);
           subcommand.add("--aws_secret_key");
           subcommand.add(releaseMetadata.s3.secretAccessKey);
+        } else if (releaseMetadata.gcs != null) {
+          subcommand.add("--gcs_remote_download");
+          ybServerPackage = releaseMetadata.gcs.paths.x86_64;
+          subcommand.add("--gcs_credentials_json");
+          subcommand.add(releaseMetadata.gcs.credentialsJson);
         } else if (releaseMetadata.http != null) {
           subcommand.add("--http_remote_download");
           ybServerPackage = releaseMetadata.http.paths.x86_64;
