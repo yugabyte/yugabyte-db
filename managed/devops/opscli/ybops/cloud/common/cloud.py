@@ -367,24 +367,27 @@ class AbstractCloud(AbstractCommandParser):
 
         copy_root = True
         if rotate_certs:
-            root_cert = remote_shell.run_command(
-                "cat '{}'".format(yb_root_cert_path)).stdout
-            root_cert_new = None
-            if certs_location == self.CERT_LOCATION_NODE:
-                root_cert_new = remote_shell.run_command(
-                    "cat '{}'".format(root_cert_path)).stdout
-            if certs_location == self.CERT_LOCATION_PLATFORM:
-                with open(root_cert_path) as file:
-                    root_cert_new = file.read()
-            if root_cert is not None and root_cert_new is not None:
-                compare_result = self.compare_certs(root_cert_new, root_cert)
-                if compare_result == 0 or compare_result == 1:
-                    # Don't copy root certs if the new root cert is
-                    # same or subset of the existing root cert
-                    copy_root = False
-            else:
-                raise YBOpsRuntimeError(
-                    "Unable to fetch the certificate {}".format(root_cert_path))
+            root_cert_command = remote_shell.run_command_raw(
+                "cat '{}'".format(yb_root_cert_path))
+            # In case of tls toggle root cert might not be present
+            if not root_cert_command.exited:
+                root_cert = root_cert_command.stdout
+                root_cert_new = None
+                if certs_location == self.CERT_LOCATION_NODE:
+                    root_cert_new = remote_shell.run_command(
+                        "cat '{}'".format(root_cert_path)).stdout
+                if certs_location == self.CERT_LOCATION_PLATFORM:
+                    with open(root_cert_path) as file:
+                        root_cert_new = file.read()
+                if root_cert is not None and root_cert_new is not None:
+                    compare_result = self.compare_certs(root_cert_new, root_cert)
+                    if compare_result == 0 or compare_result == 1:
+                        # Don't copy root certs if the new root cert is
+                        # same or subset of the existing root cert
+                        copy_root = False
+                else:
+                    raise YBOpsRuntimeError(
+                        "Unable to fetch the certificate {}".format(root_cert_path))
 
         logging.info("Moving server certs located at {}, {}, {}.".format(
             root_cert_path, server_cert_path, server_key_path))
@@ -421,7 +424,7 @@ class AbstractCloud(AbstractCommandParser):
             certs_location):
         remote_shell = RemoteShell(ssh_options)
         yb_root_cert_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.ROOT_CERT_NAME)
+            self.YSQLSH_CERT_DIR, self.CLIENT_ROOT_NAME)
         yb_client_cert_path = os.path.join(
             self.YSQLSH_CERT_DIR, self.CLIENT_CERT_NAME)
         yb_client_key_path = os.path.join(
