@@ -52,7 +52,7 @@ To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root direct
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 yugabyte=#
@@ -78,8 +78,9 @@ Connect to the `exercises` database.
 yugabyte=# \c exercises
 ```
 
-```
 You are now connected to database "exercises" as user "yugabyte".
+
+```output
 exercises=#
 ```
 
@@ -113,7 +114,7 @@ exercises=# SELECT * FROM bookings LIMIT 5;
 
 ## Explore the PgExercises database
 
-You are now ready to start working through the [PostgreSQL Exercises](https://pgexercises.com/) exercises using YugabyteDB as the backend. The 81 exercises at the PostgreSQL Exercises website are broken into the following major sections.
+You are now ready to start working through the [PostgreSQL Exercises](https://pgexercises.com/) exercises using YugabyteDB as the backend. The 81 exercises at the PostgreSQL Exercises website are broken into the following major sections:
 
 - [Simple SQL Queries](https://pgexercises.com/questions/basic/)
 - [JOINs and Subqueries](https://pgexercises.com/questions/joins/)
@@ -123,9 +124,7 @@ You are now ready to start working through the [PostgreSQL Exercises](https://pg
 - [String Operations](https://pgexercises.com/questions/string/)
 - [Recursive Queries](https://pgexercises.com/questions/recursive/)
 
-YugabyteDB returns the same results as expected based on the solutions on the PostgreSQL Exercises website, with the following exceptions.
+YugabyteDB returns the same results as expected based on the solutions on the PostgreSQL Exercises website, with the following exception:
 
 - ["Find telephone numbers with parentheses"](https://pgexercises.com/questions/string/reg.html)
   - YugabyteDB returns results with a sort order of strings different than in PostgreSQL due to [hash partitioning in YugabyteDB](../../architecture/docdb-sharding/).
-- ["Update a row based on the contents of another row"](https://pgexercises.com/questions/updates/updatecalculated.html)
-  - YugabyteDB returns an error because using the `FROM` clause in `UPDATE` is not yet supported. See [GitHub issue #738](https://github.com/yugabyte/yugabyte-db/issues/738).
