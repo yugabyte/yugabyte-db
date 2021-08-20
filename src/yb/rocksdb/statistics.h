@@ -213,6 +213,10 @@ enum Tickers : uint32_t {
   BLOCK_CACHE_MULTI_TOUCH_BYTES_READ,
   BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE,
 
+  // Files filtered during compaction due to TTL expiration
+  COMPACTION_FILES_FILTERED,
+  COMPACTION_FILES_NOT_FILTERED,
+
   // End of ticker enum.
   TICKER_ENUM_MAX,
 };
@@ -312,7 +316,10 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {BLOCK_CACHE_MULTI_TOUCH_HIT, "rocksdb_block_cache_multi_touch_hit"},
     {BLOCK_CACHE_MULTI_TOUCH_ADD, "rocksdb_block_cache_multi_touch_add"},
     {BLOCK_CACHE_MULTI_TOUCH_BYTES_READ, "rocksdb_block_cache_multi_touch_bytes_read"},
-    {BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, "rocksdb_block_cache_multi_touch_bytes_write"}
+    {BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE, "rocksdb_block_cache_multi_touch_bytes_write"},
+
+    {COMPACTION_FILES_FILTERED, "rocksdb_compaction_files_filtered"},
+    {COMPACTION_FILES_NOT_FILTERED, "rocksdb_compaction_files_not_filtered"},
 };
 
 /**

@@ -118,6 +118,13 @@ std::string OperationState::LogPrefix() const {
   return Format("$0: ", this);
 }
 
+void OperationState::UpdateIfMaxTtl(const MonoDelta& ttl) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  if (!ttl_.Initialized() || ttl > ttl_) {
+    ttl_ = ttl;
+  }
+}
+
 HybridTime OperationState::WriteHybridTime() const {
   return hybrid_time();
 }
