@@ -113,7 +113,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 30 * 60 * 1000, // 30 min.
+DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
              "Timeout used by the master when attempting to backfill a YSQL tablet during index "
              "creation.");
 TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, advanced);

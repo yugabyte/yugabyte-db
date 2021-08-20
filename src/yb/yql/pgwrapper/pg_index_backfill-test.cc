@@ -419,17 +419,21 @@ class PgIndexBackfillTestThrottled : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back("--ysql_prefetch_limit=128");
-    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=256");
+    options->extra_master_flags.push_back(
+        Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineLargeMs));
+
+    options->extra_tserver_flags.push_back("--ysql_prefetch_limit=100");
+    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=100");
     options->extra_tserver_flags.push_back(
         Format("--backfill_index_rate_rows_per_sec=$0", kBackfillRateRowsPerSec));
     options->extra_tserver_flags.push_back(
         Format("--num_concurrent_backfills_allowed=$0", kNumConcurrentBackfills));
   }
 
+ protected:
   const int kBackfillRateRowsPerSec = 100;
   const int kNumConcurrentBackfills = 1;
-  const int kBackfillRpcDeadlineMs = 10000;
+  const int kBackfillRpcDeadlineLargeMs = 10 * 60 * 1000;
 };
 
 // Set the backfill batch size and backfill rate
@@ -452,21 +456,36 @@ TEST_F_EX(
 
   auto avg_rpc_latency_usec = ASSERT_RESULT(AvgBackfillRpcLatencyInMicros(cluster_.get()));
   LOG(INFO) << "Avg backfill latency was " << avg_rpc_latency_usec << " us";
-  // --ysql_index_backfill_rpc_timeout was not set for this test.
-  // Check to ensure that we have picked a reasonable value for kBackfillRpcDeadlineMs
-  // such that BackfillRespectsDeadline will only succeed if throttling is implemented.
-  ASSERT_GT(avg_rpc_latency_usec, kBackfillRpcDeadlineMs * 1000);
+  ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineLargeMs * 1000);
 }
 
-class PgIndexBackfillTestDeadlines : public PgIndexBackfillTestThrottled {
+class PgIndexBackfillTestDeadlines : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgIndexBackfillTestThrottled::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_master_flags.push_back(
-        Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineMs));
+        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
     options->extra_master_flags.push_back(
-        Format("--backfill_index_timeout_grace_margin_ms=$0", kBackfillRpcDeadlineMs / 2));
+        Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineSmallMs));
+    options->extra_master_flags.push_back(
+        Format("--backfill_index_timeout_grace_margin_ms=$0", kBackfillRpcDeadlineSmallMs / 2));
+
+    options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_tserver_flags.push_back("--ysql_prefetch_limit=100");
+    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=100");
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_rate_rows_per_sec=$0", kBackfillRateRowsPerSec));
+    options->extra_tserver_flags.push_back(
+        Format("--num_concurrent_backfills_allowed=$0", kNumConcurrentBackfills));
   }
+
+ protected:
+  const int kBackfillRpcDeadlineSmallMs = 10000;
+  const int kBackfillRateRowsPerSec = 100;
+  const int kNumConcurrentBackfills = 1;
+  const int kTabletsPerServer = 1;
 };
 
 // Set the backfill batch size, backfill rate and a low timeout for backfill rpc.
@@ -479,14 +498,17 @@ TEST_F_EX(
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
 
+  const size_t num_tablets = cluster_->num_tablet_servers() * kTabletsPerServer;
   const size_t min_expected_calls = static_cast<size_t>(
-      ceil(kNumRows / (kBackfillRpcDeadlineMs * kBackfillRateRowsPerSec * 0.001)));
+      ceil(kNumRows / (kBackfillRpcDeadlineSmallMs * kBackfillRateRowsPerSec * 0.001)));
+  ASSERT_GT(min_expected_calls, num_tablets);
   auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  ASSERT_GE(actual_calls, num_tablets);
   ASSERT_GE(actual_calls, min_expected_calls);
 
   auto avg_rpc_latency_usec = ASSERT_RESULT(AvgBackfillRpcLatencyInMicros(cluster_.get()));
   LOG(INFO) << "Avg backfill latency was " << avg_rpc_latency_usec << " us";
-  ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineMs * 1000);
+  ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineSmallMs * 1000);
 }
 
 // Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
