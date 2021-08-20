@@ -142,7 +142,7 @@ export const DELETE_USER_RESPONSE = 'DELETE_USER_RESPONSE';
 
 export const CHANGE_USER_ROLE = 'CHANGE_USER_ROLE';
 
-export const TOGGLE_TLS = 'TOGGLE_TLS';
+export const UPDATE_TLS = 'UPDATE_TLS';
 
 export function validateToken() {
   let cUUID = Cookies.get('customerId');
@@ -919,14 +919,24 @@ export function deleteUserResponse(response) {
   };
 }
 
-export function toggleTLS(universeUuid, formValues) {
+export function updateTLS(universeUuid, formValues) {
   const cUUID = localStorage.getItem('customerId');
+  const values = {
+    "enableNodeToNodeEncrypt": formValues.enableNodeToNodeEncrypt,
+    "enableClientToNodeEncrypt": formValues.enableClientToNodeEncrypt,
+    "rootCA": formValues.rootCA,
+    "clientRootCA": formValues.clientRootCA,
+    "rootAndClientRootCASame": formValues.rootAndClientRootCASame,
+    "upgradeOption": formValues.rollingUpgrade ? "Rolling" : "Non-Rolling",
+    "sleepAfterMasterRestartMillis": formValues.timeDelay * 1000,
+    "sleepAfterTServerRestartMillis": formValues.timeDelay * 1000
+  }
   const request = axios.post(
-    `${ROOT_URL}/customers/${cUUID}/universes/${universeUuid}/upgrade/tls`,
-    formValues
+    `${ROOT_URL}/customers/${cUUID}/universes/${universeUuid}/update_tls`,
+    values
   );
   return {
-    type: TOGGLE_TLS,
+    type: UPDATE_TLS,
     payload: request
   };
 }

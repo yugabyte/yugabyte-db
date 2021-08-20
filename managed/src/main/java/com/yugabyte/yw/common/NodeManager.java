@@ -745,10 +745,6 @@ public class NodeManager extends DevopsBase {
               break;
             case ROTATE_CERTS:
               {
-                if (taskParam.rootCARotationType == CertRotationType.None
-                    && taskParam.clientRootCARotationType == CertRotationType.None) {
-                  throw new RuntimeException("No cert rotation can be done with the given params.");
-                }
                 subcommand.addAll(
                     getCertificatePaths(
                         taskParam,
