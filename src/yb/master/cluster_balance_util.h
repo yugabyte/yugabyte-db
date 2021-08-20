@@ -822,17 +822,8 @@ class PerTableLoadState {
         if (path_to_tablet.first.empty()) {
           continue;
         }
-        auto it_path = find_if(path_metrics.begin(), path_metrics.end(), [=](const auto& p){
-          return boost::starts_with(path_to_tablet.first, p.first);
-        });
-        uint64 used_perc = 0;
-        if (it_path == path_metrics.end()) {
-          LOG(WARNING) << "Path " << path_to_tablet.first << " wasn't found on TS " << ts;
-        } else if (it_path->second.total_space != 0) {
-          used_perc = 100 * it_path->second.used_space / it_path->second.total_space;
-        }
-        sorted_drive_load.emplace_back(std::pair<std::string, uint>({path_to_tablet.first,
-                                                                     used_perc}));
+        sorted_drive_load.emplace_back(std::pair<std::string, uint>(
+                                         {path_to_tablet.first, path_to_tablet.second.size()}));
       }
       // sort by decreasing load.
       sort(sorted_drive_load.begin(), sorted_drive_load.end(),
