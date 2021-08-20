@@ -8657,6 +8657,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/toggle_tls" : {
       "post" : {
+        "deprecated" : true,
         "description" : "Can enable/disable node to node and client to node encryption. Supports rolling and non-rolling upgrade of the universe.",
         "operationId" : "toggleTls",
         "parameters" : [ {
