@@ -312,7 +312,7 @@ public class TableManagerTest extends FakeDBApplication {
   }
 
   private void testCreateS3BackupHelper(boolean enableVerbose, boolean sse) {
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST101");
     ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -332,7 +332,7 @@ public class TableManagerTest extends FakeDBApplication {
     config.put("KUBECONFIG", "foo");
     testProvider.setConfig(config);
     testProvider.save();
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST102");
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
 
@@ -365,7 +365,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testCreateNfsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST35");
     ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -379,7 +379,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testCreateGcsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST50");
     ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -393,7 +393,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testCreateUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST36");
     ;
     BackupTableParams backupTableParams =
         getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
@@ -409,7 +409,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreS3Backup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST103");
     ;
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
@@ -424,7 +424,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreNfsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST37");
     ;
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
@@ -439,7 +439,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreGcsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST51");
     ;
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
@@ -454,7 +454,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST39");
     ;
     BackupTableParams backupTableParams =
         getBackupUniverseParams(BackupTableParams.ActionType.RESTORE, storageConfig.configUUID);
@@ -476,7 +476,7 @@ public class TableManagerTest extends FakeDBApplication {
     accessKey.setKeyInfo(keyInfo);
     accessKey.save();
 
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST104");
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
 
@@ -520,7 +520,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testDeleteUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST40");
     ;
     BackupTableParams backupTableParams =
         getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);

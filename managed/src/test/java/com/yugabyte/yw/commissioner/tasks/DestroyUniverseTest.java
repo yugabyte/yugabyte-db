@@ -121,7 +121,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testDestroyUniverseAndDeleteBackups() {
-    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST1");
     Backup b =
         ModelFactory.createBackup(
             defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
@@ -147,7 +147,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testDestroyUniverseAndDeleteBackupsFalse() {
-    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST0");
     Backup b =
         ModelFactory.createBackup(
             defaultCustomer.uuid, defaultUniverse.universeUUID, s3StorageConfig.configUUID);
