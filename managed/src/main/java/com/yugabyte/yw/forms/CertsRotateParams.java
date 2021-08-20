@@ -52,12 +52,13 @@ public class CertsRotateParams extends UpgradeTaskParams {
 
     // Make sure rootCA and clientRootCA respects the rootAndClientRootCASame property
     if (rootAndClientRootCASame != null
+        && rootAndClientRootCASame
         && rootCA != null
         && clientRootCA != null
-        && rootAndClientRootCASame != rootCA.equals(clientRootCA)) {
+        && !rootCA.equals(clientRootCA)) {
       throw new YWServiceException(
           Status.BAD_REQUEST,
-          "rootCA and clientRootCA values should follow rootAndClientRootCASame property.");
+          "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
     }
 
     // rootAndClientRootCASame is optional in request, if not present follow the existing flag
@@ -215,7 +216,12 @@ public class CertsRotateParams extends UpgradeTaskParams {
     // When there is no upgrade needs to be done, fail the request
     if (rootCARotationType == CertRotationType.None
         && clientRootCARotationType == CertRotationType.None) {
-      throw new YWServiceException(Status.BAD_REQUEST, "No changes in rootCA or clientRootCA.");
+      if (!(userIntent.enableNodeToNodeEncrypt
+          && userIntent.enableClientToNodeEncrypt
+          && !currentRootAndClientRootCASame
+          && rootAndClientRootCASame)) {
+        throw new YWServiceException(Status.BAD_REQUEST, "No changes in rootCA or clientRootCA.");
+      }
     }
   }
 

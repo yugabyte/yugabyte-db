@@ -418,10 +418,17 @@ public class CertsRotateTest extends UpgradeTaskTest {
         || (!isClientRootCARequired && rotateClientRootCA)
         || (isClientRootCARequired && !rotateClientRootCA && currentRootAndClientRootCASame)
         || (!rotateRootCA && !rotateClientRootCA)) {
-      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-      assertEquals(0, taskInfo.getSubTasks().size());
-      verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-      return;
+      if (!(!rotateRootCA
+          && !rotateClientRootCA
+          && currentNodeToNode
+          && currentClientToNode
+          && !currentRootAndClientRootCASame
+          && rootAndClientRootCASame)) {
+        assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+        assertEquals(0, taskInfo.getSubTasks().size());
+        verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+        return;
+      }
     }
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -572,10 +579,17 @@ public class CertsRotateTest extends UpgradeTaskTest {
         || (!isClientRootCARequired && rotateClientRootCA)
         || (isClientRootCARequired && !rotateClientRootCA && currentRootAndClientRootCASame)
         || (!rotateRootCA && !rotateClientRootCA)) {
-      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-      assertEquals(0, taskInfo.getSubTasks().size());
-      verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-      return;
+      if (!(!rotateRootCA
+          && !rotateClientRootCA
+          && currentNodeToNode
+          && currentClientToNode
+          && !currentRootAndClientRootCASame
+          && rootAndClientRootCASame)) {
+        assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+        assertEquals(0, taskInfo.getSubTasks().size());
+        verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+        return;
+      }
     }
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);

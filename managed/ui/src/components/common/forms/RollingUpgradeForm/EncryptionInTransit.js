@@ -8,8 +8,11 @@ import { YBLoading } from '../../indicators';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { useDispatch, useSelector } from 'react-redux';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../../utils/UniverseUtils';
-import { toggleTLS } from '../../../../actions/customers';
+import { updateTLS } from '../../../../actions/customers';
 import './EncryptionInTransit.scss';
+
+const CLIENT_TO_NODE_ROTATE_MSG = "Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.";
+const NODE_TO_NODE_ROTATE_MSG = "Note! You are changing the node to node root certificate."
 
 const generateSelectOptions = (certificates) => {
   let options = certificates.map((cert) => (
@@ -38,7 +41,7 @@ function disableUniverseEncryption(values, inputName, currentValue, setFieldValu
 }
 
 function getEncryptionComponent(
-  { inputName, label, values, status, setFieldValue },
+  { inputName, label, values, status, setFieldValue, rotateCertMsg },
   { selectName, selectLabel, selectOptions, handleSelectChange, disabled }
 ) {
   const options = generateSelectOptions(selectOptions);
@@ -74,6 +77,19 @@ function getEncryptionComponent(
               width="100%"
               isReadOnly={disabled}
             />
+          </Col>
+          <Col lg={12}>
+            {rotateCertMsg && (
+              <Alert
+                className="rotate-alert-msg"
+                key={inputName + "-rotate-msg"}
+                variant="warning"
+                bsStyle="warning"
+              >
+                <i class="fa fa-exclamation-triangle" aria-hidden="true"></i>
+                &nbsp;&nbsp;{rotateCertMsg}
+              </Alert>
+            )}
           </Col>
         </Row>
       )}
@@ -170,7 +186,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
       return;
     }
 
-    dispatch(toggleTLS(currentUniverse.data.universeDetails.universeUUID, payload)).then((resp) => {
+    dispatch(updateTLS(currentUniverse.data.universeDetails.universeUUID, payload)).then((resp) => {
       if (resp.error) {
         setStatus({ error: resp.payload.response.data.error });
       } else {
@@ -260,7 +276,6 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                               }
                             }
                           }}
-                          disabled={initialValues['enableClientToNodeEncrypt']}
                         />
                       )}
                     </Field>
@@ -274,11 +289,14 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                       values,
                       status,
                       setStatus,
-                      setFieldValue
+                      setFieldValue,
+                      rotateCertMsg:
+                        initialValues["rootCA"] !== values["rootCA"]
+                          ? NODE_TO_NODE_ROTATE_MSG
+                          : null
                     },
                     {
                       selectName: 'rootCA',
-                      disabled: initialValues['enableNodeToNodeEncrypt'],
                       selectLabel: 'Select a root certificate',
                       selectOptions: userCertificates.data,
                       handleSelectChange: handleChange
@@ -291,13 +309,15 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                       values,
                       status,
                       setStatus,
-                      setFieldValue
+                      setFieldValue,
+                      rotateCertMsg:
+                        initialValues["clientRootCA"] !== values["clientRootCA"]
+                          ? CLIENT_TO_NODE_ROTATE_MSG
+                          : null
                     },
                     {
                       selectName: 'clientRootCA',
-                      disabled:
-                        initialValues['enableClientToNodeEncrypt'] ||
-                        values['rootAndClientRootCASame'],
+                      disabled: values['rootAndClientRootCASame'],
                       selectLabel: 'Select a client Certificate',
                       selectOptions: userCertificates.data,
                       handleSelectChange: handleChange

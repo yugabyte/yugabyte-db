@@ -27,10 +27,14 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.TlsConfigUpdateParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -53,6 +57,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
+import play.mvc.Http.Status;
 
 public class UniverseCRUDHandler {
 
@@ -67,6 +72,8 @@ public class UniverseCRUDHandler {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject KubernetesManager kubernetesManager;
+
+  @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
   /**
    * Function to Trim keys and values of the passed map.
@@ -1019,6 +1026,92 @@ public class UniverseCRUDHandler {
         universe.universeUUID,
         universe.name);
     return taskUUID;
+  }
+
+  public UUID tlsConfigUpdate(
+      Customer customer, Universe universe, TlsConfigUpdateParams taskParams) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    boolean tlsToggle =
+        ((taskParams.enableNodeToNodeEncrypt != null
+                && taskParams.enableNodeToNodeEncrypt != userIntent.enableNodeToNodeEncrypt)
+            || (taskParams.enableClientToNodeEncrypt != null
+                && taskParams.enableClientToNodeEncrypt != userIntent.enableClientToNodeEncrypt));
+    boolean certsRotate =
+        ((taskParams.rootCA != null && !taskParams.rootCA.equals(universeDetails.rootCA))
+            || (taskParams.clientRootCA != null
+                && !taskParams.clientRootCA.equals(universeDetails.clientRootCA)));
+
+    if (taskParams.rootAndClientRootCASame == null) {
+      throw new YWServiceException(Status.BAD_REQUEST, "rootAndClientRootCASame cannot be null.");
+    }
+
+    if (tlsToggle && certsRotate) {
+      if ((universeDetails.rootCA == null && taskParams.rootCA != null)
+          || (universeDetails.clientRootCA == null && taskParams.clientRootCA != null)) {
+        certsRotate = false;
+      } else {
+        throw new YWServiceException(
+            Status.BAD_REQUEST,
+            "Cannot enable/disable TLS along with cert rotation. Perform them individually.");
+      }
+    }
+
+    if (!tlsToggle && !certsRotate) {
+      throw new YWServiceException(
+          Status.BAD_REQUEST, "No changes in Tls parameters, cannot perform upgrade.");
+    }
+
+    if (tlsToggle) {
+      boolean isRootCA =
+          CertificateHelper.isRootCARequired(
+              taskParams.enableNodeToNodeEncrypt,
+              taskParams.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+      boolean isClientRootCA =
+          CertificateHelper.isClientRootCARequired(
+              taskParams.enableNodeToNodeEncrypt,
+              taskParams.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+
+      TlsToggleParams tlsToggleParams = new TlsToggleParams();
+      tlsToggleParams.enableNodeToNodeEncrypt = taskParams.enableNodeToNodeEncrypt;
+      tlsToggleParams.enableClientToNodeEncrypt = taskParams.enableClientToNodeEncrypt;
+      tlsToggleParams.allowInsecure =
+          !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
+      tlsToggleParams.rootCA = isRootCA ? taskParams.rootCA : null;
+      tlsToggleParams.clientRootCA = isClientRootCA ? taskParams.clientRootCA : null;
+      tlsToggleParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
+      tlsToggleParams.upgradeOption = taskParams.upgradeOption;
+      tlsToggleParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
+      tlsToggleParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
+      return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
+    }
+
+    if (certsRotate) {
+      boolean isRootCA =
+          CertificateHelper.isRootCARequired(
+              userIntent.enableNodeToNodeEncrypt,
+              userIntent.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+      boolean isClientRootCA =
+          CertificateHelper.isClientRootCARequired(
+              userIntent.enableNodeToNodeEncrypt,
+              userIntent.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+
+      CertsRotateParams certsRotateParams = new CertsRotateParams();
+      certsRotateParams.rootCA = isRootCA ? taskParams.rootCA : null;
+      certsRotateParams.clientRootCA = isClientRootCA ? taskParams.clientRootCA : null;
+      certsRotateParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
+      certsRotateParams.upgradeOption = taskParams.upgradeOption;
+      certsRotateParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
+      certsRotateParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
+      return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
+    }
+
+    return null;
   }
 
   private void checkHelmChartExists(String ybSoftwareVersion) {
