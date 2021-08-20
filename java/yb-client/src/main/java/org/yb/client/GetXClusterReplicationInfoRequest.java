@@ -46,7 +46,7 @@ public class GetXClusterReplicationInfoRequest extends YRpc<GetXClusterReplicati
 
   @Override
   String method() {
-    return "GetXClusterReplicationInfo";
+    return "GetUniverseReplication";
   }
 
   @Override
