@@ -211,23 +211,21 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   }
   conf_file.close();
 
+  vector<string> user_configs;
   if (!FLAGS_ysql_pg_conf_csv.empty()) {
-    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &lines));
+    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_pg_conf_csv, &user_configs));
   } else if (!FLAGS_ysql_pg_conf.empty()) {
-    ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &lines);
+    ReadCommaSeparatedValues(FLAGS_ysql_pg_conf, &user_configs);
   }
 
   // If the user has given any shared_preload_libraries, merge them in.
-  for (string &value : lines) {
+  for (string &value : user_configs) {
     if (boost::starts_with(value, "shared_preload_libraries")) {
       MergeSharedPreloadLibraries(value, &metricsLibs);
+    } else {
+      lines.push_back(value);
     }
   }
-
-  // Ensure we do not have the line duplicated in the config.
-  lines.erase(std::remove_if(lines.begin(), lines.end(), [](const std::string& s) {
-    return boost::starts_with(s, "shared_preload_libraries");
-  }));
 
   // Add shared_preload_libraries to the ysql_pg.conf.
   lines.push_back(Format("shared_preload_libraries='$0'", boost::join(metricsLibs, ",")));
