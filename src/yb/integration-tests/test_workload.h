@@ -49,6 +49,7 @@ struct TestWorkloadOptions {
   int write_batch_size = 50;
   int write_interval_millis = 0;
   int ttl = -1;
+  int table_ttl = -1;
   MonoDelta default_rpc_timeout = std::chrono::seconds(60);
   std::chrono::milliseconds write_timeout = std::chrono::seconds(20);
   bool timeout_allowed = false;
@@ -64,6 +65,7 @@ struct TestWorkloadOptions {
   client::YBTableName table_name = kDefaultTableName;
 
   bool is_transactional() const { return isolation_level != IsolationLevel::NON_TRANSACTIONAL; }
+  bool has_table_ttl() const { return table_ttl != -1; }
 };
 
 // Utility class for generating a workload against a test cluster.
@@ -102,6 +104,10 @@ class TestWorkload {
 
   void set_ttl(int ttl) {
     options_.ttl = ttl;
+  }
+
+  void set_table_ttl(int ttl_sec) {
+    options_.table_ttl = ttl_sec;
   }
 
   void set_client_default_rpc_timeout_millis(int t) {

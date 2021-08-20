@@ -90,12 +90,15 @@
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/redis_operation.h"
+#include "yb/docdb/value.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
@@ -240,6 +243,10 @@ DEFINE_test_flag(int32, backfill_drop_frequency, 0,
     "If set to value greater than 0, every nth row will be dropped in the backfill process "
     "to create an inconsistency between the index and the indexed tables where n is the "
     "input parameter given.");
+
+DEFINE_bool(tablet_enable_ttl_file_filter, false,
+            "Enables compaction to directly delete files that have expired based on TTL, "
+            "rather than removing them via the normal compaction process.");
 
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
@@ -674,6 +681,10 @@ Status Tablet::OpenKeyValueTablet() {
     }
     return rocksdb::MemTableFilter();
   });
+  if (FLAGS_tablet_enable_ttl_file_filter) {
+    rocksdb_options.compaction_file_filter_factory =
+        std::make_shared<docdb::DocDBCompactionFileFilterFactory>(schema(), clock());
+  }
 
   rocksdb_options.disable_auto_compactions = true;
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
@@ -1129,6 +1140,11 @@ Status Tablet::ApplyOperation(
   // frontier.
   auto frontiers_ptr =
       InitFrontiers(operation.op_id(), operation.hybrid_time(), &frontiers);
+  if (frontiers_ptr) {
+    auto ttl = operation.has_ttl() ? operation.ttl() : docdb::Value::kMaxTtl;
+    frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
+        docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
+  }
   return ApplyKeyValueRowOperations(
       batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
@@ -1533,6 +1549,8 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
 
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
+    const MonoDelta ttl = ql_write_op->request_ttl();
+    operation->UpdateIfMaxTtl(ttl);
     if (metadata_->is_unique_index() &&
         ql_write_op->request().type() == QLWriteRequestPB::QL_STMT_INSERT &&
         ql_write_op->response()->has_applied() && !ql_write_op->response()->applied()) {

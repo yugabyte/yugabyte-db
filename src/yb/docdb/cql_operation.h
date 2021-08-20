@@ -93,6 +93,10 @@ class QLWriteOperation :
   // Rowblock to return the "[applied]" status for conditional DML.
   const QLRowBlock* rowblock() const { return rowblock_.get(); }
 
+  MonoDelta request_ttl() const {
+    return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+  }
+
  private:
   void ClearResponse() override {
     if (response_) {

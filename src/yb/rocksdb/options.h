@@ -58,6 +58,7 @@ class CompactionFilter;
 class CompactionFilterFactory;
 class Comparator;
 class Env;
+class CompactionFileFilterFactory;
 enum InfoLogLevel : unsigned char;
 class SstFileManager;
 class FilterPolicy;
@@ -1350,6 +1351,12 @@ struct DBOptions {
   // Adds ability to modify iterator created for SST file.
   // For instance some additional filtering could be added.
   std::shared_ptr<IteratorReplacer> iterator_replacer;
+
+  // Creates file filters that directly exclude files during compaction, resulting
+  // in their direct deletion without inspection.
+  // The filters are currently used to expire files in time-series DBs that have
+  // completely expired based on their table and/or column TTL.
+  std::shared_ptr<CompactionFileFilterFactory> compaction_file_filter_factory;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)

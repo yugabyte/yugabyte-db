@@ -39,9 +39,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   }
   ConsensusFrontier() {}
   ConsensusFrontier(const OpId& op_id, HybridTime ht, HybridTime history_cutoff)
-      : op_id_(op_id),
-        ht_(ht),
-        history_cutoff_(NormalizeHistoryCutoff(history_cutoff)) {}
+      : op_id_(op_id), hybrid_time_(ht), history_cutoff_(NormalizeHistoryCutoff(history_cutoff)) {}
 
   virtual ~ConsensusFrontier();
 
@@ -61,8 +59,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   template <class PB>
   void set_op_id(const PB& pb) { op_id_ = OpId::FromPB(pb); }
 
-  HybridTime hybrid_time() const { return ht_; }
-  void set_hybrid_time(HybridTime ht) { ht_ = ht; }
+  HybridTime hybrid_time() const { return hybrid_time_; }
+  void set_hybrid_time(HybridTime ht) { hybrid_time_ = ht; }
 
   HybridTime history_cutoff() const { return history_cutoff_; }
   void set_history_cutoff(HybridTime history_cutoff) {
@@ -74,9 +72,14 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     hybrid_time_filter_ = value;
   }
 
+  HybridTime max_value_level_ttl_expiration_time() const
+      { return max_value_level_ttl_expiration_time_; }
+  void set_max_value_level_ttl_expiration_time(HybridTime ht)
+      { max_value_level_ttl_expiration_time_ = ht; }
+
  private:
   OpId op_id_;
-  HybridTime ht_;
+  HybridTime hybrid_time_;
 
   // We use this to keep track of the maximum history cutoff hybrid time used in any compaction, and
   // refuse to perform reads at a hybrid time at which we don't have a valid snapshot anymore. Only
@@ -84,6 +87,11 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   HybridTime history_cutoff_;
 
   HybridTime hybrid_time_filter_;
+
+  // Used to track the boundary expiration timestamp for any doc in the file. Tracks value-level
+  // TTL expiration (generated at write-time), table-level TTL is calculated at read-time based
+  // on hybrid_time_. Only the largest frontier of this parameter is being used.
+  HybridTime max_value_level_ttl_expiration_time_;
 };
 
 typedef rocksdb::UserFrontiersBase<ConsensusFrontier> ConsensusFrontiers;
