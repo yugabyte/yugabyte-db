@@ -192,6 +192,15 @@ public class CustomerConfig extends Model {
     return CustomerConfig.find.query().where().idEq(configUUID).findOne();
   }
 
+  public static CustomerConfig get(UUID customerUUID, String configName) {
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("config_name", configName)
+        .findOne();
+  }
+
   public static CustomerConfig createAlertConfig(UUID customerUUID, JsonNode payload) {
     return createConfig(customerUUID, ConfigType.ALERTS, ALERTS_PREFERENCES, payload);
   }

@@ -207,7 +207,7 @@ public class UniverseControllerTestBase extends WithApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    s3StorageConfig = ModelFactory.createS3StorageConfig(customer);
+    s3StorageConfig = ModelFactory.createS3StorageConfig(customer, "TEST25");
     user = ModelFactory.testUser(customer);
     ObjectNode kmsConfigReq =
         Json.newObject()

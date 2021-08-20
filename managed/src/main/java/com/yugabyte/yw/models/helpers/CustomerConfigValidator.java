@@ -347,6 +347,11 @@ public class CustomerConfigValidator {
     } else if (!formData.get("data").isObject()) {
       errorJson.set("data", Json.newArray().add("Invalid data provided, expected a object."));
     }
+    if (!formData.hasNonNull("configName")) {
+      errorJson.set("configName", Json.newArray().add("Config name cannot be null"));
+    } else if (formData.get("configName").textValue().trim().isEmpty()) {
+      errorJson.set("configName", Json.newArray().add("Invalid config name provided."));
+    }
     return errorJson;
   }
 
