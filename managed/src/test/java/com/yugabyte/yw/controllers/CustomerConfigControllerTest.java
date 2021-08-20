@@ -4,9 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
-import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static org.junit.Assert.assertEquals;
@@ -19,8 +19,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -30,9 +28,7 @@ import com.yugabyte.yw.models.Users;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
@@ -41,8 +37,6 @@ import play.mvc.Result;
 public class CustomerConfigControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
   Users defaultUser;
-
-  @InjectMocks private AlertService alertService;
 
   @Before
   public void setUp() {
@@ -266,8 +260,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals("s3://foo", json.get("data").get("BACKUP_LOCATION").textValue());
   }
 
+  @Test
   public void testValidPasswordPolicy() {
-    Result result = assertYWSE(() -> testPasswordPolicy(8, 1, 1, 1, 1));
+    Result result = testPasswordPolicy(8, 1, 1, 1, 1);
     assertOk(result);
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(1, defaultCustomer.uuid);
@@ -277,7 +272,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   public void testNegativePasswordPolicy() {
     Result result = assertYWSE(() -> testPasswordPolicy(8, -1, 1, 1, 1));
     assertBadRequest(
-        result, "{\"password policy\":[\"Minimal number of uppercase letters should be > 0\"]}");
+        result,
+        "{\"password policy\":[\"Minimal number of uppercase letters should not be negative\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -378,8 +374,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertConflict(result, "Configuration TEST152 already exists");
   }
 
+  @Test
   public void testInvalidPasswordPolicy() {
-    Result result = testPasswordPolicy(8, 3, 3, 2, 1);
+    Result result = assertYWSE(() -> testPasswordPolicy(8, 3, 3, 2, 1));
     assertBadRequest(
         result,
         "{\"password policy\":[\"Minimal length should be not less than"
