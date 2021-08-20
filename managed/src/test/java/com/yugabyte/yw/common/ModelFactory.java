@@ -200,27 +200,33 @@ public class ModelFactory {
     return u;
   }
 
-  public static CustomerConfig createS3StorageConfig(Customer customer) {
+  public static CustomerConfig createS3StorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"S3\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"S3\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
                 + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
-  public static CustomerConfig createNfsStorageConfig(Customer customer) {
+  public static CustomerConfig createNfsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"NFS\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"NFS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
-  public static CustomerConfig createGcsStorageConfig(Customer customer) {
+  public static CustomerConfig createGcsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"GCS\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"GCS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
                 + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);

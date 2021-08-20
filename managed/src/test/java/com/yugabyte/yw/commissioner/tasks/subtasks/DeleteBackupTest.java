@@ -43,7 +43,7 @@ public class DeleteBackupTest extends FakeDBApplication {
   public void setUp() {
     UUID universeUUID = UUID.randomUUID();
     defaultCustomer = ModelFactory.testCustomer();
-    CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    CustomerConfig s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST100");
     backup =
         ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
   }

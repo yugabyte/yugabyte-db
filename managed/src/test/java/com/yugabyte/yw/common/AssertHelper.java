@@ -15,6 +15,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.CONFLICT;;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
@@ -61,6 +62,11 @@ public class AssertHelper {
 
   public static void assertNotFound(Result result, String errorStr) {
     assertEquals(NOT_FOUND, result.status());
+    assertErrorResponse(result, errorStr);
+  }
+
+  public static void assertConflict(Result result, String errorStr) {
+    assertEquals(CONFLICT, result.status());
     assertErrorResponse(result, errorStr);
   }
 

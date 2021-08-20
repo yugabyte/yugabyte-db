@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static org.junit.Assert.assertEquals;
@@ -18,6 +19,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.Backup;
@@ -28,6 +30,7 @@ import com.yugabyte.yw.models.Users;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -61,6 +64,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertErrorNodeValue(node, "data", "This field is required");
     assertErrorNodeValue(node, "name", "This field is required");
     assertErrorNodeValue(node, "type", "This field is required");
+    assertErrorNodeValue(node, "configName", "Config name cannot be null");
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -105,12 +109,34 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateWithInvalidConfigNameParam() {
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test");
+    bodyJson.put("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "   ");
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
+    Result result =
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST", url, defaultUser.createAuthToken(), bodyJson));
+
+    JsonNode node = Json.parse(contentAsString(result));
+    assertEquals(BAD_REQUEST, result.status());
+    assertErrorNodeValue(node, "configName", "Invalid config name provided.");
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
   public void testCreateWithValidParam() {
     ObjectNode bodyJson = Json.newObject();
     JsonNode data = Json.parse("{\"foo\":\"bar\"}");
     bodyJson.put("name", "test");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", "fake-config");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
@@ -124,9 +150,28 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateWithSameConfigName() {
+    String configName = "TEST123";
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, configName).configUUID;
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = Json.parse("{\"foo\":\"bar\"}");
+    bodyJson.put("name", "test");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", configName);
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
+    Result result =
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST", url, defaultUser.createAuthToken(), bodyJson));
+    assertConflict(result, "Configuration TEST123 already exists");
+  }
+
+  @Test
   public void testListCustomeWithData() {
-    ModelFactory.createS3StorageConfig(defaultCustomer);
-    ModelFactory.createS3StorageConfig(defaultCustomer);
+    ModelFactory.createS3StorageConfig(defaultCustomer, "TEST7");
+    ModelFactory.createS3StorageConfig(defaultCustomer, "TEST8");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
     JsonNode node = Json.parse(contentAsString(result));
@@ -145,7 +190,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteValidCustomerConfig() {
-    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST9").configUUID;
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
@@ -158,7 +203,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInvalidCustomerConfig() {
     Customer customer = ModelFactory.testCustomer("nc", "New Customer");
-    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer, "TEST10").configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         assertYWSE(
@@ -171,7 +216,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteInUseStorageConfig() {
-    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST11").configUUID;
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
@@ -204,8 +249,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("name", "test1");
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
-    bodyJson.put("configName", "test");
-    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    bodyJson.put("configName", "test-edited");
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12").configUUID;
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
@@ -246,7 +291,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "STORAGE");
     bodyJson.put("configName", "test");
     Customer customer = ModelFactory.testCustomer("nc", "New Customer");
-    UUID configUUID = ModelFactory.createS3StorageConfig(customer).configUUID;
+    UUID configUUID = ModelFactory.createS3StorageConfig(customer, "TEST13").configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         assertYWSE(
@@ -269,7 +314,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.set("data", data);
     bodyJson.put("type", "STORAGE");
     bodyJson.put("configName", "test2");
-    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14").configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
         assertYWSE(
@@ -286,7 +331,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditStorageNameOnly_SecretKeysPersist() {
-    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer).configUUID;
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15").configUUID;
     CustomerConfig fromDb = CustomerConfig.get(configUUID);
 
     ObjectNode bodyJson = Json.newObject();
@@ -308,6 +353,29 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertEquals(
         fromDb.data.get("ACCESS_SECRET").textValue(),
         newFromDb.data.get("ACCESS_SECRET").textValue());
+  }
+
+  @Test
+  public void testEditConfigNameToExistentConfigName() {
+    String existentConfigName = "TEST152";
+    ModelFactory.createS3StorageConfig(defaultCustomer, existentConfigName);
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST153").configUUID;
+    CustomerConfig fromDb = CustomerConfig.get(configUUID);
+
+    ObjectNode bodyJson = Json.newObject();
+    JsonNode data = fromDb.data;
+    bodyJson.put("name", "test1");
+    bodyJson.set("data", data);
+    bodyJson.put("type", "STORAGE");
+    bodyJson.put("configName", existentConfigName);
+
+    String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
+    Result result =
+        assertYWSE(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, defaultUser.createAuthToken(), bodyJson));
+    assertConflict(result, "Configuration TEST152 already exists");
   }
 
   public void testInvalidPasswordPolicy() {
@@ -333,6 +401,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("name", "password policy");
     bodyJson.set("data", Json.toJson(passwordPolicyFormData));
     bodyJson.put("type", "PASSWORD_POLICY");
+    bodyJson.put("configName", "fake-config");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST", url, defaultUser.createAuthToken(), bodyJson);

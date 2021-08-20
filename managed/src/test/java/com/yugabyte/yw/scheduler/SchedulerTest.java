@@ -49,7 +49,7 @@ public class SchedulerTest extends FakeDBApplication {
     mockExecutionContext = mock(ExecutionContext.class);
     mockCommissioner = mock(Commissioner.class);
     defaultCustomer = ModelFactory.testCustomer();
-    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST28");
 
     when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
     scheduler =

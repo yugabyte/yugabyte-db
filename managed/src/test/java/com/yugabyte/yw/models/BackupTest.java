@@ -43,7 +43,7 @@ public class BackupTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST26");
   }
 
   @Test

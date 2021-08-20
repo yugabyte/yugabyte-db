@@ -42,7 +42,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
 
     BackupTableParams backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
     backupTableParams.storageConfigUUID = customerConfig.configUUID;
     defaultSchedule =
         Schedule.create(

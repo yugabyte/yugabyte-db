@@ -54,6 +54,13 @@ public class CustomerConfigController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
+    String configName = formData.get("configName").textValue();
+    CustomerConfig existentConfig = CustomerConfig.get(customerUUID, configName);
+    if (existentConfig != null) {
+      throw new YWServiceException(
+          CONFLICT, String.format("Configuration %s already exists", configName));
+    }
+
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     auditService().createAuditEntry(ctx(), request(), formData);
     return YWResults.withData(customerConfig);
@@ -96,6 +103,14 @@ public class CustomerConfigController extends AuthenticatedController {
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
       throw new YWServiceException(BAD_REQUEST, errorJson);
+    }
+
+    String configName = formData.get("configName").textValue();
+    CustomerConfig existentConfig = CustomerConfig.get(customerUUID, configName);
+    if (existentConfig != null
+        && !StringUtils.equals(existentConfig.configUUID.toString(), configUUID.toString())) {
+      throw new YWServiceException(
+          CONFLICT, String.format("Configuration %s already exists", configName));
     }
 
     CustomerConfig config = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
