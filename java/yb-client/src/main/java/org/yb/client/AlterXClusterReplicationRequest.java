@@ -62,7 +62,7 @@ public class AlterXClusterReplicationRequest extends YRpc<AlterXClusterReplicati
 
   @Override
   String method() {
-    return "AlterXClusterReplication";
+    return "AlterUniverseReplication";
   }
 
   @Override
