@@ -24,7 +24,7 @@ import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Metric;

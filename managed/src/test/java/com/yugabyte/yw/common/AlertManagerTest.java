@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -26,7 +27,7 @@ import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.YWNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -135,8 +136,7 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendNotification_MetricsSetOk() {
     metricService.setStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer),
-        "Some error");
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer), "Some error");
     am.setReceiverStatusMetric(
         PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS, defaultReceiver, "Some receiver error");
 
