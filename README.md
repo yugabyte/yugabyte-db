@@ -112,6 +112,7 @@ Parameters
 * `pretty-print`: add spaces and indentation to JSON structures. Default is _false_.
 * `write-in-chunks`: write after every change instead of every changeset. Default is _false_.
 * `include-lsn`: add _nextlsn_ to each changeset. Default is _false_.
+* `include-transaction`: emit records denoting the start and end of each transaction. Default is _true_.
 * `include-unchanged-toast` (deprecated): Don't use it. It is deprecated.
 * `filter-origins`: exclude changes from the specified origins. Default is empty which means that no origin will be filtered. It is a comma separated value.
 * `filter-tables`: exclude rows from the specified tables. Default is empty which means that no table will be filtered. It is a comma separated value. The tables should be schema-qualified. `*.foo` means table foo in all schemas and `bar.*` means all tables in schema bar. Special characters (space, single quote, comma, period, asterisk) must be escaped with backslash. Schema and table are case-sensitive. Table `"public"."Foo bar"` should be specified as `public.Foo\ bar`.
