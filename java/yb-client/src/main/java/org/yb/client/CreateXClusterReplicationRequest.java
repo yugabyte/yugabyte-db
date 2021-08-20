@@ -62,7 +62,7 @@ public class CreateXClusterReplicationRequest extends YRpc<CreateXClusterReplica
 
   @Override
   String method() {
-    return "CreateXClusterReplication";
+    return "SetupUniverseReplication";
   }
 
   @Override

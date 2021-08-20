@@ -50,7 +50,7 @@ public class SetXClusterReplicationActiveRequest
 
   @Override
   String method() {
-    return "SetXClusterReplicationActive";
+    return "SetUniverseReplicationEnabled";
   }
 
   @Override
