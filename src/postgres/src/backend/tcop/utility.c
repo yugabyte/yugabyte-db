@@ -420,7 +420,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 	/*
 	 * tserver auth method is only allowed to run backfill statements.
 	 */
-	if (IsYugaByteEnabled() &&
+	if (IsYugabyteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates() &&
 		MyProcPort->yb_is_tserver_auth_method &&
@@ -483,10 +483,10 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						break;
 
 					case TRANS_STMT_PREPARE:
-						if  (IsYugaByteEnabled()) {
+						if  (IsYugabyteEnabled()) {
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("PREPARE not supported by YugaByte yet")));
+									errmsg("PREPARE not supported by Yugabyte yet")));
 						}
 						PreventCommandDuringRecovery("PREPARE TRANSACTION");
 						if (!PrepareTransactionBlock(stmt->gid))
@@ -858,7 +858,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			/*
 			 * Only tserver-postgres libpq connection can send BACKFILL request.
 			 */
-			if (!IsYugaByteEnabled() ||
+			if (!IsYugabyteEnabled() ||
 				!MyProcPort->yb_is_tserver_auth_method ||
 				IsBootstrapProcessingMode() ||
 				YBIsPreparingTemplates())
@@ -1071,7 +1071,7 @@ ProcessUtilitySlow(ParseState *pstate,
 															 stmt);
 
 							/* No need for toasting attributes in YB mode */
-							if (!IsYugaByteEnabled())
+							if (!IsYugabyteEnabled())
 							{
 								/*
 								* Let NewRelationCreateToastTable decide if this
@@ -1360,7 +1360,7 @@ ProcessUtilitySlow(ParseState *pstate,
 
 					if (stmt->concurrent)
 					{
-						if (IsYugaByteEnabled() &&
+						if (IsYugabyteEnabled() &&
 							!IsBootstrapProcessingMode() &&
 							!YBIsPreparingTemplates() &&
 							IsInTransactionBlock(isTopLevel))
@@ -1440,7 +1440,7 @@ ProcessUtilitySlow(ParseState *pstate,
 						 * Transparently switch to nonconcurrent index build.
 						 */
 						if (stmt->concurrent &&
-							IsYugaByteEnabled() &&
+							IsYugabyteEnabled() &&
 							!IsBootstrapProcessingMode() &&
 							!YBIsPreparingTemplates())
 						{
@@ -3599,7 +3599,7 @@ YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
                             DestReceiver *dest,
                             char *completionTag)
 {
-	if (IsYugaByteEnabled() && !(IsA(pstmt->utilityStmt, ExecuteStmt) ||
+	if (IsYugabyteEnabled() && !(IsA(pstmt->utilityStmt, ExecuteStmt) ||
 			IsA(pstmt->utilityStmt, PrepareStmt) || IsA(pstmt->utilityStmt, DeallocateStmt) ||
 			IsA(pstmt->utilityStmt, ExplainStmt))) {
 		YBBeginOperationsBuffering();

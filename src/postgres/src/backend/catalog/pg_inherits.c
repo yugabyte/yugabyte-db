@@ -82,7 +82,7 @@ find_inheritance_children(Oid parentrelId, LOCKMODE lockmode)
 	oidarr = NULL;
 	numoids = 0;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		/*
 		* In a Yugabyte cluster, the pg_inherits table is cached, hence the

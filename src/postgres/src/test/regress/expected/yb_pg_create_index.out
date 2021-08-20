@@ -38,14 +38,14 @@ CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1);
 ERROR:  CREATE INDEX CONCURRENTLY not supported yet
 LINE 1: CREATE INDEX CONCURRENTLY concur_index1 ON concur_heap(f2,f1...
                      ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/Yugabyte/yugabyte-db/issues
 -- You can't do a concurrent index build in a transaction
 BEGIN;
 CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
 ERROR:  CREATE INDEX CONCURRENTLY not supported yet
 LINE 1: CREATE INDEX CONCURRENTLY concur_index7 ON concur_heap(f1);
                      ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/Yugabyte/yugabyte-db/issues
 COMMIT;
 -- But you can do a regular index build in a transaction
 BEGIN;
