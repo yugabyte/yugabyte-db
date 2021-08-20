@@ -24,7 +24,8 @@ public enum KnownAlertLabels {
   ALERT_STATE,
   SEVERITY,
   THRESHOLD,
-  ERROR_MESSAGE;
+  ERROR_MESSAGE,
+  NODE_NAME;
 
   public String labelName() {
     return name().toLowerCase();
