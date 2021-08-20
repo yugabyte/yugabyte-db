@@ -33,7 +33,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverService;
@@ -41,7 +41,7 @@ import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
@@ -332,7 +332,7 @@ public class AlertControllerTest extends FakeDBApplication {
                 MetricService.DEFAULT_METRIC_EXPIRY_SEC)
             .setCustomerUUID(customer.getUuid())
             .setTargetUuid(createdReceiver.getUuid())
-            .setLabels(AlertLabelsBuilder.create().appendTarget(createdReceiver).getMetricLabels())
+            .setLabels(MetricLabelsBuilder.create().appendTarget(createdReceiver).getMetricLabels())
             .setValue(0.0)
             .setLabel(KnownAlertLabels.ERROR_MESSAGE, "Some error");
     metricService.cleanAndSave(Collections.singletonList(receiverStatus));

@@ -8,7 +8,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.commissioner;
+package com.yugabyte.yw.common.alerts;
+
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
@@ -16,10 +18,7 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
@@ -124,11 +123,10 @@ public class QueryAlerts {
         try {
           List<UUID> activeAlertsUuids = processActiveAlerts();
           resolveAlerts(activeAlertsUuids);
-          metricService.setOkStatusMetric(
-              metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS));
+          metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS));
         } catch (Exception e) {
           metricService.setStatusMetric(
-              metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS),
+              buildMetricTemplate(PlatformMetrics.ALERT_QUERY_STATUS),
               "Error querying for alerts: " + e.getMessage());
           log.error("Error querying for alerts", e);
         }
@@ -144,7 +142,7 @@ public class QueryAlerts {
   private List<UUID> processActiveAlerts() {
     List<AlertData> alerts = queryHelper.queryAlerts();
     metricService.setMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS), alerts.size());
+        buildMetricTemplate(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS), alerts.size());
     List<AlertData> validAlerts =
         alerts
             .stream()
@@ -158,7 +156,7 @@ public class QueryAlerts {
           alerts.size() - validAlerts.size());
     }
     metricService.setMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_INVALID_ALERTS),
+        buildMetricTemplate(PlatformMetrics.ALERT_QUERY_INVALID_ALERTS),
         alerts.size() - validAlerts.size());
 
     List<AlertData> activeAlerts =
@@ -167,7 +165,7 @@ public class QueryAlerts {
             .filter(alertData -> alertData.getState() != AlertState.pending)
             .collect(Collectors.toList());
     metricService.setMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_PENDING_ALERTS),
+        buildMetricTemplate(PlatformMetrics.ALERT_QUERY_PENDING_ALERTS),
         validAlerts.size() - activeAlerts.size());
 
     List<AlertData> deduplicatedAlerts =
@@ -238,17 +236,16 @@ public class QueryAlerts {
               .filter(Objects::nonNull)
               .collect(Collectors.toList());
       metricService.setMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_FILTERED_ALERTS),
+          buildMetricTemplate(PlatformMetrics.ALERT_QUERY_FILTERED_ALERTS),
           activeAlerts.size() - toSave.size());
       long newAlerts = toSave.stream().filter(Alert::isNew).count();
       long updatedAlerts = toSave.size() - newAlerts;
 
       List<Alert> savedAlerts = alertService.save(toSave);
       metricService.setMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_NEW_ALERTS), newAlerts);
+          buildMetricTemplate(PlatformMetrics.ALERT_QUERY_NEW_ALERTS), newAlerts);
       metricService.setMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_UPDATED_ALERTS),
-          updatedAlerts);
+          buildMetricTemplate(PlatformMetrics.ALERT_QUERY_UPDATED_ALERTS), updatedAlerts);
 
       activeAlertUuids.addAll(
           savedAlerts.stream().map(Alert::getUuid).collect(Collectors.toList()));
@@ -263,8 +260,7 @@ public class QueryAlerts {
       log.info("Resolved {} alerts", resolved.size());
     }
     metricService.setMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_QUERY_RESOLVED_ALERTS),
-        resolved.size());
+        buildMetricTemplate(PlatformMetrics.ALERT_QUERY_RESOLVED_ALERTS), resolved.size());
   }
 
   private String getCustomerUuid(AlertData alertData) {

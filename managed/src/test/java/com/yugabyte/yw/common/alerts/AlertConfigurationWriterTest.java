@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;

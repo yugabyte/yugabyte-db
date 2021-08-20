@@ -10,20 +10,74 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import com.yugabyte.yw.models.helpers.TaskType;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Counter;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class BackupUniverse extends UniverseTaskBase {
+
+  // Counter names
+  private static final String SCHEDULED_BACKUP_ATTEMPT_COUNT = "ybp_scheduled_backup_attempt";
+  private static final String SCHEDULED_BACKUP_SUCCESS_COUNT = "ybp_scheduled_backup_success";
+  private static final String SCHEDULED_BACKUP_FAILURE_COUNT = "ybp_scheduled_backup_failure";
+  private static final String BACKUP_ATTEMPT_COUNT = "ybp_backup_attempt";
+  private static final String BACKUP_SUCCESS_COUNT = "ybp_backup_success";
+  private static final String BACKUP_FAILURE_COUNT = "ybp_backup_failure";
+
+  // Counters
+  public static final Counter SCHEDULED_BACKUP_ATTEMPT_COUNTER =
+      Counter.build(
+              SCHEDULED_BACKUP_ATTEMPT_COUNT, "Count of backup schedule attempts per universe")
+          .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
+          .register(CollectorRegistry.defaultRegistry);
+  public static final Counter SCHEDULED_BACKUP_SUCCESS_COUNTER =
+      Counter.build(
+              SCHEDULED_BACKUP_SUCCESS_COUNT,
+              "Count of successful backup schedule attempts per universe")
+          .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
+          .register(CollectorRegistry.defaultRegistry);
+  public static final Counter SCHEDULED_BACKUP_FAILURE_COUNTER =
+      Counter.build(
+              SCHEDULED_BACKUP_FAILURE_COUNT,
+              "Count of failed backup schedule attempts per universe")
+          .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
+          .register(CollectorRegistry.defaultRegistry);
+  public static final Counter BACKUP_ATTEMPT_COUNTER =
+      Counter.build(BACKUP_ATTEMPT_COUNT, "Count of backup task attempts per universe")
+          .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
+          .register(CollectorRegistry.defaultRegistry);
+  public static final Counter BACKUP_SUCCESS_COUNTER =
+      Counter.build(BACKUP_SUCCESS_COUNT, "Count of successful backup tasks per universe")
+          .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
+          .register(CollectorRegistry.defaultRegistry);
+  public static final Counter BACKUP_FAILURE_COUNTER =
+      Counter.build(BACKUP_FAILURE_COUNT, "Count of failed backup tasks per universe")
+          .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
+          .register(CollectorRegistry.defaultRegistry);
 
   @Inject
   protected BackupUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -37,8 +91,10 @@ public class BackupUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendTarget(universe);
+
+    BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
       // Create the task list sequence.
@@ -96,17 +152,18 @@ public class BackupUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
+      BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
       metricService.setOkStatusMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+          buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
         unlockUniverseForUpdate();
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
+      BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
       metricService.setStatusMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe),
-          t.getMessage());
+          buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
       unlockUniverseForUpdate();
@@ -118,5 +175,63 @@ public class BackupUniverse extends UniverseTaskBase {
     }
 
     log.info("Finished {} task.", getName());
+  }
+
+  public void runScheduledBackup(
+      Schedule schedule, Commissioner commissioner, boolean alreadyRunning) {
+    UUID customerUUID = schedule.getCustomerUUID();
+    Customer customer = Customer.get(customerUUID);
+    JsonNode params = schedule.getTaskParams();
+    BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
+    taskParams.scheduleUUID = schedule.scheduleUUID;
+    Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
+    if (universe == null) {
+      schedule.stopSchedule();
+      return;
+    }
+    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendTarget(universe);
+    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    if (alreadyRunning
+        || universe.getUniverseDetails().backupInProgress
+        || universe.getUniverseDetails().updateInProgress
+        || universe.getUniverseDetails().universePaused) {
+
+      if (!universe.getUniverseDetails().universePaused) {
+        SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
+      }
+
+      log.warn(
+          "Cannot run Backup task since the universe {} is currently {}",
+          taskParams.universeUUID.toString(),
+          "in a locked/paused state or has backup running");
+      return;
+    }
+    Backup backup = Backup.create(customerUUID, taskParams);
+    UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
+    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    log.info(
+        "Submitted task to backup table {}:{}, task uuid = {}.",
+        taskParams.tableUUID,
+        taskParams.getTableName(),
+        taskUUID);
+    backup.setTaskUUID(taskUUID);
+    CustomerTask.create(
+        customer,
+        taskParams.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Create,
+        taskParams.getTableName());
+    log.info(
+        "Saved task uuid {} in customer tasks table for table {}:{}.{}",
+        taskUUID,
+        taskParams.tableUUID,
+        taskParams.getKeyspace(),
+        taskParams.getTableName());
+    SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
   }
 }

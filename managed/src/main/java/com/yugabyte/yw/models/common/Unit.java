@@ -13,7 +13,9 @@ public enum Unit {
   STATUS(Measure.STATUS, "", "", 0, 1, true),
   COUNT(Measure.COUNT, "", "", 0, Double.MAX_VALUE, true),
   PERCENT(Measure.PERCENTAGE, "%", "pct", 0, 100, false),
-  MILLISECOND(Measure.TIME, "ms", "ms", 0, Double.MAX_VALUE, true);
+  MILLISECOND(Measure.TIME, "ms", "ms", 0, Double.MAX_VALUE, true),
+  SECOND(Measure.TIME, "sec", "sec", 0, Double.MAX_VALUE, true),
+  DAY(Measure.TIME, "day", "day", 0, Double.MAX_VALUE, true);
 
   private final Measure measure;
   private final String displayName;

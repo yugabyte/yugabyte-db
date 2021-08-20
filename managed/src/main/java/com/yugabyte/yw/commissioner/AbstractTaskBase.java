@@ -10,7 +10,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;

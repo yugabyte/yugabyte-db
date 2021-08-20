@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -27,7 +28,7 @@ import com.yugabyte.yw.common.HealthManager.ClusterInfo;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
@@ -625,12 +626,11 @@ public class HealthCheckerTest extends FakeDBApplication {
     mockGoodHealthResponse();
 
     metricService.setStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, u), "Some error");
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, u), "Some error");
     metricService.setStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u),
-        "Some error");
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u), "Some error");
     metricService.setStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, u), "Some error");
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, u), "Some error");
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(

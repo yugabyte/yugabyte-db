@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
@@ -17,7 +18,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
@@ -105,7 +106,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
 
     metricService.setOkStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, defaultUniverse));
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, defaultUniverse));
 
     submitTask(taskParams, 4);
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));

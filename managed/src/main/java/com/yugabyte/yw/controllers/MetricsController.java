@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricLabel;
 import com.yugabyte.yw.models.filters.MetricFilter;

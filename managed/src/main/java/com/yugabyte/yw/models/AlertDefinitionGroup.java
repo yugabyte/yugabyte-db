@@ -54,7 +54,8 @@ public class AlertDefinitionGroup extends Model {
     name("name"),
     active("active"),
     targetType("targetType"),
-    createTime("createTime");
+    createTime("createTime"),
+    template("template");
 
     private final String sortField;
 

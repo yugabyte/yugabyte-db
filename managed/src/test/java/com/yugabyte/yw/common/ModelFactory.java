@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -321,7 +321,7 @@ public class ModelFactory {
             .setGroupUUID(group.getUuid())
             .setCustomerUUID(customer.getUuid())
             .setQuery("query {{ query_condition }} {{ query_threshold }}")
-            .setLabels(AlertLabelsBuilder.create().appendTarget(universe).get())
+            .setLabels(MetricLabelsBuilder.create().appendTarget(universe).getDefinitionLabels())
             .generateUUID();
     alertDefinition.save();
     return alertDefinition;
@@ -373,7 +373,7 @@ public class ModelFactory {
               .collect(Collectors.toList());
       alert.setLabels(labels);
     } else {
-      AlertLabelsBuilder labelsBuilder = AlertLabelsBuilder.create();
+      MetricLabelsBuilder labelsBuilder = MetricLabelsBuilder.create();
       if (universe != null) {
         labelsBuilder.appendTarget(universe);
       } else {

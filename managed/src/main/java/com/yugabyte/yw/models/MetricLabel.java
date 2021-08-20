@@ -11,6 +11,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.UniqueKeyListValue;
 import io.ebean.Model;
 import java.util.Objects;
@@ -35,6 +36,9 @@ public class MetricLabel extends Model implements UniqueKeyListValue<MetricLabel
 
   @ManyToOne @JsonIgnore @EqualsAndHashCode.Exclude @ToString.Exclude private Metric metric;
 
+  @Column(nullable = false)
+  private boolean targetLabel;
+
   public MetricLabel() {
     this.key = new MetricLabelKey();
   }
@@ -43,6 +47,10 @@ public class MetricLabel extends Model implements UniqueKeyListValue<MetricLabel
     this();
     key.setName(name);
     this.value = value;
+  }
+
+  public MetricLabel(KnownAlertLabels label, String value) {
+    this(label.labelName(), value);
   }
 
   public MetricLabel(Metric metric, String name, String value) {

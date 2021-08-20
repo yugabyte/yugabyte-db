@@ -4,7 +4,8 @@ package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.AlertDefinitionGroup.Severity;
+import com.yugabyte.yw.models.AlertDefinitionGroupThreshold.Condition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Unit;
@@ -34,7 +35,7 @@ public enum AlertTemplate {
           AlertDefinitionGroup.Severity.SEVERE,
           DefaultThreshold.from("yb.alert.replication_lag_ms")),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
+      Condition.GREATER_THAN,
       Unit.MILLISECOND),
 
   CLOCK_SKEW(
@@ -52,7 +53,7 @@ public enum AlertTemplate {
           AlertDefinitionGroup.Severity.SEVERE,
           DefaultThreshold.from("yb.alert.max_clock_skew_ms")),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
+      Condition.GREATER_THAN,
       Unit.MILLISECOND),
 
   MEMORY_CONSUMPTION(
@@ -80,7 +81,7 @@ public enum AlertTemplate {
           AlertDefinitionGroup.Severity.SEVERE,
           DefaultThreshold.from("yb.alert.max_memory_cons_pct")),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
+      Condition.GREATER_THAN,
       Unit.PERCENT),
 
   HEALTH_CHECK_ERROR(
@@ -93,24 +94,8 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.LESS_THAN,
+      Condition.LESS_THAN,
       Unit.STATUS),
-
-  HEALTH_CHECK_NODE_ERRORS(
-      "Health Check Node Errors",
-      "Number of nodes with health check errors is above threshold",
-      "ybp_health_check_nodes_with_errors{universe_uuid = \"__universeUuid__\"}"
-          + " {{ query_condition }} {{ query_threshold }}",
-      "Health check for universe '{{ $labels.target_name }}' has errors for"
-          + " {{ $value | printf \\\"%.0f\\\" }} node(s)",
-      15,
-      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          AlertDefinitionGroup.Severity.SEVERE,
-          DefaultThreshold.from("yb.alert.health_check_nodes")),
-      AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
-      Unit.COUNT),
 
   HEALTH_CHECK_NOTIFICATION_ERROR(
       "Health Check Notification Error",
@@ -123,7 +108,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.LESS_THAN,
+      Condition.LESS_THAN,
       Unit.STATUS),
 
   BACKUP_FAILURE(
@@ -136,7 +121,22 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.LESS_THAN,
+      Condition.LESS_THAN,
+      Unit.STATUS),
+
+  BACKUP_SCHEDULE_FAILURE(
+      "Backup Schedule Failure",
+      "Last attempt to run scheduled backup failed due to other backup"
+          + " or universe operation in progress",
+      "ybp_schedule_backup_status{universe_uuid = \"__universeUuid__\"}"
+          + " {{ query_condition }} 1",
+      "Last attempt to run scheduled backup for universe '{{ $labels.target_name }}'"
+          + " failed due to other backup or universe operation is in progress.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.LESS_THAN,
       Unit.STATUS),
 
   INACTIVE_CRON_NODES(
@@ -144,7 +144,7 @@ public enum AlertTemplate {
       "Number of nodes with inactive cronjob is above threshold",
       "ybp_universe_inactive_cron_nodes{universe_uuid = \"__universeUuid__\"}"
           + " {{ query_condition }} {{ query_threshold }}",
-      "{{ $value | printf \\\"%.0f\\\" }} nodes has inactive cronjob"
+      "{{ $value | printf \\\"%.0f\\\" }} node(s) has inactive cronjob"
           + " for universe '{{ $labels.target_name }}'.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
@@ -152,7 +152,7 @@ public enum AlertTemplate {
           AlertDefinitionGroup.Severity.SEVERE,
           DefaultThreshold.from("yb.alert.inactive_cronjob_nodes")),
       AlertDefinitionGroup.TargetType.UNIVERSE,
-      AlertDefinitionGroupThreshold.Condition.GREATER_THAN,
+      Condition.GREATER_THAN,
       Unit.COUNT),
 
   ALERT_QUERY_FAILED(
@@ -165,7 +165,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
-      AlertDefinitionGroupThreshold.Condition.LESS_THAN,
+      Condition.LESS_THAN,
       Unit.STATUS),
 
   ALERT_CONFIG_WRITING_FAILED(
@@ -178,7 +178,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
-      AlertDefinitionGroupThreshold.Condition.LESS_THAN,
+      Condition.LESS_THAN,
       Unit.STATUS),
 
   ALERT_NOTIFICATION_ERROR(
@@ -191,7 +191,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
-      AlertDefinitionGroupThreshold.Condition.LESS_THAN,
+      Condition.LESS_THAN,
       Unit.STATUS),
 
   ALERT_NOTIFICATION_CHANNEL_ERROR(
@@ -205,9 +205,280 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER, DefinitionSettings.SKIP_TARGET_LABELS),
       ImmutableMap.of(AlertDefinitionGroup.Severity.SEVERE, DefaultThreshold.statusOk()),
       AlertDefinitionGroup.TargetType.CUSTOMER,
-      AlertDefinitionGroupThreshold.Condition.LESS_THAN,
-      Unit.STATUS);
+      Condition.LESS_THAN,
+      Unit.STATUS),
 
+  NODE_DOWN(
+      "DB node down",
+      "DB node is down for 15 minutes",
+      "count by (node_prefix) (max_over_time("
+          + "up{export_type=\"node_export\","
+          + "node_prefix=\"__nodePrefix__\"}[15m]) < 1) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "{{ $value | printf \\\"%.0f\\\" }} DB node(s) are down "
+          + "for more than 15 minutes for universe '{{ $labels.target_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  NODE_RESTART(
+      "DB node restart",
+      "Unexpected DB node restart(s) occurred during last 30 minutes",
+      "max by (node_prefix) "
+          + "(changes(node_boot_time{node_prefix=\"__nodePrefix__\"}[30m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Universe '{{ $labels.target_name }}'"
+          + " DB node is restarted  {{ $value | printf \\\"%.0f\\\" }} times"
+          + " during last 30 minutes",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.WARNING, DefaultThreshold.from(0D),
+          Severity.SEVERE, DefaultThreshold.from(2D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  NODE_CPU_USAGE(
+      "DB node CPU usage",
+      "Average node CPU usage percentage for 30 minutes is above threshold",
+      "count by(node_prefix) "
+          + " ((100 - (avg by (node_prefix, instance)"
+          + " (avg_over_time(irate(node_cpu{job=\"node\",mode=\"idle\","
+          + " node_prefix=\"__nodePrefix__\"}[1m])[30m:])) * 100)) "
+          + "{{ query_condition }} {{ query_threshold }})",
+      "Average node CPU usage for universe '{{ $labels.target_name }}'"
+          + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.WARNING, DefaultThreshold.from("yb.alert.max_cpu_usage_pct_warn"),
+          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_cpu_usage_pct_severe")),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.PERCENT),
+
+  NODE_DISK_USAGE(
+      "DB node disk usage",
+      "Node Disk usage percentage is above threshold",
+      "count by (node_prefix) (100 - (sum without (saved_name) "
+          + "(node_filesystem_free{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "/ sum without (saved_name) "
+          + "(node_filesystem_size{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "* 100) {{ query_condition }} {{ query_threshold }})",
+      "Node disk usage for universe '{{ $labels.target_name }}'"
+          + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_disk_usage_pct_severe")),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.PERCENT),
+
+  NODE_FILE_DESCRIPTORS_USAGE(
+      "DB node file descriptors usage",
+      "Node file descriptors usage percentage is above threshold",
+      "count by (universe_uuid) (ybp_health_check_used_fd_pct{"
+          + "universe_uuid=\"__universeUuid__\"} * 100 "
+          + "{{ query_condition }} {{ query_threshold }})",
+      "Node file descriptors usage for universe '{{ $labels.target_name }}'"
+          + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_fd_usage_pct_severe")),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.PERCENT),
+
+  DB_VERSION_MISMATCH(
+      "DB version mismatch",
+      "DB Master/TServer version does not match Platform universe version",
+      "ybp_health_check_tserver_version_mismatch{universe_uuid=\"__universeUuid__\"} "
+          + "+ ybp_health_check_master_version_mismatch{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Version mismatch detected for universe '{{ $labels.target_name }}'"
+          + " for {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
+      3600,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  DB_INSTANCE_DOWN(
+      "DB instance down",
+      "DB Master/TServer instance is down for 15 minutes",
+      "count by (node_prefix) (max_over_time("
+          + "up{export_type=~\"master_export|tserver_export\","
+          + "node_prefix=\"__nodePrefix__\"}[15m]) < 1) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "{{ $value | printf \\\"%.0f\\\" }} DB Master/TServer instance(s) are down "
+          + "for more than 15 minutes for universe '{{ $labels.target_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  DB_INSTANCE_RESTART(
+      "DB Instance restart",
+      "Unexpected Master or TServer process restart(s) occurred during last 30 minutes",
+      "max by (universe_uuid) "
+          + "(changes(ybp_health_check_master_boot_time_sec{"
+          + "universe_uuid=\"__universeUuid__\"}[30m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Universe '{{ $labels.target_name }}'"
+          + " Master or TServer is restarted {{ $value | printf \\\"%.0f\\\" }} times"
+          + " during last 30 minutes",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.WARNING, DefaultThreshold.from(0D),
+          Severity.SEVERE, DefaultThreshold.from(2D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  DB_FATAL_LOGS(
+      "DB fatal logs",
+      "Fatal logs detected on DB Master/TServer instances",
+      "ybp_health_check_master_fatal_logs{universe_uuid=\"__universeUuid__\"} "
+          + "+ ybp_health_check_tserver_fatal_logs{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Fatal logs detected for universe '{{ $labels.target_name }}'"
+          + " on {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  DB_CORE_FILES(
+      "DB core files",
+      "Core files detected on DB TServer instances",
+      "ybp_health_check_tserver_core_files{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Core files detected for universe '{{ $labels.target_name }}'"
+          + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  DB_YSQL_CONNECTION(
+      "DB YSQLSH connection",
+      "YSQLSH connection to DB instances failed",
+      "ybp_health_check_ysqlsh_connectivity_error{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "YSQLSH connection failure detected for universe '{{ $labels.target_name }}'"
+          + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  DB_YCQL_CONNECTION(
+      "DB CQLSH connection",
+      "CQLSH connection to DB instances failed",
+      "ybp_health_check_cqlsh_connectivity_error{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "CQLSH connection failure detected for universe '{{ $labels.target_name }}'"
+          + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  DB_REDIS_CONNECTION(
+      "DB Redis connection",
+      "Redis connection to DB instances failed",
+      "ybp_health_check_redis_connectivity_error{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Redis connection failure detected for universe '{{ $labels.target_name }}'"
+          + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  NODE_TO_NODE_CA_CERT_EXPIRY(
+      "Node to node CA cert expiry",
+      "Node to node CA certificate expires soon",
+      "min by (node_name) (ybp_health_check_n2n_ca_cert_validity_days"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }})",
+      "Node to node CA certificate for universe '{{ $labels.target_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.LESS_THAN,
+      Unit.DAY),
+
+  NODE_TO_NODE_CERT_EXPIRY(
+      "Node to node cert expiry",
+      "Node to node certificate expires soon",
+      "min by (node_name) (ybp_health_check_n2n_cert_validity_days"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }})",
+      "Node to node certificate for universe '{{ $labels.target_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.LESS_THAN,
+      Unit.DAY),
+
+  CLIENT_TO_NODE_CA_CERT_EXPIRY(
+      "Client to node CA cert expiry",
+      "Client to node CA certificate expires soon",
+      "min by (node_name) (ybp_health_check_c2n_ca_cert_validity_days"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }})",
+      "Client to node CA certificate for universe '{{ $labels.target_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.LESS_THAN,
+      Unit.DAY),
+
+  CLIENT_TO_NODE_CERT_EXPIRY(
+      "Client to node cert expiry",
+      "Client to node certificate expires soon",
+      "min by (node_name) (ybp_health_check_c2n_cert_validity_days"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }})",
+      "Client to node certificate for universe '{{ $labels.target_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      ImmutableMap.of(
+          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
+      AlertDefinitionGroup.TargetType.UNIVERSE,
+      Condition.LESS_THAN,
+      Unit.DAY);
   // @formatter:on
 
   enum DefinitionSettings {
@@ -231,7 +502,7 @@ public enum AlertTemplate {
 
   private final AlertDefinitionGroup.TargetType targetType;
 
-  private final AlertDefinitionGroupThreshold.Condition defaultThresholdCondition;
+  private final Condition defaultThresholdCondition;
 
   private final Unit defaultThresholdUnit;
 
@@ -263,7 +534,7 @@ public enum AlertTemplate {
       EnumSet<DefinitionSettings> settings,
       Map<AlertDefinitionGroup.Severity, DefaultThreshold> defaultThresholdParamMap,
       AlertDefinitionGroup.TargetType targetType,
-      AlertDefinitionGroupThreshold.Condition defaultThresholdCondition,
+      Condition defaultThresholdCondition,
       Unit defaultThresholdUnit) {
     this(
         name,
@@ -289,7 +560,7 @@ public enum AlertTemplate {
       EnumSet<DefinitionSettings> settings,
       Map<AlertDefinitionGroup.Severity, DefaultThreshold> defaultThresholdParamMap,
       AlertDefinitionGroup.TargetType targetType,
-      AlertDefinitionGroupThreshold.Condition defaultThresholdCondition,
+      Condition defaultThresholdCondition,
       Unit defaultThresholdUnit,
       double thresholdMinValue,
       double thresholdMaxValue) {

@@ -27,7 +27,7 @@ import com.yugabyte.yw.common.YWGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;

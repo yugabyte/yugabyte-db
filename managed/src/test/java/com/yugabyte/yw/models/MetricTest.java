@@ -1,16 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -49,7 +51,7 @@ public class MetricTest extends FakeDBApplication {
   @Test
   public void testAddAndGetByKey() {
     metricService.setOkStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe));
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe));
 
     MetricKey key =
         MetricKey.builder()
@@ -65,16 +67,20 @@ public class MetricTest extends FakeDBApplication {
   @Test
   public void testUpdateAndGetByKey() {
     metricService.setStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe), "Error");
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe)
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1"),
+        "Error");
 
     metricService.setOkStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe));
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe)
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1"));
 
     MetricKey key =
         MetricKey.builder()
             .customerUuid(customer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
             .targetUuid(universe.getUniverseUUID())
+            .targetLabels("node_name:node1")
             .build();
     Metric metric = metricService.get(key);
 
@@ -91,8 +97,7 @@ public class MetricTest extends FakeDBApplication {
           executor.submit(
               () -> {
                 metricService.setMetric(
-                    metricService.buildMetricTemplate(
-                        PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+                    buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
                     value);
                 return null;
               }));
@@ -110,7 +115,7 @@ public class MetricTest extends FakeDBApplication {
   @Test
   public void testDelete() {
     metricService.setStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe), "Error");
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe), "Error");
 
     MetricKey key =
         MetricKey.builder()
@@ -131,12 +136,13 @@ public class MetricTest extends FakeDBApplication {
     assertThat(metric.getUuid(), notNullValue());
     assertThat(metric.getCreateTime(), notNullValue());
     assertThat(metric.getUpdateTime(), notNullValue());
-    assertTrue(
+    assertFalse(
         metric
             .getExpireTime()
-            .after(
+            .before(
                 Date.from(
-                    testStart.plus(MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))));
+                    testStart.plus(
+                        MetricService.DEFAULT_METRIC_EXPIRY_SEC - 1, ChronoUnit.SECONDS))));
     assertTrue(
         metric
             .getExpireTime()

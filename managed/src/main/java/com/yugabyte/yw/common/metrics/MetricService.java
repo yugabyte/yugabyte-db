@@ -7,7 +7,7 @@
  *
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-package com.yugabyte.yw.common.alerts;
+package com.yugabyte.yw.common.metrics;
 
 import static com.yugabyte.yw.models.Metric.createQueryByFilter;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
@@ -20,6 +20,8 @@ import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.MetricLabel;
+import com.yugabyte.yw.models.MetricTargetKey;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.filters.MetricFilter.MetricFilterBuilder;
@@ -48,10 +50,15 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class MetricService {
   public static final long DEFAULT_METRIC_EXPIRY_SEC = TimeUnit.DAYS.toSeconds(10);
+  public static final double STATUS_OK = 1D;
+  public static final double STATUS_NOT_OK = 0D;
+  private static final Comparator<MetricTargetKey> METRIC_TARGET_KEY_COMPARATOR =
+      Comparator.comparing(MetricTargetKey::getName)
+          .thenComparing(MetricTargetKey::getCustomerUuid)
+          .thenComparing(MetricTargetKey::getTargetUuid);
   private static final Comparator<MetricKey> METRIC_KEY_COMPARATOR =
-      Comparator.comparing(MetricKey::getName)
-          .thenComparing(MetricKey::getCustomerUuid)
-          .thenComparing(MetricKey::getTargetUuid);
+      Comparator.comparing(MetricKey::getTargetKey, METRIC_TARGET_KEY_COMPARATOR)
+          .thenComparing(MetricKey::getTargetLabels);
   private final MultiKeyLock<MetricKey> metricKeyLock = new MultiKeyLock<>(METRIC_KEY_COMPARATOR);
 
   @Transactional
@@ -130,6 +137,12 @@ public class MetricService {
   }
 
   @Transactional
+  public void cleanAndSave(List<Metric> toSave, List<MetricFilter> toClean) {
+    toClean.forEach(this::delete);
+    save(toSave);
+  }
+
+  @Transactional
   public void cleanAndSave(List<Metric> toSave, MetricFilter toClean) {
     delete(toClean);
     save(toSave);
@@ -153,9 +166,15 @@ public class MetricService {
   }
 
   @Transactional
+  public void setFailureStatusMetric(Metric metric) {
+    metric.setValue(STATUS_NOT_OK);
+    cleanAndSave(Collections.singletonList(metric));
+  }
+
+  @Transactional
   public void setStatusMetric(Metric metric, String message) {
     boolean isSuccess = StringUtils.isEmpty(message);
-    metric.setValue(isSuccess ? 1.0 : 0.0);
+    metric.setValue(isSuccess ? STATUS_OK : STATUS_NOT_OK);
     if (!isSuccess) {
       metric.setLabel(KnownAlertLabels.ERROR_MESSAGE, message);
     }
@@ -177,42 +196,6 @@ public class MetricService {
     delete(filter.build());
   }
 
-  public Metric buildMetricTemplate(PlatformMetrics metric) {
-    return buildMetricTemplate(metric, DEFAULT_METRIC_EXPIRY_SEC);
-  }
-
-  public Metric buildMetricTemplate(PlatformMetrics metric, long metricExpiryPeriodSec) {
-    return new Metric()
-        .setExpireTime(nowPlusWithoutMillis(metricExpiryPeriodSec, ChronoUnit.SECONDS))
-        .setType(Metric.Type.GAUGE)
-        .setName(metric.getMetricName());
-  }
-
-  public Metric buildMetricTemplate(PlatformMetrics metric, Customer customer) {
-    return buildMetricTemplate(metric, customer, DEFAULT_METRIC_EXPIRY_SEC);
-  }
-
-  public Metric buildMetricTemplate(
-      PlatformMetrics metric, Customer customer, long metricExpiryPeriodSec) {
-    return buildMetricTemplate(metric, metricExpiryPeriodSec)
-        .setCustomerUUID(customer.getUuid())
-        .setTargetUuid(customer.getUuid())
-        .setLabels(AlertLabelsBuilder.create().appendTarget(customer).getMetricLabels());
-  }
-
-  public Metric buildMetricTemplate(PlatformMetrics metric, Universe universe) {
-    return buildMetricTemplate(metric, universe, DEFAULT_METRIC_EXPIRY_SEC);
-  }
-
-  private Metric buildMetricTemplate(
-      PlatformMetrics metric, Universe universe, long metricExpiryPeriodSec) {
-    Customer customer = Customer.get(universe.customerId);
-    return buildMetricTemplate(metric, metricExpiryPeriodSec)
-        .setCustomerUUID(customer.getUuid())
-        .setTargetUuid(universe.getUniverseUUID())
-        .setLabels(AlertLabelsBuilder.create().appendTarget(universe).getMetricLabels());
-  }
-
   private void validate(Metric metric) {
     if (metric.getType() == null) {
       throw new YWServiceException(BAD_REQUEST, "Type field is mandatory");
@@ -226,15 +209,18 @@ public class MetricService {
   }
 
   private Metric prepareForSave(Metric metric, Metric before) {
-    if (before == null) {
-      metric.setUpdateTime(CommonUtils.nowWithoutMillis());
-      return metric;
+    List<MetricLabel> newTargetLabels =
+        metric.getLabels().stream().filter(MetricLabel::isTargetLabel).collect(Collectors.toList());
+    String newTargetLabelStr = Metric.getTargetLabelsStr(newTargetLabels);
+    Metric result = before == null ? metric : before;
+    result.setTargetLabels(newTargetLabelStr);
+    result.setUpdateTime(CommonUtils.nowWithoutMillis());
+    if (before != null) {
+      result.setValue(metric.getValue());
+      result.setLabels(metric.getLabels());
+      result.setExpireTime(metric.getExpireTime());
     }
-    before.setUpdateTime(CommonUtils.nowWithoutMillis());
-    before.setValue(metric.getValue());
-    before.setLabels(metric.getLabels());
-    before.setExpireTime(metric.getExpireTime());
-    return before;
+    return result;
   }
 
   private void acquireLocks(Collection<Metric> metrics) {
@@ -245,5 +231,51 @@ public class MetricService {
   private void releaseLocks(Collection<Metric> metrics) {
     Set<MetricKey> keys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
     metricKeyLock.releaseLocks(keys);
+  }
+
+  public static Metric buildMetricTemplate(PlatformMetrics metric) {
+    return buildMetricTemplate(metric, DEFAULT_METRIC_EXPIRY_SEC);
+  }
+
+  public static Metric buildMetricTemplate(PlatformMetrics metric, long metricExpiryPeriodSec) {
+    return new Metric()
+        .setExpireTime(nowPlusWithoutMillis(metricExpiryPeriodSec, ChronoUnit.SECONDS))
+        .setType(Metric.Type.GAUGE)
+        .setName(metric.getMetricName());
+  }
+
+  public static Metric buildMetricTemplate(PlatformMetrics metric, Customer customer) {
+    return buildMetricTemplate(metric, customer, DEFAULT_METRIC_EXPIRY_SEC);
+  }
+
+  public static Metric buildMetricTemplate(
+      PlatformMetrics metric, Customer customer, long metricExpiryPeriodSec) {
+    return buildMetricTemplate(metric, metricExpiryPeriodSec)
+        .setCustomerUUID(customer.getUuid())
+        .setTargetUuid(customer.getUuid())
+        .setLabels(MetricLabelsBuilder.create().appendTarget(customer).getMetricLabels());
+  }
+
+  public static Metric buildMetricTemplate(PlatformMetrics metric, Universe universe) {
+    return buildMetricTemplate(metric, universe, DEFAULT_METRIC_EXPIRY_SEC);
+  }
+
+  public static Metric buildMetricTemplate(
+      PlatformMetrics metric, Universe universe, long metricExpiryPeriodSec) {
+    Customer customer = Customer.get(universe.customerId);
+    return buildMetricTemplate(metric, customer, universe, metricExpiryPeriodSec);
+  }
+
+  public static Metric buildMetricTemplate(
+      PlatformMetrics metric, Customer customer, Universe universe) {
+    return buildMetricTemplate(metric, customer, universe, DEFAULT_METRIC_EXPIRY_SEC);
+  }
+
+  public static Metric buildMetricTemplate(
+      PlatformMetrics metric, Customer customer, Universe universe, long metricExpiryPeriodSec) {
+    return buildMetricTemplate(metric, metricExpiryPeriodSec)
+        .setCustomerUUID(customer.getUuid())
+        .setTargetUuid(universe.getUniverseUUID())
+        .setLabels(MetricLabelsBuilder.create().appendTarget(universe).getMetricLabels());
   }
 }

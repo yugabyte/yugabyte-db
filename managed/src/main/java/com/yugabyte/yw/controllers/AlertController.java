@@ -22,7 +22,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.impl.AlertDefinitionTemplate;
 import com.yugabyte.yw.forms.AlertReceiverFormData;
 import com.yugabyte.yw.forms.AlertRouteFormData;

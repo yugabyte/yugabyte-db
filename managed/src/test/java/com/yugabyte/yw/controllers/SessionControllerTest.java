@@ -33,9 +33,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
+import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.QueryAlerts;
+import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
@@ -86,7 +86,7 @@ public class SessionControllerTest {
     CallbackController mockCallbackController = mock(CallbackController.class);
     PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
     QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
-    CleanExpiredMetrics mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
+    PlatformMetricsProcessor mockPlatformMetricsProcessor = mock(PlatformMetricsProcessor.class);
     AlertConfigurationWriter mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
@@ -99,7 +99,8 @@ public class SessionControllerTest {
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
             .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
-            .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
+            .overrides(
+                bind(PlatformMetricsProcessor.class).toInstance(mockPlatformMetricsProcessor))
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();

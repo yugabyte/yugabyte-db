@@ -10,10 +10,13 @@
 
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
@@ -151,13 +154,13 @@ public class AlertConfigurationWriter {
                 .collect(Collectors.toList()));
 
         metricService.setMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_SYNC_FAILED),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_SYNC_FAILED),
             results.stream().filter(result -> result == SyncResult.FAILURE).count());
         metricService.setMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITTEN),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITTEN),
             results.stream().filter(result -> result == SyncResult.SYNCED).count());
         metricService.setMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_REMOVED),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_REMOVED),
             results.stream().filter(result -> result == SyncResult.REMOVED).count());
         if (requiresReload.get()) {
           metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
@@ -165,10 +168,10 @@ public class AlertConfigurationWriter {
         }
 
         metricService.setOkStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS));
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS));
       } catch (Exception e) {
         metricService.setStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS),
             "Error syncing alert definition configs " + e.getMessage());
         LOG.error("Error syncing alert definition configs", e);
       }

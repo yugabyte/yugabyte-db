@@ -30,6 +30,7 @@ public class HealthManager extends DevopsBase {
     public Map<String, String> masterNodes = new HashMap<>();
     public Map<String, String> tserverNodes = new HashMap<>();
     public String ybSoftwareVersion = null;
+    public boolean enableTls = false;
     public boolean enableTlsClient = false;
     public boolean rootAndClientRootCASame = true;
     public String sslProtocol = "";
@@ -38,6 +39,8 @@ public class HealthManager extends DevopsBase {
     public int ycqlPort = 9042;
     public boolean enableYEDIS = false;
     public int redisPort = 6379;
+    public int masterHttpPort = 7000;
+    public int tserverHttpPort = 9000;
     public boolean enableYSQLAuth = false;
   }
 
