@@ -5524,7 +5524,7 @@
     "/api/v1/customers/{cUUID}/cost" : {
       "get" : {
         "description" : "",
-        "operationId" : "universeListCost",
+        "operationId" : "getUniverseCostForAll",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -5546,8 +5546,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "list universe cost for all universes",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Get a cost estimate for all universes",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/host_info" : {
@@ -7154,7 +7154,7 @@
     "/api/v1/customers/{cUUID}/universes" : {
       "get" : {
         "description" : "",
-        "operationId" : "getListOfUniverses",
+        "operationId" : "listUniverses",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7182,8 +7182,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List Universes",
-        "tags" : [ "Universe" ]
+        "summary" : "List universes",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/import" : {
@@ -7252,8 +7252,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Destroy the universe",
-        "tags" : [ "Universe" ]
+        "summary" : "Delete a universe",
+        "tags" : [ "Universe management" ]
       },
       "get" : {
         "description" : "",
@@ -7282,8 +7282,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getUniverse",
-        "tags" : [ "Universe" ]
+        "summary" : "Get a universe",
+        "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups" : {
@@ -7449,7 +7449,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/cost" : {
       "get" : {
         "description" : "",
-        "operationId" : "universeCost",
+        "operationId" : "getUniverseCost",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7474,8 +7474,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "universeCost",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Get a cost estimate for a universe",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/create_db_credentials" : {
@@ -7506,14 +7506,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "createUserInDB",
-        "tags" : [ "Universe YB Database" ]
+        "summary" : "Create a database user for a universe",
+        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/health_check" : {
       "get" : {
-        "description" : "",
-        "operationId" : "healthCheck",
+        "description" : "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
+        "operationId" : "healthCheckUniverse",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7538,8 +7538,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "health Check",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Run a universe health check",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/kms" : {
@@ -7703,8 +7703,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getMasterLeaderIP",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Get IP address of a universe's master leader",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/live_queries" : {
@@ -7735,8 +7735,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getLiveQueries",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Get live queries for a universe",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/mark_helm3_compatible" : {
@@ -7941,7 +7941,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_in_shell" : {
       "post" : {
-        "description" : "This operation is no longer supported due to security reasons",
+        "description" : "This operation is no longer supported, for security reasons.",
         "operationId" : "runInShell",
         "parameters" : [ {
           "format" : "uuid",
@@ -7967,14 +7967,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "run command in shell",
-        "tags" : [ "Universe YB Database" ]
+        "summary" : "Run a shell command",
+        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_query" : {
       "post" : {
-        "description" : "Only valid when platform is running in mode is `OSS`",
-        "operationId" : "runQuery",
+        "description" : "Runs a YSQL query. Only valid when the platform is running in `OSS` mode.",
+        "operationId" : "runYsqlQueryUniverse",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7999,8 +7999,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Run YSQL query against this universe",
-        "tags" : [ "Universe YB Database" ]
+        "summary" : "Run a YSQL query in a universe",
+        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
@@ -8095,8 +8095,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "resetSlowQueries",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Reset slow queries for a universe",
+        "tags" : [ "Universe information" ]
       },
       "get" : {
         "description" : "",
@@ -8125,8 +8125,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "getSlowQueries",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Get slow queries for a universe",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/status" : {
@@ -8160,8 +8160,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Status of the Universe",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Get a universe's status",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables" : {
@@ -8574,8 +8574,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "setDatabaseCredentials",
-        "tags" : [ "Universe YB Database" ]
+        "summary" : "Set a universe's database credentials",
+        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/yqlservers" : {
@@ -8644,7 +8644,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/{nodeName}/download_logs" : {
       "get" : {
-        "description" : "",
+        "description" : "Downloads the log files from a given node.",
         "operationId" : "downloadNodeLogs",
         "parameters" : [ {
           "format" : "uuid",
@@ -8673,8 +8673,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "download Node logs",
-        "tags" : [ "UniverseInfo" ]
+        "summary" : "Download a node's logs",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{universeUUID}/nodes/{nodeName}" : {
@@ -8725,7 +8725,7 @@
     "/api/v1/customers/{cUUID}/users" : {
       "get" : {
         "description" : "",
-        "operationId" : "ListOfUsers",
+        "operationId" : "listUsers",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8747,12 +8747,12 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List of Users",
-        "tags" : [ "Users" ]
+        "summary" : "List all users",
+        "tags" : [ "User management" ]
       },
       "post" : {
         "description" : "",
-        "operationId" : "createUsers",
+        "operationId" : "createUser",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8760,7 +8760,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "description" : "Users data to be created",
+          "description" : "Details of the new user",
           "in" : "body",
           "name" : "User",
           "required" : true,
@@ -8779,14 +8779,14 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create User",
-        "tags" : [ "Users" ]
+        "summary" : "Create a user",
+        "tags" : [ "User management" ]
       }
     },
     "/api/v1/customers/{cUUID}/users/{uUUID}" : {
       "delete" : {
-        "description" : "",
-        "operationId" : "deleteUsers",
+        "description" : "Deletes the specified user. Note that you can't delete a customer's primary user.",
+        "operationId" : "deleteUser",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8811,12 +8811,12 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete customer",
-        "tags" : [ "Users" ]
+        "summary" : "Delete a user",
+        "tags" : [ "User management" ]
       },
       "get" : {
         "description" : "",
-        "operationId" : "usersDetail",
+        "operationId" : "getUserDetails",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8841,12 +8841,12 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "User detail by UUID",
-        "tags" : [ "Users" ]
+        "summary" : "Get a user's details",
+        "tags" : [ "User management" ]
       },
       "put" : {
         "description" : "",
-        "operationId" : "changeRole",
+        "operationId" : "updateUserRole",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8876,8 +8876,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Change role of user by UUID",
-        "tags" : [ "Users" ]
+        "summary" : "Change a user's role",
+        "tags" : [ "User management" ]
       }
     },
     "/api/v1/customers/{cUUID}/users/{uUUID}/audit_trail" : {
@@ -8918,7 +8918,7 @@
     "/api/v1/customers/{cUUID}/users/{uUUID}/change_password" : {
       "put" : {
         "description" : "",
-        "operationId" : "changePassword",
+        "operationId" : "updateUserPassword",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -8932,7 +8932,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "description" : "Users data to be updated",
+          "description" : "User data containing the new password",
           "in" : "body",
           "name" : "Users",
           "required" : true,
@@ -8951,8 +8951,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Chnage password of User",
-        "tags" : [ "Users" ]
+        "summary" : "Change a user's password",
+        "tags" : [ "User management" ]
       }
     },
     "/api/v1/customers/{cUUID}/zones/{azUUID}/nodes" : {
@@ -9396,18 +9396,16 @@
   }, {
     "name" : "Tablet server management"
   }, {
-    "name" : "Universe"
-  }, {
-    "name" : "Universe YB Database"
-  }, {
     "name" : "Universe actions"
+  }, {
+    "name" : "Universe database management"
+  }, {
+    "name" : "Universe information"
   }, {
     "name" : "Universe management"
   }, {
     "name" : "Universe node metadata (metamaster)"
   }, {
-    "name" : "UniverseInfo"
-  }, {
-    "name" : "Users"
+    "name" : "User management"
   } ]
 }
