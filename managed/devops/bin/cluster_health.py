@@ -516,6 +516,8 @@ class NodeChecker():
         if self.enable_tls_client:
             if self.is_k8s:
                 cert_file = K8S_CERT_FILE_PATH
+            elif self.root_and_client_root_ca_same:
+                cert_file = VM_ROOT_CERT_FILE_PATH
             else:
                 cert_file = VM_CLIENT_ROOT_CERT_FILE_PATH
             protocols = re.split('\\W+', self.ssl_protocol or "")
@@ -807,7 +809,9 @@ def main():
                     coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
                     coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
                 if c.enable_tls_client:
-                    coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
+                    if not c.root_and_client_root_ca_same:
+                        coordinator.add_check(checker,
+                                              "check_client_to_node_ca_certificate_expiration")
                     coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
 
         entries = coordinator.run()
