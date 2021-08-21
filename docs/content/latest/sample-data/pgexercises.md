@@ -78,9 +78,9 @@ Connect to the `exercises` database.
 yugabyte=# \c exercises
 ```
 
-You are now connected to database "exercises" as user "yugabyte".
 
 ```output
+You are now connected to database "exercises" as user "yugabyte".
 exercises=#
 ```
 
@@ -124,7 +124,4 @@ You are now ready to start working through the [PostgreSQL Exercises](https://pg
 - [String Operations](https://pgexercises.com/questions/string/)
 - [Recursive Queries](https://pgexercises.com/questions/recursive/)
 
-YugabyteDB returns the same results as expected based on the solutions on the PostgreSQL Exercises website, with the following exception:
-
-- ["Find telephone numbers with parentheses"](https://pgexercises.com/questions/string/reg.html)
-  - YugabyteDB returns results with a sort order of strings different than in PostgreSQL due to [hash partitioning in YugabyteDB](../../architecture/docdb-sharding/).
+YugabyteDB returns the same results as expected based on the solutions on the PostgreSQL Exercises website, with one exception. In the ["Find telephone numbers with parentheses"](https://pgexercises.com/questions/string/reg.html) exercise, YugabyteDB returns results with a sort order of strings different than in PostgreSQL due to [hash partitioning in YugabyteDB](../../architecture/docdb-sharding/).
