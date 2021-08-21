@@ -13,6 +13,7 @@ $$
     universeRecord RECORD;
     groupUuid UUID;
     definitionUuid UUID;
+    query TEXT;
   BEGIN
     FOR customerRecord IN
       SELECT * FROM customer
@@ -22,16 +23,12 @@ $$
         SELECT * FROM universe where universe.customer_id = customerRecord.id
       LOOP
         definitionUuid := gen_random_uuid();
+        query := replace(queryTemplate, '__universeUuid__', universeRecord.universe_uuid::text);
+        query := replace(query, '__nodePrefix__', universeRecord.universe_details_json::jsonb->>'nodePrefix');
         insert into alert_definition
           (uuid, query, customer_uuid, group_uuid)
         values
-          (definitionUuid,
-            replace(
-              replace(queryTemplate, '__universeUuid__', universeRecord.universe_uuid::text),
-              '__nodePrefix__',
-              (universeRecord.universe_details_json::json)->'nodePrefix'),
-            customerRecord.uuid,
-            groupUuid);
+          (definitionUuid, query, customerRecord.uuid, groupUuid);
         insert into alert_definition_label
           (definition_uuid, name, value)
         values
