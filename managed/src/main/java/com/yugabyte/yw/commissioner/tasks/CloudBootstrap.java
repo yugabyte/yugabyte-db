@@ -37,7 +37,9 @@ public class CloudBootstrap extends CloudTaskBase {
     super(baseTaskDependencies);
   }
 
-  @ApiModel("CloudBootstrapParams")
+  @ApiModel(
+      value = "Cloud bootstrap parameters",
+      description = "")
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
       Params taskParams = new Params();

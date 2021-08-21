@@ -42,7 +42,9 @@ public class ReleaseManager {
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
 
-  @ApiModel(description = "Release data")
+  @ApiModel(
+      value = "Release metadata",
+      description = "")
   public static class ReleaseMetadata {
 
     @ApiModelProperty(value = "Release state", example = "ACTIVE")

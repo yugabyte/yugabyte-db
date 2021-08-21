@@ -385,7 +385,7 @@
       "type" : "object"
     },
     "AlertDefinitionTemplate" : {
-      "description" : "Alert configuration template.",
+      "description" : "Alert configuration template",
       "properties" : {
         "active" : {
           "description" : "Is group alerts raised or not",
@@ -704,10 +704,10 @@
       "type" : "object"
     },
     "AlertingData" : {
-      "description" : "Alerts associated with customers",
+      "description" : "Alerting configuration",
       "properties" : {
         "alertingEmail" : {
-          "description" : "Alert email id",
+          "description" : "Alert email address",
           "example" : "test@example.com",
           "type" : "string"
         },
@@ -717,7 +717,7 @@
           "type" : "integer"
         },
         "enableClockSkew" : {
-          "description" : "Is Clock skew is enabled",
+          "description" : "Is clock skew enabled?",
           "type" : "boolean"
         },
         "reportBackupFailures" : {
@@ -725,7 +725,7 @@
           "type" : "boolean"
         },
         "reportOnlyErrors" : {
-          "description" : "Is alert is just for error",
+          "description" : "Is alert just for errors",
           "type" : "boolean"
         },
         "sendAlertsToYb" : {
@@ -852,7 +852,7 @@
       "type" : "object"
     },
     "AvailabilityZoneData" : {
-      "description" : "Availability Zones.",
+      "description" : "Availability zone information",
       "properties" : {
         "code" : {
           "description" : "Az code",
@@ -937,7 +937,7 @@
       "type" : "object"
     },
     "BackupTableParams" : {
-      "description" : "Backup table params",
+      "description" : "Backup table parameters",
       "properties" : {
         "actionType" : {
           "description" : "Action type",
@@ -970,7 +970,7 @@
           "description" : "Communication ports"
         },
         "cronExpression" : {
-          "description" : "Cron expression in case a recurring backup",
+          "description" : "Cron expression for a recurring backup",
           "type" : "string"
         },
         "customerUuid" : {
@@ -983,7 +983,7 @@
           "description" : "Device information"
         },
         "enableVerboseLogs" : {
-          "description" : "Is verbose logging is enable",
+          "description" : "Is verbose logging enabled",
           "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
@@ -995,7 +995,7 @@
           "type" : "string"
         },
         "expectedUniverseVersion" : {
-          "description" : "Universe version",
+          "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
         },
@@ -1004,11 +1004,11 @@
           "description" : "Extra dependencies"
         },
         "firstTry" : {
-          "description" : "Whether this task has been tried before or not",
+          "description" : "Whether this task has been tried before",
           "type" : "boolean"
         },
         "ignoreErrors" : {
-          "description" : "Is table backup errors ignored",
+          "description" : "Should table backup errors be ignored",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -1016,7 +1016,7 @@
           "type" : "string"
         },
         "kmsConfigUUID" : {
-          "description" : "KMS config UUID",
+          "description" : "KMS configuration UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -1033,7 +1033,7 @@
           "type" : "string"
         },
         "parallelism" : {
-          "description" : "The number of concurrent commands to run on nodes over SSH",
+          "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
         },
@@ -1043,12 +1043,12 @@
           "type" : "string"
         },
         "schedulingFrequency" : {
-          "description" : "Frequency for running the backup in milliseconds",
+          "description" : "Frequency to run the backup, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         },
         "sourceAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the source universe",
+          "description" : "The source universe's sync replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -1060,7 +1060,7 @@
           "type" : "boolean"
         },
         "storageConfigUUID" : {
-          "description" : "Storage config UUID",
+          "description" : "Storage configuration UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -1085,7 +1085,7 @@
           "type" : "string"
         },
         "tableUUIDList" : {
-          "description" : "Tables UUID's",
+          "description" : "Table UUIDs",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -1093,7 +1093,7 @@
           "type" : "array"
         },
         "targetAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the target universe",
+          "description" : "The target universe's async replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -1101,16 +1101,16 @@
           "type" : "array"
         },
         "timeBeforeDelete" : {
-          "description" : "Time in millisecs before deleting the backup from the storage",
+          "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         },
         "transactionalBackup" : {
-          "description" : "Is backup be transactional across tables",
+          "description" : "Is backup transactional across tables",
           "type" : "boolean"
         },
         "universeUUID" : {
-          "description" : "Associate universe UUID",
+          "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
         }
@@ -1119,7 +1119,7 @@
       "type" : "object"
     },
     "BulkImportParams" : {
-      "description" : "Bulk import params",
+      "description" : "Bulk import parameters",
       "properties" : {
         "cmkArn" : {
           "description" : "Amazon Resource Name (ARN) of the CMK",
@@ -1142,7 +1142,7 @@
           "type" : "string"
         },
         "expectedUniverseVersion" : {
-          "description" : "Universe version",
+          "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
         },
@@ -1151,7 +1151,7 @@
           "description" : "Extra dependencies"
         },
         "firstTry" : {
-          "description" : "Whether this task has been tried before or not",
+          "description" : "Whether this task has been tried before",
           "type" : "boolean"
         },
         "instanceCount" : {
@@ -1180,7 +1180,7 @@
           "type" : "string"
         },
         "sourceAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the source universe",
+          "description" : "The source universe's sync replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -1201,7 +1201,7 @@
           "type" : "string"
         },
         "targetAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the target universe",
+          "description" : "The target universe's async replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -1209,7 +1209,7 @@
           "type" : "array"
         },
         "universeUUID" : {
-          "description" : "Associate universe UUID",
+          "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
         }
@@ -1287,7 +1287,7 @@
         "universeDetails" : {
           "description" : "Associated universe details of the Certificate",
           "items" : {
-            "$ref" : "#/definitions/UniverseDetailSubset"
+            "$ref" : "#/definitions/Universe detail subset"
           },
           "readOnly" : true,
           "type" : "array"
@@ -1484,12 +1484,12 @@
       "description" : "Communication ports",
       "properties" : {
         "masterHttpPort" : {
-          "description" : "HTTP port for master table",
+          "description" : "Master table HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "masterRpcPort" : {
-          "description" : "RCP port for master table",
+          "description" : "Master table RCP port",
           "format" : "int32",
           "type" : "integer"
         },
@@ -1499,42 +1499,42 @@
           "type" : "integer"
         },
         "redisServerHttpPort" : {
-          "description" : "HTTP port for redis",
+          "description" : "Redis HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "redisServerRpcPort" : {
-          "description" : "RPC port for redis",
+          "description" : "Redis RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "tserverHttpPort" : {
-          "description" : "HTTP port for tserver",
+          "description" : "Tablet server HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "tserverRpcPort" : {
-          "description" : "RPC port for tserver",
+          "description" : "Tablet server RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "yqlServerHttpPort" : {
-          "description" : "HTTP port for yql",
+          "description" : "YQL HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "yqlServerRpcPort" : {
-          "description" : "RPC port for yql",
+          "description" : "YQL RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "ysqlServerHttpPort" : {
-          "description" : "HTTP port for ysql",
+          "description" : "YSQL HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "ysqlServerRpcPort" : {
-          "description" : "RPC port for ysql",
+          "description" : "YSQL RPC port",
           "format" : "int32",
           "type" : "integer"
         }
@@ -1542,18 +1542,18 @@
       "type" : "object"
     },
     "ConfigEntry" : {
-      "description" : "Configs entry",
+      "description" : "Configuration entry",
       "properties" : {
         "inherited" : {
-          "description" : "Is config inherited",
+          "description" : "Is this configuration inherited",
           "type" : "boolean"
         },
         "key" : {
-          "description" : "Config key",
+          "description" : "Configuration key",
           "type" : "string"
         },
         "value" : {
-          "description" : "Config value",
+          "description" : "Configuration value",
           "type" : "string"
         }
       },
@@ -1653,7 +1653,7 @@
       "type" : "object"
     },
     "CustomerAlertData" : {
-      "description" : "Alerts associated with customers",
+      "description" : "Format of an alert",
       "properties" : {
         "alertingData" : {
           "$ref" : "#/definitions/AlertingData"
@@ -1743,7 +1743,7 @@
           "description" : "Universe details",
           "example" : "{\"name\": \"jd-aws-21-6-21-test4\"}",
           "items" : {
-            "$ref" : "#/definitions/UniverseDetailSubset"
+            "$ref" : "#/definitions/Universe detail subset"
           },
           "type" : "array"
         }
@@ -1760,7 +1760,7 @@
           "readOnly" : true
         },
         "callhomeLevel" : {
-          "description" : "Call home level",
+          "description" : "Call-home level",
           "example" : "MEDIUM",
           "readOnly" : true,
           "type" : "string"
@@ -1794,7 +1794,7 @@
           "readOnly" : true
         },
         "universeUUIDs" : {
-          "description" : "Associated Universe IDs",
+          "description" : "Associated universe IDs",
           "example" : "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]",
           "items" : {
             "format" : "uuid",
@@ -1825,53 +1825,53 @@
       "type" : "object"
     },
     "CustomerTaskData" : {
-      "description" : "Customer Task data",
+      "description" : "Customer task data",
       "properties" : {
         "completionTime" : {
-          "description" : "Customer Task completion time",
+          "description" : "Customer task completion time",
           "example" : "1624295417405",
           "format" : "date-time",
           "type" : "string"
         },
         "createTime" : {
-          "description" : "Customer Task creation time",
+          "description" : "Customer task creation time",
           "example" : "1624295417405",
           "format" : "date-time",
           "type" : "string"
         },
         "id" : {
-          "description" : "Customer Task UUID",
+          "description" : "Customer task UUID",
           "format" : "uuid",
           "type" : "string"
         },
         "percentComplete" : {
-          "description" : "Customer Task percentage completed",
+          "description" : "Customer task percentage completed",
           "example" : 100,
           "format" : "int32",
           "type" : "integer"
         },
         "status" : {
-          "description" : "Customer Task status",
+          "description" : "Customer task status",
           "example" : "Complete",
           "type" : "string"
         },
         "target" : {
-          "description" : "Customer Task target",
+          "description" : "Customer task target",
           "example" : "Universe",
           "type" : "string"
         },
         "targetUUID" : {
-          "description" : "Customer Task target UUID",
+          "description" : "Customer task target UUID",
           "format" : "uuid",
           "type" : "string"
         },
         "title" : {
-          "description" : "Customer Task title",
+          "description" : "Customer task title",
           "example" : "Deleted Universe : test-universe",
           "type" : "string"
         },
         "type" : {
-          "description" : "Customer Task type",
+          "description" : "Customer task type",
           "example" : "Delete",
           "type" : "string"
         }
@@ -1933,24 +1933,24 @@
       "type" : "object"
     },
     "EncryptionAtRestConfig" : {
-      "description" : "Encryption at rest config",
+      "description" : "Encryption at rest configuration",
       "properties" : {
         "encryptionAtRestEnabled" : {
-          "description" : "Whether a universe is currently encrypted at rest or not",
+          "description" : "Whether a universe is currently encrypted at rest",
           "type" : "boolean"
         },
         "kmsConfigUUID" : {
-          "description" : "KMS configuration",
+          "description" : "KMS configuration UUID",
           "format" : "uuid",
           "type" : "string"
         },
         "opType" : {
-          "description" : "Whether to enable/disable/rotate universe key/encryption at rest",
+          "description" : "Operation type: enable, disable, or rotate the universe key/encryption at rest",
           "enum" : [ "ENABLE", "DISABLE", "UNDEFINED" ],
           "type" : "string"
         },
         "type" : {
-          "description" : "Whether to generate a data key or just retrieve the CMK arn",
+          "description" : "Whether to generate a data key or just retrieve the CMK ARN",
           "enum" : [ "CMK", "DATA_KEY" ],
           "type" : "string"
         }
@@ -1961,7 +1961,7 @@
       "description" : "Extra dependencies",
       "properties" : {
         "installNodeExporter" : {
-          "description" : "Is install node exporter required",
+          "description" : "Install node exporter on nodes",
           "type" : "boolean"
         }
       },
@@ -2193,7 +2193,7 @@
       "required" : [ "metrics", "start" ],
       "type" : "object"
     },
-    "MultiTableBackupParams" : {
+    "Multi-table backup parameters" : {
       "properties" : {
         "actionType" : {
           "description" : "Action type",
@@ -2226,7 +2226,7 @@
           "description" : "Communication ports"
         },
         "cronExpression" : {
-          "description" : "Cron expression in case a recurring backup",
+          "description" : "Cron expression for a recurring backup",
           "type" : "string"
         },
         "customerUUID" : {
@@ -2243,7 +2243,7 @@
           "description" : "Device information"
         },
         "enableVerboseLogs" : {
-          "description" : "Is verbose logging is enable",
+          "description" : "Is verbose logging enabled",
           "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
@@ -2255,7 +2255,7 @@
           "type" : "string"
         },
         "expectedUniverseVersion" : {
-          "description" : "Universe version",
+          "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
         },
@@ -2264,11 +2264,11 @@
           "description" : "Extra dependencies"
         },
         "firstTry" : {
-          "description" : "Whether this task has been tried before or not",
+          "description" : "Whether this task has been tried before",
           "type" : "boolean"
         },
         "ignoreErrors" : {
-          "description" : "Is table backup errors ignored",
+          "description" : "Should table backup errors be ignored",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -2276,7 +2276,7 @@
           "type" : "string"
         },
         "kmsConfigUUID" : {
-          "description" : "KMS config UUID",
+          "description" : "KMS configuration UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -2293,7 +2293,7 @@
           "type" : "string"
         },
         "parallelism" : {
-          "description" : "The number of concurrent commands to run on nodes over SSH",
+          "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
         },
@@ -2303,12 +2303,12 @@
           "type" : "string"
         },
         "schedulingFrequency" : {
-          "description" : "Frequency for running the backup in milliseconds",
+          "description" : "Frequency to run the backup, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         },
         "sourceAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the source universe",
+          "description" : "The source universe's sync replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -2320,7 +2320,7 @@
           "type" : "boolean"
         },
         "storageConfigUUID" : {
-          "description" : "Storage config UUID",
+          "description" : "Storage configuration UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -2352,7 +2352,7 @@
           "type" : "array"
         },
         "targetAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the target universe",
+          "description" : "The target universe's async replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -2360,16 +2360,16 @@
           "type" : "array"
         },
         "timeBeforeDelete" : {
-          "description" : "Time in millisecs before deleting the backup from the storage",
+          "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         },
         "transactionalBackup" : {
-          "description" : "Is backup be transactional across tables",
+          "description" : "Is backup transactional across tables",
           "type" : "boolean"
         },
         "universeUUID" : {
-          "description" : "Associate universe UUID",
+          "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
         }
@@ -2378,7 +2378,7 @@
       "type" : "object"
     },
     "MultiTableBackupRequestParams" : {
-      "description" : "Backup table params",
+      "description" : "Multiple-table backup parameters",
       "properties" : {
         "actionType" : {
           "description" : "Action type",
@@ -2411,7 +2411,7 @@
           "description" : "Communication ports"
         },
         "cronExpression" : {
-          "description" : "Cron expression in case a recurring backup",
+          "description" : "Cron expression for a recurring backup",
           "type" : "string"
         },
         "customerUUID" : {
@@ -2429,7 +2429,7 @@
           "description" : "Device information"
         },
         "enableVerboseLogs" : {
-          "description" : "Is verbose logging is enable",
+          "description" : "Is verbose logging enabled",
           "type" : "boolean"
         },
         "encryptionAtRestConfig" : {
@@ -2441,7 +2441,7 @@
           "type" : "string"
         },
         "expectedUniverseVersion" : {
-          "description" : "Universe version",
+          "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
         },
@@ -2450,11 +2450,11 @@
           "description" : "Extra dependencies"
         },
         "firstTry" : {
-          "description" : "Whether this task has been tried before or not",
+          "description" : "Whether this task has been tried before",
           "type" : "boolean"
         },
         "ignoreErrors" : {
-          "description" : "Is table backup errors ignored",
+          "description" : "Should table backup errors be ignored",
           "type" : "boolean"
         },
         "keyspace" : {
@@ -2462,7 +2462,7 @@
           "type" : "string"
         },
         "kmsConfigUUID" : {
-          "description" : "KMS config UUID",
+          "description" : "KMS configuration UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -2479,7 +2479,7 @@
           "type" : "string"
         },
         "parallelism" : {
-          "description" : "The number of concurrent commands to run on nodes over SSH",
+          "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
         },
@@ -2489,12 +2489,12 @@
           "type" : "string"
         },
         "schedulingFrequency" : {
-          "description" : "Frequency for running the backup in milliseconds",
+          "description" : "Frequency to run the backup, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         },
         "sourceAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the source universe",
+          "description" : "The source universe's sync replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -2506,7 +2506,7 @@
           "type" : "boolean"
         },
         "storageConfigUUID" : {
-          "description" : "Storage config UUID",
+          "description" : "Storage configuration UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -2531,7 +2531,7 @@
           "type" : "string"
         },
         "tableUUIDList" : {
-          "description" : "Table UUID List",
+          "description" : "Table UUID list",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -2539,7 +2539,7 @@
           "type" : "array"
         },
         "targetAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the target universe",
+          "description" : "The target universe's async replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -2547,16 +2547,16 @@
           "type" : "array"
         },
         "timeBeforeDelete" : {
-          "description" : "Time in millisecs before deleting the backup from the storage",
+          "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         },
         "transactionalBackup" : {
-          "description" : "Is backup be transactional across tables",
+          "description" : "Is backup transactional across tables",
           "type" : "boolean"
         },
         "universeUUID" : {
-          "description" : "Associate universe UUID",
+          "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
         }
@@ -2872,40 +2872,40 @@
       "type" : "object"
     },
     "NodeInstanceData" : {
-      "description" : "Detail of node instance",
+      "description" : "Details of a node instance",
       "properties" : {
         "instanceName" : {
-          "description" : "Instance name of node instance",
+          "description" : "Node instance name",
           "example" : "Mumbai instance",
           "type" : "string"
         },
         "instanceType" : {
-          "description" : "Instance type of node instance",
+          "description" : "Node instance type",
           "example" : "c5large",
           "type" : "string"
         },
         "ip" : {
-          "description" : "IP address of node instance",
+          "description" : "IP address",
           "example" : "1.1.1.1",
           "type" : "string"
         },
         "nodeName" : {
-          "description" : "Node name of node instance",
+          "description" : "Node instance name",
           "example" : "India node",
           "type" : "string"
         },
         "region" : {
-          "description" : "Region of node instance",
+          "description" : "Region",
           "example" : "south-east",
           "type" : "string"
         },
         "sshUser" : {
-          "description" : "SSH user of node instance",
+          "description" : "SSH user",
           "example" : "centos",
           "type" : "string"
         },
         "zone" : {
-          "description" : "Zone of node instance",
+          "description" : "Zone",
           "example" : "south-east",
           "type" : "string"
         }
@@ -3188,17 +3188,7 @@
       "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
       "type" : "object"
     },
-    "ReleaseFormData" : {
-      "properties" : {
-        "version" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "version" ],
-      "type" : "object"
-    },
-    "ReleaseMetadata" : {
-      "description" : "Release data",
+    "Release metadata" : {
       "properties" : {
         "chartPath" : {
           "description" : "Helm chart path",
@@ -3228,11 +3218,20 @@
       },
       "type" : "object"
     },
+    "ReleaseFormData" : {
+      "properties" : {
+        "version" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "version" ],
+      "type" : "object"
+    },
     "RuntimeConfigData" : {
-      "description" : "Runtime config data",
+      "description" : "Runtime configuration data",
       "properties" : {
         "scopedConfigList" : {
-          "description" : "list of scoped config",
+          "description" : "List of scoped configurations",
           "items" : {
             "$ref" : "#/definitions/ScopedConfig"
           },
@@ -3278,7 +3277,7 @@
           "type" : "string"
         },
         "taskParams" : {
-          "$ref" : "#/definitions/MultiTableBackupParams",
+          "$ref" : "#/definitions/Multi-table backup parameters",
           "description" : "Schedule task params"
         },
         "taskType" : {
@@ -3290,10 +3289,10 @@
       "type" : "object"
     },
     "ScopedConfig" : {
-      "description" : "Scoped config",
+      "description" : "Scoped configuration",
       "properties" : {
         "configEntries" : {
-          "description" : "List of configs",
+          "description" : "List of configurations",
           "items" : {
             "$ref" : "#/definitions/ConfigEntry"
           },
@@ -3317,7 +3316,7 @@
       "type" : "object"
     },
     "SmtpData" : {
-      "description" : "Customers SMTP data.",
+      "description" : "SMTP configuration information",
       "properties" : {
         "emailFrom" : {
           "description" : "SMTP email id",
@@ -3416,7 +3415,7 @@
           "type" : "string"
         },
         "expectedUniverseVersion" : {
-          "description" : "Universe version",
+          "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
         },
@@ -3425,7 +3424,7 @@
           "description" : "Extra dependencies"
         },
         "firstTry" : {
-          "description" : "Whether this task has been tried before or not",
+          "description" : "Whether this task has been tried before",
           "type" : "boolean"
         },
         "nodeDetailsSet" : {
@@ -3441,7 +3440,7 @@
           "type" : "string"
         },
         "sourceAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the source universe",
+          "description" : "The source universe's sync replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -3460,7 +3459,7 @@
           "type" : "string"
         },
         "targetAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the target universe",
+          "description" : "The target universe's async replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -3468,7 +3467,7 @@
           "type" : "array"
         },
         "universeUUID" : {
-          "description" : "Associate universe UUID",
+          "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
         }
@@ -3512,6 +3511,33 @@
           "type" : "integer"
         }
       },
+      "type" : "object"
+    },
+    "Universe detail subset" : {
+      "description" : "A small subset of universe information",
+      "properties" : {
+        "creationDate" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "creationDate", "name", "universePaused", "updateInProgress", "updateSucceeded", "uuid" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParams" : {
@@ -3561,7 +3587,7 @@
           "type" : "string"
         },
         "expectedUniverseVersion" : {
-          "description" : "Universe version",
+          "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
         },
@@ -3570,7 +3596,7 @@
           "description" : "Extra dependencies"
         },
         "firstTry" : {
-          "description" : "Whether this task has been tried before or not",
+          "description" : "Whether this task has been tried before",
           "type" : "boolean"
         },
         "importedState" : {
@@ -3616,7 +3642,7 @@
           "type" : "boolean"
         },
         "sourceAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the source universe",
+          "description" : "The source universe's sync replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -3624,7 +3650,7 @@
           "type" : "array"
         },
         "targetAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the target universe",
+          "description" : "The target universe's async replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -3635,7 +3661,7 @@
           "type" : "boolean"
         },
         "universeUUID" : {
-          "description" : "Associate universe UUID",
+          "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -3699,7 +3725,7 @@
           "type" : "string"
         },
         "expectedUniverseVersion" : {
-          "description" : "Universe version",
+          "description" : "Expected universe version",
           "format" : "int32",
           "type" : "integer"
         },
@@ -3708,7 +3734,7 @@
           "description" : "Extra dependencies"
         },
         "firstTry" : {
-          "description" : "Whether this task has been tried before or not",
+          "description" : "Whether this task has been tried before",
           "type" : "boolean"
         },
         "importedState" : {
@@ -3754,7 +3780,7 @@
           "type" : "boolean"
         },
         "sourceAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the source universe",
+          "description" : "The source universe's sync replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -3762,7 +3788,7 @@
           "type" : "array"
         },
         "targetAsyncReplicationRelationships" : {
-          "description" : "Async replication relationships as the target universe",
+          "description" : "The target universe's async replication relationships",
           "items" : {
             "$ref" : "#/definitions/AsyncReplicationConfig"
           },
@@ -3773,7 +3799,7 @@
           "type" : "boolean"
         },
         "universeUUID" : {
-          "description" : "Associate universe UUID",
+          "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -3788,33 +3814,6 @@
         }
       },
       "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
-      "type" : "object"
-    },
-    "UniverseDetailSubset" : {
-      "description" : "A small subset of universe information",
-      "properties" : {
-        "creationDate" : {
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "universePaused" : {
-          "type" : "boolean"
-        },
-        "updateInProgress" : {
-          "type" : "boolean"
-        },
-        "updateSucceeded" : {
-          "type" : "boolean"
-        },
-        "uuid" : {
-          "format" : "uuid",
-          "type" : "string"
-        }
-      },
-      "required" : [ "creationDate", "name", "universePaused", "updateInProgress", "updateSucceeded", "uuid" ],
       "type" : "object"
     },
     "UniverseResourceDetails" : {
@@ -3876,10 +3875,10 @@
       "type" : "object"
     },
     "UniverseResp" : {
-      "description" : "Universe Resp",
+      "description" : "Universe-creation response",
       "properties" : {
         "creationDate" : {
-          "description" : "Creation time",
+          "description" : "Creation date",
           "type" : "string"
         },
         "dnsName" : {
@@ -3897,7 +3896,7 @@
         },
         "resources" : {
           "$ref" : "#/definitions/UniverseResourceDetails",
-          "description" : "Universe Resources"
+          "description" : "Universe resources"
         },
         "sampleAppCommandTxt" : {
           "description" : "Sample command",
@@ -3912,12 +3911,12 @@
           "additionalProperties" : {
             "type" : "string"
           },
-          "description" : "Universe config",
+          "description" : "Universe configuration",
           "type" : "object"
         },
         "universeDetails" : {
           "$ref" : "#/definitions/UniverseDefinitionTaskParamsResp",
-          "description" : "Universe Details"
+          "description" : "Universe details"
         },
         "universeUUID" : {
           "description" : "Universe UUID",
@@ -4038,12 +4037,12 @@
       "description" : "User registration data",
       "properties" : {
         "confirmPassword" : {
-          "description" : "User password",
+          "description" : "Password confirmation",
           "example" : "Test@1234",
           "type" : "string"
         },
         "email" : {
-          "description" : "User email address",
+          "description" : "Email address",
           "example" : "test@example.com",
           "type" : "string"
         },
@@ -4051,11 +4050,11 @@
           "additionalProperties" : {
             "type" : "object"
           },
-          "description" : "User Features",
+          "description" : "User features",
           "type" : "object"
         },
         "password" : {
-          "description" : "User password",
+          "description" : "Password",
           "example" : "Test@1234",
           "type" : "string"
         },
@@ -4134,11 +4133,11 @@
       "type" : "object"
     },
     "YWError" : {
-      "description" : "Generic error response from Yugawware Platform API",
+      "description" : "Generic error response from the Yugabyte Platform API",
       "properties" : {
         "error" : {
-          "description" : "User visible unstructurred error message",
-          "example" : "There was a problem creating universe",
+          "description" : "User visible unstructured error message",
+          "example" : "There was a problem creating the universe",
           "type" : "string"
         },
         "success" : {
@@ -4154,12 +4153,12 @@
     "YWSuccess" : {
       "properties" : {
         "message" : {
-          "description" : "API response mssage.",
+          "description" : "API response message.",
           "readOnly" : true,
           "type" : "string"
         },
         "success" : {
-          "description" : "Has API success",
+          "description" : "API operation success",
           "readOnly" : true,
           "type" : "boolean"
         }
@@ -4169,7 +4168,7 @@
     "YWTask" : {
       "properties" : {
         "resourceUUID" : {
-          "description" : "UUID of the resource being modified  by the task",
+          "description" : "UUID of the resource being modified by the task",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -6689,7 +6688,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/ReleaseMetadata"
+              "$ref" : "#/definitions/Release metadata"
             }
           }
         },

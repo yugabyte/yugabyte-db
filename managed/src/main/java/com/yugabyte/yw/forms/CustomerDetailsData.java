@@ -36,7 +36,7 @@ public class CustomerDetailsData {
   public JsonNode features;
 
   @ApiModelProperty(
-      value = "Associated Universe IDs",
+      value = "Associated universe IDs",
       accessMode = READ_ONLY,
       example =
           "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]")
@@ -51,6 +51,6 @@ public class CustomerDetailsData {
   @ApiModelProperty(value = "SMTP", accessMode = READ_ONLY)
   public SmtpData smtpData;
 
-  @ApiModelProperty(value = "Call home level", accessMode = READ_ONLY, example = "MEDIUM")
+  @ApiModelProperty(value = "Call-home level", accessMode = READ_ONLY, example = "MEDIUM")
   public String callhomeLevel;
 }
