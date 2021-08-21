@@ -51,7 +51,7 @@ showAsideToc: true
 
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
 
-```mvn
+```xml
    <dependencies>
     <dependency>
       <groupId>com.yugabyte</groupId>
@@ -75,7 +75,7 @@ This tutorial assumes that you have:
 
 Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project.
 
-```mvn
+```xml
 <?xml version="1.0"?>
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
