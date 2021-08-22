@@ -1118,7 +1118,15 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			}
 
 			appendStringInfo(&coltypes, "%s", comma);
-			escape_json(&coltypes, type_str);
+			/*
+			 * format_type() returns a quoted identifier, if
+			 * required. In this case, it doesn't need to enclose the type name
+			 * in double quotes.
+			 */
+			if (type_str[0] == '"')
+				appendStringInfo(&coltypes, "%s", type_str);
+			else
+				escape_json(&coltypes, type_str);
 
 			pfree(type_str);
 
@@ -1446,7 +1454,15 @@ pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple
 			}
 
 			appendStringInfo(&pktypes, "%s", comma);
-			escape_json(&pktypes, type_str);
+			/*
+			 * format_type() returns a quoted identifier, if
+			 * required. In this case, it doesn't need to enclose the type name
+			 * in double quotes.
+			 */
+			if (type_str[0] == '"')
+				appendStringInfo(&pktypes, "%s", type_str);
+			else
+				escape_json(&pktypes, type_str);
 
 			pfree(type_str);
 		}
@@ -1977,7 +1993,15 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 				type_str = format_type_with_typemod(attr->atttypid, attr->atttypmod);
 
 			appendStringInfoString(ctx->out, ",\"type\":");
-			appendStringInfo(ctx->out, "\"%s\"", type_str);
+			/*
+			 * format_type_with_typemod() returns a quoted identifier, if
+			 * required. In this case, it doesn't need to enclose the type name
+			 * in double quotes.
+			 */
+			if (type_str[0] == '"')
+				appendStringInfo(ctx->out, "%s", type_str);
+			else
+				appendStringInfo(ctx->out, "\"%s\"", type_str);
 			pfree(type_str);
 
 			ReleaseSysCache(type_tuple);
