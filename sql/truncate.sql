@@ -6,6 +6,8 @@ CREATE TABLE table_truncate_1 (a integer, b text);
 CREATE TABLE table_truncate_2 (a integer, b text);
 CREATE TABLE table_truncate_3 (a integer, b text);
 CREATE TABLE table_truncate_4 (a integer, b text);
+CREATE TABLE table_truncate_5 (a integer, b text);
+CREATE TABLE table_truncate_6 (a integer, b text);
 
 SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
 
@@ -23,6 +25,11 @@ BEGIN;
 TRUNCATE table_truncate_4;
 ROLLBACK;
 
+BEGIN;
+TRUNCATE table_truncate_5, table_truncate_6;
+COMMIT;
+
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1');
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'filter-tables', '*.table_truncate_5');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');

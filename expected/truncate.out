@@ -5,6 +5,8 @@ CREATE TABLE table_truncate_1 (a integer, b text);
 CREATE TABLE table_truncate_2 (a integer, b text);
 CREATE TABLE table_truncate_3 (a integer, b text);
 CREATE TABLE table_truncate_4 (a integer, b text);
+CREATE TABLE table_truncate_5 (a integer, b text);
+CREATE TABLE table_truncate_6 (a integer, b text);
 SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
  ?column? 
 ----------
@@ -22,6 +24,9 @@ COMMIT;
 BEGIN;
 TRUNCATE table_truncate_4;
 ROLLBACK;
+BEGIN;
+TRUNCATE table_truncate_5, table_truncate_6;
+COMMIT;
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1');
                             data                             
 -------------------------------------------------------------
@@ -57,7 +62,11 @@ SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'fo
                  }                                          +
          ]                                                  +
  }
-(2 rows)
+ {                                                          +
+         "change": [                                        +
+         ]                                                  +
+ }
+(3 rows)
 
 SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
                                                                             data                                                                            
@@ -72,7 +81,29 @@ SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'fo
  {"action":"T","schema":"public","table":"table_truncate_3"}
  {"action":"I","schema":"public","table":"table_truncate_3","columns":[{"name":"a","type":"integer","value":3},{"name":"b","type":"text","value":"test3"}]}
  {"action":"C"}
-(10 rows)
+ {"action":"B"}
+ {"action":"T","schema":"public","table":"table_truncate_5"}
+ {"action":"T","schema":"public","table":"table_truncate_6"}
+ {"action":"C"}
+(14 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'filter-tables', '*.table_truncate_5');
+                                                                            data                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"T","schema":"public","table":"table_truncate_1"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"T","schema":"public","table":"table_truncate_2"}
+ {"action":"I","schema":"public","table":"table_truncate_1","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"test1"}]}
+ {"action":"I","schema":"public","table":"table_truncate_3","columns":[{"name":"a","type":"integer","value":2},{"name":"b","type":"text","value":"test2"}]}
+ {"action":"T","schema":"public","table":"table_truncate_3"}
+ {"action":"I","schema":"public","table":"table_truncate_3","columns":[{"name":"a","type":"integer","value":3},{"name":"b","type":"text","value":"test3"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"T","schema":"public","table":"table_truncate_6"}
+ {"action":"C"}
+(13 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

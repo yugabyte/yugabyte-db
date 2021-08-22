@@ -2555,6 +2555,22 @@ static void pg_decode_truncate_v1(LogicalDecodingContext *ctx,
 	/* Avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
 
+	/* Exclude tables, if available */
+	if (pg_filter_by_table(data->filter_tables, schemaname, tablename))
+	{
+		MemoryContextSwitchTo(old);
+		MemoryContextReset(data->context);
+		continue;
+	}
+
+	/* Add tables */
+	if (!pg_add_by_table(data->add_tables, schemaname, tablename))
+	{
+		MemoryContextSwitchTo(old);
+		MemoryContextReset(data->context);
+		continue;
+	}
+
 	if (data->write_in_chunks)
 		OutputPluginPrepareWrite(ctx, true);
 
@@ -2641,53 +2657,19 @@ static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
 		tablename = RelationGetRelationName(relations[i]);
 
 		/* Exclude tables, if available */
-		if (list_length(data->filter_tables) > 0)
+		if (pg_filter_by_table(data->filter_tables, schemaname, tablename))
 		{
-			ListCell	*lc;
-
-			foreach(lc, data->filter_tables)
-			{
-				SelectTable	*t = lfirst(lc);
-
-				if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
-				{
-					if (t->alltables || strcmp(t->tablename, tablename) == 0)
-					{
-						elog(DEBUG2, "\"%s\".\"%s\" was filtered out",
-									((t->allschemas) ? "*" : t->schemaname),
-									((t->alltables) ? "*" : t->tablename));
-						continue;
-					}
-				}
-			}
+			MemoryContextSwitchTo(old);
+			MemoryContextReset(data->context);
+			continue;
 		}
 
 		/* Add tables */
-		if (list_length(data->add_tables) > 0)
+		if (!pg_add_by_table(data->add_tables, schemaname, tablename))
 		{
-			ListCell	*lc;
-			bool		skip = true;
-
-			/* all tables in all schemas are added by default */
-			foreach(lc, data->add_tables)
-			{
-				SelectTable	*t = lfirst(lc);
-
-				if (t->allschemas || strcmp(t->schemaname, schemaname) == 0)
-				{
-					if (t->alltables || strcmp(t->tablename, tablename) == 0)
-					{
-						elog(DEBUG2, "\"%s\".\"%s\" was added",
-									((t->allschemas) ? "*" : t->schemaname),
-									((t->alltables) ? "*" : t->tablename));
-						skip = false;
-					}
-				}
-			}
-
-			/* table was not found */
-			if (skip)
-				continue;
+			MemoryContextSwitchTo(old);
+			MemoryContextReset(data->context);
+			continue;
 		}
 
 		OutputPluginPrepareWrite(ctx, true);
