@@ -6,6 +6,20 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- name: "Install python3 on CentOS 8 machines"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: no
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: "install python36"
+      raw: >
+        (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
+        (dnf install -y python36 && alternatives --set python /usr/bin/python3) ||
+        (echo "Python already installed or not CentOS 8")
+      when: install_python is defined
+
 - name: "Pre-provisioning tasks"
   hosts: "{{ yb_ansible_host }}"
   become: yes
@@ -47,4 +61,6 @@
       package:
         name: policycoreutils-python
         state: present
-      when: "'policycoreutils-python' not in ansible_facts.packages"
+      when: >
+        'policycoreutils-python' not in ansible_facts.packages and
+        ansible_architecture != 'aarch64'
