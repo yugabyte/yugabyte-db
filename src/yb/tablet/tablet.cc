@@ -47,6 +47,7 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/optional.hpp>
 
+#include "yb/common/transaction.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/metadata.h"
@@ -89,12 +90,15 @@
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/redis_operation.h"
+#include "yb/docdb/value.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
@@ -239,6 +243,10 @@ DEFINE_test_flag(int32, backfill_drop_frequency, 0,
     "If set to value greater than 0, every nth row will be dropped in the backfill process "
     "to create an inconsistency between the index and the indexed tables where n is the "
     "input parameter given.");
+
+DEFINE_bool(tablet_enable_ttl_file_filter, false,
+            "Enables compaction to directly delete files that have expired based on TTL, "
+            "rather than removing them via the normal compaction process.");
 
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
@@ -673,6 +681,10 @@ Status Tablet::OpenKeyValueTablet() {
     }
     return rocksdb::MemTableFilter();
   });
+  if (FLAGS_tablet_enable_ttl_file_filter) {
+    rocksdb_options.compaction_file_filter_factory =
+        std::make_shared<docdb::DocDBCompactionFileFilterFactory>(schema(), clock());
+  }
 
   rocksdb_options.disable_auto_compactions = true;
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
@@ -1128,6 +1140,11 @@ Status Tablet::ApplyOperation(
   // frontier.
   auto frontiers_ptr =
       InitFrontiers(operation.op_id(), operation.hybrid_time(), &frontiers);
+  if (frontiers_ptr) {
+    auto ttl = operation.has_ttl() ? operation.ttl() : docdb::Value::kMaxTtl;
+    frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
+        docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
+  }
   return ApplyKeyValueRowOperations(
       batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
 }
@@ -1532,6 +1549,8 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
 
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
+    const MonoDelta ttl = ql_write_op->request_ttl();
+    operation->UpdateIfMaxTtl(ttl);
     if (metadata_->is_unique_index() &&
         ql_write_op->request().type() == QLWriteRequestPB::QL_STMT_INSERT &&
         ql_write_op->response()->has_applied() && !ql_write_op->response()->applied()) {
@@ -1805,6 +1824,40 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
   return false;
 }
 
+namespace {
+
+void SetBackfillSpecForYsqlBackfill(
+    const PgsqlReadRequestPB& pgsql_read_request,
+    const size_t& row_count,
+    PgsqlResponsePB* response) {
+  PgsqlBackfillSpecPB in_spec;
+  in_spec.ParseFromString(a2b_hex(pgsql_read_request.backfill_spec()));
+
+  auto limit = in_spec.limit();
+  PgsqlBackfillSpecPB out_spec;
+  out_spec.set_limit(limit);
+  out_spec.set_count(in_spec.count() + row_count);
+  response->set_is_backfill_batch_done(!response->has_paging_state());
+  VLOG(2) << " limit is " << limit << " set_count to " << out_spec.count();
+  if (limit >= 0 && out_spec.count() >= limit) {
+    // Hint postgres to stop scanning now. And set up the
+    // next_row_key based on the paging state.
+    if (response->has_paging_state()) {
+      out_spec.set_next_row_key(response->paging_state().next_row_key());
+    }
+    response->set_is_backfill_batch_done(true);
+  }
+
+  VLOG(2) << "Got input spec " << yb::ToString(in_spec)
+          << " set output spec " << yb::ToString(out_spec)
+          << " batch_done=" << response->is_backfill_batch_done();
+  string serialized_pb;
+  out_spec.SerializeToString(&serialized_pb);
+  response->set_backfill_spec(b2a_hex(serialized_pb));
+}
+
+}  // namespace
+
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                 const size_t row_count,
                                                 PgsqlResponsePB* response) const {
@@ -1841,6 +1894,12 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_
   if (response->has_paging_state()) {
     response->mutable_paging_state()->set_total_num_rows_read(
         pgsql_read_request.paging_state().total_num_rows_read() + row_count);
+  }
+
+  if (pgsql_read_request.is_for_backfill()) {
+    // BackfillSpec is used to implement "paging" across multiple BackfillIndex
+    // rpcs from the master.
+    SetBackfillSpecForYsqlBackfill(pgsql_read_request, row_count, response);
   }
   return Status::OK();
 }
@@ -2046,8 +2105,9 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 
   rocksdb::WriteBatch regular_write_batch;
   auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-      tablet_id(), data.transaction_id, data.commit_ht, &key_bounds_, data.apply_state, data.log_ht,
-      &regular_write_batch, intents_db_.get(), nullptr /* intents_write_batch */));
+      tablet_id(), data.transaction_id, data.aborted, data.commit_ht, &key_bounds_,
+      data.apply_state, data.log_ht, &regular_write_batch, intents_db_.get(),
+      nullptr /* intents_write_batch */));
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
@@ -2067,8 +2127,15 @@ CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Id
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
-          tablet_id(), id, HybridTime() /* commit_ht */, &key_bounds_, apply_state.get_ptr(),
-          HybridTime(), nullptr /* regular_write_batch */, intents_db_.get(),
+          tablet_id(),
+          id,
+          AbortedSubTransactionSet(),
+          HybridTime() /* commit_ht */,
+          &key_bounds_,
+          apply_state.get_ptr(),
+          HybridTime(),
+          nullptr /* regular_write_batch */,
+          intents_db_.get(),
           &intents_write_batch));
       if (new_apply_state.key.empty()) {
         break;
@@ -2274,30 +2341,12 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
                            operation->ToString());
 }
 
-// Assume that we are already in the Backfilling mode.
-Status Tablet::BackfillIndexesForYsql(
-    const std::vector<IndexInfo>& indexes,
-    const std::string& backfill_from,
-    const CoarseTimePoint deadline,
-    const HybridTime read_time,
+namespace {
+
+Result<pgwrapper::PGConnPtr> ConnectToPostgres(
     const HostPort& pgsql_proxy_bind_address,
     const std::string& database_name,
-    const uint64_t postgres_auth_key,
-    std::string* backfilled_until) {
-  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
-    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
-  }
-  LOG(INFO) << "Begin " << __func__
-            << " at " << read_time
-            << " for " << AsString(indexes);
-
-  if (!backfill_from.empty()) {
-    return STATUS(
-        InvalidArgument,
-        "YSQL index backfill does not support backfill_from, yet");
-  }
-
+    const uint64_t postgres_auth_key) {
   // Construct connection string.  Note that the plain password in the connection string will be
   // sent over the wire, but since it only goes over a unix-domain socket, there should be no
   // eavesdropping/tampering issues.
@@ -2309,28 +2358,6 @@ Status Tablet::BackfillIndexesForYsql(
       pgsql_proxy_bind_address.port(),
       pgwrapper::PqEscapeLiteral(database_name));
   VLOG(1) << __func__ << ": libpq connection string: " << conn_str;
-
-  // Construct query string.
-  std::string index_oids;
-  {
-    std::stringstream ss;
-    for (auto& index : indexes) {
-      Oid index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
-      ss << index_oid << ",";
-    }
-    index_oids = ss.str();
-    index_oids.pop_back();
-  }
-  std::string partition_key = metadata_->partition()->partition_key_start();
-  // This should be safe from injection attacks because the parameters only consist of characters
-  // [,0-9a-f].
-  // TODO(jason): pass deadline
-  std::string query_str = Format(
-      "BACKFILL INDEX $0 READ TIME $1 PARTITION x'$2';",
-      index_oids,
-      read_time.ToUint64(),
-      b2a_hex(partition_key));
-  VLOG(1) << __func__ << ": libpq query string: " << query_str;
 
   // Connect.
   pgwrapper::PGConnPtr conn(PQconnectdb(conn_str.c_str()));
@@ -2344,11 +2371,30 @@ Status Tablet::BackfillIndexesForYsql(
     if (msg.back() == '\n') {
       msg.resize(msg.size() - 1);
     }
-    LOG(WARNING) << "libpq connection \"" << conn_str
-                 << "\" failed: " << msg;
+    LOG(WARNING) << "libpq connection \"" << conn_str << "\" failed: " << msg;
     return STATUS_FORMAT(IllegalState, "backfill connection to DB failed: $0", msg);
   }
+  return conn;
+}
 
+string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_to_backfill) {
+  PgsqlBackfillSpecPB backfill_spec;
+  std::string serialized_backfill_spec;
+  // Note that although we set the desired batch_size as the limit, postgres
+  // has its own internal paging size of 1024 (controlled by --ysql_prefetch_limit). So the actual
+  // rows processed could be larger than the limit set here; unless it happens
+  // to be a multiple of FLAGS_ysql_prefetch_limit
+  backfill_spec.set_limit(batch_size);
+  backfill_spec.set_next_row_key(next_row_to_backfill);
+  backfill_spec.SerializeToString(&serialized_backfill_spec);
+  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec) << " encoded as "
+          << b2a_hex(serialized_backfill_spec) << " a string of length "
+          << serialized_backfill_spec.length();
+  return serialized_backfill_spec;
+}
+
+Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
+    const pgwrapper::PGConnPtr& conn, const string& query_str) {
   // Execute.
   pgwrapper::PGResultPtr res(PQexec(conn.get(), query_str.c_str()));
   if (!res) {
@@ -2358,29 +2404,169 @@ Status Tablet::BackfillIndexesForYsql(
     if (msg.back() == '\n') {
       msg.resize(msg.size() - 1);
     }
-    LOG(WARNING) << "libpq query \"" << query_str
-                 << "\" was not sent: " << msg;
+    LOG(WARNING) << "libpq query \"" << query_str << "\" was not sent: " << msg;
     return STATUS_FORMAT(IllegalState, "backfill query couldn't be sent: $0", msg);
   }
+
   ExecStatusType status = PQresultStatus(res.get());
   // TODO(jason): more properly handle bad statuses
-  // TODO(jason): change to PGRES_TUPLES_OK when this query starts returning data
-  if (status != PGRES_COMMAND_OK) {
+  if (status != PGRES_TUPLES_OK) {
     std::string msg(PQresultErrorMessage(res.get()));
 
     // Avoid double newline (postgres adds a newline after the error message).
     if (msg.back() == '\n') {
       msg.resize(msg.size() - 1);
     }
-    LOG(WARNING) << "libpq query \"" << query_str
-                 << "\" returned " << PQresStatus(status)
-                 << ": " << msg;
+    LOG(WARNING) << "libpq query \"" << query_str << "\" returned " << PQresStatus(status) << ": "
+                 << msg;
     return STATUS(IllegalState, msg);
   }
 
-  // TODO(jason): handle partially finished backfills.  How am I going to get that info?  From
-  // response message by libpq or manual DocDB inspection?
-  *backfilled_until = "";
+  CHECK_EQ(PQntuples(res.get()), 1);
+  CHECK_EQ(PQnfields(res.get()), 1);
+  const std::string returned_spec = CHECK_RESULT(pgwrapper::GetString(res.get(), 0, 0));
+  VLOG(3) << "Got back " << returned_spec << " of length " << returned_spec.length();
+
+  PgsqlBackfillSpecPB spec;
+  spec.ParseFromString(a2b_hex(returned_spec));
+  return spec;
+}
+
+struct BackfillParams {
+  explicit BackfillParams(const CoarseTimePoint& deadline) {
+    batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
+    rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
+    auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
+    if (grace_margin_ms < 0) {
+      // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
+      // By default, we will set it to twice the minimum value + 1s.
+      grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
+      YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
+    }
+    modified_deadline = deadline - grace_margin_ms * 1ms;
+    start_time = CoarseMonoClock::Now();
+  }
+
+  CoarseTimePoint start_time;
+  CoarseTimePoint modified_deadline;
+  size_t rate_per_sec;
+  size_t batch_size;
+};
+
+// Slow down before the next batch to throttle the rate of processing.
+void MaybeSleepToThrottleBackfill(
+    const CoarseTimePoint& start_time,
+    size_t number_of_rows_processed) {
+  if (FLAGS_backfill_index_rate_rows_per_sec <= 0) {
+    return;
+  }
+
+  auto now = CoarseMonoClock::Now();
+  auto duration_for_rows_processed = MonoDelta(now - start_time);
+  auto expected_time_for_processing_rows = MonoDelta::FromMilliseconds(
+      number_of_rows_processed * 1000 / FLAGS_backfill_index_rate_rows_per_sec);
+  DVLOG(3) << "Duration since last batch " << duration_for_rows_processed << " expected duration "
+           << expected_time_for_processing_rows << " extra time to sleep: "
+           << expected_time_for_processing_rows - duration_for_rows_processed;
+  if (duration_for_rows_processed < expected_time_for_processing_rows) {
+    SleepFor(expected_time_for_processing_rows - duration_for_rows_processed);
+  }
+}
+
+bool CanProceedToBackfillMoreRows(
+    const BackfillParams& backfill_params,
+    size_t number_of_rows_processed) {
+  auto now = CoarseMonoClock::Now();
+  if (now > backfill_params.modified_deadline ||
+      (FLAGS_TEST_backfill_paging_size > 0 &&
+       number_of_rows_processed >= FLAGS_TEST_backfill_paging_size)) {
+    // We are done if we are out of time.
+    // Or, if for testing purposes we have a bound on the size of batches to process.
+    return false;
+  }
+  return true;
+}
+
+bool CanProceedToBackfillMoreRows(
+    const BackfillParams& backfill_params,
+    const string& backfilled_until,
+    size_t number_of_rows_processed) {
+  if (backfilled_until.empty()) {
+    // The backfill is done for this tablet. No need to do another batch.
+    return false;
+  }
+
+  return CanProceedToBackfillMoreRows(backfill_params, number_of_rows_processed);
+}
+
+}  // namespace
+
+// Assume that we are already in the Backfilling mode.
+Status Tablet::BackfillIndexesForYsql(
+    const std::vector<IndexInfo>& indexes,
+    const std::string& backfill_from,
+    const CoarseTimePoint deadline,
+    const HybridTime read_time,
+    const HostPort& pgsql_proxy_bind_address,
+    const std::string& database_name,
+    const uint64_t postgres_auth_key,
+    size_t* number_of_rows_processed,
+    std::string* backfilled_until) {
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
+  }
+  LOG(INFO) << "Begin " << __func__ << " at " << read_time << " from "
+            << (backfill_from.empty() ? "<start-of-the-tablet>" : strings::b2a_hex(backfill_from))
+            << " for " << AsString(indexes);
+  *backfilled_until = backfill_from;
+  pgwrapper::PGConnPtr conn =
+      VERIFY_RESULT(ConnectToPostgres(pgsql_proxy_bind_address, database_name, postgres_auth_key));
+
+  // Construct query string.
+  std::string index_oids;
+  {
+    std::stringstream ss;
+    for (auto& index : indexes) {
+      Oid index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
+      ss << index_oid << ",";
+    }
+    index_oids = ss.str();
+    index_oids.pop_back();
+  }
+  std::string partition_key = metadata_->partition()->partition_key_start();
+
+  BackfillParams backfill_params(deadline);
+  *number_of_rows_processed = 0;
+  do {
+    std::string serialized_backfill_spec =
+        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
+
+    // This should be safe from injection attacks because the parameters only consist of characters
+    // [,0-9a-f].
+    std::string query_str = Format(
+        "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
+        index_oids,
+        b2a_hex(serialized_backfill_spec),
+        read_time.ToUint64(),
+        b2a_hex(partition_key));
+    VLOG(1) << __func__ << ": libpq query string: " << query_str;
+
+    PgsqlBackfillSpecPB spec = VERIFY_RESULT(QueryPostgresToDoBackfill(conn, query_str));
+    *number_of_rows_processed += spec.count();
+    *backfilled_until = spec.next_row_key();
+
+    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows. "
+            << "Setting backfilled_until to " << b2a_hex(*backfilled_until) << " of length "
+            << backfilled_until->length();
+
+    MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
+  } while (CanProceedToBackfillMoreRows(
+      backfill_params, *backfilled_until, *number_of_rows_processed));
+
+  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows. "
+          << "Set backfilled_until to "
+          << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until));
   return Status::OK();
 }
 
@@ -2479,7 +2665,7 @@ Status Tablet::BackfillIndexes(
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
-    int* number_of_rows_processed,
+    size_t* number_of_rows_processed,
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
@@ -2496,18 +2682,9 @@ Status Tablet::BackfillIndexes(
       VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
-  auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
-  if (grace_margin_ms < 0) {
-    const auto rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
-    const auto batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
-    // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
-    // By default, we will set it to twice the minimum value + 1s.
-    grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
-    YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
-  }
-  const yb::CoarseDuration kMargin = grace_margin_ms * 1ms;
+
+  BackfillParams backfill_params{deadline};
   constexpr auto kProgressInterval = 1000;
-  CoarseTimePoint last_flushed_at;
 
   if (!backfill_from.empty()) {
     VLOG(1) << "Resuming backfill from " << b2a_hex(backfill_from);
@@ -2525,9 +2702,7 @@ Status Tablet::BackfillIndexes(
       *backfilled_until = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
     }
 
-    if (CoarseMonoClock::Now() + kMargin > deadline ||
-        (FLAGS_TEST_backfill_paging_size > 0 &&
-         *number_of_rows_processed == FLAGS_TEST_backfill_paging_size)) {
+    if (!CanProceedToBackfillMoreRows(backfill_params, *number_of_rows_processed)) {
       resume_backfill_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
       break;
     }
@@ -2550,10 +2725,11 @@ Status Tablet::BackfillIndexes(
     }
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
-    RETURN_NOT_OK(UpdateIndexInBatches(
-        row, indexes, read_time, &index_requests, &last_flushed_at, failed_indexes));
+    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, read_time, &index_requests, failed_indexes));
+
     if (++(*number_of_rows_processed) % kProgressInterval == 0) {
       VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
+      MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
     }
   }
 
@@ -2567,9 +2743,9 @@ Status Tablet::BackfillIndexes(
               << " rows were dropped in index backfill.";
   }
 
-  RETURN_NOT_OK(FlushWriteIndexBatchIfRequired(
-      /* forced */ true, read_time, &index_requests, &last_flushed_at, failed_indexes));
-
+  VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
+  RETURN_NOT_OK(FlushWriteIndexBatch(read_time, &index_requests, failed_indexes));
+  MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   *backfilled_until = resume_backfill_from;
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
             << " until "
@@ -2582,7 +2758,6 @@ Status Tablet::UpdateIndexInBatches(
     const std::vector<IndexInfo>& indexes,
     const HybridTime write_time,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
   QLExprExecutor expr_executor;
@@ -2598,7 +2773,7 @@ Status Tablet::UpdateIndexInBatches(
 
   // Update the index write op.
   return FlushWriteIndexBatchIfRequired(
-      false, write_time, index_requests, last_flushed_at, failed_indexes);
+      write_time, index_requests, failed_indexes);
 }
 
 Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill() {
@@ -2613,16 +2788,22 @@ Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill() {
 }
 
 Status Tablet::FlushWriteIndexBatchIfRequired(
-    bool force_flush,
     const HybridTime write_time,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-    CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes) {
-  if (!force_flush && index_requests->size() < FLAGS_backfill_index_write_batch_size) {
+  if (index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
   }
+  return FlushWriteIndexBatch(write_time, index_requests, failed_indexes);
+}
 
-  if (!YBMetaDataCache()) {
+Status Tablet::FlushWriteIndexBatch(
+    const HybridTime write_time,
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    std::unordered_set<TableId>* failed_indexes) {
+  if (!client_future_.valid()) {
+    return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
+  } else if (!YBMetaDataCache()) {
     return STATUS(IllegalState, "Table metadata cache is not present for index update");
   }
   std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill());
@@ -2662,9 +2843,6 @@ Status Tablet::FlushWriteIndexBatchIfRequired(
                     (!ops_by_primary_key.empty() ? ops_by_primary_key.size()
                                                  : write_ops.size()));
   RETURN_NOT_OK(FlushWithRetries(session, write_ops, kMaxNumRetries, failed_indexes));
-
-  SleepToThrottleRate(index_requests, FLAGS_backfill_index_rate_rows_per_sec, last_flushed_at);
-  *last_flushed_at = CoarseMonoClock::Now();
   index_requests->clear();
 
   return Status::OK();

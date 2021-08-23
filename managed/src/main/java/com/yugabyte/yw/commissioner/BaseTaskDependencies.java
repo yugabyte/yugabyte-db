@@ -13,7 +13,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import javax.inject.Inject;
@@ -36,4 +36,5 @@ public class BaseTaskDependencies {
   private final AlertDefinitionGroupService alertDefinitionGroupService;
   private final YBClientService ybService;
   private final TableManager tableManager;
+  private final YBThreadPoolExecutorFactory executorFactory;
 }

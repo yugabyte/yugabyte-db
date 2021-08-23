@@ -21,7 +21,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,19 +38,16 @@ import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks Commissioner commissioner;
-
   Universe defaultUniverse;
   String nodePrefix = "demo-universe";
 
-  Map<String, String> config = new HashMap<String, String>();
+  Map<String, String> config = new HashMap<>();
   AvailabilityZone az1, az2, az3;
 
   private void setupUniverse(boolean updateInProgress) {
@@ -153,7 +149,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails =
-          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -188,7 +184,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, 1);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
@@ -222,7 +218,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, 1);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
@@ -258,7 +254,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, times(1)).deleteNamespace(config, nodePrefix3);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, 3);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
@@ -314,7 +310,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, times(1)).deleteNamespace(config3, ns3);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, 3, 1);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
@@ -348,7 +344,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, times(1)).deleteStorage(config, nodePrefix3, nodePrefix3);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, 3);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));

@@ -1023,6 +1023,24 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   select_op->set_yb_consistency_level(tnode->is_system() ? YBConsistencyLevel::STRONG
                                                          : params.yb_consistency_level());
 
+  // Save the hash_code and max_hash_code limits computed from the request's partition_key_ops in
+  // WhereClauseToPB(). These will be used later to be set in the request protobuf in
+  // AdvanceToNextPartition() for multi-partition selects. The limits need to be saved now because
+  // before AdvanceToNextPartition(), `Batcher::DoAdd()` of the current request might reuse and
+  // mutate these limits to set tighter limits specific to the current partition. Then when
+  // continuing to the next partition we cannot use the partition-specific limits, nor clear them
+  // completely and lose the top-level limits.
+
+  // Example: For `SELECT ... WHERE token(h) > 10 and token(h) < 100 and h IN (1,7,12)`, the `token`
+  // conditions set the top-level hash code limits, and `h` sets the individual partitions to read.
+  // The top-level hash code limits are needed because if the hash code for any of the partitions
+  // falls outside the `token`-set range we need to return no results for that partition.
+
+  if (req->has_hash_code())
+    tnode_context->set_hash_code_from_partition_key_ops(req->hash_code());
+  if (req->has_max_hash_code())
+    tnode_context->set_max_hash_code_from_partition_key_ops(req->max_hash_code());
+
   // If we have several hash partitions (i.e. IN condition on hash columns) we initialize the
   // start partition here, and then iteratively scan the rest in FetchMoreRows.
   // Otherwise, the request will already have the right hashed column values set.

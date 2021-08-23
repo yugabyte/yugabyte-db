@@ -12,7 +12,6 @@ import static org.mockito.Mockito.verify;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -38,8 +37,6 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class GFlagsUpgradeTest extends UpgradeTaskTest {
-
-  @InjectMocks Commissioner commissioner;
 
   @InjectMocks GFlagsUpgrade gFlagsUpgrade;
 
@@ -73,6 +70,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+
     gFlagsUpgrade.setUserTaskUUID(UUID.randomUUID());
   }
 

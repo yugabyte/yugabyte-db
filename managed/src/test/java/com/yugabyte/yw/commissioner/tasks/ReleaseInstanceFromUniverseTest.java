@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellResponse;
@@ -33,7 +32,6 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -44,7 +42,7 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
-  @InjectMocks Commissioner commissioner;
+
   Universe defaultUniverse;
   YBClient mockClient;
   ModifyMasterClusterConfigBlacklist modifyBL;
@@ -54,19 +52,16 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
   private void setDefaultNodeState(final NodeState desiredState) {
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
-            for (NodeDetails node : nodes) {
-              if (node.nodeName.equals(DEFAULT_NODE_NAME)) {
-                node.state = desiredState;
-                break;
-              }
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
+          for (NodeDetails node : nodes) {
+            if (node.nodeName.equals(DEFAULT_NODE_NAME)) {
+              node.state = desiredState;
+              break;
             }
-            universe.setUniverseDetails(universeDetails);
           }
+          universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
   }
@@ -74,6 +69,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     UniverseDefinitionTaskParams.UserIntent userIntent;
@@ -152,7 +148,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = RELEASE_INSTANCE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -177,7 +173,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 3);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(subTasksByPosition.size(), RELEASE_INSTANCE_TASK_SEQUENCE.size());
     assertReleaseInstanceSequence(subTasksByPosition);
   }
@@ -191,7 +187,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 4);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(subTasksByPosition.size(), RELEASE_INSTANCE_TASK_SEQUENCE.size());
     assertReleaseInstanceSequence(subTasksByPosition);
   }

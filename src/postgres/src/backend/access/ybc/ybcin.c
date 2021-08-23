@@ -150,8 +150,8 @@ IndexBuildResult *
 ybcinbackfill(Relation heap,
 			  Relation index,
 			  struct IndexInfo *indexInfo,
-			  uint64_t *read_time,
-			  RowBounds *row_bounds)
+			  YbBackfillInfo *bfinfo,
+			  YbPgExecOutParam *bfresult)
 {
 	YBCBuildState	buildstate;
 	double			heap_tuples = 0;
@@ -161,14 +161,14 @@ ybcinbackfill(Relation heap,
 	buildstate.index_tuples = 0;
 	buildstate.is_backfill = true;
 	/* Backfilled rows should be as if they happened at the time of backfill */
-	buildstate.write_time = read_time;
+	buildstate.write_time = &bfinfo->read_time;
 	heap_tuples = IndexBackfillHeapRangeScan(heap,
 											 index,
 											 indexInfo,
 											 ybcinbuildCallback,
 											 &buildstate,
-											 read_time,
-											 row_bounds);
+											 bfinfo,
+											 bfresult);
 
 	/*
 	 * Return statistics

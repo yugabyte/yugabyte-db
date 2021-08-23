@@ -19,6 +19,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreatePrometheusSwamperConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasters;
@@ -64,7 +65,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -81,10 +81,7 @@ import play.mvc.Result;
 public class ImportController extends AuthenticatedController {
 
   // Threadpool to run user submitted tasks.
-  static ExecutorService executor;
-
-  // Size of thread pool.
-  private static final int TASK_THREADS = 200;
+  private final ExecutorService executor;
 
   // Expected string for node exporter http request.
   private static final String NODE_EXPORTER_RESP = "Node Exporter";
@@ -96,6 +93,15 @@ public class ImportController extends AuthenticatedController {
   @Inject ApiHelper apiHelper;
 
   @Inject ConfigHelper configHelper;
+
+  @Inject
+  public ImportController(YBThreadPoolExecutorFactory ybThreadPoolExecutorFactory) {
+    // Initialize the tasks threadpool.
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
+    log.trace("Starting Import Thread Pool.");
+    executor = ybThreadPoolExecutorFactory.createExecutor("import", namedThreadFactory);
+  }
 
   @ApiOperation(value = "import", response = ImportUniverseFormData.class)
   public Result importUniverse(UUID customerUUID) {
@@ -151,7 +157,7 @@ public class ImportController extends AuthenticatedController {
         return null;
       }
 
-      int portInt = 0;
+      int portInt;
       try {
         portInt = Integer.parseInt(parts[1]);
       } catch (NumberFormatException nfe) {
@@ -217,7 +223,7 @@ public class ImportController extends AuthenticatedController {
     // Create a universe object in the DB with the information so far: master info, cloud, etc.
     // ---------------------------------------------------------------------------------------------
     Universe universe = null;
-    UniverseDefinitionTaskParams taskParams = null;
+    UniverseDefinitionTaskParams taskParams;
     // Attempt to find an existing universe with this id
     if (importForm.universeUUID != null) {
       universe = Universe.maybeGet(importForm.universeUUID).orElse(null);
@@ -230,12 +236,11 @@ public class ImportController extends AuthenticatedController {
                 customer,
                 importForm,
                 Util.getNodePrefix(customer.getCustomerId(), universeName),
-                universeName,
-                userMasterIpPorts);
+                universeName);
       }
 
       List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
-      Provider provider = null;
+      Provider provider;
       if (!providerList.isEmpty()) {
         provider = providerList.get(0);
       } else {
@@ -290,12 +295,10 @@ public class ImportController extends AuthenticatedController {
 
   private void setImportedState(Universe universe, ImportedState newState) {
     UniverseUpdater updater =
-        new UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails.importedState = newState;
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe1 -> {
+          UniverseDefinitionTaskParams universeDetails = universe1.getUniverseDetails();
+          universeDetails.importedState = newState;
+          universe1.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(universe.universeUUID, updater, false);
   }
@@ -337,16 +340,14 @@ public class ImportController extends AuthenticatedController {
 
     // Record the count of the tservers.
     results.tservers_count = tservers_list.size();
-    for (String tserver : tservers_list.keySet()) {
-      results.tservers_list.add(tserver);
-    }
+    results.tservers_list.addAll(tservers_list.keySet());
 
     // ---------------------------------------------------------------------------------------------
     // Update the universe object in the DB with new information : complete set of nodes.
     // ---------------------------------------------------------------------------------------------
     // Find the provider, region and zone. These should have been created during master info update.
     List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
-    Provider provider = null;
+    Provider provider;
     if (!providerList.isEmpty()) {
       provider = providerList.get(0);
     } else {
@@ -443,7 +444,7 @@ public class ImportController extends AuthenticatedController {
     // ---------------------------------------------------------------------------------------------
     // Check if node_exporter is enabled on all nodes.
     // ---------------------------------------------------------------------------------------------
-    Map<String, String> nodeExporterIPsToError = new HashMap<String, String>();
+    Map<String, String> nodeExporterIPsToError = new HashMap<>();
     for (NodeDetails node : universe.getTServers()) {
       String nodeIP = node.cloudInfo.private_ip;
       int nodeExporterPort = universe.getUniverseDetails().communicationPorts.nodeExporterPort;
@@ -502,51 +503,48 @@ public class ImportController extends AuthenticatedController {
       boolean isMaster) {
     // Update the node details and persist into the DB.
     UniverseUpdater updater =
-        new UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            // Get the details of the universe to be updated.
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            Cluster cluster = universeDetails.getPrimaryCluster();
-            int index = cluster.index;
+        universe -> {
+          // Get the details of the universe to be updated.
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Cluster cluster = universeDetails.getPrimaryCluster();
+          int index = cluster.index;
 
-            for (Map.Entry<String, Integer> entry : tserverList.entrySet()) {
-              // Check if this node is already present.
-              NodeDetails node = universe.getNodeByPrivateIP(entry.getKey());
-              if (node == null) {
-                // If the node is not present, create the node details and add it.
-                node =
-                    createAndAddNode(
-                        universeDetails,
-                        entry.getKey(),
-                        provider,
-                        region,
-                        zone,
-                        index,
-                        cluster.userIntent.instanceType);
+          for (Map.Entry<String, Integer> entry : tserverList.entrySet()) {
+            // Check if this node is already present.
+            NodeDetails node = universe.getNodeByPrivateIP(entry.getKey());
+            if (node == null) {
+              // If the node is not present, create the node details and add it.
+              node =
+                  createAndAddNode(
+                      universeDetails,
+                      entry.getKey(),
+                      provider,
+                      region,
+                      zone,
+                      index,
+                      cluster.userIntent.instanceType);
 
-                node.isMaster = isMaster;
-              }
-
-              UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
-                  universeDetails.communicationPorts, node);
-
-              node.isTserver = !isMaster;
-              if (isMaster) {
-                node.masterRpcPort = entry.getValue();
-              } else {
-                node.tserverRpcPort = entry.getValue();
-              }
-              index++;
+              node.isMaster = isMaster;
             }
 
-            // Update the number of nodes in the user intent. TODO: update the correct cluster.
-            cluster.userIntent.numNodes = tserverList.size();
-            cluster.index = index;
+            UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
+                universeDetails.communicationPorts, node);
 
-            // Update the node details.
-            universe.setUniverseDetails(universeDetails);
+            node.isTserver = !isMaster;
+            if (isMaster) {
+              node.masterRpcPort = entry.getValue();
+            } else {
+              node.tserverRpcPort = entry.getValue();
+            }
+            index++;
           }
+
+          // Update the number of nodes in the user intent. TODO: update the correct cluster.
+          cluster.userIntent.numNodes = tserverList.size();
+          cluster.index = index;
+
+          // Update the node details.
+          universe.setUniverseDetails(universeDetails);
         };
     // Save the updated universe object and return the updated universe.
     // saveUniverseDetails(taskParams.universeUUID);
@@ -590,8 +588,6 @@ public class ImportController extends AuthenticatedController {
    * the results object.
    */
   private boolean executeITask(ITask task, String taskName, ImportUniverseResponseData results) {
-    // Initialize the threadpool if needed.
-    initializeThreadpool();
     // Submit the task, and get a future object.
     Future<?> future = executor.submit(task);
     try {
@@ -617,8 +613,7 @@ public class ImportController extends AuthenticatedController {
       Customer customer,
       ImportUniverseFormData importForm,
       String nodePrefix,
-      String universeName,
-      Map<String, Integer> userMasterIpPorts) {
+      String universeName) {
     // Find the provider by the code given, or create a new provider if one does not exist.
     List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
     Provider provider = null;
@@ -655,7 +650,7 @@ public class ImportController extends AuthenticatedController {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
     userIntent.provider = provider.uuid.toString();
-    userIntent.regionList = new ArrayList<UUID>();
+    userIntent.regionList = new ArrayList<>();
     userIntent.regionList.add(region.uuid);
     userIntent.providerType = importForm.providerType;
     userIntent.instanceType = importForm.instanceType;
@@ -760,17 +755,5 @@ public class ImportController extends AuthenticatedController {
     taskParams.nodeDetailsSet.add(nodeDetails);
 
     return nodeDetails;
-  }
-
-  private void initializeThreadpool() {
-    if (executor != null) {
-      return;
-    }
-
-    // Initialize the tasks threadpool.
-    ThreadFactory namedThreadFactory =
-        new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
-    executor = Executors.newFixedThreadPool(TASK_THREADS, namedThreadFactory);
-    log.trace("Started Import Thread Pool.");
   }
 }

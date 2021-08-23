@@ -276,13 +276,13 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NODE_ERRORS", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY" ],
           "readOnly" : true,
           "type" : "string"
         },
         "thresholdUnit" : {
           "description" : "Thresholds unit",
-          "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND" ],
+          "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND", "SECOND", "DAY" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -319,7 +319,7 @@
           "type" : "string"
         },
         "template" : {
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NODE_ERRORS", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY" ],
           "type" : "string"
         },
         "uuids" : {
@@ -355,7 +355,7 @@
           "type" : "integer"
         },
         "sortBy" : {
-          "enum" : [ "uuid", "name", "active", "targetType", "createTime" ],
+          "enum" : [ "uuid", "name", "active", "targetType", "createTime", "template" ],
           "type" : "string"
         }
       },
@@ -433,7 +433,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NODE_ERRORS", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -456,7 +456,7 @@
         },
         "thresholdUnit" : {
           "description" : "Thresholds unit",
-          "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND" ],
+          "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND", "SECOND", "DAY" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -1036,6 +1036,10 @@
           "description" : "The number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
+        },
+        "restoreTimeStamp" : {
+          "description" : "Restore TimeStamp",
+          "type" : "string"
         },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
@@ -2324,6 +2328,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "restoreTimeStamp" : {
+          "description" : "Restore TimeStamp",
+          "type" : "string"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
           "format" : "uuid",
@@ -2513,6 +2521,10 @@
           "description" : "The number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
+        },
+        "restoreTimeStamp" : {
+          "description" : "Restore TimeStamp",
+          "type" : "string"
         },
         "scheduleUUID" : {
           "description" : "Schedule UUID",
@@ -3355,7 +3367,7 @@
         },
         "taskType" : {
           "description" : "Type of the task to be schedules",
-          "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "ExternalScript", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "CreateXClusterReplication", "DeleteXClusterReplication", "EditXClusterReplication", "PauseOrResumeXClusterReplication", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "RunExternalScript", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion", "AlterXClusterReplicationAddTables", "AlterXClusterReplicationRemoveTables", "AlterXClusterReplicationChangeMasterAddresses", "XClusterReplicationSetActive" ],
+          "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "ExternalScript", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "CreateXClusterReplication", "DeleteXClusterReplication", "EditXClusterReplication", "PauseOrResumeXClusterReplication", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "RunExternalScript", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion", "AlterXClusterReplicationAddTables", "AlterXClusterReplicationRemoveTables", "AlterXClusterReplicationChangeMasterAddresses", "XClusterReplicationSetActive", "DeleteCertificate" ],
           "type" : "string"
         }
       },
@@ -7346,6 +7358,12 @@
           "name" : "isDeleteBackups",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "isDeleteAssociatedCerts",
+          "required" : false,
+          "type" : "boolean"
         } ],
         "responses" : {
           "200" : {
@@ -8639,6 +8657,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/toggle_tls" : {
       "post" : {
+        "deprecated" : true,
         "description" : "Can enable/disable node to node and client to node encryption. Supports rolling and non-rolling upgrade of the universe.",
         "operationId" : "toggleTls",
         "parameters" : [ {

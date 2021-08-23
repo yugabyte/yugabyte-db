@@ -1325,6 +1325,7 @@ class TransactionParticipant::Impl
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
+        .aborted = AbortedSubTransactionSet(),
         .op_id = OpId(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
@@ -1344,8 +1345,15 @@ class TransactionParticipant::Impl
     }
     HybridTime commit_time(data.state.commit_hybrid_time());
     TransactionApplyData apply_data = {
-        data.leader_term, id, data.op_id, commit_time, data.hybrid_time, data.sealed,
-        data.state.tablets(0) };
+        .leader_term = data.leader_term,
+        .transaction_id = id,
+        .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(data.state.aborted().set())),
+        .op_id = data.op_id,
+        .commit_ht = commit_time,
+        .log_ht = data.hybrid_time,
+        .sealed = data.sealed,
+        .status_tablet = data.state.tablets(0)
+      };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
     }

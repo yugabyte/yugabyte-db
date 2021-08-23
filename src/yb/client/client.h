@@ -549,7 +549,7 @@ class YBClient {
                     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                     StdStatusCallback callback);
 
-  void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
+  void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,

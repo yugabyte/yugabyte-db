@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertReceiver;
 import com.yugabyte.yw.models.AlertRoute;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
@@ -35,7 +36,11 @@ import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -195,27 +200,33 @@ public class ModelFactory {
     return u;
   }
 
-  public static CustomerConfig createS3StorageConfig(Customer customer) {
+  public static CustomerConfig createS3StorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"S3\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"S3\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
                 + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
-  public static CustomerConfig createNfsStorageConfig(Customer customer) {
+  public static CustomerConfig createNfsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"NFS\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"NFS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
-  public static CustomerConfig createGcsStorageConfig(Customer customer) {
+  public static CustomerConfig createGcsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"GCS\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"GCS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
                 + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
@@ -310,7 +321,7 @@ public class ModelFactory {
             .setGroupUUID(group.getUuid())
             .setCustomerUUID(customer.getUuid())
             .setQuery("query {{ query_condition }} {{ query_threshold }}")
-            .setLabels(AlertLabelsBuilder.create().appendTarget(universe).get())
+            .setLabels(MetricLabelsBuilder.create().appendTarget(universe).getDefinitionLabels())
             .generateUUID();
     alertDefinition.save();
     return alertDefinition;
@@ -362,7 +373,7 @@ public class ModelFactory {
               .collect(Collectors.toList());
       alert.setLabels(labels);
     } else {
-      AlertLabelsBuilder labelsBuilder = AlertLabelsBuilder.create();
+      MetricLabelsBuilder labelsBuilder = MetricLabelsBuilder.create();
       if (universe != null) {
         labelsBuilder.appendTarget(universe);
       } else {
@@ -416,5 +427,15 @@ public class ModelFactory {
     EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
     return keyService.createAuthConfig(customerUUID, "Test KMS Configuration", authConfig);
+  }
+
+  /*
+   * CertificateInfo creation helpers.
+   */
+  public static CertificateInfo createCertificateInfo(
+      UUID customerUUID, String certificate, CertificateInfo.Type certType)
+      throws IOException, NoSuchAlgorithmException {
+    return CertificateInfo.create(
+        UUID.randomUUID(), customerUUID, "test", new Date(), new Date(), "", certificate, certType);
   }
 }

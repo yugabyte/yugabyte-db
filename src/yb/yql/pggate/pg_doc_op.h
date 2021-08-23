@@ -97,7 +97,7 @@ class PgDocResult {
 // Classes
 // - PgDocOp: Shared functionalities among all ops, mostly just RPC calls to tablet servers.
 // - PgDocReadOp: Definition for data & method members to be used in READ operation.
-// - PgDocWriteOp: Definition for data & method members to be used in READ operation.
+// - PgDocWriteOp: Definition for data & method members to be used in WRITE operation.
 // - PgDocResult: Definition data holder before they are passed to Postgres layer.
 //
 // Processing Steps
@@ -240,6 +240,14 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // operators to fetch rows whose rowids equal queried ybctids.
   virtual CHECKED_STATUS PopulateDmlByYbctidOps(const vector<Slice> *ybctids) = 0;
 
+  bool has_out_param_backfill_spec() {
+    return !out_param_backfill_spec_.empty();
+  }
+
+  const char* out_param_backfill_spec() {
+    return out_param_backfill_spec_.c_str();
+  }
+
  protected:
   // Populate Protobuf requests using the collected informtion for this DocDB operator.
   virtual CHECKED_STATUS CreateRequests() = 0;
@@ -371,6 +379,9 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // - When it is 1, there's no optimization. Available requests is executed one at a time.
   int32_t parallelism_level_ = 1;
 
+  // Output parameter of the execution.
+  string out_param_backfill_spec_;
+
  private:
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
@@ -434,14 +445,17 @@ class PgDocReadOp : public PgDocOp {
   // Process response from DocDB.
   Result<std::list<PgDocResult>> ProcessResponseImpl() override;
 
-  // Process response paging state from DocDB.
-  CHECKED_STATUS ProcessResponsePagingState();
+  // Process response read state from DocDB.
+  CHECKED_STATUS ProcessResponseReadStates();
 
   // Reset pgsql operators before reusing them with new arguments / inputs from Postgres.
   CHECKED_STATUS ResetInactivePgsqlOps();
 
   // Analyze options and pick the appropriate prefetch limit.
   void SetRequestPrefetchLimit();
+
+  // Set the backfill_spec field of our read request.
+  void SetBackfillSpec();
 
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();

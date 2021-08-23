@@ -28,19 +28,25 @@ public class PasswordPolicyFormData implements Constraints.Validatable<String> {
   private int minLength = 8;
 
   @Constraints.Required(message = "Minimal number of uppercase letters is required")
-  @Constraints.Min(value = 1, message = "Minimal number of uppercase letters should be > 0")
+  @Constraints.Min(
+      value = 0,
+      message = "Minimal number of uppercase letters should not be negative")
   private int minUppercase = 1;
 
   @Constraints.Required(message = "Minimal number of lowercase letters is required")
-  @Constraints.Min(value = 1, message = "Minimal number of lowercase letters should be > 0")
+  @Constraints.Min(
+      value = 0,
+      message = "Minimal number of lowercase letters should not be negative")
   private int minLowercase = 1;
 
   @Constraints.Required(message = "Minimal number of digits is required")
-  @Constraints.Min(value = 1, message = "Minimal number of digits should be > 0")
+  @Constraints.Min(value = 0, message = "Minimal number of digits should not be negative")
   private int minDigits = 1;
 
   @Constraints.Required(message = "Minimal number of special characters is required")
-  @Constraints.Min(value = 1, message = "Minimal number of special characters should be > 0")
+  @Constraints.Min(
+      value = 0,
+      message = "Minimal number of special characters should not be negative")
   private int minSpecialCharacters = 1;
 
   public int getMinLength() {

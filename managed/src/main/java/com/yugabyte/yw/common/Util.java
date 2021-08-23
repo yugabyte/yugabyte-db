@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -495,5 +496,30 @@ public class Util {
             config.deleteEntry(key);
           }
         });
+  }
+
+  /** deleteDirectory deletes entire directory recursively. */
+  public static boolean deleteDirectory(File directoryToBeDeleted) {
+    File[] allContents = directoryToBeDeleted.listFiles();
+    if (allContents != null) {
+      for (File file : allContents) {
+        deleteDirectory(file);
+      }
+    }
+    return directoryToBeDeleted.delete();
+  }
+
+  /**
+   * Returns the Unix epoch timeStamp in microseconds provided the given timeStamp and it's format.
+   */
+  public static long microUnixTimeFromDateString(String timeStamp, String timeStampFormat)
+      throws ParseException {
+    SimpleDateFormat format = new SimpleDateFormat(timeStampFormat);
+    try {
+      long timeStampUnix = format.parse(timeStamp).getTime() * 1000L;
+      return timeStampUnix;
+    } catch (ParseException e) {
+      throw e;
+    }
   }
 }

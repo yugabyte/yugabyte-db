@@ -54,11 +54,17 @@ public class UniverseController extends AuthenticatedController {
       response = YWResults.YWTask.class,
       nickname = "deleteUniverse")
   public Result destroy(
-      UUID customerUUID, UUID universeUUID, boolean isForceDelete, boolean isDeleteBackups) {
+      UUID customerUUID,
+      UUID universeUUID,
+      boolean isForceDelete,
+      boolean isDeleteBackups,
+      boolean isDeleteAssociatedCerts) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    UUID taskUUID = universeCRUDHandler.destroy(customer, universe, isForceDelete, isDeleteBackups);
+    UUID taskUUID =
+        universeCRUDHandler.destroy(
+            customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts);
     auditService().createAuditEntry(ctx(), request(), taskUUID);
     return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
   }

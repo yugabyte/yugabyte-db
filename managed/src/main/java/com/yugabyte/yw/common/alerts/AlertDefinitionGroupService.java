@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.impl.AlertDefinitionTemplate;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertDefinitionGroup.SortBy;
@@ -99,6 +100,7 @@ public class AlertDefinitionGroupService {
     Map<EntityOperation, List<AlertDefinitionGroup>> toCreateAndUpdate =
         groups
             .stream()
+            .peek(group -> prepareForSave(group, beforeGroupMap.get(group.getUuid())))
             .peek(group -> validate(group, beforeGroupMap.get(group.getUuid())))
             .collect(Collectors.groupingBy(group -> group.isNew() ? CREATE : UPDATE));
 
@@ -192,6 +194,12 @@ public class AlertDefinitionGroupService {
 
     int deleted = createQueryByFilter(filter).delete();
     log.debug("{} alert definition groups deleted", deleted);
+  }
+
+  private void prepareForSave(AlertDefinitionGroup group, AlertDefinitionGroup before) {
+    if (before != null) {
+      group.setCreateTime(before.getCreateTime());
+    }
   }
 
   private void validate(AlertDefinitionGroup group, AlertDefinitionGroup before) {
@@ -385,7 +393,8 @@ public class AlertDefinitionGroupService {
             }
             definition.setQuery(group.getTemplate().buildTemplate(customer));
             if (!group.getTemplate().isSkipTargetLabels()) {
-              definition.setLabels(AlertLabelsBuilder.create().appendTarget(customer).get());
+              definition.setLabels(
+                  MetricLabelsBuilder.create().appendTarget(customer).getDefinitionLabels());
             }
             toSave.add(definition);
             break;
@@ -427,7 +436,7 @@ public class AlertDefinitionGroupService {
                 universeDefinition.setQuery(group.getTemplate().buildTemplate(customer, universe));
                 if (!group.getTemplate().isSkipTargetLabels()) {
                   universeDefinition.setLabels(
-                      AlertLabelsBuilder.create().appendTarget(universe).get());
+                      MetricLabelsBuilder.create().appendTarget(universe).getDefinitionLabels());
                 }
                 toSave.add(universeDefinition);
               } else if (universeDefinition != null) {

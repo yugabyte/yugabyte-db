@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -122,8 +124,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         long inactiveCronNodes =
             universe.getNodes().stream().filter(node -> !node.cronsActive).count();
         metricService.setMetric(
-            metricService.buildMetricTemplate(
-                PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
             inactiveCronNodes);
       }
 

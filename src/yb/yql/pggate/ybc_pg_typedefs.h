@@ -205,6 +205,29 @@ typedef struct PgPrepareParameters {
   bool querying_colocated_table;
 } YBCPgPrepareParameters;
 
+// Opaque type for output parameter.
+typedef struct YbPgExecOutParam PgExecOutParam;
+
+// Structure for output value.
+typedef struct PgExecOutParamValue {
+#ifdef __cplusplus
+  const char *bfoutput = NULL;
+
+  // The following parameters are not yet used.
+  // Detailing execution status in yugabyte.
+  const char *status = NULL;
+  int64_t status_code = 0;
+
+#else
+  const char *bfoutput;
+
+  // The following parameters are not yet used.
+  // Detailing execution status in yugabyte.
+  const char *status;
+  int64_t status_code;
+#endif
+} YbcPgExecOutParamValue;
+
 // Structure to hold the execution-control parameters.
 typedef struct PgExecParameters {
   // TODO(neil) Move forward_scan flag here.
@@ -217,6 +240,7 @@ typedef struct PgExecParameters {
   // - limit_use_default: Although count and offset are pushed down to YugaByte from Postgres,
   //   they are not always being used to identify the number of rows to be read from DocDB.
   //   Full-scan is needed when further operations on the rows are not done by YugaByte.
+  // - out_param is an output parameter of an execution while all other parameters are IN params.
   //
   //   Examples:
   //   o WHERE clause is not processed by YugaByte. All rows must be sent to Postgres code layer
@@ -229,17 +253,21 @@ typedef struct PgExecParameters {
   uint64_t limit_offset = 0;
   bool limit_use_default = false;
   int rowmark = -1;
+  char *bfinstr = NULL;
   uint64_t read_time = 0;
   char *partition_key = NULL;
   bool read_from_followers = false;
+  PgExecOutParam *out_param = NULL;
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
+  char *bfinstr;
   uint64_t read_time;
   char *partition_key;
   bool read_from_followers;
+  PgExecOutParam *out_param;
 #endif
 } YBCPgExecParameters;
 
@@ -254,6 +282,7 @@ typedef struct PgCallbacks {
   void (*FetchUniqueConstraintName)(YBCPgOid, char*, size_t);
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
+  void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
 } YBCPgCallbacks;
 
 typedef struct PgTableProperties {

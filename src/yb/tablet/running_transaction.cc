@@ -434,6 +434,7 @@ Status MakeAbortedStatus(const TransactionId& id) {
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,
                                       const TransactionApplyData* data,
                                       ScopedRWOperation* operation) {
+  // TODO(savepoints): Add test to ensure that apply_state.aborted is properly set here.
   apply_state_ = apply_state;
   bool active = apply_state_.active();
   if (active) {

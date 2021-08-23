@@ -14,7 +14,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverInterface;
@@ -23,7 +23,7 @@ import com.yugabyte.yw.common.alerts.AlertReceiverService;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.YWValidateException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
@@ -194,7 +194,7 @@ public class AlertManager {
             "Unable to notify about alert {}, there is no default route specified.",
             alert.getUuid());
         metricService.setStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
+            MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s), there is no default route specified.");
         return false;
       }
@@ -206,7 +206,7 @@ public class AlertManager {
           && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
 
         metricService.setStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
+            MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s) using default route, "
                 + "there are no recipients configured in the customer's profile.");
         return false;
@@ -216,7 +216,7 @@ public class AlertManager {
       receivers.addAll(defaultReceivers);
 
       metricService.setOkStatusMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
+          MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
     }
 
     // Not going to save the alert, only to use with another state for the
@@ -283,6 +283,6 @@ public class AlertManager {
         .setType(Metric.Type.GAUGE)
         .setName(metric.getMetricName())
         .setTargetUuid(receiver.getUuid())
-        .setLabels(AlertLabelsBuilder.create().appendTarget(receiver).getMetricLabels());
+        .setLabels(MetricLabelsBuilder.create().appendTarget(receiver).getMetricLabels());
   }
 }

@@ -34,18 +34,15 @@ public class SubTaskGroup implements Runnable {
   private TaskInfo.State userSubTaskState = TaskInfo.State.Initializing;
 
   // Task list name.
-  private String name;
+  private final String name;
 
   // The list of tasks in this task list.
-  private Map<AbstractTaskBase, TaskInfo> taskMap;
+  private final Map<AbstractTaskBase, TaskInfo> taskMap;
 
   // The list of futures to wait for.
-  private Map<Future<?>, TaskInfo> futuresMap;
+  private final Map<Future<?>, TaskInfo> futuresMap;
 
-  private AtomicInteger numTasksCompleted;
-
-  // The number of threads to run in parallel.
-  int numThreads;
+  private final AtomicInteger numTasksCompleted;
 
   // The threadpool executor in case parallel execution is requested.
   ExecutorService executor;
@@ -169,12 +166,14 @@ public class SubTaskGroup implements Runnable {
     LOG.info("Running task list {}.", getName());
     for (AbstractTaskBase task : taskMap.keySet()) {
       Future<?> future = executor.submit(task);
+      // TODO: looks like race condition. Investigate further
       futuresMap.put(future, taskMap.get(task));
     }
   }
 
   public boolean waitFor() {
     boolean hasErrored = false;
+    // TODO: looks like race condition. Investigate further
     for (Future<?> future : futuresMap.keySet()) {
       TaskInfo taskInfo = futuresMap.get(future);
 
