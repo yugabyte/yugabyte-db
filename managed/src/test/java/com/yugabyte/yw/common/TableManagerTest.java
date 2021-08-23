@@ -475,7 +475,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreS3BackupWithRestoreTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST41");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -493,7 +493,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreNfsBackupWithRestoreTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST42");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -511,7 +511,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreGcsBackupWithRestoreTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST43");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -529,7 +529,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testRestoreBackupWithInvalidTimeStamp() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST44");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
