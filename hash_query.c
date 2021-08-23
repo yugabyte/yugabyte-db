@@ -60,6 +60,10 @@ pgss_startup(void)
 		ResetSharedState(pgss);
 	}
 
+#ifdef BENCHMARK
+	init_hook_stats();
+#endif
+
 	pgss->query_buf_size_bucket = MAX_QUERY_BUF / PGSM_MAX_BUCKETS;
 
 	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
