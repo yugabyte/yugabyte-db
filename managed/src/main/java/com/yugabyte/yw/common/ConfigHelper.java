@@ -17,6 +17,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Singleton;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -35,7 +37,7 @@ public class ConfigHelper {
   private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
   private static final List<String> GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "m6g.");
+      ImmutableList.of("m6g.");
   private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.");
 
@@ -44,10 +46,17 @@ public class ConfigHelper {
       return CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED;
     } else if (runtimeConfigFactory.globalRuntimeConf().hasPath("yb.instances.graviton")) {
       if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.instances.graviton")) {
-        return GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED;
+        return Stream.concat(
+                AWS_INSTANCE_PREFIXES_SUPPORTED.stream(),
+                GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED.stream())
+            .collect(Collectors.toList());
       }
     }
     return AWS_INSTANCE_PREFIXES_SUPPORTED;
+  }
+
+  public List<String> getGravitonInstancePrefixList() {
+    return GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ConfigHelper.class);

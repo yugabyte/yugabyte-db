@@ -46,6 +46,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -112,6 +113,8 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
   @Mock Config mockConfig;
+
+  @Mock ConfigHelper mockConfigHelper;
 
   @InjectMocks NodeManager nodeManager;
 
@@ -427,6 +430,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
     when(mockConfig.hasPath(NodeManager.BOOT_SCRIPT_PATH)).thenReturn(false);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
+    when(mockConfigHelper.getGravitonInstancePrefixList()).thenReturn(ImmutableList.of("m6g."));
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
   }

@@ -156,4 +156,17 @@
     retries: "{{ yum_retry_count }}"
     when: ansible_os_family != 'RedHat' and "item not in ansible_facts.packages"
 
+  - name: Install linux packages we need on our YugaByte clusters on aarch64 architecture
+    become: yes
+    become_method: sudo
+    package:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - "{{ linux_packages + aarch64_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: ansible_architecture == 'aarch64' and "item not in ansible_facts.packages"
+
   when: not air_gap
