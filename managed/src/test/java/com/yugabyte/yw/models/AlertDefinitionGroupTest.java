@@ -27,7 +27,6 @@ import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -232,10 +231,6 @@ public class AlertDefinitionGroupTest extends FakeDBApplication {
     testValidationUpdate(
         group -> group.setCustomerUUID(randomUUID).setRouteUUID(null),
         uuid -> "Can't change customer UUID for group " + uuid);
-
-    testValidationUpdate(
-        group -> group.setCreateTime(new Date()),
-        uuid -> "Can't change create time for group " + uuid);
   }
 
   private void testValidationCreate(

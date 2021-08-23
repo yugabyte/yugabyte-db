@@ -296,6 +296,11 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
 
   req->clear_hash_code();
   req->clear_max_hash_code();
+
+  if (hash_code_from_partition_key_ops_.is_initialized())
+    req->set_hash_code(*hash_code_from_partition_key_ops_);
+  if (max_hash_code_from_partition_key_ops_.is_initialized())
+    req->set_max_hash_code(*max_hash_code_from_partition_key_ops_);
 }
 
 bool TnodeContext::HasPendingOperations() const {

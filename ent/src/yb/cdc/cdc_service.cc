@@ -50,6 +50,8 @@
 #include "yb/util/shared_lock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+constexpr uint32_t kUpdateIntervalMs = 15 * 1000;
+
 DEFINE_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
              "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
 TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
@@ -63,7 +65,7 @@ DEFINE_int32(cdc_ybclient_reactor_threads, 50,
              "requests for CDC.");
 TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
 
-DEFINE_int32(cdc_state_checkpoint_update_interval_ms, 15 * 1000,
+DEFINE_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
              "Rate at which CDC state's checkpoint is updated.");
 
 DEFINE_string(certs_for_cdc_dir, "",
@@ -76,7 +78,7 @@ DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
              "replicated index across all streams is sent to the other peers in the configuration. "
              "If flag enable_log_retention_by_op_idx is disabled, this flag has no effect.");
 
-DEFINE_int32(update_metrics_interval_ms, 1000,
+DEFINE_int32(update_metrics_interval_ms, kUpdateIntervalMs,
              "How often to update xDC cluster metrics.");
 
 DEFINE_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
@@ -445,31 +447,29 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   context.RespondSuccess();
 }
 
-void CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id,
-                                                      int64_t min_index) {
+Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id,
+                                                        int64_t min_index) {
   std::vector<client::internal::RemoteTabletServer *> servers;
-  auto s = GetTServers(tablet_id, &servers);
-  if (!s.ok()) {
-    LOG(WARNING) << "Unable to get remote tablet servers for tablet id " << tablet_id;
-  } else {
-    for (const auto &server : servers) {
-      if (server->IsLocal()) {
-        // We modify our log directly. Avoid calling itself through the proxy.
-        continue;
-      }
-      LOG(INFO) << "Modifying remote peer " << server->ToString();
-      auto proxy = GetCDCServiceProxy(server);
-      UpdateCdcReplicatedIndexRequestPB update_index_req;
-      UpdateCdcReplicatedIndexResponsePB update_index_resp;
-      update_index_req.set_tablet_id(tablet_id);
-      update_index_req.set_replicated_index(min_index);
-      rpc::RpcController rpc;
-      rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-      WARN_NOT_OK(proxy->UpdateCdcReplicatedIndex(update_index_req, &update_index_resp, &rpc),
-                  "UpdateCdcReplicatedIndex failed");
-      // For now ignore the response.
+  RETURN_NOT_OK(GetTServers(tablet_id, &servers));
+  for (const auto &server : servers) {
+    if (server->IsLocal()) {
+      // We modify our log directly. Avoid calling itself through the proxy.
+      continue;
+    }
+    LOG(INFO) << "Modifying remote peer " << server->ToString();
+    auto proxy = GetCDCServiceProxy(server);
+    UpdateCdcReplicatedIndexRequestPB update_index_req;
+    UpdateCdcReplicatedIndexResponsePB update_index_resp;
+    update_index_req.set_tablet_id(tablet_id);
+    update_index_req.set_replicated_index(min_index);
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+    RETURN_NOT_OK(proxy->UpdateCdcReplicatedIndex(update_index_req, &update_index_resp, &rpc));
+    if (update_index_resp.has_error()) {
+      return StatusFromPB(update_index_resp.error().status());
     }
   }
+  return Status::OK();
 }
 
 void CDCServiceImpl::UpdateLagMetrics() {
@@ -698,7 +698,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
                      << ": " << s;
       }
       LOG(INFO) << "Updating followers for tablet " << tablet_id << " with index " << min_index;
-      UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index);
+      WARN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(tablet_id, min_index),
+                  "UpdatePeersCdcMinReplicatedIndex failed");
     }
     LOG(INFO) << "Done reading all the indices for all tablets and updating peers";
   } while (sleep_while_not_stopped());
@@ -767,6 +768,10 @@ std::shared_ptr<CDCServiceProxy> CDCServiceImpl::GetCDCServiceProxy(RemoteTablet
                                                        hostport);
   {
     std::lock_guard<decltype(mutex_)> l(mutex_);
+    auto it = cdc_service_map_.find(hostport);
+    if (it != cdc_service_map_.end()) {
+      return it->second;
+    }
     cdc_service_map_.emplace(hostport, cdc_service);
   }
   return cdc_service;
@@ -992,7 +997,8 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
 
   // Used to delete streams in case of failure.
   std::vector<CDCStreamId> created_cdc_streams;
-  auto scope_exit = ScopeExit([this, &created_cdc_streams] {
+  std::vector<ProducerTabletInfo> producer_entries_modified;
+  auto scope_exit = ScopeExit([this, &created_cdc_streams, &producer_entries_modified] {
     if (!created_cdc_streams.empty()) {
       Status s = async_client_init_->client()->DeleteCDCStream(created_cdc_streams);
       if (!s.ok()) {
@@ -1000,6 +1006,25 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
                      << ": " << s;
       }
     }
+
+    // For all tablets we modified state for, reverse those changes if the operation failed
+    // halfway through.
+    if (producer_entries_modified.empty()) {
+      return;
+    }
+    TabletCheckpoints tablet_checkpoints;
+    {
+      SharedLock<decltype(mutex_)> l(mutex_);
+      tablet_checkpoints = tablet_checkpoints_;
+    }
+    for (const auto& entry : producer_entries_modified) {
+      tablet_checkpoints.get<TabletTag>().erase(entry.tablet_id);
+      WARN_NOT_OK(
+          UpdatePeersCdcMinReplicatedIndex(entry.tablet_id, numeric_limits<uint64_t>::max()),
+                                           "Unable to update tablet " + entry.tablet_id);
+    }
+    std::lock_guard<decltype(mutex_)> l(mutex_);
+    tablet_checkpoints_ = tablet_checkpoints;
   });
 
   std::vector<CDCStreamId> bootstrap_ids;
@@ -1058,6 +1083,9 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
           return;
         }
         op_id = tablet_peer->log()->GetLatestEntryOpId();
+        RPC_STATUS_RETURN_ERROR(UpdatePeersCdcMinReplicatedIndex(tablet.tablet_id(), op_id.index),
+                                resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+                                context);
       }
 
       const auto op = cdc_state_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
@@ -1076,6 +1104,7 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
         TabletCheckpoint commit_checkpoint({op_id, now});
         std::lock_guard<decltype(mutex_)> l(mutex_);
         tablet_checkpoints_.emplace(producer_tablet, commit_checkpoint, sent_checkpoint);
+        producer_entries_modified.push_back(producer_tablet);
       }
     }
     bootstrap_ids.push_back(std::move(bootstrap_id));
@@ -1086,8 +1115,9 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
   for (const auto& bootstrap_id : bootstrap_ids) {
     resp->add_cdc_bootstrap_ids(bootstrap_id);
   }
-  // Clear this vector so no streams are deleted by scope_exit since we succeeded.
+  // Clear these vectors so no changes are reversed by scope_exit since we succeeded.
   created_cdc_streams.clear();
+  producer_entries_modified.clear();
   context.RespondSuccess();
 }
 
@@ -1408,17 +1438,25 @@ std::shared_ptr<StreamMetadata> CDCServiceImpl::GetStreamMetadataFromCache(
 MemTrackerPtr CDCServiceImpl::GetMemTracker(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ProducerTabletInfo& producer_info) {
+  {
+    SharedLock<decltype(mutex_)> l(mutex_);
+    auto it = tablet_checkpoints_.find(producer_info);
+    if (it == tablet_checkpoints_.end()) {
+      return nullptr;
+    }
+    if (it->mem_tracker) {
+      return it->mem_tracker;
+    }
+  }
   std::lock_guard<rw_spinlock> l(mutex_);
   auto it = tablet_checkpoints_.find(producer_info);
-  if (it == tablet_checkpoints_.end()) {
-    return nullptr;
+  if (it->mem_tracker) {
+    return it->mem_tracker;
   }
-  if (!it->mem_tracker) {
-    auto cdc_mem_tracker = MemTracker::FindOrCreateTracker(
-        "CDC", tablet_peer->tablet()->mem_tracker());
-    const_cast<MemTrackerPtr&>(it->mem_tracker) = MemTracker::FindOrCreateTracker(
-        producer_info.stream_id, cdc_mem_tracker);
-  }
+  auto cdc_mem_tracker = MemTracker::FindOrCreateTracker(
+      "CDC", tablet_peer->tablet()->mem_tracker());
+  const_cast<MemTrackerPtr&>(it->mem_tracker) = MemTracker::FindOrCreateTracker(
+      producer_info.stream_id, cdc_mem_tracker);
   return it->mem_tracker;
 }
 

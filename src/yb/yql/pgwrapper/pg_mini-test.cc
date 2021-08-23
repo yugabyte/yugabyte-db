@@ -11,6 +11,11 @@
 // under the License.
 //
 
+#include <gtest/gtest.h>
+
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -39,6 +44,24 @@ DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(rocksdb_use_logging_iterator);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_high_phase_size_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_high_phase_shard_count_per_node);
+DECLARE_int32(max_queued_split_candidates);
+
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(process_split_tablet_candidates_interval_msec);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_filter_block_size_bytes);
+DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(tablet_force_split_threshold_bytes);
+
+DECLARE_bool(enable_pg_savepoints);
 
 namespace yb {
 namespace pgwrapper {
@@ -113,6 +136,14 @@ class PgMiniTest : public PgMiniTestBase {
   void TestForeignKey(IsolationLevel isolation);
 
   void TestBigInsert(bool restart);
+
+  void CreateTableAndInitialize(std::string table_name, int num_tablets);
+
+  void DestroyTable(std::string table_name);
+
+  void GetTableIDFromTableName(const std::string table_name, std::string* table_id);
+
+  void StartReadWriteThreads(std::string table_name, TestThreadHolder *thread_holder);
 
   void TestConcurrentDeleteRowAndUpdateColumn(bool select_before_update);
 
@@ -1671,6 +1702,243 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(InOperatorLock), PgMiniTestNoTxnRe
   ASSERT_OK(conn.Execute("COMMIT;"));
   const auto count = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(4, count);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Tablet Splitting Tests
+// ------------------------------------------------------------------------------------------------
+
+class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_TEST_index_read_multiple_partitions = true;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AutoScanNextPartitions),
+    PgMiniTestAutoScanNextPartitions) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr int numRows = 100;
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT) "
+                         "SPLIT INTO 6 TABLETS"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t(v1, v2)"));
+
+  // Insert elements into the table
+  for (int i = 0; i < numRows; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (k, v1, v2) VALUES ($0, $1, $2)", i, 1, i));
+  }
+
+  // Secondary index read from the table
+  // While performing secondary index read on ybctids, the pggate layer batches requests belonging
+  // to the same tablet. However, if the tablet is split after batching, we need a mechanism to
+  // execute the batched request across both the sub-tablets. We create a scenario to test this
+  // phenomenon here.
+  //
+  // FLAGS_index_read_multiple_partitions is a test flag when set will create a scenario to check if
+  // index scans of ybctids span across multiple tablets. Specifically in this example, we try to
+  // scan the for elements that are present in tablets 0,1 which contain value v1=1 and see if they
+  // match the expected number of rows.
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT k FROM t WHERE v1 = 1"));
+  auto lines = PQntuples(res.get());
+  ASSERT_EQ(lines, numRows);
+}
+
+class PgMiniTabletSplitTest : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_yb_num_shards_per_tserver = 1;
+    FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
+    FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
+    FLAGS_max_queued_split_candidates = 10;
+    FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
+    FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
+    FLAGS_tablet_force_split_threshold_bytes = 30_KB;
+    FLAGS_db_write_buffer_size = FLAGS_tablet_force_split_threshold_bytes / 4;
+    FLAGS_db_block_size_bytes = 2_KB;
+    FLAGS_db_filter_block_size_bytes = 2_KB;
+    FLAGS_db_index_block_size_bytes = 2_KB;
+    FLAGS_heartbeat_interval_ms = 1000;
+    FLAGS_tserver_heartbeat_metrics_interval_ms = 1000;
+    FLAGS_process_split_tablet_candidates_interval_msec = 1000;
+    FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms = 4000;
+    FLAGS_ysql_prefetch_limit = 32;
+    PgMiniTest::SetUp();
+  }
+};
+
+void PgMiniTest::CreateTableAndInitialize(std::string table_name, int num_tablets) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (h1 int, h2 int, r int, i int, "
+                               "PRIMARY KEY ((h1, h2) HASH, r ASC)) "
+                               "SPLIT INTO $1 TABLETS", table_name, num_tablets));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx "
+                               "ON $1(i HASH, r ASC)", table_name, table_name));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT i, i, i, 1 FROM "
+                               "(SELECT generate_series(1, 500) i) t", table_name));
+}
+
+void PgMiniTest::DestroyTable(std::string table_name) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+}
+
+void PgMiniTest::GetTableIDFromTableName(const std::string table_name, std::string* table_id) {
+  // Get YBClient handler and tablet ID. Using this we can get the number of tablets before starting
+  // the test and before the test ends. With this we can ensure that tablet splitting has occurred.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto tables = ASSERT_RESULT(client->ListTables());
+  for (const auto& table : tables) {
+    if (table.has_table() && table.table_name() == "update_pk_complex_two_hash_one_range_keys") {
+      table_id->assign(table.table_id());
+      break;
+    }
+  }
+}
+
+void PgMiniTest::StartReadWriteThreads(const std::string table_name,
+    TestThreadHolder *thread_holder) {
+  // Writer thread that does parallel writes into table
+  thread_holder->AddThread([this, table_name] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 501; i < 2000; i++) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2, $3, $4)",
+                                   table_name, i, i, i, 1));
+    }
+  });
+
+  // Index read from the table
+  thread_holder->AddThread([this, &stop = thread_holder->stop_flag(), table_name] {
+    auto conn = ASSERT_RESULT(Connect());
+    do {
+      auto result = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM  $0 WHERE i = 1 order by r",
+                                                   table_name));
+      std::vector<int> sort_check;
+      for(int x = 0; x < PQntuples(result.get()); x++) {
+        auto value = ASSERT_RESULT(GetInt32(result.get(), x, 2));
+        sort_check.push_back(value);
+      }
+      ASSERT_TRUE(std::is_sorted(sort_check.begin(), sort_check.end()));
+    }  while (!stop.load(std::memory_order_acquire));
+  });
+}
+
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitSecondaryIndexYSQL),
+    PgMiniTabletSplitTest) {
+
+  std::string table_name = "update_pk_complex_two_hash_one_range_keys";
+  CreateTableAndInitialize(table_name, 1);
+
+  std::string table_id;
+  GetTableIDFromTableName(table_name, &table_id);
+  int start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  // Insert elements into the table using a parallel thread
+  TestThreadHolder thread_holder;
+
+  /*
+   * Writer thread writes into the table continously, while the index read thread does a secondary
+   * index lookup. During the index lookup, we inject artificial delays, specified by the flag
+   * FLAGS_TEST_tablet_split_injected_delay_ms. Tablets will split in between those delays into
+   * two different partitions.
+   *
+   * The purpose of this test is to verify that when the secondary index read request is being
+   * executed, the results from both the tablets are being represented. Without the fix from
+   * the pggate layer, only one half of the results will be obtained. Hence we verify that after the
+   * split the number of elements is > 500, which is the number of elements inserted before the
+   * split.
+   */
+  StartReadWriteThreads(table_name, &thread_holder);
+
+  thread_holder.WaitAndStop(200s);
+  int end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  ASSERT_GT(end_num_tablets, start_num_tablets);
+  DestroyTable(table_name);
+
+  // Rerun the same test where table is created with 3 tablets.
+  // When a table is created with three tablets, the lower and upper bounds are as follows;
+  // tablet 1 -- empty to A
+  // tablet 2 -- A to B
+  // tablet 3 -- B to empty
+  // However, in situations where tables are created with just one tablet lower_bound and
+  // upper_bound for the tablet is empty to empty. Hence, to test both situations we run this test
+  // with one tablet and three tablets respectively.
+  CreateTableAndInitialize(table_name, 3);
+  GetTableIDFromTableName(table_name, &table_id);
+  start_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  StartReadWriteThreads(table_name, &thread_holder);
+  thread_holder.WaitAndStop(200s);
+
+  end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
+  ASSERT_GT(end_num_tablets, start_num_tablets);
+  DestroyTable(table_name);
+}
+
+class PgMiniTestWithSavepoints : public PgMiniTest {
+ protected:
+  void SetUp() override {
+    FLAGS_enable_pg_savepoints = true;
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart),
+    PgMiniTestWithSavepoints) {
+  FLAGS_apply_intents_task_injected_delay_ms = 200;
+
+  constexpr int64_t kRowNumModToAbort = 7;
+  constexpr int64_t kNumBatches = 10;
+  constexpr int64_t kNumRows = RegularBuildVsSanitizers(10000, 1000);
+  FLAGS_txn_max_apply_batch_records = kNumRows / kNumBatches;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  for (int64_t rowNum = 0; rowNum < kNumRows; ++rowNum) {
+    auto shouldAbort = rowNum % kRowNumModToAbort == 0;
+    if (shouldAbort) {
+      ASSERT_OK(conn.Execute("SAVEPOINT A"));
+    }
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0)", rowNum));
+    if (shouldAbort) {
+      ASSERT_OK(conn.Execute("ROLLBACK TO A"));
+    }
+  }
+
+  ASSERT_OK(conn.CommitTransaction());
+
+  LOG(INFO) << "Restart cluster";
+  ASSERT_OK(cluster_->RestartSync());
+
+  ASSERT_OK(WaitFor([this] {
+    auto intents_count = CountIntents(cluster_.get());
+    LOG(INFO) << "Intents count: " << intents_count;
+
+    return intents_count == 0;
+  }, 60s * kTimeMultiplier, "Intents cleanup", 200ms));
+
+  for (int64_t rowNum = 0; rowNum < kNumRows; ++rowNum) {
+    auto shouldAbort = rowNum % kRowNumModToAbort == 0;
+
+    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", rowNum));
+    if (shouldAbort) {
+      EXPECT_NOT_OK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << rowNum;
+    } else {
+      int64_t value = EXPECT_RESULT(GetInt32(res.get(), 0, 0));
+      EXPECT_EQ(value, rowNum) << "Expected to find " << rowNum << ", found " << value << ".";
+    }
+  }
 }
 
 } // namespace pgwrapper

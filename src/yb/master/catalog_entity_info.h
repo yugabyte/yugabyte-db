@@ -52,6 +52,8 @@
 namespace yb {
 namespace master {
 
+YB_STRONGLY_TYPED_BOOL(IncludeSplitTablets);
+
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
 struct TabletReplicaDriveInfo {
@@ -430,6 +432,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add multiple tablets to this table.
   void AddTablets(const std::vector<TabletInfo*>& tablets);
 
+  // Remove tablet that has been split.
+  void RemoveSplitTablet(const TabletId& tablet_id);
+
   // Return true if tablet with 'partition_key_start' has been
   // removed from 'tablet_map_' below.
   bool RemoveTablet(const std::string& partition_key_start);
@@ -444,7 +449,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::size_t NumTablets() const;
 
   // Get all tablets of the table.
-  void GetAllTablets(TabletInfos *ret) const;
+  // If include_split_tablets is true, also returns not yet deleted split parent tablets for
+  // which we've already registered child split tablets.
+  void GetAllTablets(
+      TabletInfos* ret,
+      IncludeSplitTablets include_split_tablets = IncludeSplitTablets::kFalse) const;
 
   bool HasTablets() const;
 
@@ -474,17 +483,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void ClearIsBackfilling() {
     std::lock_guard<decltype(lock_)> l(lock_);
     is_backfilling_ = false;
-  }
-
-  boost::optional<TabletId> AreAllTabletsRunning() const {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    for (const auto& tablet_it : tablet_map_) {
-      const auto& table = tablet_it.second;
-      if (table->LockForRead().data().pb.state() != SysTabletsEntryPB::RUNNING) {
-        return table->tablet_id();
-      }
-    }
-    return boost::none;
   }
 
   // Returns true if an "Alter" operation is in-progress.
@@ -542,8 +540,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
-  typedef std::map<std::string, TabletInfo *> TabletInfoMap;
+  typedef std::map<PartitionKey, TabletInfo*> TabletInfoMap;
   TabletInfoMap tablet_map_ GUARDED_BY(lock_);
+  std::unordered_map<TabletId, TabletInfo*> split_tablets_ GUARDED_BY(lock_);
 
   // Protects tablet_map_ and pending_tasks_.
   mutable rw_spinlock lock_;

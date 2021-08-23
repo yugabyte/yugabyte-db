@@ -565,9 +565,10 @@ void TSTabletManager::CleanupSplitTablets() {
         LOG_WITH_PREFIX(INFO) << Format("Skipped triggering delete of tablet $0", tablet_id);
       } else {
         LOG_WITH_PREFIX(INFO) << Format("Triggering delete of tablet $0", tablet_id);
-        client().DeleteTablet(tablet_peer->tablet_id(), [tablet_id] (const Status& status) {
-          LOG(INFO) << Format("Tablet $0 deletion result: $1", tablet_id, status);
-        });
+        client().DeleteNotServingTablet(
+            tablet_peer->tablet_id(), [tablet_id](const Status& status) {
+              LOG(INFO) << Format("Tablet $0 deletion result: $1", tablet_id, status);
+            });
       }
     }
   }
@@ -2249,6 +2250,10 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
 
 client::YBClient& TSTabletManager::client() {
   return *async_client_init_->client();
+}
+
+const std::shared_future<client::YBClient*>& TSTabletManager::client_future() {
+  return async_client_init_->get_client_future();
 }
 
 void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {

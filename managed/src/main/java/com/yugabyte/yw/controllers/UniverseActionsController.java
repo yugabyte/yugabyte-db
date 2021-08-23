@@ -101,6 +101,7 @@ public class UniverseActionsController extends AuthenticatedController {
     return YWResults.withData(resp);
   }
 
+  @Deprecated
   @ApiOperation(
       value = "Toggle a universe's TLS state",
       notes =

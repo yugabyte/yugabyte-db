@@ -272,7 +272,7 @@ public class Users extends Model {
     if (apiToken == null) {
       return null;
     }
-    return apiToken.toString();
+    return apiToken;
   }
 
   /**

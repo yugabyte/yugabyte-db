@@ -32,6 +32,7 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgSavepoints extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSavepoints.class);
+  private static final int LARGE_BATCH_ROW_THRESHOLD = 100;
 
   private void createTable() throws SQLException {
     try (Statement statement = connection.createStatement()) {
@@ -46,7 +47,6 @@ public class TestPgSavepoints extends BasePgSQLTest {
         return OptionalInt.empty();
       }
       Row row = Row.fromResultSet(rs);
-      LOG.info(row.toString());
       assertFalse("Found more than one result", rs.next());
       return OptionalInt.of(row.getInt(1));
     }
@@ -57,6 +57,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
     // TODO(savepoints) -- enable by default.
     Map<String, String> flags = super.getTServerFlags();
     flags.put("enable_pg_savepoints", "true");
+    flags.put("txn_max_apply_batch_records", String.format("%d", LARGE_BATCH_ROW_THRESHOLD));
     return flags;
   }
 
@@ -134,4 +135,67 @@ public class TestPgSavepoints extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testSavepointCommitWithAbort() throws Exception {
+    createTable();
+
+    try (Connection conn = getConnectionBuilder()
+                                .withAutoCommit(AutoCommit.DISABLED)
+                                .connect()) {
+      Statement statement = conn.createStatement();
+      statement.execute("INSERT INTO t VALUES (1, 2)");
+      statement.execute("SAVEPOINT a");
+      statement.execute("INSERT INTO t VALUES (3, 4)");
+      statement.execute("ROLLBACK TO a");
+      statement.execute("INSERT INTO t VALUES (5, 6)");
+      conn.commit();
+
+      assertEquals(getSingleValue(conn, 1), OptionalInt.of(2));
+      assertEquals(getSingleValue(conn, 3), OptionalInt.empty());
+      assertEquals(getSingleValue(conn, 5), OptionalInt.of(6));
+    }
+  }
+
+  @Test
+  public void testSavepointLargeApplyWithAborts() throws Exception {
+    final int NUM_BATCHES_TO_WRITE = 5;
+    final int ROW_MOD_TO_ABORT = 7;
+    createTable();
+
+    try (Connection conn = getConnectionBuilder()
+                                .withAutoCommit(AutoCommit.DISABLED)
+                                .connect()) {
+      Statement statement = conn.createStatement();
+      for (int i = 0; i < NUM_BATCHES_TO_WRITE; ++i) {
+        for (int j = 0; j < LARGE_BATCH_ROW_THRESHOLD; ++j) {
+          int val = i * LARGE_BATCH_ROW_THRESHOLD + j;
+          if (val % ROW_MOD_TO_ABORT == 0) {
+            statement.execute("SAVEPOINT a");
+          }
+          statement.execute(String.format("INSERT INTO t VALUES (%d, %d)", val, val));
+          if (val % ROW_MOD_TO_ABORT == 0) {
+            statement.execute("ROLLBACK TO a");
+          }
+        }
+      }
+      conn.commit();
+
+      for (int i = 0; i < NUM_BATCHES_TO_WRITE; ++i) {
+        for (int j = 0; j < LARGE_BATCH_ROW_THRESHOLD; ++j) {
+          int val = i * NUM_BATCHES_TO_WRITE + j;
+          if (val % ROW_MOD_TO_ABORT == 0) {
+            assertEquals(getSingleValue(conn, val), OptionalInt.empty());
+          } else {
+            assertEquals(getSingleValue(conn, val), OptionalInt.of(val));
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testSavepointLargeApplyWithAbortsAndNodeKills() throws Exception {
+    // TODO(savepoints): Add test which forces node restarts to ensure transaction loader is
+    // properly loading savepoint metadata.
+  }
 }

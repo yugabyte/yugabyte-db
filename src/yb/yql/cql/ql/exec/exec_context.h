@@ -394,6 +394,22 @@ class TnodeContext {
   //                            Top-Level QueryPagingState::counter_pb_ }
   CHECKED_STATUS ComposeRowsResultForUser(const TreeNode* child_select_node, bool for_new_batches);
 
+  const boost::optional<uint32_t>& hash_code_from_partition_key_ops() {
+    return hash_code_from_partition_key_ops_;
+  }
+
+  const boost::optional<uint32_t>& max_hash_code_from_partition_key_ops() {
+    return max_hash_code_from_partition_key_ops_;
+  }
+
+  void set_hash_code_from_partition_key_ops(uint32_t hash_code) {
+    hash_code_from_partition_key_ops_ = hash_code;
+  }
+
+  void set_max_hash_code_from_partition_key_ops(uint32_t max_hash_code) {
+    max_hash_code_from_partition_key_ops_ = max_hash_code;
+  }
+
  private:
   // Tree node of the statement being executed.
   const TreeNode* tnode_ = nullptr;
@@ -432,6 +448,9 @@ class TnodeContext {
   // Select op template and primary keys for fetching from indexed table in an uncovered query.
   client::YBqlReadOpPtr uncovered_select_op_;
   std::unique_ptr<QLRowBlock> keys_;
+
+  boost::optional<uint32_t> hash_code_from_partition_key_ops_;
+  boost::optional<uint32_t> max_hash_code_from_partition_key_ops_;
 };
 
 // Processing could take a while, we are rescheduling it to our thread pool, if not yet

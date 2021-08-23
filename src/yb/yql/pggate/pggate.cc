@@ -96,9 +96,10 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
 }
 
 std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
+  LOG(INFO) << __func__ << ": " << YBCIsInitDbModeEnvVarSet() << ", "
+            << FLAGS_TEST_pggate_ignore_tserver_shm << ", " << FLAGS_pggate_tserver_shm_fd;
   // Do not use shared memory in initdb or if explicity set to be ignored.
-  if (YBCIsInitDbModeEnvVarSet() || FLAGS_TEST_pggate_ignore_tserver_shm ||
-      FLAGS_pggate_tserver_shm_fd == -1) {
+  if (FLAGS_TEST_pggate_ignore_tserver_shm || FLAGS_pggate_tserver_shm_fd == -1) {
     return nullptr;
   }
   return std::make_unique<tserver::TServerSharedObject>(CHECK_RESULT(
@@ -112,7 +113,6 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
   auto desc  = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
   auto read_op = desc->NewPgsqlSelect();
   auto read_req = read_op->mutable_request();
-  read_req->set_unknown_ybctid_allowed(true);
   PgsqlExpressionPB* expr_pb = read_req->add_targets();
   expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
   auto doc_op = std::make_shared<PgDocReadOp>(session, desc, std::move(read_op));

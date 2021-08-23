@@ -362,26 +362,39 @@ void TableInfo::AddTablets(const vector<TabletInfo*>& tablets) {
   }
 }
 
+void TableInfo::RemoveSplitTablet(const TabletId& tablet_id) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  split_tablets_.erase(tablet_id);
+}
+
 void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
   const auto& tablet_meta = tablet->metadata().dirty().pb;
   const auto& partition_key_start = tablet_meta.partition().partition_key_start();
   auto it = tablet_map_.find(partition_key_start);
   if (it == tablet_map_.end()) {
     tablet_map_.emplace(partition_key_start, tablet);
-  } else {
-    const auto old_split_depth = it->second->LockForRead()->pb.split_depth();
-    if (tablet_meta.split_depth() < old_split_depth) {
-      return;
-    }
-    VLOG(1) << "Replacing tablet " << it->second->tablet_id()
-            << " (split_depth = " << old_split_depth << ")"
-            << " with tablet " << tablet->tablet_id()
-            << " (split_depth = " << tablet_meta.split_depth() << ")";
-    it->second = tablet;
-    // TODO: can we assert that the replaced tablet is not in Running state?
-    // May be a little tricky since we don't know whether to look at its committed or
-    // uncommitted state.
+    return;
   }
+
+  const auto old_split_depth = it->second->LockForRead()->pb.split_depth();
+  if (tablet_meta.split_depth() < old_split_depth) {
+    // This can happen during LoadSysCatalogDataTask on newly elected master leader.
+    // We need to remember not yet deleted tablet that was split in order to be able to delete it
+    // with the table in case of drop table request.
+    split_tablets_.emplace(tablet->id(), tablet);
+    return;
+  }
+  VLOG(1) << "Replacing tablet " << it->second->tablet_id()
+          << " (split_depth = " << old_split_depth << ")"
+          << " with tablet " << tablet->tablet_id()
+          << " (split_depth = " << tablet_meta.split_depth() << ")";
+  if (tablet_meta.split_depth() > old_split_depth) {
+    split_tablets_.emplace(it->second->id(), it->second);
+  }
+  it->second = tablet;
+  // TODO: can we assert that the replaced tablet is not in Running state?
+  // May be a little tricky since we don't know whether to look at its committed or
+  // uncommitted state.
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {
@@ -460,7 +473,8 @@ bool TableInfo::AreAllTabletsDeleted() const {
 bool TableInfo::IsCreateInProgress() const {
   SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
-    if (!e.second->LockForRead()->is_running()) {
+    auto tablet_info_lock = e.second->LockForRead();
+    if (!tablet_info_lock->is_running() && tablet_info_lock->pb.split_depth() == 0) {
       return true;
     }
   }
@@ -622,11 +636,17 @@ std::size_t TableInfo::NumTablets() const {
   return tablet_map_.size();
 }
 
-void TableInfo::GetAllTablets(TabletInfos *ret) const {
+void TableInfo::GetAllTablets(
+    TabletInfos* ret, const IncludeSplitTablets include_split_tablets) const {
   ret->clear();
   SharedLock<decltype(lock_)> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     ret->push_back(make_scoped_refptr(e.second));
+  }
+  if (include_split_tablets) {
+    for (const auto& e : split_tablets_) {
+      ret->push_back(make_scoped_refptr(e.second));
+    }
   }
 }
 

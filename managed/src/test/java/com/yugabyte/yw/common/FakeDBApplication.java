@@ -62,7 +62,7 @@ public class FakeDBApplication extends YWGuiceApplicationBaseTest {
 
     GuiceApplicationBuilder guiceApplicationBuilder = new GuiceApplicationBuilder();
     if (!isSwaggerEnabled()) {
-      guiceApplicationBuilder.disable(SwaggerModule.class);
+      guiceApplicationBuilder = guiceApplicationBuilder.disable(SwaggerModule.class);
     }
     return configureApplication(
             guiceApplicationBuilder

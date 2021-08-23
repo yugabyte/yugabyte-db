@@ -855,8 +855,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     return Status::OK();
   }
 
-  const MonoDelta ttl =
-      request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+  const MonoDelta ttl = request_ttl();
 
   const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
       request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;

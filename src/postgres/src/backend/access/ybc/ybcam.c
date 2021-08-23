@@ -75,10 +75,10 @@ typedef YbScanPlanData *YbScanPlan;
 
 static void ybcAddAttributeColumn(YbScanPlan scan_plan, AttrNumber attnum)
 {
-  const int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
+	const int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
-  if (bms_is_member(idx, scan_plan->primary_key))
-    scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
+	if (bms_is_member(idx, scan_plan->primary_key))
+		scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
 }
 
 /*
@@ -174,10 +174,16 @@ static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, Att
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
 
-	YBCPgExpr ybc_expr = start_valid ? YBCNewConstant(ybScan->handle, atttypid, value,
-      false /* isnull */) : NULL;
-	YBCPgExpr ybc_expr_end = end_valid ? YBCNewConstant(ybScan->handle, atttypid, value_end,
-      false /* isnull */) : NULL;
+	YBCPgExpr ybc_expr = start_valid ? YBCNewConstant(ybScan->handle,
+													  atttypid,
+													  value,
+													  false /* isnull */)
+									 : NULL;
+	YBCPgExpr ybc_expr_end = end_valid ? YBCNewConstant(ybScan->handle,
+														atttypid,
+														value_end,
+														false /* isnull */)
+									   : NULL;
 
   HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybScan->handle, attnum, ybc_expr, ybc_expr_end));
 }
@@ -507,7 +513,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 			 * PrimaryIndex scan: This is a special case in YugaByte. There is no PrimaryIndexTable.
 			 * The table itself will be scanned.
 			 */
-			ybScan->target_key_attnums[i] =	scan_plan->bind_key_attnums[i] =
+			ybScan->target_key_attnums[i] = scan_plan->bind_key_attnums[i] =
 				index->rd_index->indkey.values[ybScan->key[i].sk_attno - 1];
 		}
 		else if (ybScan->prepare_params.index_only_scan)
@@ -517,7 +523,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 			 * Use the index attnum for both targets and binds.
 			 */
 			scan_plan->bind_key_attnums[i] = ybScan->key[i].sk_attno;
-			ybScan->target_key_attnums[i] =	ybScan->key[i].sk_attno;
+			ybScan->target_key_attnums[i] = ybScan->key[i].sk_attno;
 		}
 		else
 		{
@@ -526,7 +532,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 			 * Use SysTable attnum for targets. Use its index attnum for binds.
 			 */
 			scan_plan->bind_key_attnums[i] = ybScan->key[i].sk_attno;
-			ybScan->target_key_attnums[i] =	index->rd_index->indkey.values[ybScan->key[i].sk_attno - 1];
+			ybScan->target_key_attnums[i] = index->rd_index->indkey.values[ybScan->key[i].sk_attno - 1];
 		}
 	}
 }
@@ -546,7 +552,7 @@ static bool ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int 
 		case BTGreaterStrategyNumber:
 			/* range key */
 			return (!bms_is_member(idx, scan_plan->hash_key) &&
-				bms_is_member(idx, scan_plan->primary_key));
+					bms_is_member(idx, scan_plan->primary_key));
 
 		default:
 			/* TODO: support other logical operators */
@@ -802,8 +808,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 						/* Either c = NULL or c IS NULL. */
 						bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
 						ybcBindColumn(ybScan, scan_plan->bind_desc,
-											scan_plan->bind_key_attnums[i],
-											ybScan->key[i].sk_argument, is_null);
+									  scan_plan->bind_key_attnums[i],
+									  ybScan->key[i].sk_argument, is_null);
 						is_column_bound[idx] = true;
 					}
 					else if (IsSearchArray(ybScan->key[i].sk_flags))
@@ -879,22 +885,24 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 						ybcBindColumnCondIn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
 						                    num_elems, elem_values);
 						is_column_bound[idx] = true;
-					} else {
+					}
+					else
+					{
 						/* unreachable */
 					}
 					break;
 
 				case BTGreaterEqualStrategyNumber:
 				case BTGreaterStrategyNumber:
-					if (start_valid[idx]) {
+					if (start_valid[idx])
+					{
 						/* take max of old value and new value */
 						bool is_gt = DatumGetBool(FunctionCall2Coll(&ybScan->key[i].sk_func,
 						                                            ybScan->key[i].sk_collation,
 						                                            start[idx],
 						                                            ybScan->key[i].sk_argument));
-						if (!is_gt) {
-						start[idx] = ybScan->key[i].sk_argument;
-						}
+						if (!is_gt)
+							start[idx] = ybScan->key[i].sk_argument;
 					}
 					else
 					{
@@ -912,9 +920,8 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 						                                            ybScan->key[i].sk_collation,
 						                                            end[idx],
 						                                            ybScan->key[i].sk_argument));
-						if (!is_lt) {
+						if (!is_lt)
 							end[idx] = ybScan->key[i].sk_argument;
-						}
 					}
 					else
 					{
@@ -940,7 +947,7 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 				continue;
 
 			ybcBindColumnCondBetween(ybScan,
-			                         scan_plan->bind_desc,
+									 scan_plan->bind_desc,
 									 YBBmsIndexToAttnum(relation, idx),
 									 start_valid[idx], start[idx],
 									 end_valid[idx], end[idx]);
@@ -1017,7 +1024,7 @@ ybcResetColumnFilter(YbColumnFilter *filter) {
 static void
 ybcAddTargetColumnIfRequired(YbColumnFilter *filter, AttrNumber attnum) {
 	if (!filter->required_attrs ||
-	    bms_is_member(attnum - filter->min_attr + 1, filter->required_attrs))
+		bms_is_member(attnum - filter->min_attr + 1, filter->required_attrs))
 		ybcAddTargetColumn(filter->ybScan, attnum);
 }
 
@@ -1034,7 +1041,8 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan) {
 		 * table instead of the whole target table.
 		 */
 		for (int i = 0; i < index->rd_index->indnatts; i++)
-		ybcAddTargetColumnIfRequired(&filter, index->rd_index->indkey.values[i]);
+			ybcAddTargetColumnIfRequired(&filter,
+										 index->rd_index->indkey.values[i]);
 	else
 		for (AttrNumber attnum = 1; attnum <= ybScan->target_desc->natts; attnum++)
 			ybcAddTargetColumnIfRequired(&filter, attnum);
@@ -1316,7 +1324,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 			index = NULL;
 		}
 
-		if (index) {
+		if (index)
+		{
 			/*
 			 * Change attribute numbers to be index column numbers.
 			 * - This conversion is the same as function systable_beginscan() in file "genam.c". If we
@@ -1442,9 +1451,9 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	 *     it requires extra request to the main table.
 	 */
 	double tsp_cost = 0.0;
-	bool is_valid_tsp_cost = !is_uncovered_idx_scan
-								&& get_yb_tablespace_cost(index_tablespace_oid,
-															&tsp_cost);
+	bool is_valid_tsp_cost = (!is_uncovered_idx_scan
+							  && get_yb_tablespace_cost(index_tablespace_oid,
+														&tsp_cost));
 	Cost yb_per_tuple_cost_factor = YB_DEFAULT_PER_TUPLE_COST;
 
 	if (is_valid_tsp_cost && yb_per_tuple_cost_factor > tsp_cost)
@@ -1671,11 +1680,11 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 
 	/* Fetch one row. */
 	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-															 tupdesc->natts,
-															 (uint64_t *) values,
-															 nulls,
-															 &syscols,
-															 &has_data));
+								 tupdesc->natts,
+								 (uint64_t *) values,
+								 nulls,
+								 &syscols,
+								 &has_data));
 
 	if (has_data)
 	{

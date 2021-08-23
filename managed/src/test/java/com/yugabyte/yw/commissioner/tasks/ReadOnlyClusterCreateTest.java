@@ -17,7 +17,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
@@ -41,7 +40,6 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ChangeMasterClusterConfigResponse;
@@ -52,7 +50,7 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
-  @InjectMocks Commissioner commissioner;
+
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
   ShellResponse preflightSuccessResponse;
@@ -63,6 +61,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
@@ -144,8 +143,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
-  private void assertClusterCreateSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, boolean masterUnderReplicated) {
+  private void assertClusterCreateSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
     for (TaskType taskType : CLUSTER_CREATE_TASK_SEQUENCE) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
@@ -153,7 +151,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = CLUSTER_CREATE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -188,8 +186,8 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertClusterCreateSequence(subTasksByPosition, false);
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertClusterCreateSequence(subTasksByPosition);
 
     UniverseDefinitionTaskParams univUTP =
         Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();

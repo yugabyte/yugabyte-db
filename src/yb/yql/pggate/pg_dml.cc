@@ -19,8 +19,10 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/util/debug-util.h"
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -272,6 +274,7 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
   RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(ybctids));
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }
 
@@ -323,6 +326,13 @@ Result<bool> PgDml::FetchDataFromServer() {
 
     // Get the rowsets from doc-operator.
     RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
+  }
+
+  // Return the output parameter back to Postgres if server wants.
+  if (doc_op_->has_out_param_backfill_spec() && pg_exec_params_) {
+    PgExecOutParamValue value;
+    value.bfoutput = doc_op_->out_param_backfill_spec();
+    YBCGetPgCallbacks()->WriteExecOutParam(pg_exec_params_->out_param, &value);
   }
 
   return true;

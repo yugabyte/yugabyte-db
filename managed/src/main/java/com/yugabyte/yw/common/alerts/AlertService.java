@@ -67,8 +67,8 @@ public class AlertService {
     Map<EntityOperation, List<Alert>> toCreateAndUpdate =
         alerts
             .stream()
+            .map(alert -> prepareForSave(alert, beforeAlertMap.get(alert.getUuid())))
             .peek(alert -> validate(alert, beforeAlertMap.get(alert.getUuid())))
-            .map(this::prepareForSave)
             .collect(Collectors.groupingBy(alert -> alert.isNew() ? CREATE : UPDATE));
 
     if (toCreateAndUpdate.containsKey(CREATE)) {
@@ -194,7 +194,10 @@ public class AlertService {
    * Will only need to insert definition related labels once all alerts will have underlying
    * definition.
    */
-  private Alert prepareForSave(Alert alert) {
+  private Alert prepareForSave(Alert alert, Alert before) {
+    if (before != null) {
+      alert.setCreateTime(before.getCreateTime());
+    }
     return alert
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, alert.getCustomerUUID().toString())
         .setLabel(KnownAlertLabels.SEVERITY, alert.getSeverity().name());

@@ -776,7 +776,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
-  int number_rows_processed = 0;
+  size_t number_rows_processed = 0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -796,6 +796,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
+        &number_rows_processed,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
       DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
@@ -2000,7 +2001,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // has the transaction metadata, including the isolation level, and those requests expect us to
   // retrieve the isolation level from that metadata. Failure to do so was the cause of a
   // serialization anomaly tested by TestOneOrTwoAdmins
-  // (https://github.com/YugaByte/yugabyte-db/issues/1572).
+  // (https://github.com/yugabyte/yugabyte-db/issues/1572).
 
   bool serializable_isolation = false;
   TabletPeerTablet peer_tablet;
@@ -2054,7 +2055,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
               STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
                                         "processing this query. Try again."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
+          return;
         }
       }
       RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);

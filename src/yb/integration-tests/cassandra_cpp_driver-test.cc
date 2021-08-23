@@ -324,11 +324,14 @@ class CppCassandraDriverTestIndexSlowBackfill : public CppCassandraDriverTestInd
 
   std::vector<std::string> ExtraTServerFlags() override {
     auto flags = CppCassandraDriverTestIndex::ExtraTServerFlags();
-    flags.push_back("--backfill_index_rate_rows_per_sec=10");
-    flags.push_back("--backfill_index_write_batch_size=2");
+    flags.push_back(Format("--backfill_index_rate_rows_per_sec=$0", kMaxBackfillRatePerSec));
+    flags.push_back("--backfill_index_write_batch_size=1");
     flags.push_back("--num_concurrent_backfills_allowed=1");
     return flags;
   }
+
+ protected:
+  const size_t kMaxBackfillRatePerSec = 10;
 };
 
 class CppCassandraDriverTestUserEnforcedIndex : public CppCassandraDriverTestIndexSlow {
@@ -1205,20 +1208,24 @@ void TestBackfillIndexTable(
   const int kLowerBound = kExpectedCount - kBatchSize * num_failures;
   const int kUpperBound = kExpectedCount + kBatchSize * num_failures;
 
-  // Verified implicitly here that that the backfill job has met the expected total number of
+  // Verified implicitly here that the backfill job has met the expected total number of
   // records
-  ASSERT_OK(WaitForBackfillSatisfyCondition(
+  const auto kMaxWait = kTimeMultiplier * 60s;
+  WARN_NOT_OK(WaitForBackfillSafeTimeOn(test->cluster_.get(), table_name, kMaxWait),
+      "Could not get safe time. May be OK, if the backfill is already done.");
+  WARN_NOT_OK(WaitForBackfillSatisfyCondition(
       test->cluster_.get()->master_proxy(), table_name,
-      [kLowerBound](Result<master::BackfillJobPB> backfill_job) {
-        if (backfill_job) {
-          const int number_rows_processed = backfill_job->num_rows_processed();
-          return number_rows_processed >= kLowerBound;
+      [kLowerBound](Result<master::BackfillJobPB> backfill_job) -> Result<bool> {
+        if (!backfill_job) {
+          return backfill_job.status();
         }
-        return false;
-      }));
+        const int number_rows_processed = backfill_job->num_rows_processed();
+        return number_rows_processed >= kLowerBound;
+      }, kMaxWait),
+      "Could not get BackfillJobPB. May be OK, if the backfill is already done.");
 
   IndexPermissions perm = ASSERT_RESULT(test->client_->WaitUntilIndexPermissionsAtLeast(
-      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE, kMaxWait));
   ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 
   auto main_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "key_value"));
@@ -2115,12 +2122,12 @@ TEST_F_EX(
       "create table test_table (k1 int, k2 int, v text, PRIMARY KEY ((k1), k2)) "
       "with transactions = {'enabled' : true};"));
 
-  constexpr int32_t kMaxKeys = 1000;
-  for (int i = 0; i < kMaxKeys; i++) {
+  constexpr int32_t kNumKeys = 1000;
+  for (int i = 0; i < kNumKeys; i++) {
     ASSERT_OK(session_.ExecuteQuery(
         yb::Format("insert into test_table (k1, k2, v) values ($0, $0, 'v-$0');", i)));
   }
-  LOG(INFO) << "Inserted " << kMaxKeys << " rows.";
+  LOG(INFO) << "Inserted " << kNumKeys << " rows.";
 
   std::atomic<int32_t> failed_cnt(0);
   std::atomic<int32_t> read_cnt(0);
@@ -2131,7 +2138,7 @@ TEST_F_EX(
     int32_t key = 0;
     constexpr int32_t kSleepTimeMs = 100;
     while (!stop) {
-      key = (key + 1) % kMaxKeys;
+      key = (key + 1) % kNumKeys;
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
       read_cnt++;
       WARN_NOT_OK(
@@ -2165,18 +2172,26 @@ TEST_F_EX(
       session2.ExecuteGetFuture("create index test_table_index_by_k2 on test_table (k2);");
   const YBTableName index_table_name2(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_k2");
 
-  const auto kMaxWait = kTimeMultiplier * 90s;
+  const auto kMargin = 2;  // Account for time "wasted" due to RPC backoff delays.
+  const auto kExpectedDuration = kMargin *
+      kTimeMultiplier * static_cast<size_t>(ceil(1.0 * kNumKeys / kMaxBackfillRatePerSec)) * 1s;
+
+  ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
   perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
-      CoarseMonoClock::now() + kMaxWait, 50ms));
+      CoarseMonoClock::now() + kExpectedDuration, 50ms));
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "Index table " << index_table_name.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
 
-  perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
-      table_name, index_table_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
-      CoarseMonoClock::now() + kMaxWait, 50ms));
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  perm = ASSERT_RESULT(client_->GetIndexPermissions(table_name, index_table_name2));
+  if (perm != IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE) {
+    ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
+    perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, index_table_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
+        CoarseMonoClock::now() + kExpectedDuration, 50ms));
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  }
   LOG(INFO) << "Index " << index_table_name2.ToString()
             << " created to INDEX_PERM_READ_WRITE_AND_DELETE";
 
@@ -2205,9 +2220,9 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
     auto session = CHECK_RESULT(driver_->CreateSession());
     auto prepared = ASSERT_RESULT(table.PrepareInsert(&session, 10s));
     int32_t key = 0;
-    constexpr int32_t kMaxKeys = 10000;
+    constexpr int32_t kNumKeys = 10000;
     while (!stop) {
-      key = (key + 1) % kMaxKeys;
+      key = (key + 1) % kNumKeys;
       auto statement = prepared.Bind();
       ColumnsType tuple(key, key);
       table.BindInsert(&statement, tuple);

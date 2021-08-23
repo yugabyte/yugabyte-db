@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -29,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -264,7 +266,7 @@ public class Util {
     try {
       return mapper.readTree(inputString);
     } catch (IOException e) {
-      throw new RuntimeException("Shell Response message is not a valid Json.");
+      throw new RuntimeException("I/O error reading json");
     }
   }
 
@@ -465,5 +467,61 @@ public class Util {
 
   public static String doubleToString(double value) {
     return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
+  }
+
+  // This will help us in insertion of set of keys in locked synchronized way as no
+  // extraction/deletion action should be performed on RunTimeConfig object during the process.
+  public static synchronized void setLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
+    configKeysMap.forEach(
+        (key, value) -> {
+          config.setValue(key, value);
+        });
+  }
+
+  // This will help us in extraction of set of keys in locked synchronized way as no
+  // insertion/deletion action should be performed on RunTimeConfig object during the process.
+  public static synchronized Map<String, String> getLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, List<String> configKeys) {
+    Map<String, String> configKeysMap = new HashMap<>();
+    configKeys.forEach((key) -> configKeysMap.put(key, config.getString(key)));
+    return configKeysMap;
+  }
+
+  // This will help us in deletion of set of keys in locked synchronized way as no
+  // insertion/extraction action should be performed on RunTimeConfig object during the process.
+  public static synchronized void deleteLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, List<String> configKeys) {
+    configKeys.forEach(
+        (key) -> {
+          if (config.hasPath(key)) {
+            config.deleteEntry(key);
+          }
+        });
+  }
+
+  /** deleteDirectory deletes entire directory recursively. */
+  public static boolean deleteDirectory(File directoryToBeDeleted) {
+    File[] allContents = directoryToBeDeleted.listFiles();
+    if (allContents != null) {
+      for (File file : allContents) {
+        deleteDirectory(file);
+      }
+    }
+    return directoryToBeDeleted.delete();
+  }
+
+  /**
+   * Returns the Unix epoch timeStamp in microseconds provided the given timeStamp and it's format.
+   */
+  public static long microUnixTimeFromDateString(String timeStamp, String timeStampFormat)
+      throws ParseException {
+    SimpleDateFormat format = new SimpleDateFormat(timeStampFormat);
+    try {
+      long timeStampUnix = format.parse(timeStamp).getTime() * 1000L;
+      return timeStampUnix;
+    } catch (ParseException e) {
+      throw e;
+    }
   }
 }

@@ -79,7 +79,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
     backupTableParams = new BackupTableParams();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST105");
     backupTableParams.storageConfigUUID = customerConfig.configUUID;
     defaultBackup = Backup.create(defaultCustomer.uuid, backupTableParams);
     defaultBackup.setTaskUUID(taskUUID);
@@ -222,7 +222,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testRestoreBackupWithoutStorageLocation() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
     Backup.create(defaultCustomer.uuid, bp);
@@ -276,7 +276,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testRestoreBackupWithValidParams() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST3");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
     Backup b = Backup.create(defaultCustomer.uuid, bp);
@@ -327,7 +327,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   // cause us to return
   @Test
   public void testRestoreBackupRequestTooLarge() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
     Backup.create(defaultCustomer.uuid, bp);
@@ -355,7 +355,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteBackup() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
     bp.universeUUID = defaultUniverse.universeUUID;
