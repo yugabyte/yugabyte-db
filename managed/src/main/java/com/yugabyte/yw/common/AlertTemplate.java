@@ -283,7 +283,7 @@ public enum AlertTemplate {
       "DB node file descriptors usage",
       "Node file descriptors usage percentage is above threshold",
       "count by (universe_uuid) (ybp_health_check_used_fd_pct{"
-          + "universe_uuid=\"__universeUuid__\"} * 100 "
+          + "universe_uuid=\"__universeUuid__\"} "
           + "{{ query_condition }} {{ query_threshold }})",
       "Node file descriptors usage for universe '{{ $labels.target_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",

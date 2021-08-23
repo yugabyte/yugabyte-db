@@ -35,6 +35,7 @@ YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
 YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
 VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
 VM_CLIENT_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/root.crt")
+VM_CLIENT_ROOT_CERT_FILE_ALTERNATIVE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/ca.crt")
 VM_CLIENT_NODE_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt")
 K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
 
@@ -335,6 +336,14 @@ class NodeChecker():
             False,
             days_till_expiry)
 
+    def get_client_to_node_ca_certificate_path(self):
+        remote_cmd = 'if [ -f "{}" ]; then echo "{}"; elif [ -f "{}" ]; then echo "{}"; fi;'.\
+            format(VM_CLIENT_ROOT_CERT_FILE_PATH,
+                   VM_CLIENT_ROOT_CERT_FILE_PATH,
+                   VM_CLIENT_ROOT_CERT_FILE_ALTERNATIVE_PATH,
+                   VM_CLIENT_ROOT_CERT_FILE_ALTERNATIVE_PATH)
+        return self._remote_check_output(remote_cmd).strip()
+
     def check_node_to_node_ca_certificate_expiration(self):
         return self.check_certificate_expiration("Node To Node CA", VM_ROOT_CERT_FILE_PATH)
 
@@ -343,7 +352,8 @@ class NodeChecker():
         return self.check_certificate_expiration("Node To Node", cert_path)
 
     def check_client_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration("Client To Node CA", VM_CLIENT_ROOT_CERT_FILE_PATH)
+        return self.check_certificate_expiration(
+            "Client To Node CA", self.get_client_to_node_ca_certificate_path())
 
     def check_client_to_node_certificate_expiration(self):
         return self.check_certificate_expiration("Client To Node", VM_CLIENT_NODE_CERT_FILE_PATH)
@@ -516,10 +526,8 @@ class NodeChecker():
         if self.enable_tls_client:
             if self.is_k8s:
                 cert_file = K8S_CERT_FILE_PATH
-            elif self.root_and_client_root_ca_same:
-                cert_file = VM_ROOT_CERT_FILE_PATH
             else:
-                cert_file = VM_CLIENT_ROOT_CERT_FILE_PATH
+                cert_file = self.get_client_to_node_ca_certificate_path()
             protocols = re.split('\\W+', self.ssl_protocol or "")
             ssl_version = DEFAULT_SSL_VERSION
             for protocol in protocols:
@@ -809,9 +817,8 @@ def main():
                     coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
                     coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
                 if c.enable_tls_client:
-                    if not c.root_and_client_root_ca_same:
-                        coordinator.add_check(checker,
-                                              "check_client_to_node_ca_certificate_expiration")
+                    coordinator.add_check(
+                        checker, "check_client_to_node_ca_certificate_expiration")
                     coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
 
         entries = coordinator.run()
