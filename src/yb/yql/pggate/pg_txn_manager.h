@@ -80,7 +80,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op,
                                                   bool needs_pessimistic_locking = false);
 
-  void SetActiveSubTransaction(SubTransactionId id);
+  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
 
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 

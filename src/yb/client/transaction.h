@@ -193,11 +193,33 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // between application instances.
   static YBTransactionPtr Take(TransactionManager* manager, const TransactionMetadata& metadata);
 
-  void SetSubTransactionMetadata(const SubTransactionMetadata& subtransaction);
+  void SetActiveSubTransaction(SubTransactionId id);
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
+  bool HasSubTransactionState();
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
+};
+
+class YBSubTransaction {
+ public:
+  YBSubTransaction();
+
+  void SetActiveSubTransaction(SubTransactionId id);
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
+  const SubTransactionMetadata& get();
+
+ private:
+  SubTransactionMetadata sub_txn_;
+
+  // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
+  // the highest live subtransaction_id.
+  SubTransactionId highest_subtransaction_id_ = kMinSubTransactionId;
 };
 
 } // namespace client

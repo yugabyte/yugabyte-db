@@ -104,6 +104,27 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
 
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
 
+YBSubTransaction::YBSubTransaction() {}
+
+void YBSubTransaction::SetActiveSubTransaction(SubTransactionId id) {
+  sub_txn_.subtransaction_id = id;
+  highest_subtransaction_id_ = std::max(highest_subtransaction_id_, id);
+}
+
+CHECKED_STATUS YBSubTransaction::RollbackSubTransaction(SubTransactionId id) {
+  // We should abort the range [id, sub_txn_.highest_subtransaction_id]. It's possible that we
+  // have created and released savepoints, such that there have been writes with a
+  // subtransaction_id greater than sub_txn_.subtransaction_id, and those should be aborted as
+  // well.
+  SCHECK_GE(
+    highest_subtransaction_id_, id,
+    InternalError,
+    "Attempted to rollback to non-existent savepoint.");
+  return sub_txn_.aborted.SetRange(id, highest_subtransaction_id_);
+}
+
+const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
+
 class YBTransaction::Impl final {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction)
@@ -295,8 +316,10 @@ class YBTransaction::Impl final {
     }
 
     ops_info->metadata = {
-      metadata_,
-      subtransaction_ ? boost::make_optional(*subtransaction_) : boost::none,
+      .transaction = metadata_,
+      .subtransaction = subtransaction_opt_ != boost::none
+          ? boost::make_optional(subtransaction_opt_->get())
+          : boost::none,
     };
 
     return true;
@@ -624,8 +647,22 @@ class YBTransaction::Impl final {
     RequestStatusTablet(TransactionRpcDeadline());
   }
 
-  void SetSubTransactionMetadata(const SubTransactionMetadata& subtransaction) {
-    subtransaction_ = &subtransaction;
+  void SetActiveSubTransaction(SubTransactionId id) {
+    if (subtransaction_opt_ == boost::none) {
+      subtransaction_opt_ = boost::make_optional(YBSubTransaction());
+    }
+    return subtransaction_opt_->SetActiveSubTransaction(id);
+  }
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id) {
+    SCHECK(
+        subtransaction_opt_ != boost::none, InternalError,
+        "Attempted to rollback to savepoint before creating any savepoints.");
+    return subtransaction_opt_->RollbackSubTransaction(id);
+  }
+
+  bool HasSubTransactionState() {
+    return subtransaction_opt_ != boost::none;
   }
 
  private:
@@ -710,8 +747,8 @@ class YBTransaction::Impl final {
       return;
     }
 
-    if (subtransaction_) {
-      subtransaction_->aborted.ToPB(state.mutable_aborted()->mutable_set());
+    if (subtransaction_opt_ != boost::none) {
+      subtransaction_opt_->get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
     manager_->rpcs().RegisterAndStart(
@@ -1120,9 +1157,8 @@ class YBTransaction::Impl final {
   TransactionMetadata metadata_;
   ConsistentReadPoint read_point_;
 
-  // Pointer to SubTransactionMetadata tracking savepoint-related state for the scope of this
-  // transaction.
-  const SubTransactionMetadata* subtransaction_ = nullptr;
+  // Metadata tracking savepoint-related state for the scope of this transaction.
+  boost::optional<YBSubTransaction> subtransaction_opt_ = boost::none;
 
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
@@ -1321,8 +1357,16 @@ YBTransactionPtr YBTransaction::Take(
   return result;
 }
 
-void YBTransaction::SetSubTransactionMetadata(const SubTransactionMetadata& subtransaction) {
-  return impl_->SetSubTransactionMetadata(subtransaction);
+void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
+  return impl_->SetActiveSubTransaction(id);
+}
+
+Status YBTransaction::RollbackSubTransaction(SubTransactionId id) {
+  return impl_->RollbackSubTransaction(id);
+}
+
+bool YBTransaction::HasSubTransactionState() {
+  return impl_->HasSubTransactionState();
 }
 
 } // namespace client
