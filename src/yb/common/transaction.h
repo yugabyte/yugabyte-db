@@ -216,22 +216,14 @@ using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
 struct SubTransactionMetadata {
   SubTransactionId subtransaction_id = kMinSubTransactionId;
   AbortedSubTransactionSet aborted;
-  // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
-  // the highest live subtransaction_id.
-  SubTransactionId highest_subtransaction_id = kMinSubTransactionId;
 
-  // This will lose highest_subtransaction_id, so SubTransactionMetadata::FromPB(stm.ToPB) is
-  // not always equal to stm for `SubTransactionMetadata stm`.
-  // TODO: refactor this to something like
-  // `SubTransactionMetadataWithHighest : public SubTransactionMetadata`.
-  // See https://github.com/yugabyte/yugabyte-db/issues/9593.
   void ToPB(SubTransactionMetadataPB* dest) const;
 
   static Result<SubTransactionMetadata> FromPB(
       const SubTransactionMetadataPB& source);
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(subtransaction_id, highest_subtransaction_id, aborted);
+    return YB_STRUCT_TO_STRING(subtransaction_id, aborted);
   }
 
   // Returns true if this is the default state, i.e. default subtransaction_id. This indicates

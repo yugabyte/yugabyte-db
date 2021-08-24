@@ -1258,8 +1258,9 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
   RETURN_NOT_OK(FlushBufferedOperations());
-  pg_txn_manager_->SetActiveSubTransaction(id);
-  return Status::OK();
+  RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(
+      IsReadOnlyOperation::kFalse, IsPessimisticLockRequired::kFalse));
+  return pg_txn_manager_->SetActiveSubTransaction(id);
 }
 
 Status PgSession::RollbackSubTransaction(SubTransactionId id) {

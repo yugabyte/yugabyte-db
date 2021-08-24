@@ -170,7 +170,7 @@ class AwsCloud(AbstractCloud):
         metadata_subset = self._subset_region_data(per_region_meta)
         # Override region CIDR info, if any.
         for k in metadata_subset:
-            custom_cidr = per_region_meta[k]["vpcCidr"]
+            custom_cidr = per_region_meta[k].get("vpcCidr")
             if custom_cidr is not None:
                 cidr_pieces = custom_cidr.split(".")
                 if len(cidr_pieces) != 4:
