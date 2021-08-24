@@ -2097,11 +2097,22 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
     return tablet_ids;
   }
 
-  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx) {
+  CHECKED_STATUS WaitForTabletsExcept(
+      int num_tablets, int tserver_idx, const TabletId& exclude_tablet) {
     return WaitFor([&]() -> Result<bool> {
       auto res = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
-      return res.size() == num_tablets;
+      int count = 0;
+      for (auto& tablet_id : res) {
+        if (tablet_id != exclude_tablet) {
+          count++;
+        }
+      }
+      return count == num_tablets;
     }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets));
+  }
+
+  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx) {
+    return WaitForTabletsExcept(num_tablets, tserver_idx, "");
   }
 
   CHECKED_STATUS WaitForTablets(int num_tablets) {
@@ -2360,9 +2371,9 @@ TEST_F(TabletSplitExternalMiniClusterITest, RemoteBootstrapsFromNodeWithUncommit
   ASSERT_OK(cluster_->WaitForTabletsRunning(leader, 20s * kTimeMultiplier));
   ASSERT_OK(cluster_->WaitForTabletsRunning(server_to_bootstrap, 20s * kTimeMultiplier));
   CHECK_OK(server_to_kill->Restart());
-  ASSERT_OK(WaitForTablets(3, server_to_bootstrap_idx));
-  ASSERT_OK(WaitForTablets(3, leader_idx));
-  ASSERT_OK(WaitForTablets(3, server_to_kill_idx));
+  ASSERT_OK(WaitForTabletsExcept(2, server_to_bootstrap_idx, tablet_id));
+  ASSERT_OK(WaitForTabletsExcept(2, leader_idx, tablet_id));
+  ASSERT_OK(WaitForTabletsExcept(2, server_to_kill_idx, tablet_id));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return WriteRows().ok();
