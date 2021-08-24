@@ -367,3 +367,11 @@ INSERT INTO temptest VALUES (101, 201, 301), (101, 201, 301);
 ERROR:  duplicate key value violates unique constraint "temptest_pkey"
 DETAIL:  Key (k)=(101) already exists.
 DROP TABLE temptest;
+-- test temp table with primary index scan.
+CREATE TEMP TABLE temptest (a INT PRIMARY KEY);
+EXPLAIN (COSTS OFF) SELECT a FROM temptest WHERE a = 1;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Only Scan using temptest_pkey on temptest
+   Index Cond: (a = 1)
+(2 rows)

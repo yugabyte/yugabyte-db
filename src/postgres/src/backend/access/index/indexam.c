@@ -640,7 +640,7 @@ index_fetch_heap(IndexScanDesc scan)
 	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
 	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(scan->heapRelation))
 	{
 		if (scan->xs_hitup != 0)
 			return scan->xs_hitup;

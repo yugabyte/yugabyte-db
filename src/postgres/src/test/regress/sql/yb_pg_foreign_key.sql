@@ -1042,7 +1042,6 @@ create temp table t1 (a integer primary key, b text);
 create temp table t2 (a integer primary key, b integer references t1);
 create rule r1 as on delete to t1 do delete from t2 where t2.b = old.a;
 
--- TODO(jason): fix expected output when issue #2220 is closed or closing.
 explain (costs off) delete from t1 where a = 1;
 delete from t1 where a = 1;
 
