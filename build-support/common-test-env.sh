@@ -1850,11 +1850,13 @@ run_python_doctest() {
 
 run_python_tests() {
   activate_virtualenv
+  check_python_script_syntax
   (
     export PYTHONPATH=$YB_SRC_ROOT/python
     run_python_doctest
+    log "Invoking the codecheck tool"
+    python3 -m codecheck
   )
-  check_python_script_syntax
 }
 
 should_run_java_test_methods_separately() {

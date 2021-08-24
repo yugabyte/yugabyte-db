@@ -18,17 +18,18 @@
 
 import sys
 
-line_length = 0
-buffer = ''
-for line in sys.stdin:
-    for c in line.rstrip():
-        if c.isspace() and line_length > 80:
-            print(buffer + c + '\\\\')
-            buffer = ''
-            line_length = 0
-        else:
-            buffer += c
-            line_length += 1
+if __name__ == '__main__':
+    line_length = 0
+    buffer = ''
+    for line in sys.stdin:
+        for c in line.rstrip():
+            if c.isspace() and line_length > 80:
+                print(buffer + c + '\\\\')
+                buffer = ''
+                line_length = 0
+            else:
+                buffer += c
+                line_length += 1
 
-if buffer:
-    sys.stdout.write(buffer)
+    if buffer:
+        sys.stdout.write(buffer)

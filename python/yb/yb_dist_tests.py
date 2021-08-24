@@ -24,6 +24,7 @@ import sys
 import tempfile
 import atexit
 import glob
+import argparse
 
 from functools import total_ordering
 
@@ -31,7 +32,7 @@ from yb import command_util
 from yb.common_util import get_build_type_from_build_root, \
                            get_compiler_type_from_build_root, \
                            is_macos  # nopep8
-
+from typing import Optional, List, Set, Dict, cast
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
 # a "test descriptor" (a string that identifies a particular test).
@@ -46,7 +47,7 @@ TEST_DESCRIPTOR_ATTEMPT_PREFIX = TEST_DESCRIPTOR_SEPARATOR + 'attempt_'
 TEST_DESCRIPTOR_ATTEMPT_INDEX_RE = re.compile(
     r'^(.*)' + TEST_DESCRIPTOR_ATTEMPT_PREFIX + r'(\d+)$')
 
-global_conf = None
+global_conf: Optional['GlobalTestConfig'] = None
 
 CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC = 10
 
@@ -69,7 +70,15 @@ class TestDescriptor:
     - A Java test class source path (including .java/.scala extension) relative to the "java"
       directory in the YugabyteDB source tree.
     """
-    def __init__(self, descriptor_str):
+    descriptor_str_without_attempt_index: str
+    attempt_index: int
+    is_jvm_based: bool
+    language: str
+    args_for_run_test: str
+    error_output_path: str
+
+    def __init__(self, descriptor_str: str) -> None:
+        assert global_conf is not None
         self.descriptor_str = descriptor_str
 
         attempt_index_match = TEST_DESCRIPTOR_ATTEMPT_INDEX_RE.match(descriptor_str)
@@ -104,14 +113,23 @@ class TestDescriptor:
             else:
                 # The "test descriptors string " is the Java source file path relative to the "java"
                 # directory.
-                mvn_module, package_and_class_with_slashes = JAVA_TEST_DESCRIPTOR_RE.match(
-                    self.descriptor_str_without_attempt_index).groups()
+                java_descriptor_match = JAVA_TEST_DESCRIPTOR_RE.match(
+                    self.descriptor_str_without_attempt_index)
+                if java_descriptor_match is None:
+                    raise ValueError(
+                        f"Java/Scala test descriptor {self.descriptor_str_without_attempt_index} "
+                        f"could not be parsed using the regular expression "
+                        f"{JAVA_TEST_DESCRIPTOR_RE}")
+
+                mvn_module, package_and_class_with_slashes = java_descriptor_match.groups()
 
                 package_and_class = package_and_class_with_slashes.replace('/', '.')
                 self.args_for_run_test = "{} {}".format(mvn_module, package_and_class)
                 output_file_name = package_and_class
         else:
             self.language = 'C++'
+            test_name: Optional[str]
+
             # This is a C++ test.
             if TEST_DESCRIPTOR_SEPARATOR in self.descriptor_str_without_attempt_index:
                 rel_test_binary, test_name = self.descriptor_str_without_attempt_index.split(
@@ -135,28 +153,30 @@ class TestDescriptor:
         self.error_output_path = os.path.join(
                 global_conf.build_root, 'yb-test-logs', output_file_name + '__error.log')
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.attempt_index == 1:
             return self.descriptor_str_without_attempt_index
-        return "{}{}{}".format[
+        return ''.join([
             self.descriptor_str_without_attempt_index,
             TEST_DESCRIPTOR_ATTEMPT_PREFIX,
-            self.attempt_index
-            ]
+            str(self.attempt_index)
+        ])
 
-    def str_for_file_name(self):
+    def str_for_file_name(self) -> str:
         return str(self).replace('/', '__').replace(':', '_')
 
-    def __eq__(self, other):
-        return self.descriptor_str == other.descriptor_str
+    def __eq__(self, other: object) -> bool:
+        other_descriptor = cast(TestDescriptor, other)
+        return self.descriptor_str == other_descriptor.descriptor_str
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         return not (self == other)
 
-    def __lt__(self, other):
-        return self.descriptor_str < other.descriptor_str
+    def __lt__(self, other: object) -> bool:
+        other_descriptor = cast(TestDescriptor, other)
+        return self.descriptor_str < other_descriptor.descriptor_str
 
-    def with_attempt_index(self, attempt_index):
+    def with_attempt_index(self, attempt_index: int) -> 'TestDescriptor':
         assert attempt_index >= 1
         copied = copy.copy(self)
         copied.attempt_index = attempt_index
@@ -167,14 +187,23 @@ class TestDescriptor:
 
 
 class GlobalTestConfig:
-    def __init__(self,
-                 build_root,
-                 build_type,
-                 yb_src_root,
-                 archive_for_workers,
-                 rel_build_root,
-                 archive_sha256sum,
-                 compiler_type):
+    build_root: str
+    build_type: str
+    yb_src_root: str
+    archive_for_workers: Optional[str]
+    rel_build_root: str
+    archive_sha256sum: Optional[str]
+    compiler_type: str
+
+    def __init__(
+            self,
+            build_root: str,
+            build_type: str,
+            yb_src_root: str,
+            archive_for_workers: Optional[str],
+            rel_build_root: str,
+            archive_sha256sum: Optional[str],
+            compiler_type: str) -> None:
         self.build_root = os.path.abspath(build_root)
         self.build_type = build_type
         self.yb_src_root = yb_src_root
@@ -183,10 +212,11 @@ class GlobalTestConfig:
         self.archive_sha256sum = archive_sha256sum
         self.compiler_type = compiler_type
 
-    def get_run_test_script_path(self):
+    def get_run_test_script_path(self) -> str:
         return os.path.join(self.yb_src_root, 'build-support', 'run-test.sh')
 
-    def set_env_on_spark_worker(self, propagated_env_vars={}):
+    def set_env_on_spark_worker(
+            self, propagated_env_vars: Dict[str, str] = {}) -> None:
         """
         Used on the distributed worker side (inside functions that run on Spark) to configure the
         necessary environment.
@@ -209,7 +239,7 @@ TestResult = collections.namedtuple(
          'num_errors_copying_artifacts'])
 
 
-def set_global_conf_from_args(args):
+def set_global_conf_from_args(args: argparse.Namespace) -> GlobalTestConfig:
     build_root = os.path.realpath(args.build_root)
 
     # This module is expected to be under python/yb.
@@ -260,7 +290,7 @@ def set_global_conf_from_args(args):
     return global_conf
 
 
-def set_global_conf_from_dict(global_conf_dict):
+def set_global_conf_from_dict(global_conf_dict: Dict[str, str]) -> GlobalTestConfig:
     """
     This is used in functions that run on Spark. We use a dictionary to pass the configuration from
     the main program to distributed workers.
@@ -268,9 +298,9 @@ def set_global_conf_from_dict(global_conf_dict):
     global global_conf
     try:
         global_conf = GlobalTestConfig(**global_conf_dict)
-    except TypeError as ex:
-        raise TypeError("Cannot set global configuration from dictionary %s: %s" % (
-            repr(global_conf_dict), ex.message))
+    except Exception as ex:
+        logging.exception("Cannot set global configuration from dictionary %s" % global_conf_dict)
+        raise ex
 
     return global_conf
 
@@ -311,7 +341,7 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
 ]
 
 
-def find_rel_java_paths_to_archive(yb_src_root):
+def find_rel_java_paths_to_archive(yb_src_root: str) -> List[str]:
     paths = []
     for ent in [False, True]:
         path_components = []
@@ -364,7 +394,8 @@ def validate_mvn_local_repo(mvn_local_repo: str) -> None:
         logging.info(f"All Maven plugin patterns were found in local repo {mvn_local_repo}")
 
 
-def create_archive_for_workers():
+def create_archive_for_workers() -> None:
+    assert global_conf is not None
     dest_path = global_conf.archive_for_workers
     if dest_path is None:
         return
@@ -448,12 +479,12 @@ def create_archive_for_workers():
 # These SHA256-related functions are duplicated in download_and_extract_archive.py, because that
 # script should not depend on any Python modules.
 
-def validate_sha256sum(checksum_str):
+def validate_sha256sum(checksum_str: str) -> None:
     if not re.match(r'^[0-9a-f]{64}$', checksum_str):
         raise ValueError("Invalid SHA256 checksum: '%s', expected 64 hex characters", checksum_str)
 
 
-def compute_sha256sum(file_path):
+def compute_sha256sum(file_path: str) -> str:
     cmd_line = None
     if sys.platform.startswith('linux'):
         cmd_line = ['sha256sum', file_path]
@@ -467,30 +498,32 @@ def compute_sha256sum(file_path):
     return checksum_str
 
 
-def compute_archive_sha256sum():
+def compute_archive_sha256sum() -> None:
+    assert global_conf is not None
     if global_conf.archive_for_workers is not None:
         global_conf.archive_sha256sum = compute_sha256sum(global_conf.archive_for_workers)
         logging.info("SHA256 checksum of archive %s: %s" % (
             global_conf.archive_for_workers, global_conf.archive_sha256sum))
 
 
-def to_real_nfs_path(path):
+def to_real_nfs_path(path: str) -> str:
     assert path.startswith('/'), "Expecting the path to be absolute: %s" % path
     path = os.path.abspath(path)
     return '/real_%s' % path[1:]
 
 
-def get_tmp_filename(prefix='', suffix='', auto_remove=False):
+def get_tmp_filename(prefix: str = '', suffix: str = '', auto_remove: bool = False) -> str:
     fd, file_path = tempfile.mkstemp(prefix=prefix, suffix=suffix)
     os.close(fd)
     os.remove(file_path)
     if auto_remove:
-        def cleanup():
+        def cleanup() -> None:
             if os.path.exists(file_path):
                 os.remove(file_path)
         atexit.register(cleanup)
     return file_path
 
 
-if __name__ == '__main__':
-    main()
+def get_global_conf() -> GlobalTestConfig:
+    assert global_conf is not None
+    return global_conf
