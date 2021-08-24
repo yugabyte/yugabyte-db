@@ -134,18 +134,18 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
-  "org.mindrot" % "jbcrypt" % "0.3m",
-  "org.postgresql" % "postgresql" % "9.4.1208",
+  "org.mindrot" % "jbcrypt" % "0.4",
+  "org.postgresql" % "postgresql" % "42.2.23",
   "commons-io" % "commons-io" % "2.4",
-  "org.apache.commons" % "commons-compress" % "1.20",
+  "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
-  "org.apache.httpcomponents" % "httpclient" % "4.5.2",
+  "org.apache.httpcomponents" % "httpclient" % "4.5.13",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
-  "org.yaml" % "snakeyaml" % "1.17",
+  "org.yaml" % "snakeyaml" % "1.29",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
+  "org.springframework.security" % "spring-security-core" % "5.3.10.RELEASE",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.11.907",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
@@ -168,7 +168,7 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "org.apache.velocity" % "velocity" % "1.7",
-  "org.apache.velocity" % "velocity-tools" % "2.0",
+  "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
@@ -338,7 +338,16 @@ libraryDependencies ++= Seq(
   //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
-  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.8"
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10",
+  // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
+  "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8",
+  "io.netty" % "netty-handler" % "4.1.66.Final",
+  "io.netty" % "netty-codec-http" % "4.1.66.Final",
+  "io.netty" % "netty" % "3.10.6.Final",
+  "com.cronutils" % "cron-utils" % "9.1.5",
+  "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
+  "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
