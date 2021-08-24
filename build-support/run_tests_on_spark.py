@@ -64,14 +64,13 @@ import subprocess
 import sys
 import time
 import traceback
-import tempfile
 import errno
 import signal
 from datetime import datetime
 
 from collections import defaultdict
 
-from typing import List
+from typing import List, Dict, Set, Tuple, Optional, Any, cast
 
 BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -86,12 +85,12 @@ TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
 
 
-def wait_for_path_to_exist(target_path):
+def wait_for_path_to_exist(target_path: str) -> None:
     if os.path.exists(target_path):
         return
     waited_for_sec = 0
     start_time_sec = time.time()
-    printed_msg_at_sec = 0
+    printed_msg_at_sec: float = 0.0
     MSG_PRINT_INTERVAL_SEC = 5.0
     TIMEOUT_SEC = 120
     while not os.path.exists(target_path):
@@ -114,8 +113,7 @@ def wait_for_path_to_exist(target_path):
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'python'))
 from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
-from yb.common_util import set_to_comma_sep_str, get_bool_env_var, is_macos  # noqa
-from yb.yb_dist_tests import TestDescriptor  # noqa
+from yb.common_util import set_to_comma_sep_str, is_macos  # noqa
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
@@ -177,21 +175,21 @@ SPARK_TASK_MAX_FAILURES = 100
 # Global variables. Some of these are used on the remote worker side.
 verbose = False
 g_spark_master_url_override = None
-propagated_env_vars = {}
+propagated_env_vars: Dict[str, str] = {}
 global_conf_dict = None
 spark_context = None
 archive_sha256sum = None
 
 
-def configure_logging():
+def configure_logging() -> None:
     log_level = logging.INFO
     logging.basicConfig(
         level=log_level,
         format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
 
 
-def is_pid_running(pid):
-    import psutil
+def is_pid_running(pid: int) -> bool:
+    import psutil  # type: ignore
     try:
         process = psutil.Process(pid)
         return process.status() != psutil.STATUS_ZOMBIE
@@ -200,7 +198,7 @@ def is_pid_running(pid):
         return False
 
 
-def delete_if_exists_log_errors(file_path):
+def delete_if_exists_log_errors(file_path: str) -> None:
     if os.path.exists(file_path):
         try:
             if os.path.isdir(file_path):
@@ -211,20 +209,20 @@ def delete_if_exists_log_errors(file_path):
             logging.error("Error deleting file %s: %s", file_path, os_error)
 
 
-def log_heading(msg):
+def log_heading(msg: str) -> None:
     logging.info('\n%s\n%s\n%s' % ('-' * 80, msg, '-' * 80))
 
 
 # Initializes the spark context. The details list will be incorporated in the Spark application
 # name visible in the Spark web UI.
-def init_spark_context(details=[]):
+def init_spark_context(details: List[str] = []) -> None:
     global spark_context
     if spark_context:
         return
     log_heading("Initializing Spark context")
-    global_conf = yb_dist_tests.global_conf
-    build_type = yb_dist_tests.global_conf.build_type
-    from pyspark import SparkContext
+    global_conf = yb_dist_tests.get_global_conf()
+    build_type = global_conf.build_type
+    from pyspark import SparkContext  # type: ignore
     SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
 
     spark_master_url = g_spark_master_url_override
@@ -232,7 +230,7 @@ def init_spark_context(details=[]):
         if is_macos():
             logging.info("This is macOS, using the macOS Spark cluster")
             spark_master_url = SPARK_URLS['macos']
-        elif yb_dist_tests.global_conf.build_type in ['asan', 'tsan']:
+        elif build_type in ['asan', 'tsan']:
             logging.info("Using a separate Spark cluster for ASAN and TSAN tests")
             spark_master_url = SPARK_URLS['linux_asan_tsan']
         else:
@@ -267,23 +265,23 @@ def init_spark_context(details=[]):
     log_heading("Initialized Spark context")
 
 
-def set_global_conf_for_spark_jobs():
+def set_global_conf_for_spark_jobs() -> None:
     global global_conf_dict
-    global_conf_dict = vars(yb_dist_tests.global_conf)
+    global_conf_dict = vars(yb_dist_tests.get_global_conf())
 
 
-def get_bash_path():
+def get_bash_path() -> str:
     if sys.platform == 'darwin':
         return '/usr/local/bin/bash'
     return '/bin/bash'
 
 
-def parallel_run_test(test_descriptor_str):
+def parallel_run_test(test_descriptor_str: str) -> yb_dist_tests.TestResult:
     """
     This is invoked in parallel to actually run tests.
     """
     global_conf = initialize_remote_task()
-    from yb import yb_dist_tests, command_util
+    from yb import yb_dist_tests
 
     wait_for_path_to_exist(global_conf.build_root)
 
@@ -321,7 +319,7 @@ def parallel_run_test(test_descriptor_str):
     # We could use "run_program" here, but it collects all the output in memory, which is not
     # ideal for a large amount of test log output. The "tee" part also makes the output visible in
     # the standard error of the Spark task as well, which is sometimes helpful for debugging.
-    def run_test():
+    def run_test() -> Tuple[int, float]:
         start_time_sec = time.time()
         error_log_dir_path = os.path.dirname(os.path.abspath(test_descriptor.error_output_path))
         if not os.path.isdir(error_log_dir_path):
@@ -468,22 +466,24 @@ def parallel_run_test(test_descriptor_str):
         os.umask(old_umask)
 
 
-def get_bash_shebang():
+def get_bash_shebang() -> str:
     # Prefer /usr/local/bin/bash as we install Bash 4+ there on macOS.
     if os.path.exists('/usr/local/bin/bash'):
         return '/usr/local/bin/bash'
     return '/usr/bin/env bash'
 
 
-def initialize_remote_task():
+# This is executed on a Spark executor as part of running a task.
+def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
     configure_logging()
 
+    assert global_conf_dict is not None
     global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
     global_conf.set_env_on_spark_worker(propagated_env_vars)
     if not global_conf.archive_for_workers:
         return global_conf
 
-    from pyspark import SparkFiles
+    from pyspark import SparkFiles  # type: ignore
     archive_name = os.path.basename(SparkFiles.get(global_conf.archive_for_workers))
     expected_archive_sha256sum = global_conf.archive_sha256sum
     assert expected_archive_sha256sum is not None
@@ -576,7 +576,7 @@ set -euo pipefail
     return global_conf
 
 
-def parallel_list_test_descriptors(rel_test_path):
+def parallel_list_test_descriptors(rel_test_path: str) -> List[str]:
     """
     This is invoked in parallel to list all individual tests within our C++ test programs. Without
     this, listing all gtest tests across 330 test programs might take about 5 minutes on TSAN and 2
@@ -623,8 +623,8 @@ def parallel_list_test_descriptors(rel_test_path):
     #    BloomStatsTestWithIter/1  # GetParam() = (true, false)
     #    BloomStatsTestWithIter/2  # GetParam() = (false, false)
 
-    current_test = None
-    test_descriptors = []
+    current_test: Optional[str] = None
+    test_descriptors: List[str] = []
     test_descriptor_prefix = rel_test_path + yb_dist_tests.TEST_DESCRIPTOR_SEPARATOR
     for line in prog_result.stdout.split("\n"):
         if ('Starting tracking the heap' in line or 'Dumping heap profile to' in line):
@@ -632,6 +632,7 @@ def parallel_list_test_descriptors(rel_test_path):
         line = line.rstrip()
         trimmed_line = HASH_COMMENT_RE.sub('', line.strip()).strip()
         if line.startswith('  '):
+            assert current_test is not None
             test_descriptors.append(test_descriptor_prefix + current_test + trimmed_line)
         else:
             current_test = trimmed_line
@@ -639,7 +640,7 @@ def parallel_list_test_descriptors(rel_test_path):
     return test_descriptors
 
 
-def get_username():
+def get_username() -> str:
     try:
         return os.getlogin()
     except OSError as ex:
@@ -652,7 +653,7 @@ def get_username():
             user_from_env = os.getenv('USER')
             if user_from_env:
                 return user_from_env
-            id_output = subprocess.check_output('id').strip()
+            id_output = subprocess.check_output('id').strip().decode('utf-8')
             ID_OUTPUT_RE = re.compile(r'^uid=\d+[(]([^)]+)[)]\s.*')
             match = ID_OUTPUT_RE.match(id_output)
             if match:
@@ -663,38 +664,47 @@ def get_username():
             raise ex
 
 
-def get_mac_shared_nfs(path):
+def get_mac_shared_nfs(path: str) -> str:
     LOCAL_PATH = "/Volumes/share"
     if not path.startswith(LOCAL_PATH):
         raise ValueError("Local path %s does not start with expected prefix '%s'.\n" %
                          (path, LOCAL_PATH))
     relpath = path[len(LOCAL_PATH):]
-    return "/Volumes/net/v1/" + os.environ.get('YB_BUILD_HOST') + relpath
+    yb_build_host = os.environ.get('YB_BUILD_HOST')
+    if yb_build_host is None:
+        raise ValueError("The YB_BUILD_HOST environment variable is not set")
+    return "/Volumes/net/v1/" + yb_build_host + relpath
 
 
-def get_jenkins_job_name():
-    return os.environ.get('JOB_NAME', None)
+def get_jenkins_job_name() -> Optional[str]:
+    return os.environ.get('JOB_NAME')
 
 
-def get_jenkins_job_name_path_component():
+def get_jenkins_job_name_path_component() -> str:
     jenkins_job_name = get_jenkins_job_name()
     if jenkins_job_name:
         return "job_" + jenkins_job_name
-    else:
-        return "unknown_jenkins_job"
+
+    return "unknown_jenkins_job"
 
 
-def get_report_parent_dir(report_base_dir):
+def get_report_parent_dir(report_base_dir: str) -> str:
     """
     @return a directory to store build report, relative to the given base directory. Path components
             are based on build type, Jenkins job name, etc.
     """
-    return os.path.join(report_base_dir,
-                        yb_dist_tests.global_conf.build_type,
-                        get_jenkins_job_name_path_component())
+    global_conf = yb_dist_tests.get_global_conf()
+    return os.path.join(
+        report_base_dir,
+        global_conf.build_type,
+        get_jenkins_job_name_path_component())
 
 
-def save_json_to_paths(short_description, json_data, output_paths, should_gzip=False):
+def save_json_to_paths(
+        short_description: str,
+        json_data: Any,
+        output_paths: List[str],
+        should_gzip: bool = False) -> None:
     """
     Saves the given JSON-friendly data structure to the list of paths (exact copy at each path),
     optionally gzipping the output.
@@ -710,17 +720,21 @@ def save_json_to_paths(short_description, json_data, output_paths, should_gzip=F
         final_output_path = output_path + ('.gz' if should_gzip else '')
         logging.info("Saving {} to {}".format(short_description, final_output_path))
         if should_gzip:
-            with gzip.open(final_output_path, 'wb') as output_file:
-                output_file.write(json_data_str.encode('utf-8'))
+            with gzip.open(final_output_path, 'wb') as output_file_plain:
+                output_file_plain.write(json_data_str.encode('utf-8'))
         else:
-            with open(final_output_path, 'w') as output_file:
-                output_file.write(json_data_str)
+            with open(final_output_path, 'w') as output_file_gzip:
+                output_file_gzip.write(json_data_str)
 
 
-def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeeded,
-                save_to_build_dir=False):
+def save_report(
+        report_base_dir: str,
+        results: List[yb_dist_tests.TestResult],
+        total_elapsed_time_sec: float,
+        spark_succeeded: bool,
+        save_to_build_dir: bool = False) -> None:
     historical_report_path = None
-    global_conf = yb_dist_tests.global_conf
+    global_conf = yb_dist_tests.get_global_conf()
 
     if report_base_dir:
         historical_report_parent_dir = get_report_parent_dir(report_base_dir)
@@ -742,12 +756,12 @@ def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeede
 
         historical_report_path = os.path.join(
                 historical_report_parent_dir,
-                '{}_{}__user_{}__build_{}.json'.format(
+                '{}.json'.format('_'.join([
                     global_conf.build_type,
                     time.strftime('%Y-%m-%dT%H_%M_%S'),
                     username,
                     get_jenkins_job_name_path_component(),
-                    os.environ.get('BUILD_ID', 'unknown')))
+                    os.environ.get('BUILD_ID', 'unknown')])))
 
     test_reports_by_descriptor = {}
     for result in results:
@@ -789,7 +803,7 @@ def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeede
         save_json_to_paths('short build report', report, [short_report_path], should_gzip=False)
 
 
-def is_one_shot_test(rel_binary_path):
+def is_one_shot_test(rel_binary_path: str) -> bool:
     if rel_binary_path in ONE_SHOT_TESTS:
         return True
     for non_gtest_test in ONE_SHOT_TESTS:
@@ -798,13 +812,14 @@ def is_one_shot_test(rel_binary_path):
     return False
 
 
-def collect_cpp_tests(cpp_test_program_filter: List[str]) -> List[yb_dist_tests.TestDescriptor]:
+def collect_cpp_tests(
+        cpp_test_program_filter_list: List[str]) -> List[yb_dist_tests.TestDescriptor]:
     """
     Collect C++ test programs to run.
-    @param cpp_test_program_filter: a list of C++ test program names to be used as a filter
+    @param cpp_test_program_filter_list: a list of C++ test program names to be used as a filter
     """
 
-    global_conf = yb_dist_tests.global_conf
+    global_conf = yb_dist_tests.get_global_conf()
     logging.info("Collecting the list of C++ test programs (locally; not a Spark job)")
     start_time_sec = time.time()
     build_root_realpath = os.path.realpath(global_conf.build_root)
@@ -835,8 +850,8 @@ def collect_cpp_tests(cpp_test_program_filter: List[str]) -> List[yb_dist_tests.
     logging.info("Collected %d test programs in %.2f sec" % (
         len(test_programs), elapsed_time_sec))
 
-    if cpp_test_program_filter:
-        cpp_test_program_filter = set(cpp_test_program_filter)
+    if cpp_test_program_filter_list:
+        cpp_test_program_filter = set(cpp_test_program_filter_list)
         unfiltered_test_programs = test_programs
 
         # test_program contains test paths relative to the root directory (including directory
@@ -891,8 +906,9 @@ def collect_cpp_tests(cpp_test_program_filter: List[str]) -> List[yb_dist_tests.
 
     # Use fewer "slices" (tasks) than there are test programs, in hope to get some batching.
     num_slices = (len(test_programs) + 1) / 2
+    assert spark_context is not None
     all_test_descriptor_lists = run_spark_action(
-        lambda: spark_context.parallelize(
+        lambda: spark_context.parallelize(  # type: ignore
             test_programs, numSlices=num_slices).map(parallel_list_test_descriptors).collect()
     )
     elapsed_time_sec = time.time() - start_time_sec
@@ -916,21 +932,22 @@ def collect_cpp_tests(cpp_test_program_filter: List[str]) -> List[yb_dist_tests.
     return [yb_dist_tests.TestDescriptor(s) for s in test_descriptor_strs]
 
 
-def is_writable(dir_path):
+def is_writable(dir_path: str) -> bool:
     return os.access(dir_path, os.W_OK)
 
 
-def is_parent_dir_writable(file_path):
+def is_parent_dir_writable(file_path: str) -> bool:
     return is_writable(os.path.dirname(file_path))
 
 
-def fatal_error(msg):
+def fatal_error(msg: str) -> None:
     logging.error("Fatal: " + msg)
     raise RuntimeError(msg)
 
 
-def get_java_test_descriptors():
-    java_test_list_path = os.path.join(yb_dist_tests.global_conf.build_root, 'java_test_list.txt')
+def get_java_test_descriptors() -> List[yb_dist_tests.TestDescriptor]:
+    java_test_list_path = os.path.join(
+        yb_dist_tests.get_global_conf().build_root, 'java_test_list.txt')
     if not os.path.exists(java_test_list_path):
         raise IOError(
             "Java test list not found at '%s'. Please run ./yb_build.sh --collect-java-tests to "
@@ -949,7 +966,7 @@ def get_java_test_descriptors():
     return java_test_descriptors
 
 
-def collect_tests(args):
+def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor]:
     test_conf = {}
     if args.test_conf:
         with open(args.test_conf) as test_conf_file:
@@ -967,7 +984,7 @@ def collect_tests(args):
     cpp_test_descriptors = []
     if args.run_cpp_tests:
         cpp_test_programs = test_conf.get('cpp_test_programs')
-        cpp_test_descriptors = collect_cpp_tests(cpp_test_programs)
+        cpp_test_descriptors = collect_cpp_tests(cast(List[str], cpp_test_programs))
 
     java_test_descriptors = []
     if args.run_java_tests:
@@ -992,7 +1009,7 @@ def collect_tests(args):
     return test_descriptors
 
 
-def load_test_list(test_list_path):
+def load_test_list(test_list_path: str) -> List[yb_dist_tests.TestDescriptor]:
     logging.info("Loading the list of tests to run from %s", test_list_path)
     test_descriptors = []
     with open(test_list_path, 'r') as input_file:
@@ -1003,7 +1020,7 @@ def load_test_list(test_list_path):
     return test_descriptors
 
 
-def propagate_env_vars():
+def propagate_env_vars() -> None:
     num_propagated = 0
     for env_var_name in JENKINS_ENV_VARS:
         if env_var_name in os.environ:
@@ -1019,8 +1036,8 @@ def propagate_env_vars():
     logging.info("Number of propagated environment variables: %s", num_propagated)
 
 
-def run_spark_action(action):
-    import py4j
+def run_spark_action(action: Any) -> Any:
+    import py4j  # type: ignore
     try:
         results = action()
     except py4j.protocol.Py4JJavaError:
@@ -1030,7 +1047,7 @@ def run_spark_action(action):
     return results
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description='Run tests on Spark.')
     parser.add_argument('--verbose', action='store_true',
@@ -1138,11 +1155,12 @@ def main():
         fatal_error("File specified by --test_list does not exist or is not a file: '{}'".format(
             test_list_path))
 
+    global_conf = yb_dist_tests.get_global_conf()
     if ('YB_MVN_LOCAL_REPO' not in os.environ and
             args.run_java_tests and
             args.send_archive_to_workers):
         os.environ['YB_MVN_LOCAL_REPO'] = os.path.join(
-                yb_dist_tests.global_conf.build_root, 'm2_repository')
+                global_conf.build_root, 'm2_repository')
         logging.info("Automatically setting YB_MVN_LOCAL_REPO to %s",
                      os.environ['YB_MVN_LOCAL_REPO'])
 
@@ -1162,10 +1180,12 @@ def main():
     # This needs to be done before Spark context initialization, which will happen as we try to
     # collect all gtest tests in all C++ test programs.
     if args.send_archive_to_workers:
-        archive_exists = os.path.exists(yb_dist_tests.global_conf.archive_for_workers)
+        archive_exists = (
+            global_conf.archive_for_workers is not None and
+            os.path.exists(global_conf.archive_for_workers))
         if args.recreate_archive_for_workers or not archive_exists:
-            archive_sha_path = os.path.join(yb_dist_tests.global_conf.yb_src_root,
-                                            'extracted_from_archive.sha256')
+            archive_sha_path = os.path.join(
+                global_conf.yb_src_root, 'extracted_from_archive.sha256')
             if os.path.exists(archive_sha_path):
                 os.remove(archive_sha_path)
 
@@ -1174,8 +1194,9 @@ def main():
             yb_dist_tests.compute_archive_sha256sum()
 
             # Local host may also be worker, so leave expected checksum here after archive created.
+            assert global_conf.archive_sha256sum is not None
             with open(archive_sha_path, 'w') as archive_sha:
-                archive_sha.write(yb_dist_tests.global_conf.archive_sha256sum)
+                archive_sha.write(global_conf.archive_sha256sum)
         else:
             yb_dist_tests.compute_archive_sha256sum()
 
@@ -1233,7 +1254,7 @@ def main():
         # Randomize test order to avoid any kind of skew.
         random.shuffle(test_descriptors)
 
-        test_names_rdd = spark_context.parallelize(
+        test_names_rdd = spark_context.parallelize(  # type: ignore
                 [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
                 numSlices=total_num_tests)
 
@@ -1248,8 +1269,8 @@ def main():
 
     logging.info("Tests are done, set of exit codes: %s, tentative global exit code: %s",
                  sorted(test_exit_codes), global_exit_code)
-    num_tests_by_language = defaultdict(int)
-    failures_by_language = defaultdict(int)
+    num_tests_by_language: Dict[str, int] = defaultdict(int)
+    failures_by_language: Dict[str, int] = defaultdict(int)
     failed_test_desc_strs = []
     had_errors_copying_artifacts = False
     for result in results:
