@@ -121,6 +121,7 @@ public class Region extends Model {
     save();
   }
 
+  @ApiModelProperty(required = false)
   public String getSecurityGroupId() {
     if (details != null) {
       String sgNode = details.sg_id;
@@ -137,6 +138,7 @@ public class Region extends Model {
     save();
   }
 
+  @ApiModelProperty(required = false)
   public String getVnetName() {
     if (details != null) {
       String vnetNode = details.vnet;
