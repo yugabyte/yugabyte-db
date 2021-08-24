@@ -69,6 +69,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
@@ -77,7 +78,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/shared_lock.h"
+#include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;  // NOLINT.
@@ -1298,14 +1299,23 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
     log_copy_min_index_ = std::numeric_limits<int64_t>::max();
   });
 
-  // Rollover current active segment if it is not empty.
-  RETURN_NOT_OK(AllocateSegmentAndRollOver());
-
   SegmentSequence segments;
+  scoped_refptr<LogIndex> log_index;
   {
-    std::lock_guard<percpu_rwlock> l(state_lock_);
-    SCHECK_EQ(log_state_, kLogWriting, IllegalState, "Invalid log state");
+    UniqueLock<percpu_rwlock> l(state_lock_);
+    if (log_state_ != kLogInitialized) {
+      SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
+      ReverseLock<decltype(l)> rlock(l);
+      // Rollover current active segment if it is not empty.
+      RETURN_NOT_OK(AllocateSegmentAndRollOver());
+    }
 
+    SCHECK(
+        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
+        Format("Invalid log state: $0", log_state_));
+    // Remember log_index, because it could be reset if someone closes the log after we release
+    // state_lock_.
+    log_index = log_index_;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
 
     // We skip the last snapshot segment because it might be mutable and is either:
@@ -1333,7 +1343,7 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
                         Format("Failed to create tablet WAL dir $0", dest_wal_dir));
 
-  RETURN_NOT_OK(log_index_->Flush());
+  RETURN_NOT_OK(log_index->Flush());
 
   auto* const env = options_.env;
 
