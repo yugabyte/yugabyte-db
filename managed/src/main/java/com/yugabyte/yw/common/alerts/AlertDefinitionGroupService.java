@@ -369,14 +369,20 @@ public class AlertDefinitionGroupService {
         groups
             .stream()
             .collect(Collectors.toMap(AlertDefinitionGroup::getUuid, Function.identity()));
+    Map<UUID, AlertDefinitionGroup> beforeMap =
+        beforeList
+            .stream()
+            .collect(Collectors.toMap(AlertDefinitionGroup::getUuid, Function.identity()));
     for (UUID uuid : groupUUIDs) {
       AlertDefinitionGroup group = groupsMap.get(uuid);
+      AlertDefinitionGroup before = beforeMap.get(uuid);
 
       List<AlertDefinition> currentDefinitions =
           definitionsByGroup.getOrDefault(uuid, Collections.emptyList());
       if (group == null) {
         toRemove.addAll(currentDefinitions);
       } else {
+        boolean configurationChanged = before != null && !before.equals(group);
         Customer customer = Customer.getOrBadRequest(group.getCustomerUUID());
         AlertDefinitionGroupTarget target = group.getTarget();
         switch (group.getTargetType()) {
@@ -405,7 +411,10 @@ public class AlertDefinitionGroupService {
             if (target.isAll()) {
               universes = Universe.getAllWithoutResources(customer);
               universeUUIDs =
-                  universes.stream().map(Universe::getUniverseUUID).collect(Collectors.toSet());
+                  Stream.concat(
+                          currentDefinitions.stream().map(AlertDefinition::getUniverseUUID),
+                          universes.stream().map(Universe::getUniverseUUID))
+                      .collect(Collectors.toSet());
             } else {
               universeUUIDs =
                   Stream.concat(
@@ -431,6 +440,9 @@ public class AlertDefinitionGroupService {
               if (shouldHaveDefinition) {
                 if (universeDefinition == null) {
                   universeDefinition = createEmptyDefinition(group);
+                } else if (!configurationChanged) {
+                  // We want to avoid updating definitions unnecessarily
+                  continue;
                 }
                 universeDefinition.setConfigWritten(false);
                 universeDefinition.setQuery(group.getTemplate().buildTemplate(customer, universe));
