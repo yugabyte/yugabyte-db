@@ -209,7 +209,10 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID).asResult();
   }
 
-  @ApiOperation(value = "Delete backups", response = YWResults.YWTask.class, nickname = "deleteBackups")
+  @ApiOperation(
+      value = "Delete backups",
+      response = YWResults.YWTask.class,
+      nickname = "deleteBackups")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // TODO(API): Let's get rid of raw Json.

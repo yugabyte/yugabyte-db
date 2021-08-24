@@ -16,7 +16,9 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Backup schedule management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Backup schedule management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 

@@ -165,7 +165,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   // TODO: Cleanup raw json
-  @ApiOperation(value = "List KMS configurations", response = Object.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List KMS configurations",
+      response = Object.class,
+      responseContainer = "List")
   public Result listKMSConfigs(UUID customerUUID) {
     LOG.info(String.format("Listing KMS configurations for customer %s", customerUUID.toString()));
     List<JsonNode> kmsConfigs =
@@ -234,7 +237,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
-  @ApiOperation(value = "Retrive a universe's KMS key", response = Object.class, responseContainer = "Map")
+  @ApiOperation(
+      value = "Retrive a universe's KMS key",
+      response = Object.class,
+      responseContainer = "Map")
   public Result retrieveKey(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -262,7 +268,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return recoveredKey;
   }
 
-  @ApiOperation(value = "Get a universe's key reference history", response = Object.class, responseContainer = "List")
+  @ApiOperation(
+      value = "Get a universe's key reference history",
+      response = Object.class,
+      responseContainer = "List")
   public Result getKeyRefHistory(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -281,7 +290,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
-  @ApiOperation(value = "Remove a universe's key reference history", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Remove a universe's key reference history",
+      response = YWResults.YWSuccess.class)
   public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -292,7 +303,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return YWResults.YWSuccess.withMessage("Key ref was successfully removed");
   }
 
-  @ApiOperation(value = "Get a universe's key reference", response = Object.class, responseContainer = "Map")
+  @ApiOperation(
+      value = "Get a universe's key reference",
+      response = Object.class,
+      responseContainer = "Map")
   public Result getCurrentKeyRef(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(

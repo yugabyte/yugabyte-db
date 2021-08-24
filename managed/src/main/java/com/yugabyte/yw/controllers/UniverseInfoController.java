@@ -180,7 +180,8 @@ public class UniverseInfoController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "Run a universe health check",
-      notes = "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
+      notes =
+          "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
       nickname = "healthCheckUniverse",
       response = Object.class)
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {

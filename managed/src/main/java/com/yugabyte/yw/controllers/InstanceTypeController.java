@@ -226,7 +226,10 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of EBS volumes.
    */
-  @ApiOperation(value = "List supported EBS volume types", response = StorageType.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List supported EBS volume types",
+      response = StorageType.class,
+      responseContainer = "List")
   public Result getEBSTypes() {
     return YWResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
@@ -239,7 +242,10 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of GCP disks.
    */
-  @ApiOperation(value = "List supported GCP disk types", response = StorageType.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List supported GCP disk types",
+      response = StorageType.class,
+      responseContainer = "List")
   public Result getGCPTypes() {
 
     return YWResults.withData(
@@ -253,7 +259,10 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of AZU disks.
    */
-  @ApiOperation(value = "List supported Azure disk types", response = StorageType.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List supported Azure disk types",
+      response = StorageType.class,
+      responseContainer = "List")
   public Result getAZUTypes() {
     return YWResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())

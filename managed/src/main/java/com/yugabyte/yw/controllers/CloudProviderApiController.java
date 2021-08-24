@@ -31,7 +31,9 @@ import java.util.UUID;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Cloud providers", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Cloud providers",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;

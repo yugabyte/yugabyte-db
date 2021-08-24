@@ -131,7 +131,10 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(alert);
   }
 
-  @ApiOperation(value = "Acknowledge all alerts", response = Alert.class, responseContainer = "List")
+  @ApiOperation(
+      value = "Acknowledge all alerts",
+      response = Alert.class,
+      responseContainer = "List")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "AcknowledgeAlertsRequest",
@@ -184,7 +187,9 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(groups);
   }
 
-  @ApiOperation(value = "List all alert groups (paginated)", response = AlertDefinitionGroupPagedResponse.class)
+  @ApiOperation(
+      value = "List all alert groups (paginated)",
+      response = AlertDefinitionGroupPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "PageDefinitionGroupsRequest",
@@ -413,7 +418,10 @@ public class AlertController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  @ApiOperation(value = "List alert routes", response = AlertRoute.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List alert routes",
+      response = AlertRoute.class,
+      responseContainer = "List")
   public Result listAlertRoutes(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return YWResults.withData(alertRouteService.listByCustomer(customerUUID));

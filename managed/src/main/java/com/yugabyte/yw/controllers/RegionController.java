@@ -32,7 +32,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Region management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Region management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
   @Inject ConfigHelper configHelper;
 

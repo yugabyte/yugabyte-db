@@ -32,7 +32,9 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
-@Api(value = "Access Keys", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Access Keys",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AccessKeyController extends AuthenticatedController {
 
   @Inject AccessManager accessManager;

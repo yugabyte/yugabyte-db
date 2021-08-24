@@ -34,7 +34,9 @@ import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
 import play.mvc.Result;
 
-@Api(value = "Universe node metadata (metamaster)", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Universe node metadata (metamaster)",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);

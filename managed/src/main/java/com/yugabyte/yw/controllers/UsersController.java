@@ -30,7 +30,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "User management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "User management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
@@ -45,10 +47,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response with user.
    */
-  @ApiOperation(
-      value = "Get a user's details",
-      nickname = "getUserDetails",
-      response = Users.class)
+  @ApiOperation(value = "Get a user's details", nickname = "getUserDetails", response = Users.class)
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -76,10 +75,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response of newly created user.
    */
-  @ApiOperation(
-      value = "Create a user",
-      nickname = "createUser",
-      response = Users.class)
+  @ApiOperation(value = "Create a user", nickname = "createUser", response = Users.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "User",

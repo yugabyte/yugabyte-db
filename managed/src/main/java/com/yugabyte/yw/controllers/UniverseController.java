@@ -17,7 +17,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
 
-@Api(value = "Universe management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Universe management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
 
@@ -41,10 +43,7 @@ public class UniverseController extends AuthenticatedController {
     return YWResults.withData(universeCRUDHandler.list(customer));
   }
 
-  @ApiOperation(
-      value = "Get a universe",
-      response = UniverseResp.class,
-      nickname = "getUniverse")
+  @ApiOperation(value = "Get a universe", response = UniverseResp.class, nickname = "getUniverse")
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);

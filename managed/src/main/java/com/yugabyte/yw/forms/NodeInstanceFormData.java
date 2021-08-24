@@ -34,17 +34,11 @@ public class NodeInstanceFormData {
     public String zone;
 
     @Constraints.Required()
-    @ApiModelProperty(
-        value = "Node instance type",
-        example = "c5large",
-        required = true)
+    @ApiModelProperty(value = "Node instance type", example = "c5large", required = true)
     public String instanceType;
 
     @Constraints.Required()
-    @ApiModelProperty(
-        value = "Node instance name",
-        example = "Mumbai instance",
-        required = true)
+    @ApiModelProperty(value = "Node instance name", example = "Mumbai instance", required = true)
     public String instanceName;
 
     @ApiModelProperty(value = "Node instance name", example = "India node")

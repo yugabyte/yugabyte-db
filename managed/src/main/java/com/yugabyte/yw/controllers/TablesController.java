@@ -61,7 +61,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Table management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Table management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TablesController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
 

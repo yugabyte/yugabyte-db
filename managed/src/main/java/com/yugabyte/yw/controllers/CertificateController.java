@@ -158,7 +158,10 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withData(certs);
   }
 
-  @ApiOperation(value = "Get a certificate's UUID", response = UUID.class, nickname = "getCertificate")
+  @ApiOperation(
+      value = "Get a certificate's UUID",
+      response = UUID.class,
+      nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
     return YWResults.withData(cert.uuid);

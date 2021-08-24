@@ -29,7 +29,9 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Release management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Release management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class ReleaseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseController.class);
 

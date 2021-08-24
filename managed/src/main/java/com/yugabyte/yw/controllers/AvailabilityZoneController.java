@@ -88,7 +88,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @param azUUID AvailabilityZone UUID
    * @return JSON response on whether or not delete region was successful or not.
    */
-  @ApiOperation(value = "Delete an availability zone", response = YWResults.YWSuccess.class, nickname = "deleteAZ")
+  @ApiOperation(
+      value = "Delete an availability zone",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteAZ")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);

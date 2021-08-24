@@ -63,7 +63,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Customer management", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Customer management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
@@ -142,10 +144,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(
-      value = "Update a customer",
-      response = Customer.class,
-      nickname = "UpdateCustomer")
+  @ApiOperation(value = "Update a customer", response = Customer.class, nickname = "UpdateCustomer")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Customer",

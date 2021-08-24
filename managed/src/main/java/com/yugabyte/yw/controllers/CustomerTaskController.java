@@ -194,7 +194,10 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "Get a task's failed subtasks", responseContainer = "Map", response = Object.class)
+  @ApiOperation(
+      value = "Get a task's failed subtasks",
+      responseContainer = "Map",
+      response = Object.class)
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -205,7 +208,10 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "Retry a task", notes = "Retry a Create Universe task.", response = UniverseResp.class)
+  @ApiOperation(
+      value = "Retry a task",
+      notes = "Retry a Create Universe task.",
+      response = UniverseResp.class)
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customer.uuid, taskUUID);
