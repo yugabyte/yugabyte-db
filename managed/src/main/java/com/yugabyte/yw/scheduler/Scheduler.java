@@ -224,10 +224,19 @@ public class Scheduler {
   private void runExternalScriptTask(Schedule schedule) {
     JsonNode params = schedule.getTaskParams();
     RunExternalScript.Params taskParams = Json.fromJson(params, RunExternalScript.Params.class);
+    Customer customer = Customer.getOrBadRequest(taskParams.customerUUID);
+    Universe universe;
+    try {
+      universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    } catch (Exception e) {
+      schedule.stopSchedule();
+      LOG.info(
+          "External script scheduler is stopped for the universe {} as universe was deleted.",
+          taskParams.universeUUID);
+      return;
+    }
     UUID taskUUID = commissioner.submit(TaskType.ExternalScript, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    Customer customer = Customer.getOrBadRequest(taskParams.customerUUID);
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     CustomerTask.create(
         customer,
         universe.universeUUID,
