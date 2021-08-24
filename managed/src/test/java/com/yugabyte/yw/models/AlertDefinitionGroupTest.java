@@ -5,6 +5,7 @@ import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
@@ -24,6 +25,7 @@ import com.yugabyte.yw.models.AlertDefinitionGroup.TargetType;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
@@ -159,6 +161,39 @@ public class AlertDefinitionGroupTest extends FakeDBApplication {
             AlertDefinitionFilter.builder().groupUuid(group.getUuid()).build());
 
     assertThat(definitions, hasSize(0));
+  }
+
+  @Test
+  public void testHandleUniverseRemoval() {
+    AlertDefinitionGroup group = createTestDefinitionGroup();
+
+    AlertDefinitionGroup group2 = createTestDefinitionGroup();
+    group2.setTarget(
+        new AlertDefinitionGroupTarget()
+            .setAll(false)
+            .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
+
+    alertDefinitionGroupService.save(group2);
+
+    AlertDefinitionFilter definitionFilter =
+        AlertDefinitionFilter.builder()
+            .label(KnownAlertLabels.TARGET_UUID, universe.universeUUID.toString())
+            .build();
+
+    List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
+
+    assertThat(universeDefinitions, hasSize(2));
+
+    universe.delete();
+    alertDefinitionGroupService.handleTargetRemoval(
+        customer.getUuid(), TargetType.UNIVERSE, universe.getUniverseUUID());
+
+    AlertDefinitionGroup updatedGroup2 = alertDefinitionGroupService.get(group2.getUuid());
+
+    assertThat(updatedGroup2, nullValue());
+    universeDefinitions = alertDefinitionService.list(definitionFilter);
+
+    assertThat(universeDefinitions, empty());
   }
 
   @Test
