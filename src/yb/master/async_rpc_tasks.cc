@@ -489,7 +489,9 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
 }
 
 std::string AsyncTabletLeaderTask::description() const {
-  return type_name() + " RPC for " + tablet_->ToString();
+  return strings::Substitute(
+      "$0 RPC for tablet $1 ($2)",
+      type_name(), tablet_->ToString(), table_->ToString());
 }
 
 TabletId AsyncTabletLeaderTask::tablet_id() const {
@@ -904,8 +906,8 @@ TabletServerId CommonInfoForRaftTask::permanent_uuid() const {
 // ============================================================================
 string AsyncChangeConfigTask::description() const {
   return strings::Substitute(
-      "$0 RPC for tablet $1 on peer $2 with cas_config_opid_index $3", type_name(),
-      tablet_->tablet_id(), permanent_uuid(), cstate_.config().opid_index());
+      "$0 RPC for tablet $1 ($2) on peer $3 with cas_config_opid_index $4", type_name(),
+      tablet_->tablet_id(), table_->ToString(), permanent_uuid(), cstate_.config().opid_index());
 }
 
 bool AsyncChangeConfigTask::SendRequest(int attempt) {
