@@ -58,7 +58,7 @@ showAsideToc: true
 
     To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
 
-- [Helm 3+](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
+- [Helm 3.4 or later](https://helm.sh/) is installed. 
 
     To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
@@ -93,7 +93,7 @@ showAsideToc: true
     Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
     ```
 
-- Confirm that your Helm 3 is configured correctly by running the following command.
+- Confirm that your Helm is configured correctly by running the following command.
 
     ```sh
     $ helm version

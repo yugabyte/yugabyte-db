@@ -32,8 +32,8 @@ You must have a Amazon EKS cluster that has Helm configured. Note that Amazon EK
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Amazon EKS running Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `m5.2xlarge` is the minimum AWS EC2 instance type that meets these criteria.
-- Helm 3.0 or later
+- Amazon EKS running Kubernetes 1.18 or later with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `m5.2xlarge` is the minimum AWS EC2 instance type that meets these criteria.
+- Helm 3.4 or later
 - YugabyteDB docker image (yugabytedb/yugabyte) 2.1.0 or later
 - For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
@@ -68,9 +68,9 @@ First, check to see if Helm is installed by using the Helm version command.
 $ helm version
 ```
 
-For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
+For Helm, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
+```output
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
 
