@@ -18,7 +18,7 @@ boto==2.49.0
 botocore==1.20.73
 cachetools==4.2.2
 certifi==2021.5.30
-cffi==1.14.5
+cffi==1.14.6
 chardet==4.0.0
 colorama==0.4.3
 cryptography==3.3.2
@@ -32,7 +32,7 @@ google-auth==1.19.2
 googleapis-common-protos==1.53.0
 httplib2==0.19.1
 idna==2.10
-invoke==1.5.0
+invoke==1.6.0
 isodate==0.6.0
 jmespath==0.10.0
 mitogen==0.2.9
@@ -55,4 +55,4 @@ rsa==4.7.2
 s3transfer==0.4.2
 six==1.10.0
 uritemplate==3.0.1
-urllib3==1.26.5
+urllib3==1.26.6
