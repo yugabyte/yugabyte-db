@@ -778,6 +778,8 @@ class CatalogManager :
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key);
 
+  CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id);
+
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
 

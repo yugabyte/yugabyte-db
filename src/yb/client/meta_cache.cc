@@ -1238,8 +1238,9 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
     table_data.partition_list = table_partition_list;
   }
   for (const auto& callback : to_notify) {
-    const auto s =
-        STATUS_FORMAT(TryAgain, "MetaCache for table $0 has been invalidated.", table_id);
+    const auto s = STATUS_EC_FORMAT(
+        TryAgain, ClientError(ClientErrorCode::kMetaCacheInvalidated),
+        "MetaCache for table $0 has been invalidated.", table_id);
     boost::apply_visitor(LookupCallbackVisitor(s), callback);
   }
 }

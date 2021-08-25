@@ -2618,5 +2618,88 @@ TEST_F(ClientTest, ColocatedTablesLookupTablet) {
   ASSERT_EQ(lookup_serial_stop, lookup_serial_start + 1);
 }
 
+class ClientTestWithHashAndRangePk : public ClientTest {
+ public:
+  void SetUp() override {
+    YBSchemaBuilder b;
+    b.AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("r")->Type(INT32)->PrimaryKey()->NotNull();
+    b.AddColumn("v")->Type(INT32);
+
+    CHECK_OK(b.Build(&schema_));
+
+    ClientTest::SetUp();
+  }
+
+  shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int h, int r, int v) {
+    auto insert = table.NewInsertOp();
+    auto req = insert->mutable_request();
+    QLAddInt32HashValue(req, h);
+    const auto& columns = table.schema().columns();
+    table.AddInt32ColumnValue(req, columns[1].name(), r);
+    table.AddInt32ColumnValue(req, columns[2].name(), v);
+    return insert;
+  }
+};
+
+// We concurrently execute batches of insert operations, each batch targeting the same hash
+// partition key. Concurrently we emulate table partition list version increase and meta cache
+// invalidation.
+// This tests https://github.com/yugabyte/yugabyte-db/issues/9806 with a scenario
+// when the batcher is emptied due to part of tablet lookups failing, but callback was not called.
+TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
+  constexpr auto kNumRowsPerBatch = 100;
+  constexpr auto kWriters = 4;
+  const auto kTotalNumBatches = 50;
+  const auto kFlushTimeout = 10s * kTimeMultiplier;
+
+  TestThreadHolder thread_holder;
+  std::atomic<int> next_batch_hash_key{10000};
+  const auto stop_at_batch_hash_key = next_batch_hash_key.load() + kTotalNumBatches;
+
+  for (int i = 0; i != kWriters; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &next_batch_hash_key,
+                                    num_rows_per_batch = kNumRowsPerBatch, stop_at_batch_hash_key,
+                                    kFlushTimeout] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+
+      while (!stop.load(std::memory_order_acquire)) {
+        auto batch_hash_key = next_batch_hash_key.fetch_add(1);
+        if (batch_hash_key >= stop_at_batch_hash_key) {
+          break;
+        }
+        auto session = CreateSession(client_.get());
+        for (int r = 0; r < num_rows_per_batch; r++) {
+          ASSERT_OK(session->Apply(BuildTestRow(client_table_, batch_hash_key, r, 0)));
+        }
+        auto flush_future = session->FlushFuture();
+        ASSERT_EQ(flush_future.wait_for(kFlushTimeout), std::future_status::ready)
+            << "batch_hash_key: " << batch_hash_key;
+        const auto& flush_status = flush_future.get();
+        if (!flush_status.status.ok() || !flush_status.errors.empty()) {
+          LogSessionErrorsAndDie(flush_status);
+        }
+      }
+    });
+  }
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    SetFlagOnExit set_flag_on_exit(&stop);
+
+    const auto table = client_table_.table();
+
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(cluster_->mini_master()
+                    ->master()
+                    ->catalog_manager()
+                    ->TEST_IncrementTablePartitionListVersion(table->id()));
+      table->MarkPartitionsAsStale();
+      SleepFor(10ms);
+    }
+  });
+
+  thread_holder.JoinAll();
+}
+
 }  // namespace client
 }  // namespace yb
