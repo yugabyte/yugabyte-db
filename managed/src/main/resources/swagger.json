@@ -4077,6 +4077,7 @@
           "type" : "boolean"
         },
         "assignStaticPublicIP" : {
+          "description" : "Whether to assign static public IP",
           "type" : "boolean"
         },
         "awsArnString" : {
@@ -4170,7 +4171,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "accessKeyCode", "assignPublicIP", "assignStaticPublicIP", "awsArnString", "deviceInfo", "enableClientToNodeEncrypt", "enableExposingService", "enableIPV6", "enableNodeToNodeEncrypt", "enableVolumeEncryption", "enableYEDIS", "enableYSQL", "instanceTags", "instanceType", "masterGFlags", "numNodes", "preferredRegion", "provider", "providerType", "regionList", "replicationFactor", "tserverGFlags", "universeName", "useHostname", "useSystemd", "useTimeSync", "ybSoftwareVersion" ],
+      "required" : [ "accessKeyCode", "awsArnString", "deviceInfo", "instanceTags", "instanceType", "masterGFlags", "numNodes", "preferredRegion", "provider", "providerType", "regionList", "replicationFactor", "tserverGFlags", "universeName", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "UserRegistrationData" : {
