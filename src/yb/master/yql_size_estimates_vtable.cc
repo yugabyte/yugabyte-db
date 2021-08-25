@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -75,7 +75,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
 
       // TODO: These values should eventually be reasonable estimates.
       // For now using 0 as defaults which should mean that clients will use their own defaults
-      // (i.e. minimums) for number of splits -- typically one split per YugaByte tablet.
+      // (i.e. minimums) for number of splits -- typically one split per Yugabyte tablet.
 
       // The estimated average size in bytes of all data for each partition (i.e. hash) key.
       RETURN_NOT_OK(SetColumnValue(kMeanPartitionSize, 0, &row));

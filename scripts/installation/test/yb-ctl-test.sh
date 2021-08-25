@@ -8,7 +8,7 @@ export YB_DISABLE_CALLHOME=1
 readonly YSQL_DEFAULT_PORT=5433
 ysql_ip=127.0.0.1
 
-# This will be auto-detected the first time yb-ctl auto-downloads and installs YugaByte DB.
+# This will be auto-detected the first time yb-ctl auto-downloads and installs Yugabyte DB.
 installation_dir=""
 
 log() {
@@ -23,7 +23,7 @@ fatal() {
 detect_installation_dir() {
   if [[ -z $installation_dir ]]; then
     installation_dir=$( ls -td "$HOME/yugabyte-db/yugabyte-"* | grep -v .tar.gz | head -1 )
-    log "YugaByte DB has been automatically installed into directory: $installation_dir"
+    log "Yugabyte DB has been automatically installed into directory: $installation_dir"
   fi
 }
 
@@ -80,7 +80,7 @@ start_cluster_run_tests() {
   # It looks like if we try to create a table in this state, the master is trying to assign
   # tablets to node 1, which is down, and times out:
   #
-  # TODO: re-enable when https://github.com/YugaByte/yugabyte-db/issues/1508 is fixed.
+  # TODO: re-enable when https://github.com/yugabyte/yugabyte-db/issues/1508 is fixed.
   if false; then
     verify_ysqlsh 2
   fi

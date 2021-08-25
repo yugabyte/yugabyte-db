@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -21,7 +21,7 @@
 namespace yb {
 namespace pggate {
 
-// This class represent how YugaByte sends data over the wire. See also file
+// This class represent how Yugabyte sends data over the wire. See also file
 // "yb/common/wire_protocol.proto".
 //
 // TODO(neil) Consider moving this file to "yb/common" directory and merging and organizing with

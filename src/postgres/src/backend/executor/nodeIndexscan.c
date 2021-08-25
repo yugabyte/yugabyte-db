@@ -130,9 +130,9 @@ IndexNext(IndexScanState *node)
 	}
 
 	/*
-	 * Setup LIMIT and future execution parameter before calling YugaByte scanning rountines.
+	 * Setup LIMIT and future execution parameter before calling Yugabyte scanning rountines.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		// Add row marks.
 		scandesc->yb_exec_params->rowmark = -1;

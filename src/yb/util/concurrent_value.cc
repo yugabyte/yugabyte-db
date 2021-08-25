@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 
 #include "yb/util/concurrent_value.h"

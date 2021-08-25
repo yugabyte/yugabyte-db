@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 alter table kms_config add column name varchar(100);
 

@@ -517,10 +517,10 @@ BootstrapModeMain(void)
 
 
 	/*
-	 * In YugaByte we only need to create the template1 database
+	 * In Yugabyte we only need to create the template1 database
 	 * (corresponding to creating the "base/1" subdir as its oid is hardcoded).
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		YBCCreateDatabase(TemplateDbOid,
 		                  "template1",
@@ -536,8 +536,8 @@ BootstrapModeMain(void)
 	boot_yyparse();
 	CommitTransactionCommand();
 
-	/* We do not use a relation map file in YugaByte mode yet */
-	if (!IsYugaByteEnabled())
+	/* We do not use a relation map file in Yugabyte mode yet */
+	if (!IsYugabyteEnabled())
 	{
 		/*
 		 * We should now know about all mapped relations, so it's okay to write
@@ -823,7 +823,7 @@ InsertOneTuple(Oid objectid)
 	if (objectid != (Oid) 0)
 		HeapTupleSetOid(tuple, objectid);
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 		YBCExecuteInsert(boot_reldesc, tupDesc, tuple);
 	else
 		simple_heap_insert(boot_reldesc, tuple);

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.Sets;

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -288,7 +288,7 @@ class TnodeContext {
   CHECKED_STATUS AppendRowsResult(RowsResult::SharedPtr&& rows_result);
 
   // Create CQL paging state based on user's information.
-  // When calling YugaByte, users provide all info in StatementParameters including paging state.
+  // When calling Yugabyte, users provide all info in StatementParameters including paging state.
   QueryPagingState *CreateQueryState(const StatementParameters& user_params,
                                      bool is_top_level_select);
 

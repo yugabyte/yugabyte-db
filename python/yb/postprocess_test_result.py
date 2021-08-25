@@ -92,11 +92,11 @@ class Postprocessor:
             description=__doc__)
         parser.add_argument(
             '--yb-src-root',
-            help='Root directory of YugaByte source code',
+            help='Root directory of Yugabyte source code',
             required=True)
         parser.add_argument(
             '--build-root',
-            help='Root directory of YugaByte build',
+            help='Root directory of Yugabyte build',
             required=True)
         parser.add_argument(
             '--test-log-path',

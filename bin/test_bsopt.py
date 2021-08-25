@@ -12,7 +12,7 @@ import json
 import sys
 import subprocess
 
-# YugaByte directories
+# Yugabyte directories
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 YBSAMPLEAPPS_DIR = os.path.normpath(os.path.join(YUGABYTE_DIR, '..', 'yb-sample-apps'))
 

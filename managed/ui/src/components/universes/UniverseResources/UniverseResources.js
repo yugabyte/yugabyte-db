@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Component } from 'react';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -133,7 +133,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     // For performance check, only runs on RELEASE build matters, so expected runtime for other
     // builds can be very over-estimated.
     // Cases where "LIMIT clause" can be optimized
-    // LIMIT value is pushed down to YugaByte PgGate and DocDB for these cases.
+    // LIMIT value is pushed down to Yugabyte PgGate and DocDB for these cases.
     // - LIMIT SELECT without WHERE clause and other options.
     // Cases where "LIMIT clause" cannot be optimized.
     // - LIMIT SELECT with WHERE clause on non-key column.
@@ -151,7 +151,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
 
     try (Statement statement = connection.createStatement()) {
       // LIMIT SELECT without WHERE clause and other options will be optimized by passing
-      // LIMIT value to YugaByte PgGate and DocDB.
+      // LIMIT value to Yugabyte PgGate and DocDB.
       String query = String.format("SELECT * FROM %s LIMIT 1", tableName);
       assertQueryRuntimeWithRowCount(statement, query, 1 /* expectedRowCount */, queryRunCount,
           limitScanMaxRuntimeMillis * queryRunCount);
@@ -188,7 +188,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       assertQueryRuntimeWithRowCount(statement, query, 0 /* expectedRowCount */, queryRunCount,
           fullScanMaxRuntimeMillis * queryRunCount);
 
-      // LIMIT SELECT with index scan is optimized because YugaByte processed the index.
+      // LIMIT SELECT with index scan is optimized because Yugabyte processed the index.
       query = String.format("SELECT * FROM %s WHERE vs = 'value_%d' LIMIT 1",
                             tableName, viConst);
       assertQueryRuntimeWithRowCount(statement, query, 1 /* expectedRowCount */, queryRunCount,

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import { getClusterByType } from './UniverseUtils';
 import _ from 'lodash';

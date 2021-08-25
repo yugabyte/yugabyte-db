@@ -847,7 +847,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 						  (is_from ? RowExclusiveLock : AccessShareLock));
 
 		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
-				IsYugaByteEnabled()) {
+				IsYugabyteEnabled()) {
 			SetTxnWithPGRel();
 		}
 

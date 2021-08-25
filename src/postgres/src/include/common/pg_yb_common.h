@@ -1,10 +1,10 @@
 /* ----------
  * pg_yb_utils.h
  *
- * Common utilities for YugaByte/PostgreSQL integration that are reused between
+ * Common utilities for Yugabyte/PostgreSQL integration that are reused between
  * PostgreSQL server code and other PostgreSQL programs such as initdb.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -43,7 +43,7 @@ extern bool YBCIsEnvVarTrueWithDefault(
 
 /**
  * Checks if the YB_ENABLED_IN_POSTGRES is set. This is different from
- * IsYugaByteEnabled(), because the IsYugaByteEnabled() also checks that we are
+ * IsYugabyteEnabled(), because the IsYugabyteEnabled() also checks that we are
  * in the "normal processing mode" and we have a YB client session.
  */
 extern bool YBIsEnabledInPostgresEnvVar();

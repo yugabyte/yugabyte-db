@@ -16,9 +16,9 @@
  *	  src/backend/commands/dbcommands.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * Yugabyte development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -382,7 +382,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 						 errmsg("Value other than default for %s option is "
 								"not yet supported", option->defname),
 						 errhint("Please report the issue on "
-								 "https://github.com/YugaByte/yugabyte-db"
+								 "https://github.com/yugabyte/yugabyte-db"
 								 "/issues"),
 						 parser_errposition(pstate, option->location)));
 		}
@@ -394,7 +394,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errmsg("Value other than default, template0 or template1 "
 							"for template option is not yet supported"),
 					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues"),
+							 "https://github.com/yugabyte/yugabyte-db/issues"),
 					 parser_errposition(pstate, dtemplate->location)));
 
 		if (dbistemplate)
@@ -403,7 +403,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errmsg("Value other than default or false for "
 							"is_template option is not yet supported"),
 					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues"),
+							 "https://github.com/yugabyte/yugabyte-db/issues"),
 					 parser_errposition(pstate, distemplate->location)));
 
 		if (encoding >= 0 && encoding != PG_UTF8)
@@ -421,7 +421,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errmsg("Value other than 'C' for lc_collate "
 							"option is not yet supported"),
 					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues"),
+							 "https://github.com/yugabyte/yugabyte-db/issues"),
 					 parser_errposition(pstate, dcollate->location)));
 
 		if (dctype && dbctype && strcmp(dbctype, "en_US.UTF-8") != 0)
@@ -430,7 +430,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errmsg("Value other than 'en_US.UTF-8' for lc_ctype "
 							"option is not yet supported"),
 					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues"),
+							 "https://github.com/yugabyte/yugabyte-db/issues"),
 					 parser_errposition(pstate, dctype->location)));
 	}
 
@@ -643,7 +643,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated);
 
 	/*
@@ -698,7 +698,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	PG_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
 	                        PointerGetDatum(&fparms));
 	{
-		if (!IsYugaByteEnabled())
+		if (!IsYugabyteEnabled())
 		{
 			/*
 			 * Iterate through all tablespaces of the template database, and copy
@@ -962,10 +962,10 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 				 errmsg("cannot drop the currently open database")));
 
 	/*
-	 * YugaByte allows dropping a database even when multiple sessions are dependent on that database.
+	 * Yugabyte allows dropping a database even when multiple sessions are dependent on that database.
 	 * Skip the following checks.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 		goto removing_database_from_system;
 
 	/*
@@ -1101,9 +1101,9 @@ removing_database_from_system:
 	ForceSyncCommit();
 
 	/*
-	 * Call YugaByte to delete the entries ourselves.
+	 * Call Yugabyte to delete the entries ourselves.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		YBCDropDatabase(db_id, dbname);
 	}
@@ -1186,7 +1186,7 @@ RenameDatabase(const char *oldname, const char *newname)
 	namestrcpy(&(((Form_pg_database) GETSTRUCT(newtup))->datname), newname);
 	CatalogTupleUpdate(rel, &newtup->t_self, newtup);
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		YBCPgStatement handle = NULL;
 		HandleYBStatus(YBCPgNewAlterDatabase(oldname, db_id, &handle));
 		HandleYBStatus(YBCPgAlterDatabaseRenameDatabase(handle, newname));
@@ -1644,7 +1644,7 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 						 errmsg("Altering %s option is not yet supported",
 								option->defname),
 						 errhint("Please report the issue on "
-								 "https://github.com/YugaByte/yugabyte-db"
+								 "https://github.com/yugabyte/yugabyte-db"
 								 "/issues"),
 						 parser_errposition(pstate, option->location)));
 			}

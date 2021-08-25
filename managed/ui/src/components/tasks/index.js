@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 export { default as TasksList } from './TaskList/TasksList';
 export { default as TaskAlerts } from './TaskAlerts/TaskAlerts';

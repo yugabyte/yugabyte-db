@@ -1,5 +1,5 @@
 FROM node:alpine
-MAINTAINER YugaByte
+MAINTAINER Yugabyte
 ENV container=yugaware-ui
 
 # Create app directory

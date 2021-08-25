@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Component } from 'react';
 import NavBarContainer from '../components/common/nav_bar/NavBarContainer';
@@ -96,7 +96,7 @@ class AuthenticatedArea extends Component {
     const welcomeDialogTitle = (
       <div>
         Welcome to
-        <img alt="YugaByte DB logo"
+        <img alt="Yugabyte DB logo"
           className="social-media-logo"
           src={ybLogo}
           width="140"
@@ -170,7 +170,7 @@ class AuthenticatedArea extends Component {
                 rel="noopener noreferrer"
               >
                 <span>Join us on</span>
-                <img alt="YugaByte DB Slack" src={slackLogo} width="65" />
+                <img alt="Yugabyte DB Slack" src={slackLogo} width="65" />
               </a>
               <a
                 className="social-media-btn icon-end"
@@ -180,7 +180,7 @@ class AuthenticatedArea extends Component {
               >
                 <span>Star us on</span>
                 <img
-                  alt="YugaByte DB GitHub"
+                  alt="Yugabyte DB GitHub"
                   className="social-media-logo"
                   src={githubLogo}
                   width="18"

@@ -1050,7 +1050,7 @@ CatalogCacheInitializeCache(CatCache *cache)
 }
 
 /*
- * YugaByte utility method to set the data for a cache list entry.
+ * Yugabyte utility method to set the data for a cache list entry.
  * Used during InitCatCachePhase2 (specifically for the procedure name list
  * and for rewrite rules).
  * Code basically takes the second part of SearchCatCacheList (which sets the
@@ -1149,7 +1149,7 @@ SetCatCacheList(CatCache *cache,
 
 			bucket = &cache->cc_bucket[hashIndex];
 
-			if (!IsYugaByteEnabled())
+			if (!IsYugabyteEnabled())
 			/* Cannot rely on ctid comparison in YB mode */
 			{
 				dlist_foreach(iter, bucket)
@@ -1287,7 +1287,7 @@ InitCatCachePhase2(CatCache *cache, bool touch_index)
 	 * TODO(mihnea/robert) This could be enabled if we handle
 	 * "primary key as index" so that PG can open the primary indexes by id.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		return;
 	}
@@ -1387,7 +1387,7 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 
 /*
  * Utility to add a Tuple entry to the cache only if it's negative or does not exist.
- * Used only when IsYugaByteEnabled() is true.
+ * Used only when IsYugabyteEnabled() is true.
  * Currently used in two cases:
  *  1. When initializing the caches (i.e. on backend start).
  *  2. When inserting a new entry to the sys catalog (i.e. on DDL create).
@@ -1789,11 +1789,11 @@ SearchCatCacheMiss(CatCache *cache,
 			return NULL;
 
 		/*
-		 * Disable negative entries for YugaByte to handle case where the entry
+		 * Disable negative entries for Yugabyte to handle case where the entry
 		 * was added by (running a command on) another node.
 		 * We also don't support tuple update as of 14/12/2018.
 		 */
-		if (IsYugaByteEnabled())
+		if (IsYugabyteEnabled())
 		{
 			/*
 			 * Special cases where we allow negative caches:
@@ -2085,7 +2085,7 @@ SearchCatCacheList(CatCache *cache,
 
 			bucket = &cache->cc_bucket[hashIndex];
 			/* Cannot rely on ctid comparison in YB mode */
-			if (!IsYugaByteEnabled())
+			if (!IsYugabyteEnabled())
 			{
 				dlist_foreach(iter, bucket)
 				{

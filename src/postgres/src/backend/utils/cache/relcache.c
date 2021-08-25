@@ -236,7 +236,7 @@ do { \
 	} \
 	else \
 	{ \
-		if (IsYugaByteEnabled()) \
+		if (IsYugabyteEnabled()) \
 		{ \
 			snprintf(filename, sizeof(filename), "%d_%s", \
 			         MyDatabaseId, RELCACHE_INIT_FILENAME); \
@@ -258,7 +258,7 @@ do { \
 	} \
 	else \
 	{ \
-		if (IsYugaByteEnabled()) \
+		if (IsYugabyteEnabled()) \
 		{ \
 			snprintf(filename, sizeof(filename), "%d_%s.%d", \
 			         MyDatabaseId, RELCACHE_INIT_FILENAME, MyProcPid); \
@@ -1269,7 +1269,7 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
 }
 
 /*
- * YugaByte-mode only utility used to load up the relcache on initialization
+ * Yugabyte-mode only utility used to load up the relcache on initialization
  * to minimize the number on YB-master queries needed.
  * It is based on (and similar to) RelationBuildDesc but does all relations
  * at once.
@@ -3887,7 +3887,7 @@ RelationBuildLocalRelation(const char *relname,
 			 relname, relid);
 
 	/* (Non-YB) shared relations had better be mapped, too */
-	Assert(IsYugaByteEnabled() ||
+	Assert(IsYugabyteEnabled() ||
 		   (mapped_relation || !shared_relation));
 
 	/*
@@ -4232,8 +4232,8 @@ RelationCacheInitializePhase2(void)
 {
 	MemoryContext oldcxt;
 
-	/* We do not use a relation map file in YugaByte mode yet */
-	if (!IsYugaByteEnabled())
+	/* We do not use a relation map file in Yugabyte mode yet */
+	if (!IsYugabyteEnabled())
 	{
 		/*
 		 * relation mapper needs initialized too
@@ -4298,8 +4298,8 @@ RelationCacheInitializePhase3(void)
 	MemoryContext oldcxt;
 	bool		needNewCacheFile = !criticalSharedRelcachesBuilt;
 
-	/* We do not use a relation map file in YugaByte mode yet */
-	if (!IsYugaByteEnabled())
+	/* We do not use a relation map file in Yugabyte mode yet */
+	if (!IsYugabyteEnabled())
 	{
 	  /*
 	   * relation mapper needs initialized too
@@ -4341,10 +4341,10 @@ RelationCacheInitializePhase3(void)
 		return;
 
 	/*
-	 * In YugaByte mode initialize the catalog cache version to the latest
+	 * In Yugabyte mode initialize the catalog cache version to the latest
 	 * version from the master (except during initdb).
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		YBCPgResetCatalogReadTime();
 		YBCGetMasterCatalogVersion(&yb_catalog_cache_version);
@@ -4354,7 +4354,7 @@ RelationCacheInitializePhase3(void)
 	 * In YB mode initialize the relache at the beginning so that we need
 	 * fewer cache lookups in steady state.
 	 */
-	if (needNewCacheFile && IsYugaByteEnabled())
+	if (needNewCacheFile && IsYugabyteEnabled())
 	{
 		YBPreloadRelCache();
 	}
@@ -4605,7 +4605,7 @@ RelationCacheInitializePhase3(void)
 	 * During initdb also preload catalog caches (not just relation cache) as
 	 * they will be used heavily.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		if (YBIsPreparingTemplates())
 			YBPreloadCatalogCaches();
@@ -4624,9 +4624,9 @@ static void
 load_critical_index(Oid indexoid, Oid heapoid)
 {
 	Relation	ird;
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
-		/* TODO We do not support/use critical indexes in YugaByte mode yet */
+		/* TODO We do not support/use critical indexes in Yugabyte mode yet */
 		return;
 	}
 
@@ -6240,7 +6240,7 @@ load_relcache_init_file(bool shared)
 	if (magic != RELCACHE_INIT_FILEMAGIC)
 		goto read_failed;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		/* Read the stored catalog version number */
 		if (fread(&ybc_stored_cache_version,
@@ -6566,10 +6566,10 @@ load_relcache_init_file(bool shared)
 	int num_critical_local_indexes = NUM_CRITICAL_LOCAL_INDEXES;
 
 	/*
-	 * TODO We do not support/use critical indexes in YugaByte mode yet so set
+	 * TODO We do not support/use critical indexes in Yugabyte mode yet so set
 	 * the expected number of indexes to 0 so we do not fail here.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		num_critical_shared_indexes = 0;
 		num_critical_local_indexes  = 0;
@@ -6614,7 +6614,7 @@ load_relcache_init_file(bool shared)
 	pfree(rels);
 	FreeFile(fp);
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		/*
 		 * Set the catalog version if needed.
@@ -6700,7 +6700,7 @@ write_relcache_init_file(bool shared)
 	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
 		elog(FATAL, "could not write init file");
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		/* Write the ysql_catalog_version */
 		if (fwrite(&yb_catalog_cache_version,
@@ -6995,10 +6995,10 @@ RelationCacheInitFileRemove(void)
 	char		path[MAXPGPATH + 10 + sizeof(TABLESPACE_VERSION_DIRECTORY)];
 
 	/*
-	 * In YugaByte mode we anyway do a cache version check on each backend init
+	 * In Yugabyte mode we anyway do a cache version check on each backend init
 	 * so no need to preemptively clean up the init files here.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		return;
 	}

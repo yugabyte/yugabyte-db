@@ -592,14 +592,14 @@ SAVEPOINT x;
 ERROR:  SAVEPOINT <transaction> not supported yet
 LINE 1: SAVEPOINT x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 SELECT 'new'::bogus;  -- unsafe
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK TO x;
 ERROR:  ROLLBACK <transaction> not supported yet
 LINE 1: ROLLBACK TO x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 SELECT enum_first(null::bogus);  -- safe
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT enum_last(null::bogus);  -- unsafe
@@ -608,14 +608,14 @@ ROLLBACK TO x;
 ERROR:  ROLLBACK <transaction> not supported yet
 LINE 1: ROLLBACK TO x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 SELECT enum_range(null::bogus);  -- unsafe
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK TO x;
 ERROR:  ROLLBACK <transaction> not supported yet
 LINE 1: ROLLBACK TO x;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 COMMIT;
 SELECT 'new'::bogus;  -- now safe
  bogus
@@ -640,7 +640,7 @@ ALTER TYPE bogus RENAME TO bogon;
 ERROR:  ALTER TYPE not supported yet
 LINE 1: ALTER TYPE bogus RENAME TO bogon;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 ALTER TYPE bogon ADD VALUE 'bad';
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT 'bad'::bogon;
@@ -664,7 +664,7 @@ ALTER TYPE bogus RENAME TO bogon;
 ERROR:  ALTER TYPE not supported yet
 LINE 1: ALTER TYPE bogus RENAME TO bogon;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 select enum_range(null::bogon);
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
@@ -677,7 +677,7 @@ ALTER TYPE bogus RENAME TO bogon;
 ERROR:  ALTER TYPE not supported yet
 LINE 1: ALTER TYPE bogus RENAME TO bogon;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 ALTER TYPE bogon ADD VALUE 'bad';
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ALTER TYPE bogon ADD VALUE 'ugly';

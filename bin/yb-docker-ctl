@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 
 import argparse
 import json
@@ -89,7 +89,7 @@ class YBDockerControl():
     @staticmethod
     def setup_yb_network():
         try:
-            # Create YugaByte network bridge if not already exists
+            # Create Yugabyte network bridge if not already exists
             result = get_subprocess_result_as_str(['docker', 'network',
                                          'ls', '-q', '--filter',
                                          'name={}'.format(YB_NETWORK_NAME)])
@@ -152,10 +152,10 @@ class YBDockerControl():
             help='Number of shards (tablets) to create per tablet server for each YSQL table.')
         parser.add_argument(
             '--enable_ysql', '--enable_postgres', action="store_true",
-            help='Enable YugaByte SQL API support')
+            help='Enable Yugabyte SQL API support')
         parser.add_argument(
             '--disable_ysql', action="store_true",
-             help='Disable YugaByte SQL API support')
+             help='Disable Yugabyte SQL API support')
 
     def add_startup_args(self, parser):
         parser.add_argument("--placement_info", default=None,
@@ -201,28 +201,28 @@ class YBDockerControl():
                 self.master_addrs = ["{}:{}".format(node_info.split("|")[1], self.YB_MASTER_PORT)
                                      for node_info in self.master_nodes]
         except subprocess.CalledProcessError:
-            sys.exit("Unable to fetch running YugaByte containers")
+            sys.exit("Unable to fetch running Yugabyte containers")
 
     def setup_cli(self):
         parent_parser = argparse.ArgumentParser(add_help=False)
         parent_parser.add_argument('--tag',
                                    default=YB_DOCKER_IMAGE_TAG,
-                                   help='YugaByte Docker image tag')
+                                   help='Yugabyte Docker image tag')
 
-        self.parser = argparse.ArgumentParser(description='YugaByte Docker Container Control')
+        self.parser = argparse.ArgumentParser(description='Yugabyte Docker Container Control')
         subparsers = self.parser.add_subparsers(help='Commands', dest='command')
         subparsers.required = True
         create_subparser = subparsers.add_parser('create',
-                                                 help='Create YugaByte Cluster',
+                                                 help='Create Yugabyte Cluster',
                                                  parents = [parent_parser])
         create_subparser.set_defaults(command='create')
         create_subparser.add_argument('--rf', type=int, default=self.REPLICATION_FACTOR_OPTIMAL,
                                       help='Replication Factor')
         create_subparser.add_argument('--timeout_in_sec', type=int, default=self.WAIT_SECONDS,
-                                      help='Seconds to wait for YugaByte cluster to come up')
+                                      help='Seconds to wait for Yugabyte cluster to come up')
 
         add_node_subparser = subparsers.add_parser('add_node',
-                                                   help='Add a new YugaByte Cluster Node',
+                                                   help='Add a new Yugabyte Cluster Node',
                                                    parents = [parent_parser])
         add_node_subparser.set_defaults(command='add_node')
 
@@ -232,17 +232,17 @@ class YBDockerControl():
             self.add_shared_args(subparser)
 
         status_subparser = subparsers.add_parser('status',
-                                                 help='Check YugaByte Cluster status',
+                                                 help='Check Yugabyte Cluster status',
                                                  parents = [parent_parser])
         status_subparser.set_defaults(command='status')
 
         destroy_subparser = subparsers.add_parser('destroy',
-                                                  help='Destroy YugaByte Cluster',
+                                                  help='Destroy Yugabyte Cluster',
                                                   parents = [parent_parser])
         destroy_subparser.set_defaults(command='destroy')
 
         stop_node_subparser = subparsers.add_parser('stop_node',
-                                                    help='Stop a YugaByte Cluster Node',
+                                                    help='Stop a Yugabyte Cluster Node',
                                                     parents = [parent_parser])
         stop_node_subparser.add_argument("node", type=str, help='Node ID to stop')
         stop_node_subparser.add_argument("--master", action="store_true",
@@ -250,7 +250,7 @@ class YBDockerControl():
         stop_node_subparser.set_defaults(command='stop_node')
 
         start_node_subparser = subparsers.add_parser('start_node',
-                                                     help='Start a YugaByte Cluster Node',
+                                                     help='Start a Yugabyte Cluster Node',
                                                      parents = [parent_parser])
         start_node_subparser.add_argument("node", type=str, help='Node ID to start')
         start_node_subparser.add_argument("--master", action="store_true",
@@ -258,17 +258,17 @@ class YBDockerControl():
         start_node_subparser.set_defaults(command='start_node')
 
         stop_subparser = subparsers.add_parser('stop',
-                                               help='Stop YugaByte Cluster',
+                                               help='Stop Yugabyte Cluster',
                                                parents = [parent_parser])
         stop_subparser.set_defaults(command='stop')
 
         start_subparser = subparsers.add_parser('start',
-                                                help='Start YugaByte Cluster',
+                                                help='Start Yugabyte Cluster',
                                                 parents = [parent_parser])
         start_subparser.set_defaults(command='start')
 
         remove_node_subparser = subparsers.add_parser('remove_node',
-                                                      help='Stop a YugaByte Cluster Node',
+                                                      help='Stop a Yugabyte Cluster Node',
                                                       parents = [parent_parser])
         remove_node_subparser.add_argument("node", type=str, help='Node ID to remove')
         remove_node_subparser.set_defaults(command='remove_node')
@@ -352,7 +352,7 @@ class YBDockerControl():
 
     def create_clusters(self):
         if self.container_count > 0:
-            sys.exit("{} YugaByte nodes found. Please use --destroy if you want to destroy "
+            sys.exit("{} Yugabyte nodes found. Please use --destroy if you want to destroy "
                      "existing cluster.".format(self.container_count))
 
         placement_list = self.get_placement_list()
@@ -373,7 +373,7 @@ class YBDockerControl():
 
     def cluster_status(self):
         if len(self.containers) == 0:
-            sys.exit("YugaByte containers are not running")
+            sys.exit("Yugabyte containers are not running")
 
         print ("{:<15}{:<10} {:<10} {:<20} {:<25} {:<15} {:<20}".format(
             'ID', 'PID', 'Type', 'Node', 'URL', 'Status', 'Started At'))
@@ -391,7 +391,7 @@ class YBDockerControl():
 
     def destroy_cluster(self):
         if len(self.containers) == 0:
-            sys.exit("No YugaByte nodes to destroy")
+            sys.exit("No Yugabyte nodes to destroy")
 
         for info_hash in self.containers:
             id, name = info_hash.split("|")[:2]
@@ -443,9 +443,9 @@ class YBDockerControl():
                 pass
             time.sleep(1)
 
-        sys.exit("Timed out waiting for YugaByte clusters to come up. "
+        sys.exit("Timed out waiting for Yugabyte clusters to come up. "
                  "Please use --timeout_in_sec to increase timeout. "
-                 "Please also ensure that you have at least YugaByte version 1.1.2.0-b10.")
+                 "Please also ensure that you have at least Yugabyte version 1.1.2.0-b10.")
 
     def add_node(self):
         new_node_id = self.num_tservers + 1

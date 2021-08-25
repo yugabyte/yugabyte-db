@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,7 +30,7 @@ namespace pggate {
 // Scan Scenarios:
 //
 // 1. SequentialScan or PrimaryIndexScan (class PgSelect)
-//    - YugaByte does not have a separate table for PrimaryIndex.
+//    - Yugabyte does not have a separate table for PrimaryIndex.
 //    - The target table descriptor, where data is read and returned, is the main table.
 //    - The binding table descriptor, whose column is bound to values, is also the main table.
 //
@@ -40,7 +40,7 @@ namespace pggate {
 //    - The binding table descriptor, whose column is bound to values, is also the index table.
 //
 // 3. IndexScan SysTable / UserTable (Class PgSelect and Nested PgSelectIndex)
-//    - YugaByte will use the binds to query base-ybctid in the index table, which is then used
+//    - Yugabyte will use the binds to query base-ybctid in the index table, which is then used
 //      to query data from the main table.
 //    - The target table descriptor, where data is read and returned, is the main table.
 //    - The binding table descriptor, whose column is bound to values, is the index table.

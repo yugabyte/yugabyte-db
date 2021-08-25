@@ -1152,7 +1152,7 @@ pg_get_indexdef_string(Oid indexrelid)
 								  false, false,
 								  true, true,
 								  0, false,
-								  IsYugaByteEnabled() /* useNonconcurrently */,
+								  IsYugabyteEnabled() /* useNonconcurrently */,
 								  yb_format_funcs_include_yb_metadata);
 }
 
@@ -1480,7 +1480,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			YBCPgTableDesc ybc_tabledesc = NULL;
 			YBCPgTableProperties yb_table_properties;
 
-			/* Get the table properties from YugaByte. */
+			/* Get the table properties from Yugabyte. */
 			HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, indexrelid, &ybc_tabledesc));
 			HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
 

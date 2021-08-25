@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 export { default as ReleaseList } from './ReleaseList/ReleaseList';
 export { default as ReleaseListContainer } from './ReleaseList/ReleaseListContainer';

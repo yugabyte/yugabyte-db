@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -133,7 +133,7 @@ static bool HasSimilarTypeSignature(const std::vector<DataType>& signature,
 // Examples:
 // - INT16 is convertible to DOUBLE, so passing an int16 value to func(DOUBLE) is valid.
 // - In CQL, DOUBLE is not convertible to INT16, so passing a double value to func(INT26) is
-// invalid. This case would become valid if YugaByte eases this conversion restriction.
+// invalid. This case would become valid if Yugabyte eases this conversion restriction.
 //
 // NOTES:
 //   PTypePtr and RTypePtr can be either a (shared_ptr<MyClass>) or a raw pointer (MyClass*).

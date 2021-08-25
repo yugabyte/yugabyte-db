@@ -578,7 +578,7 @@ create database db3 LC_COLLATE = "POSIX" TEMPLATE template0;
 ERROR:  Value other than 'C' for lc_collate option is not yet supported
 LINE 1: create database db3 LC_COLLATE = "POSIX" TEMPLATE template0;
                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
 ```
 
 
@@ -611,7 +611,7 @@ create table foo (id text collate "ucs_basic");
 ERROR:  COLLATE not supported yet
 LINE 1: create table foo (id text collate "ucs_basic");
                                   ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
 ```
 
 
@@ -645,7 +645,7 @@ setlocales(void)
     /* Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale in YB mode. */
     /* This is because as of 06/15/2019 we don't support collation-aware string comparisons, */
     /* but we still want to support storing UTF-8 strings. */
-    if (!locale && (IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb())) {
+    if (!locale && (IsYugabyteLocalNodeInitdb() || IsYugabyteGlobalClusterInitdb())) {
         const char *kYBDefaultLocaleForSortOrder = "C";
         const char *kYBDefaultLocaleForEncoding = "en_US.UTF-8";
 

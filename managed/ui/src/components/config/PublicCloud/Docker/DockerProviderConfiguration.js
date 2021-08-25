@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
@@ -106,7 +106,7 @@ class DockerProviderConfiguration extends Component {
                 <a href="https://docs.docker.com/" target="_blank" rel="noopener noreferrer">
                   Docker Platform
                 </a>
-                &nbsp;in order to create YugaByte clusters as containers running on your host
+                &nbsp;in order to create Yugabyte clusters as containers running on your host
                 machine.
               </p>
             </Col>
@@ -137,7 +137,7 @@ class DockerProviderConfiguration extends Component {
                 <a href="https://docs.docker.com/" target="_blank" rel="noopener noreferrer">
                   Docker Platform
                 </a>
-                &nbsp; in order to create YugaByte clusters as containers running on your host
+                &nbsp; in order to create Yugabyte clusters as containers running on your host
                 machine.
               </div>
             </Col>

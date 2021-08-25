@@ -170,7 +170,7 @@ get_tablespace(Oid spcid)
 		else
 		{
 			bytea *bytea_opts;
-			if (IsYugaByteEnabled())
+			if (IsYugabyteEnabled())
 				bytea_opts = yb_tablespace_reloptions(datum, false);
 			else
 				bytea_opts = tablespace_reloptions(datum, false);
@@ -208,7 +208,7 @@ get_tablespace(Oid spcid)
  */
 GeolocationDistance get_tablespace_distance(Oid spcid)
 {
-	Assert(IsYugaByteEnabled());
+	Assert(IsYugabyteEnabled());
     if (spcid == InvalidOid)
        return UNKNOWN;
 
@@ -301,7 +301,7 @@ bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 		return false;
 	}
 
-	Assert(IsYugaByteEnabled());
+	Assert(IsYugabyteEnabled());
 
 	if (!yb_tsp_cost) 
 	{
@@ -350,7 +350,7 @@ get_tablespace_page_costs(Oid spcid,
 	if (spc_random_page_cost)
 	{
 		if (!spc->opts.pg_opts || spc->opts.pg_opts->random_page_cost < 0 
-			|| IsYugaByteEnabled())
+			|| IsYugabyteEnabled())
 			*spc_random_page_cost = random_page_cost;
 		else
 			*spc_random_page_cost = spc->opts.pg_opts->random_page_cost;
@@ -359,7 +359,7 @@ get_tablespace_page_costs(Oid spcid,
 	if (spc_seq_page_cost)
 	{
 		if (!spc->opts.pg_opts || spc->opts.pg_opts->seq_page_cost < 0 
-			|| IsYugaByteEnabled())
+			|| IsYugabyteEnabled())
 			*spc_seq_page_cost = seq_page_cost;
 		else
 			*spc_seq_page_cost = spc->opts.pg_opts->seq_page_cost;

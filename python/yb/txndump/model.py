@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-YugaByte DocDB model. I.e. keys, values, time etc.
+Yugabyte DocDB model. I.e. keys, values, time etc.
 """
 
 from datetime import timedelta
@@ -125,7 +125,7 @@ class DocHybridTime(NamedTuple):
     @staticmethod
     def read(inp: BinaryIO) -> 'DocHybridTime':
         inp.read_desc_key_varint()  # Generation
-        micros = kYugaByteMicrosecondEpoch + inp.read_desc_key_varint()
+        micros = kYugabyteMicrosecondEpoch + inp.read_desc_key_varint()
         logical = inp.read_desc_key_varint()
         write_id = inp.read_desc_key_varint()
         if write_id < 0:
@@ -134,7 +134,7 @@ class DocHybridTime(NamedTuple):
                              (write_id >> kNumBitsForHybridTimeSize) - 1)
 
 
-kYugaByteMicrosecondEpoch: int = 1500000000 * 1000000
+kYugabyteMicrosecondEpoch: int = 1500000000 * 1000000
 kNumBitsForHybridTimeSize: int = 5
 
 

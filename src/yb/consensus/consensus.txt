@@ -11,12 +11,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-YugaByte Consensus Implementation
+Yugabyte Consensus Implementation
 =============================
 
-YugaByte implements the RAFT consensus protocol, with minor modifications as
+Yugabyte implements the RAFT consensus protocol, with minor modifications as
 described in this document. For the details of the write-ahead-log (WAL) message
-format, see the README file in this directory. YugaByte maintains one RAFT config
+format, see the README file in this directory. Yugabyte maintains one RAFT config
 per tablet.
 
 RAFT describes how to ensure that additions to the leader's WAL get replicated
@@ -34,7 +34,7 @@ brief outline of important points follows here, for quick reference:
   to be elected. Every time a leader election takes place, the monotonic term
   number is incremented (see currentTerm below).
 - There are three roles a RAFT node can assume: leader, follower, or candidate.
-  YugaByte explicitly specifies an additional learner roles,
+  Yugabyte explicitly specifies an additional learner roles,
   which is a non-voting role.
 - The WAL index is an absolute index into the log. If two logs contain an entry
   with the same index and term, then the logs are identical in all entries
@@ -82,7 +82,7 @@ See RAFT section 6 and figure 11 for details.
 Leader election modifications (future work)
 ---------------------------------------------
 
-The YugaByte leader election protocol proceeds exactly as specified in the extended
+The Yugabyte leader election protocol proceeds exactly as specified in the extended
 version of the RAFT paper [1], sections 5.2 - 5.3, with the following
 exceptions:
 

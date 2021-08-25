@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -26,14 +26,14 @@ namespace yb {
 namespace pggate {
 
 // This is the YB counterpart of Postgres's MemoryContext.
-// YugaByte memory context hold one reference count to PgGate objects such as PgGate::PgStatement.
+// Yugabyte memory context hold one reference count to PgGate objects such as PgGate::PgStatement.
 // When Postgres process complete execution, it would release the reference count by destroying
-// the YugaByte memory context.
+// the Yugabyte memory context.
 //
 // - Each YB Memctx will be associated with a Postgres MemoryContext.
 // - YB Memctx will be initialized to NULL and later created on its first use.
 // - When Postgres MemoryContext is destroyed, YB Memctx will be destroyed.
-// - When Postgres MemoryContext allocates YugaByte object, that YB object will belong to the
+// - When Postgres MemoryContext allocates Yugabyte object, that YB object will belong to the
 //   associated YB Memctx. The object is automatically destroyed when YB Memctx is destroyed.
 class PgMemctx {
  public:
@@ -52,13 +52,13 @@ class PgMemctx {
   virtual ~PgMemctx();
 
   // API: Create(), Destroy(), and Reset()
-  // - Because Postgres process own YugaByte memory context, only Postgres processes should call
-  //   these functions to manage YugaByte memory context.
+  // - Because Postgres process own Yugabyte memory context, only Postgres processes should call
+  //   these functions to manage Yugabyte memory context.
   // - When Postgres process (a C Program) is exiting, it assumes that all associated memories
-  //   are destroyed and will not call Destroy() to free YugaByte memory context. As a result,
-  //   PgGate must release the remain YugaByte memory contexts itself. Create(), Destroy(), and
+  //   are destroyed and will not call Destroy() to free Yugabyte memory context. As a result,
+  //   PgGate must release the remain Yugabyte memory contexts itself. Create(), Destroy(), and
   //   Reset() API uses a global variable for that purpose.  When Postgres processes exit, the
-  //   global destructor will free all YugaByte memory contexts.
+  //   global destructor will free all Yugabyte memory contexts.
 
   // Create yugabyte memory context that will be owned by Postgres process.
   static PgMemctx *Create();
@@ -84,7 +84,7 @@ class PgMemctx {
   // NOTE:
   // - In Postgres, the objects in the outer context can references to the objects of the nested
   //   context but not vice versa, so it is safe to clear objects of outer context.
-  // - In YugaByte, the above abstraction must be followed, but I am not yet sure that we did.
+  // - In Yugabyte, the above abstraction must be followed, but I am not yet sure that we did.
   //   For now we destroy the yugabyte objects in the current context also as we should. However,
   //   if the objects in nested context might still have referenced to the objects of the outer
   //   memctx, we can delay the PgStatement objects' destruction.

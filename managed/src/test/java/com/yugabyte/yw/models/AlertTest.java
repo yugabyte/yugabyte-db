@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createAlertDefinitionGroup;

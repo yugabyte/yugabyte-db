@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 
 global:
   # By default, scrape targets every 15 seconds.

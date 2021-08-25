@@ -17,9 +17,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of Yugabyte development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) Yugabyte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -32,7 +32,7 @@
 # under the License.
 #
 # This script generates a header file which contains definitions
-# for the current YugaByte build (e.g. timestamp, git hash, etc)
+# for the current Yugabyte build (e.g. timestamp, git hash, etc)
 
 import json
 import logging

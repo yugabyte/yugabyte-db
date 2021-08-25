@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
 import { PROVIDER_TYPES, IN_DEVELOPMENT_MODE } from '../config';

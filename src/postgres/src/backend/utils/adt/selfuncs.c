@@ -1282,16 +1282,16 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype, bool negate)
 	switch (vartype)
 	{
 		case TEXTOID:
-			opfamily = IsYugaByteEnabled() ? TEXT_LSM_FAM_OID : TEXT_BTREE_FAM_OID;
+			opfamily = IsYugabyteEnabled() ? TEXT_LSM_FAM_OID : TEXT_BTREE_FAM_OID;
 			break;
 		case BPCHAROID:
-			opfamily = IsYugaByteEnabled() ? BPCHAR_LSM_FAM_OID : BPCHAR_BTREE_FAM_OID;
+			opfamily = IsYugabyteEnabled() ? BPCHAR_LSM_FAM_OID : BPCHAR_BTREE_FAM_OID;
 			break;
 		case NAMEOID:
-			opfamily = IsYugaByteEnabled() ? NAME_LSM_FAM_OID : NAME_BTREE_FAM_OID;
+			opfamily = IsYugabyteEnabled() ? NAME_LSM_FAM_OID : NAME_BTREE_FAM_OID;
 			break;
 		case BYTEAOID:
-			opfamily = IsYugaByteEnabled() ? BYTEA_LSM_FAM_OID : BYTEA_BTREE_FAM_OID;
+			opfamily = IsYugabyteEnabled() ? BYTEA_LSM_FAM_OID : BYTEA_BTREE_FAM_OID;
 			break;
 		default:
 			ReleaseVariableStats(vardata);

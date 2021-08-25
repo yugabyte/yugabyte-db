@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 export { default as YBModal } from './YBModal';
 export { default as YBButton } from './YBButton';

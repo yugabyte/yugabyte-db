@@ -48,7 +48,7 @@ CREATE TABLESPACE x LOCATION '/data';
 WARNING:  LOCATION not supported yet and will be ignored
 LINE 1: CREATE TABLESPACE x LOCATION '/data';
                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6569. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. Click '+' on the description to raise its priority
 ```
 
 As mentioned above, this is allowed only to maintain parity with PostgreSQL API and will not have any advantage in Yugabyte clusters.

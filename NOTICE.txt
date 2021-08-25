@@ -1,5 +1,5 @@
-YugaByte Database
-Copyright 2016-present YugaByte, Inc.
+Yugabyte Database
+Copyright 2016-present Yugabyte, Inc.
 
 This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).

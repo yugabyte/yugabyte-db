@@ -77,4 +77,4 @@ LOAD 'regress.so'
 ERROR:  LOAD not supported yet
 LINE 1: LOAD 'regress.so'
         ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues

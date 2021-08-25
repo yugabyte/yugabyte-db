@@ -81,7 +81,7 @@ Create a Terraform configuration file named `yugabyte-db-config.tf` and add the 
 ```sh
 module "yugabyte-db-cluster" {
   # The source module used for creating clusters on Azure.
-  source = "github.com/Yugabyte/terraform-azure-yugabyte"
+  source = "github.com/yugabyte/terraform-azure-yugabyte"
 
   # The name of the cluster to be created, change as per need.
   cluster_name = "test-cluster"
@@ -126,7 +126,7 @@ $ terraform apply
 Once the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's public IP address by running the following:
 
 ```sh
-$ terraform state show module.yugabyte-db-cluster.azurerm_public_ip.YugaByte_Public_IP[0]
+$ terraform state show module.yugabyte-db-cluster.azurerm_public_ip.Yugabyte_Public_IP[0]
 ```
 
 You can access the cluster UI by going to public IP address of any of the instances at port `7000`. The IP address can be viewed by replacing `0` from above command with desired index.

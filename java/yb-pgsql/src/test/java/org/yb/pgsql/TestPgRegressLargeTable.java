@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -70,7 +70,7 @@ public class TestPgRegressLargeTable extends BasePgSQLTest {
                                      getPerfMaxRuntime(2000, 6000, 20000, 20000, 20000)
                                      /* maxTotalMillis */);
 
-      // Check time when selecting less than 4096 rows (YugaByte default prefetch limit).
+      // Check time when selecting less than 4096 rows (Yugabyte default prefetch limit).
       assertQueryRuntimeWithRowCount(stmt,
                                      "SELECT 1 FROM airports LIMIT 1 OFFSET 1000",
                                      1 /* expectedRowCount */,
@@ -78,7 +78,7 @@ public class TestPgRegressLargeTable extends BasePgSQLTest {
                                      getPerfMaxRuntime(2000, 6000, 20000, 20000, 20000)
                                      /* maxTotalMillis */);
 
-      // Check time when selecting more than 4096 rows (YugaByte default prefetch limit).
+      // Check time when selecting more than 4096 rows (Yugabyte default prefetch limit).
       assertQueryRuntimeWithRowCount(stmt,
                                      "SELECT 1 FROM airports LIMIT 1 OFFSET 5000",
                                      1 /* expectedRowCount */,

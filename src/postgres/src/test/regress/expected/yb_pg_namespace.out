@@ -12,7 +12,7 @@ CREATE SCHEMA test_ns_schema_1
 ERROR:  CREATE SCHEMA with elements not supported yet
 LINE 2:        CREATE UNIQUE INDEX abc_a_idx ON abc (a)
                ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/Yugabyte/yugabyte-db/issues
 -- TODO(dmitry): Remove separate statements for creation each element in schema after
 --               `schema creation with elements` command will be supported.
 CREATE SCHEMA test_ns_schema_1;

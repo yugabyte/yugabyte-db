@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -196,7 +196,7 @@ class PTExpr : public TreeNode {
   //     table, QLName() would be the name of that column.
   //
   // - Option kMangledName
-  //     When INDEX is created, YugaByte generates column name by mangling the original name from
+  //     When INDEX is created, Yugabyte generates column name by mangling the original name from
   //     users for the index expression columns.
   //
   // - Option kMetadataName

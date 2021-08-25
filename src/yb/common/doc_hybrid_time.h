@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,7 +35,7 @@ constexpr IntraTxnWriteId kMaxWriteId = std::numeric_limits<IntraTxnWriteId>::ma
 // DocHybridTime take 10 bytes (the maximum length for a VarInt-encoded int64_t).
 constexpr int kMaxBytesPerEncodedHybridTime = 30;
 
-// This is a point in time before any YugaByte clusters are in production that has a round enough
+// This is a point in time before any Yugabyte clusters are in production that has a round enough
 // decimal representation when expressed as microseconds since the UNIX epoch.
 // CHANGING THIS VALUE MAY INVALIDATE PERSISTENT DATA. This corresponds to approximately
 // Fri, 14 Jul 2017 02:40:00 UTC. We subtract this from the microsecond component of HybridTime
@@ -46,7 +46,7 @@ constexpr int kMaxBytesPerEncodedHybridTime = 30;
 // and create unpredictable behavior. Instead, to save space, we can implement domain-specific
 // compression of blocks in RocksDB to only store physical time deltas within the block relative
 // to some per-block reference value.
-constexpr HybridTimeRepr kYugaByteMicrosecondEpoch = 1500000000ul * 1000000;
+constexpr HybridTimeRepr kYugabyteMicrosecondEpoch = 1500000000ul * 1000000;
 
 class DocHybridTime {
  public:

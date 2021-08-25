@@ -109,7 +109,7 @@ static int num_columns_read = 0;
 {
 	List		*list;
 	IndexElem	*ielem;
-	IndexStmt	*istmt;  /* Used for YugaByte index/pkey clauses */
+	IndexStmt	*istmt;  /* Used for Yugabyte index/pkey clauses */
 	char		*str;
 	const char	*kw;
 	int			ival;
@@ -301,7 +301,7 @@ Boot_CreateStmt:
 						elog(DEBUG4, "relation created with OID %u", id);
 					}
 
-					if (IsYugaByteEnabled())
+					if (IsYugabyteEnabled())
 					{
 						YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $13);
 					}

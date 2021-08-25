@@ -213,7 +213,7 @@ extern uint32 GetCatCacheHashValue(CatCache *cache,
 					 Datum v1, Datum v2,
 					 Datum v3, Datum v4);
 
-/* Used in IsYugaByteEnabled() mode only */
+/* Used in IsYugabyteEnabled() mode only */
 extern void SetCatCacheTuple(CatCache *cache, HeapTuple tup, TupleDesc tupdesc);
 extern void SetCatCacheList(CatCache *cache, int nkeys, List *fnlist);
 

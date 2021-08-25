@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -152,7 +152,7 @@ Result<TransactionStatusCache::GetCommitTimeResult> TransactionStatusCache::DoGe
       // It is possible that this node not yet received APPLY, so it is possible that
       // we would not have local commit time even for committed transaction.
       // Waiting for safe time to be sure that we APPLY was processed if present.
-      // See https://github.com/YugaByte/yugabyte-db/issues/7729 for details.
+      // See https://github.com/yugabyte/yugabyte-db/issues/7729 for details.
       safe_time = VERIFY_RESULT(txn_context_opt_->txn_status_manager.WaitForSafeTime(
           txn_status.status_time, deadline_));
     }

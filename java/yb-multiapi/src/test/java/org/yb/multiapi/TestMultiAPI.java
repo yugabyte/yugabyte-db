@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -24,7 +24,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestMultiAPI extends TestMultiAPIBase {
   private static final Logger LOG = LoggerFactory.getLogger(TestMultiAPI.class);
 
-  // This tests the fix for issue https://github.com/YugaByte/yugabyte-db/issues/2665.
+  // This tests the fix for issue https://github.com/yugabyte/yugabyte-db/issues/2665.
   // Testing the case when there is CQL keyspace with the same name as a SQL DB.
   @Test
   public void testDropDB() throws Exception {

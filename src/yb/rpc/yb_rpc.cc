@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -64,7 +64,7 @@ constexpr const auto kHeartbeatsPerTimeoutPeriod = 3;
 
 namespace {
 
-// One byte after YugaByte is reserved for future use. It could control type of connection.
+// One byte after Yugabyte is reserved for future use. It could control type of connection.
 const char kConnectionHeaderBytes[] = "YB\1";
 const size_t kConnectionHeaderSize = sizeof(kConnectionHeaderBytes) - 1;
 

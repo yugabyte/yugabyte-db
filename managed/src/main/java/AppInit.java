@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.google.inject.Inject;

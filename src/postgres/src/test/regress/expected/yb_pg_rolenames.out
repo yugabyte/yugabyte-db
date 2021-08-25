@@ -630,7 +630,7 @@ CREATE USER MAPPING FOR CURRENT_USER SERVER sv1 OPTIONS (user 'CURRENT_USER');
 ERROR:  Generic OPTIONS not supported yet
 LINE 1: CREATE USER MAPPING FOR CURRENT_USER SERVER sv1 OPTIONS (use...
                                                         ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
 -- CREATE USER MAPPING FOR "current_user" SERVER sv2 OPTIONS (user '"current_user"');
 -- CREATE USER MAPPING FOR USER SERVER sv3 OPTIONS (user 'USER');
 -- CREATE USER MAPPING FOR "user" SERVER sv4 OPTIONS (user '"USER"');

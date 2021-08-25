@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -12,7 +12,7 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 #
-"""A script to manage a local YugaByte cluster.
+"""A script to manage a local Yugabyte cluster.
 
 We will aim to maintain https://docs.yugabyte.com/admin/yb-ctl/ as public facing documentation!
 
@@ -311,7 +311,7 @@ def has_rel_paths(top_dir, rel_paths):
 
 def is_yugabyte_db_installation_dir(top_dir):
     """
-    Checks if the given directory is a viable YugaByte DB installation directory. A build directory
+    Checks if the given directory is a viable Yugabyte DB installation directory. A build directory
     with master/tserver/postgres binaries already built would match this definition.
     """
     if top_dir is None:
@@ -357,10 +357,10 @@ class Installer:
 
     def install_or_find_existing(self):
         """
-        Downloads/installs YugaByte DB, or only finds an existing installation, if
+        Downloads/installs Yugabyte DB, or only finds an existing installation, if
         "only_find_existing" was set during this installer's creation.
 
-        Returns True in case YugaByte DB was installed or an existing installation was found.
+        Returns True in case Yugabyte DB was installed or an existing installation was found.
         Returns False only if only_find_existing is specified and no existing installation found.
         Errors are still handled by raising exceptions.
         """
@@ -370,12 +370,12 @@ class Installer:
         if os.path.exists(self.installation_dir):
             if not is_yugabyte_db_installation_dir(self.installation_dir):
                 logging.error(
-                    "Directory %s exists but does not appear to be a valid YugaByte DB "
+                    "Directory %s exists but does not appear to be a valid Yugabyte DB "
                     "installation directory. Remove that directory and re-run the script "
-                    "to re-install YugaByte DB.", self.installation_dir)
+                    "to re-install Yugabyte DB.", self.installation_dir)
                 sys.exit(1)
             # Already installed.
-            logging.info("Found existing YugaByte DB installation at %s", self.installation_dir)
+            logging.info("Found existing Yugabyte DB installation at %s", self.installation_dir)
             # This will re-run the post-install script if it did not complete initially.
             return self.run_post_install_script()
 
@@ -617,13 +617,13 @@ class ClusterOptions:
         for installation_dir_candidate in self.installation_dirs_considered:
             if self.yb_ctl_verbose:
                 logging.info(
-                        "Considering YugaByte DB installation directory candidate: %s",
+                        "Considering Yugabyte DB installation directory candidate: %s",
                         installation_dir_candidate)
             if is_yugabyte_db_installation_dir(installation_dir_candidate):
                 self.installation_dir = installation_dir_candidate
                 if self.yb_ctl_verbose:
                     logging.info(
-                            "Found YugaByte DB installation directory: %s",
+                            "Found Yugabyte DB installation directory: %s",
                             self.installation_dir)
                 break
 
@@ -735,7 +735,7 @@ class ClusterOptions:
                 self.base_ports[protocol_type]['rpc'] = port
 
         # -----------------------------------------------------------------------------------------
-        # Automatic YugaByte DB installation
+        # Automatic Yugabyte DB installation
         # -----------------------------------------------------------------------------------------
         if args.install_if_needed and not self.installation_dir:
             installer = Installer()
@@ -750,9 +750,9 @@ class ClusterOptions:
                     self.installation_dir = installation_finder.installation_dir
                 if not self.installation_dir:
                     raise ExitWithError(
-                        "Failed to determine YugaByte DB installation directory. Directories "
+                        "Failed to determine Yugabyte DB installation directory. Directories "
                         "considered:\n%s\nPlease specify --install-if-needed to download and "
-                        "install YugaByte DB automatically." %
+                        "install Yugabyte DB automatically." %
                         ("    " + "\n    ".join(self.installation_dirs_considered)))
 
     def validate_daemon_type(self, daemon_type):
@@ -917,7 +917,7 @@ class ClusterControl:
                  "affects yb-ctl and --v affects server processes.")
         self.parent_parser.add_argument(
             "--install-if-needed", action='store_true', default=None,
-            help="With this option, if YugaByte DB is not yet installed on the system, the latest "
+            help="With this option, if Yugabyte DB is not yet installed on the system, the latest "
                  "version will be downloaded and installed automatically.")
 
     def get_cluster_config_file_path(self):
@@ -1042,7 +1042,7 @@ class ClusterControl:
                  "affects yb-ctl and --v affects server processes.")
         self.parser.add_argument(
             "--install-if-needed", dest="install_dest", action='store_true',
-            help="With this option, if YugaByte DB is not yet installed on the system, the latest "
+            help="With this option, if Yugabyte DB is not yet installed on the system, the latest "
                  "version will be downloaded and installed automatically.")
 
         subparsers = {}
@@ -1061,7 +1061,7 @@ class ClusterControl:
                 ("stop_node", "Stop the specified node in the cluster"),
                 ("restart_node", "Restart the specified node in the cluster"),
                 ("status", "Get cluster information"),
-                ("setup_redis", "Setup YugaByte to support Redis API")):
+                ("setup_redis", "Setup Yugabyte to support Redis API")):
 
             subparsers[cmd_name] = self.setup_base_parser(cmd_name, help=help)
 
@@ -1124,13 +1124,13 @@ class ClusterControl:
 
             subparsers[cmd].add_argument("--enable_ysql", "--enable_postgres",
                                          action='store_true',
-                                         help="Enable YugaByte SQL API. Useful for clusters where "
+                                         help="Enable Yugabyte SQL API. Useful for clusters where "
                                               "YSQL was initially disabled.",
                                          default=None)
 
             subparsers[cmd].add_argument("--disable_ysql",
                                          action='store_true',
-                                         help="Disable YugaByte SQL API.",
+                                         help="Disable Yugabyte SQL API.",
                                          default=None)
 
             subparsers[cmd].add_argument("--ysql_hba_conf_csv",
@@ -1644,7 +1644,7 @@ class ClusterControl:
     def wait_for_cluster_or_raise(self):
         print("Waiting for cluster to be ready.")
         if not self.wait_for_cluster():
-            raise RuntimeError("Timed out waiting for a YugaByte DB cluster!")
+            raise RuntimeError("Timed out waiting for a Yugabyte DB cluster!")
 
     def wait_for_node(self, daemon_id):
         """
@@ -1860,7 +1860,7 @@ class ClusterControl:
             if self.options.enable_ysql and not self.cluster_config.get('enable_ysql'):
                 if self.already_running_daemons:
                     sys.stderr.write(
-                            "YugaByte DB was already running. If you are trying to enable YSQL "
+                            "Yugabyte DB was already running. If you are trying to enable YSQL "
                             "on an existing cluster, please stop/start the cluster.\n")
                     # To prevent YSQL from showing up in the status.
                     self.options.enable_ysql = False
@@ -1962,7 +1962,7 @@ class ClusterControl:
             self.show_node_status(index, server_counts)
 
     def setup_redis_cmd_impl(self):
-        print("Setting up YugaByte DB support for Redis API.")
+        print("Setting up Yugabyte DB support for Redis API.")
         self.set_master_addresses()
         self.wait_for_cluster_or_raise()
         cmd_setup_redis_table = self.yb_admin_cmd_list(
@@ -1979,7 +1979,7 @@ class ClusterControl:
     def run_cluster_wide_ysql_initdb(self):
         initdb_binary_path = self.options.get_binary_path("initdb")
 
-        logging.info("Running initdb to initialize YSQL metadata in the YugaByte DB cluster.")
+        logging.info("Running initdb to initialize YSQL metadata in the Yugabyte DB cluster.")
         env = {'FLAGS_pggate_master_addresses': self.options.master_addresses,
                'YB_ENABLED_IN_POSTGRES': '1'}
         certs_dir = self.get_certs_dir()
@@ -2017,7 +2017,7 @@ class ClusterControl:
                             logging.info(line.rstrip())
 
         logging.info(
-            "Successfully ran initdb to initialize YSQL data in the YugaByte cluster")
+            "Successfully ran initdb to initialize YSQL data in the Yugabyte cluster")
 
     def get_certs_dir(self):
         # We split parameters containing multiple '='s like 'vmodule=meta_cache=5,tablet=5' into

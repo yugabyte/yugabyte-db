@@ -853,7 +853,7 @@ end
 $$ language plpgsql;
 
 -- TODO(jayden): "create aggregate" DDL not rolled back.
--- See: https://github.com/YugaByte/yugabyte-db/issues/1404
+-- See: https://github.com/yugabyte/yugabyte-db/issues/1404
 drop aggregate my_sum(int4);
 create aggregate my_sum(int4)
 (
@@ -919,7 +919,7 @@ BEGIN
 END$$;
 
 -- TODO(jayden): "create aggregate" DDL not rolled back.
--- See: https://github.com/YugaByte/yugabyte-db/issues/1404
+-- See: https://github.com/yugabyte/yugabyte-db/issues/1404
 DROP AGGREGATE balk(int4);
 CREATE AGGREGATE balk(int4)
 (

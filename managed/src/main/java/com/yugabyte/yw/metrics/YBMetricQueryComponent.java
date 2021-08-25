@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.metrics;
 
 import com.datastax.driver.core.Cluster;

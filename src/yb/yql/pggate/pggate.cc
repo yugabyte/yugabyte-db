@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -275,7 +275,7 @@ bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
 //--------------------------------------------------------------------------------------------------
 
 PgMemctx *PgApiImpl::CreateMemctx() {
-  // Postgres will create YB Memctx when it first use the Memctx to allocate YugaByte object.
+  // Postgres will create YB Memctx when it first use the Memctx to allocate Yugabyte object.
   return PgMemctx::Create();
 }
 
@@ -292,7 +292,7 @@ Status PgApiImpl::ResetMemctx(PgMemctx *memctx) {
 // TODO(neil) Use Arena in the future.
 // - PgStatement should have been declared as derived class of "MCBase".
 // - All objects of PgStatement's derived class should be allocated by YbPgMemctx::Arena.
-// - We cannot use Arena yet because quite a large number of YugaByte objects are being referenced
+// - We cannot use Arena yet because quite a large number of Yugabyte objects are being referenced
 //   from other layers.  Those added code violated the original design as they assume ScopedPtr
 //   instead of memory pool is being used. This mess should be cleaned up later.
 //
@@ -1150,7 +1150,7 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
                             PgStatement **handle) {
   // Scenarios:
   // - Sequential Scan: PgSelect to read from table_id.
-  // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
+  // - Primary Scan: PgSelect from table_id. Yugabyte does not have separate table for primary key.
   // - Index-Only-Scan: PgSelectIndex directly from secondary index_id.
   // - IndexScan: Use PgSelectIndex to read from index_id and then PgSelect to read from table_id.
   //     Note that for SysTable, only one request is send for both table_id and index_id.

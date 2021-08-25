@@ -136,7 +136,7 @@ typedef struct TupleTableSlot
 	uint32		tts_off;		/* saved state for slot_deform_tuple */
 	bool		tts_fixedTupleDescriptor;	/* descriptor can't be changed */
 
-	/* YugaByte support */
+	/* Yugabyte support */
 	Datum tts_ybctid; /* selected ybctid value */
 	Datum tts_yb_insert_oid; /* OID specified in INSERT during YSQL upgrade,
 							  * should not be used for any other purpose. */

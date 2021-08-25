@@ -433,7 +433,7 @@ LINE 1: INSERT INTO FLOAT8_TBL(f1) VALUES ('-10e-400');
                                            ^
 -- maintain external table consistency across platforms
 -- delete all values and reinsert well-behaved ones
--- TODO (YugaByte): this was DELETE FROM FLOAT8_TBL in float8.sql.
+-- TODO (Yugabyte): this was DELETE FROM FLOAT8_TBL in float8.sql.
 -- We can do that when DELETE is supported.
 DROP TABLE FLOAT8_TBL;
 CREATE TABLE FLOAT8_TBL(f1 float8 PRIMARY KEY);

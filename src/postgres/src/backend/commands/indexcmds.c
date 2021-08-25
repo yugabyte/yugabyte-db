@@ -412,7 +412,7 @@ DefineIndex(Oid relationId,
 	 * Get whether the indexed table is colocated.  This includes tables that
 	 * are colocated because they are part of a tablegroup with colocation.
 	 */
-	if (IsYugaByteEnabled() &&
+	if (IsYugabyteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates() &&
 		IsYBRelation(rel))
@@ -742,7 +742,7 @@ DefineIndex(Oid relationId,
 	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
 	 * the table is stored in Yugabyte storage or not (such as temporary tables).
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		if (accessMethodName == NULL)
 		{
@@ -787,7 +787,7 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1337. "
 						 "Click '+' on the description to raise its priority")));
 	if (!IsYBRelation(rel) && accessMethodId == LSM_AM_OID)
 		ereport(ERROR,
@@ -1510,7 +1510,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	 * indexed table, so just figure out whether the indexed table is
 	 * colocated.
 	 */
-	if (IsYugaByteEnabled() &&
+	if (IsYugabyteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates())
 	{
@@ -1525,7 +1525,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 
 	/* Get whether the index is part of a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists && IsYugaByteEnabled() &&
+	if (TablegroupCatalogExists && IsYugabyteEnabled() &&
 		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
 		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
 
@@ -1541,7 +1541,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Oid			atttype;
 		Oid			attcollation;
 
-		if (IsYugaByteEnabled())
+		if (IsYugabyteEnabled())
 		{
 			if (use_yb_ordering)
 			{
@@ -1821,7 +1821,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			/* default ordering is ASC */
 			if (attribute->ordering == SORTBY_DESC)
 				colOptionP[attn] |= INDOPTION_DESC;
-			if (IsYugaByteEnabled() &&
+			if (IsYugabyteEnabled() &&
 				attribute->ordering == SORTBY_HASH)
 				colOptionP[attn] |= INDOPTION_HASH;
 

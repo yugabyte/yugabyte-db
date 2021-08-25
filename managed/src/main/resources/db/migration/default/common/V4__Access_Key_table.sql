@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 create table access_key (
     key_code            varchar(100) not null,

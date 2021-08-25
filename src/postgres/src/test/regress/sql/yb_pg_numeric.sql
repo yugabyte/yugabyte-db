@@ -745,7 +745,7 @@ COPY width_bucket_test (operand_num) FROM stdin;
 10.0000000000001
 \.
 
--- TODO: Reenable when https://github.com/YugaByte/yugabyte-db/issues/848 gets fixed
+-- TODO: Reenable when https://github.com/yugabyte/yugabyte-db/issues/848 gets fixed
 --
 -- UPDATE width_bucket_test SET operand_f8 = operand_num::float8;
 --

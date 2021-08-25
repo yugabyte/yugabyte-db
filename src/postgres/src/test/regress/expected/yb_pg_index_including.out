@@ -291,22 +291,22 @@ DROP TABLE tbl;
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
 CREATE INDEX on tbl USING brin(c1, c2) INCLUDE (c3, c4);
 ERROR:  index method "brin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX on tbl USING gist(c3) INCLUDE (c4);
 ERROR:  index method "gist" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX on tbl USING spgist(c3) INCLUDE (c4);
 ERROR:  index method "spgist" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX on tbl USING gin(c1, c2) INCLUDE (c3, c4);
 ERROR:  index method "gin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX on tbl USING hash(c1, c2) INCLUDE (c3, c4);
 NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
 CREATE INDEX on tbl USING rtree(c1, c2) INCLUDE (c3, c4);
 NOTICE:  substituting access method "gist" for obsolete method "rtree"
 ERROR:  index method "gist" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX on tbl USING btree(c1, c2) INCLUDE (c3, c4);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 CREATE INDEX on tbl USING lsm(c1, c2) INCLUDE (c3, c4);
@@ -321,7 +321,7 @@ UPDATE tbl SET c1 = 100 WHERE c1 = 2;
 UPDATE tbl SET c1 = 1 WHERE c1 = 3;
 UPDATE tbl SET c2 = 2 WHERE c1 = 1;
 ERROR:  duplicate key value violates unique constraint "tbl_idx_unique"
--- Disabled due to issue https://github.com/YugaByte/yugabyte-db/issues/1448:
+-- Disabled due to issue https://github.com/yugabyte/yugabyte-db/issues/1448:
 -- UPDATE tbl SET c3 = 1;
 --
 DELETE FROM tbl WHERE c1 = 5 OR c3 = 12;

@@ -101,7 +101,7 @@ The remaining code is authored by Andrew Dunstan <amdunstan@ncshp.org> and
 #include "utils/builtins.h"
 
 /* turn off assertions for embedded function */
-// Commented out by YugaByte: NDEBUG should not be redefined!
+// Commented out by Yugabyte: NDEBUG should not be redefined!
 // #define NDEBUG
 
 #else							/* DMETAPHONE_MAIN */

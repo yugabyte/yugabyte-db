@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import { combineReducers } from 'redux';
 import CustomerReducer from './reducer_customer';

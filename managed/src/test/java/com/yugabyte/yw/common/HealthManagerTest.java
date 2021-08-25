@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.common;
 
 import static org.mockito.Matchers.anyString;

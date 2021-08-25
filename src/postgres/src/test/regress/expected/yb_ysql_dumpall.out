@@ -117,7 +117,7 @@ SET row_security = off;
 -- Name: DATABASE system_platform; Type: COMMENT; Schema: -; Owner: postgres
 --
 
-COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
+COMMENT ON DATABASE system_platform IS 'system database for Yugabyte platform';
 
 
 --

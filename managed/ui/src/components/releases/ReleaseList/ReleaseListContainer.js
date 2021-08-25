@@ -1,24 +1,24 @@
-// Copyright YugaByte Inc.
+// Copyright Yugabyte Inc.
 
 import { connect } from 'react-redux';
 import { ReleaseList } from '../../../components/releases';
 import {
-  refreshYugaByteReleases,
-  refreshYugaByteReleasesResponse,
-  getYugaByteReleases,
-  getYugaByteReleasesResponse
+  refreshYugabyteReleases,
+  refreshYugabyteReleasesResponse,
+  getYugabyteReleases,
+  getYugabyteReleasesResponse
 } from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    refreshYugaByteReleases: () => {
-      dispatch(refreshYugaByteReleases()).then((response) => {
-        dispatch(refreshYugaByteReleasesResponse(response.payload));
+    refreshYugabyteReleases: () => {
+      dispatch(refreshYugabyteReleases()).then((response) => {
+        dispatch(refreshYugabyteReleasesResponse(response.payload));
       });
     },
-    getYugaByteReleases: () => {
-      dispatch(getYugaByteReleases()).then((response) => {
-        dispatch(getYugaByteReleasesResponse(response.payload));
+    getYugabyteReleases: () => {
+      dispatch(getYugabyteReleases()).then((response) => {
+        dispatch(getYugabyteReleasesResponse(response.payload));
       });
     }
   };

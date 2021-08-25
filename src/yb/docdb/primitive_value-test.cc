@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -245,15 +245,15 @@ TEST(PrimitiveValueTest, TestEncoding) {
                PrimitiveValue(HybridTime(1234567890123L, 3456)));
 
   TestEncoding(R"#("#\x80\x80\x80D")#",
-               PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
+               PrimitiveValue(HybridTime::FromMicros(kYugabyteMicrosecondEpoch)));
 
   // A little lower timestamp results in a little higher value that gets sorted later.
   TestEncoding(R"#("#\x80\x81\x80D")#",
-               PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch - 1)));
+               PrimitiveValue(HybridTime::FromMicros(kYugabyteMicrosecondEpoch - 1)));
 
   // On the other hand, with a higher timestamp, "~" is 0x7e, which is sorted earlier than 0x80.
   TestEncoding(R"#("#\x80~\x80D")#",
-               PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch + 1)));
+               PrimitiveValue(HybridTime::FromMicros(kYugabyteMicrosecondEpoch + 1)));
 
   TestEncoding(R"#("#\x80\xff\x05T=\xf7)\xbc\x18\x80K")#",
                PrimitiveValue(HybridTime::FromMicros(1000)));

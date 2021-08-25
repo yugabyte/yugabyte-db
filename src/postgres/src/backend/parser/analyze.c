@@ -121,7 +121,7 @@ parse_analyze(RawStmt *parseTree, const char *sourceText,
 
 	if (pstate->p_target_relation &&
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
+		&& IsYugabyteEnabled())
 	{
 		SetTxnWithPGRel();
 	}
@@ -158,7 +158,7 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 
 	if (pstate->p_target_relation &&
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
+		&& IsYugabyteEnabled())
 	{
 		SetTxnWithPGRel();
 	}

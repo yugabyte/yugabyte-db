@@ -958,7 +958,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	 * TODO We don't support forwarding size estimates to postgres yet.
 	 * Use whatever is in pg_class.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		*pages = rel->rd_rel->relpages;
 		*tuples = rel->rd_rel->reltuples;
@@ -1336,8 +1336,8 @@ get_relation_statistics(RelOptInfo *rel, Relation relation)
 	List	   *stainfos = NIL;
 	ListCell   *l;
 
-	/* YugaByte does not support forwarding statistics to Postgres yet */
-	if (IsYugaByteEnabled())
+	/* Yugabyte does not support forwarding statistics to Postgres yet */
+	if (IsYugabyteEnabled())
 		return NIL;
 
 	statoidlist = RelationGetStatExtList(relation);

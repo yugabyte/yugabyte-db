@@ -11,9 +11,9 @@
  *	  src/backend/optimizer/path/allpaths.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * Yugabyte development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) Yugabyte, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -191,7 +191,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 		root->all_baserels = bms_add_member(root->all_baserels, brel->relid);
 	}
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		for (rti = 1; rti < root->simple_rel_array_size; rti++)
 		{
@@ -202,7 +202,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 				RangeTblEntry *rte = root->simple_rte_array[rti];
 				if (IsYBRelationById(rte->relid)) {
 					/*
-					 * Set the YugaByte FDW routine because we will use the foreign
+					 * Set the Yugabyte FDW routine because we will use the foreign
 					 * scan API below.
 					 */
 					relation->fdwroutine = (FdwRoutine *) ybc_fdw_handler();
@@ -408,7 +408,7 @@ set_rel_size(PlannerInfo *root, RelOptInfo *rel,
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("'TABLESAMPLE' clause is not yet "
-										"supported by YugaByte")));
+										"supported by Yugabyte")));
 					}
 
 					/* Sampled relation */
@@ -508,7 +508,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("'TABLESAMPLE' clause is not yet "
-									   "supported by YugaByte")));
+									   "supported by Yugabyte")));
 					}
 
 					/* Sampled relation */
@@ -681,7 +681,7 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 					return;
 			}
 
-			if (IsYugaByteEnabled())
+			if (IsYugabyteEnabled())
 			{
 				/* If YB scan, disable parallelization for now. */
 				return;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';

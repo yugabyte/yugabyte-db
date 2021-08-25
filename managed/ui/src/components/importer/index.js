@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 export { default as Importer } from './Importer';
 export { default as ImporterContainer } from './ImporterContainer';

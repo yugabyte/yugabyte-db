@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -55,7 +55,7 @@ DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
 
 DEFINE_int32(ysql_session_max_batch_size, 512,
-             "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
+             "Maximum batch size for buffered writes between PostgreSQL server and Yugabyte DocDB "
              "services");
 
 DEFINE_bool(ysql_non_txn_copy, false,

@@ -340,7 +340,7 @@ systable_beginscan(Relation heapRelation,
 	SysScanDesc sysscan;
 	Relation	irel;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		return ybc_systable_beginscan(heapRelation,
 		                              indexId,
@@ -433,7 +433,7 @@ systable_getnext(SysScanDesc sysscan)
 {
 	HeapTuple	htup;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		return ybc_systable_getnext(sysscan);
 	}
@@ -519,7 +519,7 @@ systable_recheck_tuple(SysScanDesc sysscan, HeapTuple tup)
 void
 systable_endscan(SysScanDesc sysscan)
 {
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		return ybc_systable_endscan(sysscan);
 	}

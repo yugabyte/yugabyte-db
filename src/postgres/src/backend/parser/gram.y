@@ -8071,7 +8071,7 @@ opt_index_name:
 
 access_method_clause:
 			USING access_method						{ $$ = $2; }
-			| /*EMPTY*/								{ $$ = IsYugaByteEnabled() ?
+			| /*EMPTY*/								{ $$ = IsYugabyteEnabled() ?
 															 NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
@@ -17391,7 +17391,7 @@ raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner, const char 
 		ereport(signal_level,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s", msg),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
 						 "Click '+' on the description to raise its priority", issue),
 				 parser_errposition(pos)));
 
@@ -17402,7 +17402,7 @@ raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner, const char 
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s", msg),
 				 errhint("Please report the issue on "
-						 "https://github.com/YugaByte/yugabyte-db/issues"),
+						 "https://github.com/yugabyte/yugabyte-db/issues"),
 				 parser_errposition(pos)));
 	}
 }

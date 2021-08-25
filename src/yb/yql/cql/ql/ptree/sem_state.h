@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -229,7 +229,7 @@ class SemState {
   // - If select-scan is using nested INDEX key, primary key condition should be dropped off, and
   //   this flag should be set to true. Error on primary key condition should be ignored because
   //   the secondary index key is used in place of primary key.
-  // - Currently, this flag is only used for query that has nested INDEX query. YugaByte does not
+  // - Currently, this flag is only used for query that has nested INDEX query. Yugabyte does not
   //   have any other kinds of nested query
   bool void_primary_key_condition_ = false;
 

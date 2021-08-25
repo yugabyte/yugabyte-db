@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 create table node_instance (
     node_uuid                uuid not null,

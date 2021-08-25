@@ -22,7 +22,7 @@ select count(gen_random_uuid());
 
 -- Testing fuzzystrmatch.
 create extension fuzzystrmatch;
-select levenshtein('YugaByte', 'yugabyte');
+select levenshtein('Yugabyte', 'yugabyte');
  levenshtein
 -------------
            2
@@ -44,9 +44,9 @@ LINE 1: select digest('xyz', 'sha1');
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 drop extension fuzzystrmatch;
 -- Expect failure since function should be removed.
-select levenshtein('YugaByte', 'yugabyte');
+select levenshtein('Yugabyte', 'yugabyte');
 ERROR:  function levenshtein(unknown, unknown) does not exist
-LINE 1: select levenshtein('YugaByte', 'yugabyte');
+LINE 1: select levenshtein('Yugabyte', 'yugabyte');
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- Testing pg_stat_statements;

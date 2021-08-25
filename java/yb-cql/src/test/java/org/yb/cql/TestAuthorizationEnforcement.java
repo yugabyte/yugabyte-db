@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2127,7 +2127,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     assertPermissionsGranted(cs.getSession(), username, canonicalResource, Arrays.asList());
   }
 
-  // This tests the fix for issue https://github.com/YugaByte/yugabyte-db/issues/592.
+  // This tests the fix for issue https://github.com/yugabyte/yugabyte-db/issues/592.
   @Test
   public void testAlterStmtFailsWihoutProperties() throws Exception {
     thrown.expect(SyntaxError.class);

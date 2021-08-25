@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 
 import argparse
 import glob

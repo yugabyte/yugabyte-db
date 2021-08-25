@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of Yugabyte development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -95,7 +95,7 @@ namespace client {
 namespace internal {
 
 // TODO: instead of using a string error message, make Batcher return a status other than IOError.
-// (https://github.com/YugaByte/yugabyte-db/issues/702)
+// (https://github.com/yugabyte/yugabyte-db/issues/702)
 const std::string Batcher::kErrorReachingOutToTServersMsg(
     "Errors occurred while reaching out to the tablet servers");
 
@@ -243,7 +243,7 @@ void Batcher::CheckForFinishedFlush() {
   } else if (had_errors_.load(std::memory_order_acquire)) {
     // In the general case, the user is responsible for fetching errors from the error collector.
     // TODO: use the Combined status here, so it is easy to recognize.
-    // https://github.com/YugaByte/yugabyte-db/issues/702
+    // https://github.com/yugabyte/yugabyte-db/issues/702
     s = kGeneralErrorStatus;
   }
 

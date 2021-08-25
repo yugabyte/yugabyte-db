@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,7 +36,7 @@
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_bool(pg_transactions_enabled, true,
-            "True to enable transactions in YugaByte PostgreSQL API.");
+            "True to enable transactions in Yugabyte PostgreSQL API.");
 DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
@@ -458,7 +458,7 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
     LOG(INFO) << "Data directory " << conf_.data_dir << " already exists, skipping initdb";
     return Status::OK();
   }
-  // Do not communicate with the YugaByte cluster at all. This function is only concerned with
+  // Do not communicate with the Yugabyte cluster at all. This function is only concerned with
   // setting up the local PostgreSQL data directory on this tablet server.
   return InitDb(/* yb_enabled */ false);
 }

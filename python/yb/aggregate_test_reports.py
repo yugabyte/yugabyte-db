@@ -109,14 +109,14 @@ def parse_args() -> argparse.Namespace:
         description=__doc__)
     parser.add_argument(
         '--yb-src-root',
-        help='YugaByte source directory. Needed for making paths relative.',
+        help='Yugabyte source directory. Needed for making paths relative.',
         required=True)
     parser.add_argument(
         '--output-dir',
         help='Output directory to generate aggregated output files in.')
     parser.add_argument(
         '--build-type',
-        help='YugaByte build type. Added to test result files.')
+        help='Yugabyte build type. Added to test result files.')
     parser.add_argument(
         '--compiler-type',
         help='C/C++ compiler type. Added to test result files.')

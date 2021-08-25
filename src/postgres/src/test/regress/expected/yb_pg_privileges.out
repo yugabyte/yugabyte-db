@@ -1972,7 +1972,7 @@ LOCK TABLE lock_table IN ROW EXCLUSIVE MODE; -- should fail
 ERROR:  ROW EXCLUSIVE not supported yet
 LINE 1: LOCK TABLE lock_table IN ROW EXCLUSIVE MODE;
                                  ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+HINT:  Please report the issue on https://github.com/yugabyte/yugabyte-db/issues
 -- ROLLBACK;
 -- BEGIN;
 -- LOCK TABLE lock_table IN ACCESS SHARE MODE; -- should pass

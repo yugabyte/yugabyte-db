@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -28,7 +28,7 @@ public class YBBannerProvider extends DefaultBannerProvider  {
 		StringBuffer buf = new StringBuffer();
 		buf.append("=======================================" + OsUtils.LINE_SEPARATOR);
 		buf.append("*                                     *" + OsUtils.LINE_SEPARATOR);
-		buf.append("*           YugaByte CLI              *" + OsUtils.LINE_SEPARATOR);
+		buf.append("*           Yugabyte CLI              *" + OsUtils.LINE_SEPARATOR);
 		buf.append("*                                     *" + OsUtils.LINE_SEPARATOR);
 		buf.append("=======================================" + OsUtils.LINE_SEPARATOR);
 		buf.append("Version:" + this.getVersion());
@@ -42,7 +42,7 @@ public class YBBannerProvider extends DefaultBannerProvider  {
 
 	@Override
   public String getWelcomeMessage() {
-		return "Welcome to YugaByte CLI";
+		return "Welcome to Yugabyte CLI";
 	}
 
 	@Override

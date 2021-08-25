@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -326,7 +326,7 @@ Status SecureContext::AddCertificateAuthority(X509* cert) {
 
 Status SecureContext::TEST_GenerateKeys(int bits, const std::string& common_name) {
   auto ca_key = VERIFY_RESULT(GeneratePrivateKey(bits));
-  auto ca_cert = VERIFY_RESULT(CreateCertificate(ca_key.get(), "YugaByte", ca_key.get(), nullptr));
+  auto ca_cert = VERIFY_RESULT(CreateCertificate(ca_key.get(), "Yugabyte", ca_key.get(), nullptr));
   auto key = VERIFY_RESULT(GeneratePrivateKey(bits));
   auto cert = VERIFY_RESULT(CreateCertificate(key.get(), common_name, ca_key.get(), ca_cert.get()));
 

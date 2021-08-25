@@ -413,7 +413,7 @@ lookup_type_cache(Oid type_id, int flags)
 	{
 		Oid			opclass;
 
-		opclass = GetDefaultOpClass(type_id, IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID);
+		opclass = GetDefaultOpClass(type_id, IsYugabyteEnabled() ? LSM_AM_OID : BTREE_AM_OID);
 		if (OidIsValid(opclass))
 		{
 			typentry->btree_opf = get_opclass_family(opclass);

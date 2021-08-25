@@ -257,7 +257,7 @@ drop table insertconflicttest;
 -- do not make sense because EXCLUDED isn't an already stored tuple
 -- (and thus doesn't have a ctid, oids are not assigned yet, etc).
 --
--- YugaByte don't support WITH OIDS
+-- Yugabyte don't support WITH OIDS
 -- create table syscolconflicttest(key int4, data text) WITH OIDS;
 -- insert into syscolconflicttest values (1);
 -- insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.ctid::text;

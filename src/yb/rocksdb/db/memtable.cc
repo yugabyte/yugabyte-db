@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of Yugabyte development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -794,7 +794,7 @@ void MemTable::Update(SequenceNumber seq,
                               VarintLength(value.size()) + value.size()));
             return;
           }
-          // TODO (YugaByte): verify this is not a bug. The behavior for kTypeValue in case there
+          // TODO (Yugabyte): verify this is not a bug. The behavior for kTypeValue in case there
           // is not enough room for an in-place update, .
           FALLTHROUGH_INTENDED;
         }

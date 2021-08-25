@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 
 # Lists the targets that need to be built for a YB release.
 

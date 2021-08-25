@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -14,9 +14,9 @@
 #
 
 """
-Copyright (c) YugaByte, Inc.
+Copyright (c) Yugabyte, Inc.
 
-Finds all Linux dynamic libraries that have to be packaged with the YugaByte distribution tarball by
+Finds all Linux dynamic libraries that have to be packaged with the Yugabyte distribution tarball by
 starting from a small set of executables and walking the dependency graph. Creates a self-sufficient
 distribution directory.
 

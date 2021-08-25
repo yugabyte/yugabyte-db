@@ -832,7 +832,7 @@ usage(void)
 		   "  -V, --version            output version information, then exit\n"
 		   "  -?, --help               show this help, then exit\n"
 		   "\n"
-		   "Report bugs on https://github.com/YugaByte/yugabyte-db/issues/new.\n",
+		   "Report bugs on https://github.com/yugabyte/yugabyte-db/issues/new.\n",
 		   progname, progname);
 }
 

@@ -42,10 +42,10 @@ This tutorial assumes that you have:
 
 In your Visual Studio create a new Project and choose Console Application as template. Follow the instructions to save the project.
 
-### Install YugaByteCassandraCSharpDriver C# driver
+### Install YugabyteCassandraCSharpDriver C# driver
 
 YugabyteDB has forked the Cassandra driver to add more features like JSONB and change the routing policy.
-[Install the C# driver](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project by
+[Install the C# driver](https://www.nuget.org/packages/YugabyteCassandraCSharpDriver/) in your Visual Studio project by
 following instructions on the page.
 
 ### Copy the contents below to your `Program.cs` file.

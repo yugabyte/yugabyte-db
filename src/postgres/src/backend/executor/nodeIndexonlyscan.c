@@ -114,9 +114,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 	}
 
 	/*
-	 * Setup LIMIT and future execution parameter before calling YugaByte scanning rountines.
+	 * Setup LIMIT and future execution parameter before calling Yugabyte scanning rountines.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYugabyteEnabled()) {
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 
 		// TODO(hector) Add row marks for INDEX_ONLY_SCAN
@@ -167,9 +167,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 * It's worth going through this complexity to avoid needing to lock
 		 * the VM buffer, which could cause significant contention.
 		 *
-		 * YugaByte index tuple is always visible.
+		 * Yugabyte index tuple is always visible.
 		 */
-		if (!IsYugaByteEnabled() &&
+		if (!IsYugabyteEnabled() &&
 			!VM_ALL_VISIBLE(scandesc->heapRelation,
 							ItemPointerGetBlockNumber(tid),
 							&node->ioss_VMBuffer))
@@ -257,9 +257,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 * anyway, then we already have the tuple-level lock and can skip the
 		 * page lock.
 		 *
-		 * YugaByte index tuple does not require locking.
+		 * Yugabyte index tuple does not require locking.
 		 */
-		if (tuple == NULL && !IsYugaByteEnabled())
+		if (tuple == NULL && !IsYugabyteEnabled())
 			PredicateLockPage(scandesc->heapRelation,
 							  ItemPointerGetBlockNumber(tid),
 							  estate->es_snapshot);

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -42,9 +42,9 @@ YBCStatus YBCPgInitSession(const YBCPgEnv pg_env, const char *database_name);
 // Initialize YBCPgMemCtx.
 // - Postgres uses memory context to hold all of its allocated space. Once all associated operations
 //   are done, the context is destroyed.
-// - There YugaByte objects are bound to Postgres operations. All of these objects' allocated
+// - There Yugabyte objects are bound to Postgres operations. All of these objects' allocated
 //   memory will be held by YBCPgMemCtx, whose handle belongs to Postgres MemoryContext. Once all
-//   Postgres operations are done, associated YugaByte memory context (YBCPgMemCtx) will be
+//   Postgres operations are done, associated Yugabyte memory context (YBCPgMemCtx) will be
 //   destroyed toghether with Postgres memory context.
 YBCPgMemctx YBCPgCreateMemctx();
 YBCStatus YBCPgDestroyMemctx(YBCPgMemctx memctx);
@@ -515,7 +515,7 @@ int32_t YBCGetSequenceCacheMinval();
 // Retrieve value of ysql_disable_index_backfill gflag.
 bool YBCGetDisableIndexBackfill();
 
-bool YBCPgIsYugaByteEnabled();
+bool YBCPgIsYugabyteEnabled();
 
 // Sets the specified timeout in the rpc service.
 void YBCSetTimeout(int timeout_ms, void* extra);

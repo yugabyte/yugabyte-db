@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,7 +39,7 @@ TAG_FLAG(ysql_disable_index_backfill, advanced);
 TAG_FLAG(ysql_disable_index_backfill, runtime);
 
 DEFINE_bool(enable_pg_savepoints, false,
-            "True to enable savepoints in YugaByte PostgreSQL API. This should eventually be set "
+            "True to enable savepoints in Yugabyte PostgreSQL API. This should eventually be set "
             "to true by default.");
 TAG_FLAG(enable_pg_savepoints, unsafe);
 

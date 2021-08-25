@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 Yugabyte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
 # may obtain a copy of the License at
 #
-# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+# https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import boto3
 import json
@@ -87,7 +87,7 @@ class AwsBootstrapRegion():
         for r in rules:
             r.update({"cidr_ip": IGW_CIDR})
         sg = create_security_group(client=self.client, group_name=sg_group_name,
-                                   description="YugaByte SG", vpc=self.vpc,
+                                   description="Yugabyte SG", vpc=self.vpc,
                                    rules=rules)
         self.sg_yugabyte = sg
 
@@ -630,7 +630,7 @@ def set_yb_sg_and_fetch_vpc(metadata, region, dest_vpc_id):
         r.update({"cidr_ip": IGW_CIDR})
     add_cidr_to_rules(rules, dest_vpc.cidr_block)
     sgs = [create_security_group(client=client, group_name=sg_group_name, vpc=dest_vpc,
-                                 description="YugaByte SG", rules=rules)]
+                                 description="Yugabyte SG", rules=rules)]
     return vpc_components_as_json(dest_vpc, sgs, subnets)
 
 

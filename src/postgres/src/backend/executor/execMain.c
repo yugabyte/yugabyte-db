@@ -158,7 +158,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 		YBBeginOperationsBuffering();
 
 	/*
@@ -442,7 +442,7 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 		AfterTriggerEndQuery(estate);
 
 	// Flush buffered operations straight before elapsed time calculation.
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 		YBEndOperationsBuffering();
 
 	if (queryDesc->totaltime)

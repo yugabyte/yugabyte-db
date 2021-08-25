@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 create table schedule (
   schedule_uuid                 uuid not null,

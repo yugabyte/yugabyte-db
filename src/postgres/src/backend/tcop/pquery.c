@@ -1241,7 +1241,7 @@ PortalRunMulti(Portal portal,
 	if (altdest->mydest == DestRemoteExecute)
 		altdest = None_Receiver;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		if (!IsTransactionBlock() && list_length(portal->stmts) == 1)
 		{

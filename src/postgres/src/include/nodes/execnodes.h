@@ -581,7 +581,7 @@ typedef struct EState
 	struct JitInstrumentation *es_jit_worker_instr;
 
 	/*
-	 * YugaByte-specific fields
+	 * Yugabyte-specific fields
 	 */
 
 	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify

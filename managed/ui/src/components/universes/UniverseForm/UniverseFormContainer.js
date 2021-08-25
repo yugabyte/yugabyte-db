@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import { reduxForm, formValueSelector } from 'redux-form';
 import { connect } from 'react-redux';

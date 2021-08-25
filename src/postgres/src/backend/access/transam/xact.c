@@ -1193,7 +1193,7 @@ RecordTransactionCommit(void)
 	bool		RelcacheInitFileInval = false;
 	bool		wrote_xlog;
 
-	if (IsYugaByteEnabled() && !IsCurrentTxnWithPGRel())
+	if (IsYugabyteEnabled() && !IsCurrentTxnWithPGRel())
 	{
 		return latestXid;
 	}
@@ -1869,11 +1869,11 @@ YBUpdateActiveSubTransaction(TransactionState s) {
 static void
 YBStartTransaction(TransactionState s)
 {
-	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
+	s->isYBTxnWithPostgresRel = !IsYugabyteEnabled();
 	s->ybDataSent             = false;
 	s->YBPostponedDdlOps      = NULL;
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		YBResetOperationsBuffering();
 		YBInitializeTransaction();

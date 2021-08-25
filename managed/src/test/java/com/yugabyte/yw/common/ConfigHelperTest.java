@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.ReleaseManagerTest.TMP_STORAGE_PATH;

@@ -2875,8 +2875,8 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
 	HeapTuple	tp;
 	int32		stawidth;
 
-	/* Do not support avg width stats for YugaByte tables as of 14/12/2018 */
-	if (IsYugaByteEnabled())
+	/* Do not support avg width stats for Yugabyte tables as of 14/12/2018 */
+	if (IsYugabyteEnabled())
 		return 0;
 
 	if (get_attavgwidth_hook)

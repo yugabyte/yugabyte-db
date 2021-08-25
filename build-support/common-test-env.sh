@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) Yugabyte, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -744,7 +744,7 @@ stop_process_tree_supervisor() {
     # following tests are fixed:
     # - org.yb.pgsql.TestPgRegressFeature.testPgRegressFeature
     # - org.yb.pgsql.TestPgRegressTypesNumeric.testPgRegressTypes
-    # See https://github.com/YugaByte/yugabyte-db/issues/946 for details.
+    # See https://github.com/yugabyte/yugabyte-db/issues/946 for details.
     if false && grep -q YB_STRAY_PROCESS "$process_supervisor_log_path"; then
       log "Stray processes reported in $process_supervisor_log_path, considering the test failed."
       log "The JUnit-compatible XML file will be updated to reflect this error."

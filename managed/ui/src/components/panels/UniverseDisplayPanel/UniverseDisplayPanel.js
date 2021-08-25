@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 import React, { Component } from 'react';
 import { Link } from 'react-router';
@@ -163,7 +163,7 @@ export default class UniverseDisplayPanel extends Component {
       return (
         <div className="get-started-config">
           <span className="yb-data-name">
-            Welcome to the <div>YugaByte Admin Console.</div>
+            Welcome to the <div>Yugabyte Admin Console.</div>
           </span>
           <span>Before you can create a Universe, you must configure a cloud provider.</span>
           <CTAButton linkTo={'config'} labelText={'Configure a Provider'} />

@@ -694,7 +694,7 @@ typedef enum TableLikeOption
  * index, and 'expr' is NULL.  For an index expression, 'name' is NULL and
  * 'expr' is the expression tree.
  *
- * When a YugaByte LSM primary key or index declaration contains an attribute
+ * When a Yugabyte LSM primary key or index declaration contains an attribute
  * group like "create table (... primary key ((h1, h2, ...) hash, ...))",
  * the attribute group is first represented as an IndexElem with 'h1', 'h2',
  * ... in 'yb_yname_list'. The attribute group is then flattened as a list of
@@ -2147,7 +2147,7 @@ typedef struct Constraint
 	bool		skip_validation;	/* skip validation of existing rows? */
 	bool		initially_valid;	/* mark the new constraint as valid? */
 
-	/* For YugaByte LSM primary or unique key defined inline with the table
+	/* For Yugabyte LSM primary or unique key defined inline with the table
 	 * definition, we allow the key definition to include the sorting info
 	 * like "create table (... primary key (h hash, r1 asc, r2 desc))".
 	 * We save the IndexElem of the attributes in 'yb_index_params' to access
@@ -2158,9 +2158,9 @@ typedef struct Constraint
 } Constraint;
 
 /* ----------
- * YugaByte split parameters in CreateStmt
+ * Yugabyte split parameters in CreateStmt
  *
- * In YugaByte, tables are split into a certain number of tablets.
+ * In Yugabyte, tables are split into a certain number of tablets.
  * This normally happens automatically behind the scenes, but there is
  * a SPLIT extension that allows the user to specify the number of tablets
  * (in the case of a HASH-partitioned table) or explicit split points
@@ -2203,7 +2203,7 @@ typedef struct DropTableGroupStmt
 } DropTableGroupStmt;
 
 /* ----------------------
- * YugaByte Tablegroup options
+ * Yugabyte Tablegroup options
  * ----------------------
 */
 

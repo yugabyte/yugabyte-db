@@ -647,7 +647,7 @@ help(void)
 
 	printf(_("\nIf -f/--file is not used, then the SQL script will be written to the standard\n"
 			 "output.\n\n"));
-	printf(_("Report bugs on https://github.com/YugaByte/yugabyte-db/issues/new\n"));
+	printf(_("Report bugs on https://github.com/yugabyte/yugabyte-db/issues/new\n"));
 }
 
 

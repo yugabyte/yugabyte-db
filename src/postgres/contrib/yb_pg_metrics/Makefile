@@ -5,7 +5,7 @@ OBJS = yb_pg_metrics.o $(WIN32RES)
 
 EXTENSION = yb_pg_metrics
 DATA =
-PGFILEDESC = "yb_pg_metrics - YugaByte metrics"
+PGFILEDESC = "yb_pg_metrics - Yugabyte metrics"
 SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process -lyb_common
 subdir = contrib/yb_pg_metrics
 top_builddir = ../..

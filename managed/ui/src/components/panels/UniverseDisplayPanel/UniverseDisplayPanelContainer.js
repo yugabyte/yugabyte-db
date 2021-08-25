@@ -1,4 +1,4 @@
-// Copyright YugaByte Inc.
+// Copyright Yugabyte Inc.
 
 import { connect } from 'react-redux';
 

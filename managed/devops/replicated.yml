@@ -1,17 +1,17 @@
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 Yugabyte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
 # may obtain a copy of the License at
 #
-# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+# https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 ---
 replicated_api_version: "2.8.0"
 name: "yugaware"
 properties:
   app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
-  console_title: YugaByte Platform Deployment Console
+  console_title: Yugabyte Platform Deployment Console
 backup:
   enabled: false
 monitors:

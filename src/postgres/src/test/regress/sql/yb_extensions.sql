@@ -12,7 +12,7 @@ select count(gen_random_uuid());
 -- Testing fuzzystrmatch.
 create extension fuzzystrmatch;
 
-select levenshtein('YugaByte', 'yugabyte');
+select levenshtein('Yugabyte', 'yugabyte');
 
 select metaphone('yugabyte', 8);
 
@@ -25,7 +25,7 @@ select digest('xyz', 'sha1');
 drop extension fuzzystrmatch;
 
 -- Expect failure since function should be removed.
-select levenshtein('YugaByte', 'yugabyte');
+select levenshtein('Yugabyte', 'yugabyte');
 
 -- Testing pg_stat_statements;
 select pg_stat_statements_reset();

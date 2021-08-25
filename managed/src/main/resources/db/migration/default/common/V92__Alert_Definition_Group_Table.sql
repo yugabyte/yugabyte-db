@@ -1,4 +1,4 @@
--- Copyright (c) YugaByte, Inc.
+-- Copyright (c) Yugabyte, Inc.
 create table if not exists alert_definition_group (
   uuid                          uuid primary key,
   customer_uuid                 uuid not null,

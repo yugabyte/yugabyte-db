@@ -109,11 +109,11 @@ _null_			{ return NULLVAL; }
 ^\#[^\n]* 		;		/* drop everything after "#" for comments */
 
 declare			{ yylval.kw = "declare"; return XDECLARE; }
-yb_declare		{ yylval.kw = "yb_declare"; return YBDECLARE; } /* For YugaByte pkeys */
+yb_declare		{ yylval.kw = "yb_declare"; return YBDECLARE; } /* For Yugabyte pkeys */
 build			{ yylval.kw = "build"; return XBUILD; }
 indices			{ yylval.kw = "indices"; return INDICES; }
 unique			{ yylval.kw = "unique"; return UNIQUE; }
-primary			{ yylval.kw = "primary"; return PRIMARY; } /* For YugaByte pkeys */
+primary			{ yylval.kw = "primary"; return PRIMARY; } /* For Yugabyte pkeys */
 index			{ yylval.kw = "index"; return INDEX; }
 on				{ yylval.kw = "on"; return ON; }
 using			{ yylval.kw = "using"; return USING; }

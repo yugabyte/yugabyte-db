@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 #ifndef YB_MASTER_CLUSTER_BALANCE_MOCKED_H
 #define YB_MASTER_CLUSTER_BALANCE_MOCKED_H

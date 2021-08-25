@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-// This module contains C definitions for all YugaByte structures that are used to exhange data
+// This module contains C definitions for all Yugabyte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
 #ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
@@ -58,7 +58,7 @@ YB_DEFINE_HANDLE_TYPE(PgMemctx);
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
 //--------------------------------------------------------------------------------------------------
-// Use YugaByte (YQL) datatype numeric representation for now, as provided in common.proto.
+// Use Yugabyte (YQL) datatype numeric representation for now, as provided in common.proto.
 // TODO(neil) This should be change to "PgType *" and convert Postgres's TypeName struct to our
 // class PgType or QLType.
 typedef enum PgDataType {
@@ -102,7 +102,7 @@ typedef enum PgDataType {
 // - YBCPgTypeAttrs is used to keep customizable information of a datatype.
 //
 // Example:
-//   For type CHAR(20), its associated YugaByte internal type (YB_YQL_DATA_TYPE_STRING) is
+//   For type CHAR(20), its associated Yugabyte internal type (YB_YQL_DATA_TYPE_STRING) is
 //   static while its typemod (size 20) can be customized for each usage.
 typedef struct PgTypeAttrs {
   // Currently, we only need typmod, but we might need more datatype information in the future.
@@ -118,7 +118,7 @@ typedef struct PgTypeEntity {
   // Postgres type OID.
   int type_oid;
 
-  // YugaByte storage (DocDB) type.
+  // Yugabyte storage (DocDB) type.
   YBCPgDataType yb_type;
 
   // Allow to be used for primary key.
@@ -131,10 +131,10 @@ typedef struct PgTypeEntity {
   // - Set to (-1) for types of variable in-memory size - VARSIZE_ANY should be used.
   int64_t datum_fixed_size;
 
-  // Converting Postgres datum to YugaByte expression.
+  // Converting Postgres datum to Yugabyte expression.
   YBCPgDatumToData datum_to_yb;
 
-  // Converting YugaByte values to Postgres in-memory-formatted datum.
+  // Converting Yugabyte values to Postgres in-memory-formatted datum.
   YBCPgDatumFromData yb_to_datum;
 } YBCPgTypeEntity;
 
@@ -188,7 +188,7 @@ typedef struct PgSysColumns {
 //     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, false, true }
 //   - IndexOnlyScan:
 //     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, true, true }
-//   - PrimaryIndexScan: This is a special case as YugaByte doesn't have a separated
+//   - PrimaryIndexScan: This is a special case as Yugabyte doesn't have a separated
 //     primary-index database object from table object.
 //       index_oid = TableOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
@@ -237,15 +237,15 @@ typedef struct PgExecParameters {
   // LIMIT parameters for executing DML read.
   // - limit_count is the value of SELECT ... LIMIT
   // - limit_offset is value of SELECT ... OFFSET
-  // - limit_use_default: Although count and offset are pushed down to YugaByte from Postgres,
+  // - limit_use_default: Although count and offset are pushed down to Yugabyte from Postgres,
   //   they are not always being used to identify the number of rows to be read from DocDB.
-  //   Full-scan is needed when further operations on the rows are not done by YugaByte.
+  //   Full-scan is needed when further operations on the rows are not done by Yugabyte.
   // - out_param is an output parameter of an execution while all other parameters are IN params.
   //
   //   Examples:
-  //   o WHERE clause is not processed by YugaByte. All rows must be sent to Postgres code layer
+  //   o WHERE clause is not processed by Yugabyte. All rows must be sent to Postgres code layer
   //     for filtering before LIMIT is applied.
-  //   o ORDER BY clause is not processed by YugaByte. Similarly all rows must be fetched and sent
+  //   o ORDER BY clause is not processed by Yugabyte. Similarly all rows must be fetched and sent
   //     to Postgres code layer.
   // For now we only support one rowmark.
 #ifdef __cplusplus

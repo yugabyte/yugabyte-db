@@ -286,7 +286,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 * see an easy way to do a sanity check.
 	 */
 	cxt.isSystem = IsSystemNamespace(namespaceid);
-	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+	if (IsYugabyteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create \"%s.%s\"",
@@ -451,7 +451,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 	/*
 	 * Postprocess constraints that give rise to index definitions.
-	 * In YugaByte mode we handle ixconstraints as regular constraints below.
+	 * In Yugabyte mode we handle ixconstraints as regular constraints below.
 	 */
 	transformIndexConstraints(&cxt);
 
@@ -478,9 +478,9 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 	/*
 	 * If YB is enabled, add the index constraints to the statement as they
-	 * might be passed down to YugaByte (e.g. as primary key).
+	 * might be passed down to Yugabyte (e.g. as primary key).
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 	{
 		stmt->constraints = list_concat(stmt->constraints, cxt.ixconstraints);
 	}
@@ -879,7 +879,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 												constraint->location)));
 				if (constraint->keys == NIL)
 					constraint->keys = list_make1(makeString(column->colname));
-				if (IsYugaByteEnabled())
+				if (IsYugabyteEnabled())
 				{
 					if (constraint->yb_index_params == NIL)
 					{
@@ -1014,7 +1014,7 @@ YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 	ereport(ERROR,
 			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("%s", message),
-			 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1129. "
+			 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1129. "
 			         "Click '+' on the description to raise its priority"),
 			 parser_errposition(cxt->pstate, constraint->location)));
 }
@@ -1095,7 +1095,7 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 			break;
 	}
 
-	if (IsYugaByteEnabled())
+	if (IsYugabyteEnabled())
 		YBCheckDeferrableConstraint(cxt, constraint);
 }
 
@@ -2084,7 +2084,7 @@ transformIndexConstraints(CreateStmtContext *cxt)
 		 * Even though index creation would do that anyway, we do this ahead
 		 * to spare DocDB from rolling back table creation.
 		 */
-		if (IsYugaByteEnabled() && cxt->isSystem && IsYsqlUpgrade)
+		if (IsYugabyteEnabled() && cxt->isSystem && IsYsqlUpgrade)
 		{
 			Oid oid = GetTableOidFromRelOptions(
 				index->options,
@@ -2187,7 +2187,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 	index->relation = cxt->relation;
 	index->accessMethod = constraint->access_method ? constraint->access_method :
-			(IsYugaByteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
+			(IsYugabyteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
 					? DEFAULT_YB_INDEX_TYPE
 					: DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;
@@ -2364,7 +2364,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 							 errdetail("Cannot create a primary key or unique constraint using such an index."),
 							 parser_errposition(cxt->pstate, constraint->location)));
 
-				if (IsYugaByteEnabled())
+				if (IsYugabyteEnabled())
 				{
 					IndexElem *index_elem = makeNode(IndexElem);
 					index_elem->name = attname;
@@ -3320,7 +3320,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	 * YB expects system tables to be altered only during YSQL cluster upgrade.
 	 */
 	cxt.isSystem = IsSystemNamespace(RelationGetNamespace(rel));
-	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+	if (IsYugabyteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to alter \"%s\"",
