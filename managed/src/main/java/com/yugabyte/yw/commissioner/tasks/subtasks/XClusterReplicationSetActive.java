@@ -21,7 +21,7 @@ public class XClusterReplicationSetActive extends XClusterReplicationTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    Universe targetUniverse = Universe.getOrBadRequest(taskParams().sourceUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(taskParams().targetUniverseUUID);
 
     String masterHostPorts = targetUniverse.getMasterAddresses();
     String certificate = targetUniverse.getCertificateNodetoNode();

@@ -8868,6 +8868,252 @@
         "tags" : [ "Metamaster" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{targetUniUUID}/xcluster_replication" : {
+      "post": {
+        "description" : "Create new xCluster replication between universes",
+        "operationId" : "createXClusterReplication",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description": "Target universe UUID",
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "targetUniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Source universe UUID",
+          "in" : "body",
+          "name" : "sourceUniverseUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description": "List of source universe table IDs to replicate",
+          "in" : "body",
+          "name" : "sourceTableIds",
+          "required" : true,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        }, {
+          "description": "List of bootstrap IDs (lets the source universe know from where to start replicating)",
+          "in" : "body",
+          "name" : "bootstrapIds",
+          "required" : false,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        }],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWResults"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "create xCluster replication",
+        "tags" : [ "xCluster replication", "xCluster" ]
+      },
+      "put" : {
+        "description" : "Edit existing xCluster replication between universes",
+        "operationId" : "editXClusterReplication",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description": "Target universe UUID",
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "targetUniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Source universe UUID",
+          "in" : "body",
+          "name" : "sourceUniverseUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description": "List of source universe table IDs to add to replication",
+          "in" : "body",
+          "name" : "sourceTableIdsToAdd",
+          "required" : true,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        }, {
+          "description": "List of source universe table IDs to remove from replication",
+          "in" : "body",
+          "name" : "sourceTableIdsToRemove",
+          "required" : true,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        }, {
+          "description": "List of new source universe master addresses (host and port)",
+          "in" : "body",
+          "name" : "sourceMasterAddressesToChange",
+          "required" : true,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        }],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWResults"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "edit xCluster replication",
+        "tags" : [ "xCluster replication", "xCluster" ]
+      },
+      "delete": {
+        "description" : "Delete existing xCluster replication between universes",
+        "operationId" : "deleteXClusterReplication",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description": "Target universe UUID",
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "targetUniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Source universe UUID",
+          "in" : "body",
+          "name" : "sourceUniverseUUID",
+          "required" : true,
+          "type" : "string"
+        }],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWResults"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "delete xCluster replication",
+        "tags" : [ "xCluster replication", "xCluster" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{targetUniUUID}/pause_xcluster_replication" : {
+      "put" : {
+        "description" : "Pause existing xCluster replication between universes",
+        "operationId" : "pauseXClusterReplication",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description": "Target universe UUID",
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "targetUniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Source universe UUID",
+          "in" : "body",
+          "name" : "sourceUniverseUUID",
+          "required" : true,
+          "type" : "string"
+        }],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWResults"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "pause xCluster replication",
+        "tags" : [ "xCluster replication", "xCluster" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/resume_xcluster_replication" : {
+      "put" : {
+        "description" : "Resume existing xCluster replication between universes",
+        "operationId" : "resumeXClusterReplication",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description": "Target universe UUID",
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "targetUniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "Source universe UUID",
+          "in" : "body",
+          "name" : "sourceUniverseUUID",
+          "required" : true,
+          "type" : "string"
+        }],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWResults"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "resume xCluster replication",
+        "tags" : [ "xCluster replication", "xCluster" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/{nodeName}/download_logs" : {
       "get" : {
         "description" : "",

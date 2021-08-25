@@ -239,6 +239,13 @@ POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     c
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseActionsController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/toggle_tls                        com.yugabyte.yw.controllers.UniverseActionsController.toggleTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
+# xCluster Replication management
+POST    /customers/:cUUID/universes/:uniUUID/xcluster_replication              com.yugabyte.yw.controllers.XClusterReplicationController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+PUT     /customers/:cUUID/universes/:uniUUID/xcluster_replication              com.yugabyte.yw.controllers.XClusterReplicationController.edit(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /customers/:cUUID/universes/:uniUUID/xcluster_replication              com.yugabyte.yw.controllers.XClusterReplicationController.delete(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+PUT     /customers/:cUUID/universes/:uniUUID/pause_xcluster_replication        com.yugabyte.yw.controllers.XClusterReplicationController.pause(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+PUT     /customers/:cUUID/universes/:uniUUID/resume_xcluster_replication       com.yugabyte.yw.controllers.XClusterReplicationController.resume(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
 # Universe upgrade API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/software                  com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeSoftware(cUUID: java.util.UUID, uniUUID: java.util.UUID)

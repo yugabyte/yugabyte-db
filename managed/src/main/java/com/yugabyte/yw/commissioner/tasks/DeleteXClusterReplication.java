@@ -29,7 +29,9 @@ public class DeleteXClusterReplication extends XClusterReplicationTaskBase {
     YBClient client = null;
 
     try {
-      // Update the universe DB with the update to be performed and set the
+      checkUniverseVersion();
+
+      // Update the target universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 

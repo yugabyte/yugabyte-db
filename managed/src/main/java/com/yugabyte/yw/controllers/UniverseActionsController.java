@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
-
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -30,6 +28,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Result;
+import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
 
 @Api(
     value = "Universe management",
