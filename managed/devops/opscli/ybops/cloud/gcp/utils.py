@@ -601,10 +601,15 @@ class GoogleCloudAdmin():
                                                             body=body).execute()
         self.waiter.wait(operation, zone=zone)
 
-    def delete_instance(self, zone, instance_name):
-        operation = self.compute.instances().delete(project=self.project,
-                                                    zone=zone,
-                                                    instance=instance_name).execute()
+    def delete_instance(self, region, zone, instance_name, has_static_ip=False):
+        if has_static_ip:
+            address = "ip-" + instance_name
+            logging.info("Deleting static ip {} attached to VM {}".format(address, instance_name))
+            self.compute.addresses().delete(
+                project=self.project, region=region, address=address).execute()
+            logging.info("Deleted static ip {} attached to VM {}".format(address, instance_name))
+        operation = self.compute.instances().delete(
+            project=self.project, zone=zone, instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
 
     def stop_instance(self, zone, instance_name):
@@ -713,8 +718,9 @@ class GoogleCloudAdmin():
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
-                        volume_size, boot_disk_size_gb=None, assign_public_ip=True, ssh_keys=None,
-                        boot_script=None, auto_delete_boot_disk=True, tags=None):
+                        volume_size, boot_disk_size_gb=None, assign_public_ip=True,
+                        assign_static_public_ip=False, ssh_keys=None, boot_script=None,
+                        auto_delete_boot_disk=True, tags=None):
         # Name of the project that target VPC network belongs to.
         host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
 
@@ -730,7 +736,26 @@ class GoogleCloudAdmin():
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
-        accessConfigs = [{"natIP": None}] if assign_public_ip else None
+        access_configs = [{"natIP": None}] if assign_public_ip else None
+
+        if assign_static_public_ip:
+            # Create external static ip.
+            static_ip_name = "ip-" + instance_name
+            static_ip_description = "Static IP {} for GCP VM {} in region {}".format(
+                static_ip_name, instance_name, region)
+            static_ip_body = {"name": static_ip_name, "description": static_ip_description}
+            logging.info("[app] Creating " + static_ip_description)
+            self.waiter.wait(self.compute.addresses().insert(
+                project=self.project,
+                region=region,
+                body=static_ip_body).execute(), region=region)
+            static_ip = self.compute.addresses().get(
+                project=self.project,
+                region=region,
+                address=static_ip_name
+            ).execute().get("address", str)
+            logging.info("[app] Created Static IP at {} for VM {}".format(static_ip, instance_name))
+            access_configs = [{"natIP": static_ip, "description": static_ip_description}]
 
         body = {
             "canIpForward": can_ip_forward,
@@ -751,7 +776,7 @@ class GoogleCloudAdmin():
             },
             "name": instance_name,
             "networkInterfaces": [{
-                "accessConfigs": accessConfigs,
+                "accessConfigs": access_configs,
                 "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
                     host_project, region, cloud_subnet)
             }],
