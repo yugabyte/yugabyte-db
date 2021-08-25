@@ -5,7 +5,9 @@ package com.yugabyte.yw.metrics;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.MetricConfig;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,7 +19,7 @@ import play.libs.Json;
 
 public class MetricQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryExecutor.class);
-
+  public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
   private ApiHelper apiHelper;
   private play.Configuration appConfig;
   private YBMetricQueryComponent ybMetricQueryComponent;
@@ -91,6 +93,28 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     }
   }
 
+  private String getDirectURL(String queryExpr) {
+
+    String durationSecs = "3600s";
+    String endString = "";
+
+    long endUnixTime = Long.parseLong(queryParam.getOrDefault("end", "0"));
+    long startUnixTime = Long.parseLong(queryParam.getOrDefault("start", "0"));
+    if (endUnixTime != 0 && startUnixTime != 0 && endUnixTime > startUnixTime) {
+      endString = Util.unixTimeToDateString(endUnixTime * 1000, DATE_FORMAT_STRING);
+      durationSecs = String.format("%ds", (endUnixTime - startUnixTime));
+    }
+
+    // Note: this is the URL as prometheus' web interface renders these metrics. It is
+    // possible this breaks over time as we upgrade prometheus.
+    return String.format(
+        "%s/graph?g0.expr=%s&g0.tab=0&g0.range_input=%s&g0.end_input=%s",
+        this.getMetricsUrl().replace("/api/v1", ""),
+        URLEncoder.encode(queryExpr),
+        durationSecs,
+        endString);
+  }
+
   @Override
   public JsonNode call() {
     MetricConfig config = MetricConfig.get(queryParam.get("queryKey"));
@@ -105,7 +129,13 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       List<MetricGraphData> output = new ArrayList<>();
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
-        queryParam.put("query", e.getValue());
+        String queryExpr = e.getValue();
+        queryParam.put("query", queryExpr);
+        try {
+          responseJson.put("directURL", getDirectURL(queryExpr));
+        } catch (Exception de) {
+          LOG.trace("Error getting direct url", de);
+        }
         JsonNode queryResponseJson = getMetrics();
         if (queryResponseJson == null) {
           responseJson.set("data", Json.toJson(new ArrayList<>()));

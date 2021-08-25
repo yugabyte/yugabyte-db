@@ -525,4 +525,9 @@ public class Util {
       throw e;
     }
   }
+
+  public static String unixTimeToDateString(long unixTimestampMs, String dateFormat) {
+    SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+    return formatter.format(new Date(unixTimestampMs));
+  }
 }
