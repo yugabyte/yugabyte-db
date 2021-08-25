@@ -12,3 +12,5 @@ semantic-version
 six
 wheel
 yugabyte_pycommon
+codecheck
+pycodestyle

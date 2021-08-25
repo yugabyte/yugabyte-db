@@ -56,7 +56,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import play.mvc.Result;
 
-@Api(value = "Alert", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(value = "Alerts", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AlertController extends AuthenticatedController {
 
   @Inject private MetricService metricService;
@@ -69,7 +69,7 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertRouteService alertRouteService;
 
-  @ApiOperation(value = "getAlert", response = Alert.class)
+  @ApiOperation(value = "Get details of an alert", response = Alert.class)
   public Result get(UUID customerUUID, UUID alertUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -79,7 +79,7 @@ public class AlertController extends AuthenticatedController {
 
   /** Lists alerts for given customer. */
   @ApiOperation(
-      value = "listAlerts",
+      value = "List all alerts",
       response = Alert.class,
       responseContainer = "List",
       nickname = "listOfAlerts")
@@ -91,7 +91,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(alerts);
   }
 
-  @ApiOperation(value = "listActiveAlerts", response = Alert.class, responseContainer = "List")
+  @ApiOperation(value = "List active alerts", response = Alert.class, responseContainer = "List")
   public Result listActive(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -100,7 +100,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(alerts);
   }
 
-  @ApiOperation(value = "pageAlerts", response = AlertPagedResponse.class)
+  @ApiOperation(value = "List alerts (paginated)", response = AlertPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "PageAlertsRequest",
@@ -120,7 +120,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(alerts);
   }
 
-  @ApiOperation(value = "acknowledgeAlert", response = Alert.class)
+  @ApiOperation(value = "Acknowledge an alert", response = Alert.class)
   public Result acknowledge(UUID customerUUID, UUID alertUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -131,7 +131,10 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(alert);
   }
 
-  @ApiOperation(value = "acknowledgeAlerts", response = Alert.class, responseContainer = "List")
+  @ApiOperation(
+      value = "Acknowledge all alerts",
+      response = Alert.class,
+      responseContainer = "List")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "AcknowledgeAlertsRequest",
@@ -148,7 +151,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  @ApiOperation(value = "getDefinitionGroup", response = AlertDefinitionGroup.class)
+  @ApiOperation(value = "Get an alert group", response = AlertDefinitionGroup.class)
   public Result getDefinitionGroup(UUID customerUUID, UUID groupUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -158,7 +161,7 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "listDefinitionGroupTemplates",
+      value = "List all alert groups",
       response = AlertDefinitionTemplate.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -184,7 +187,9 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(groups);
   }
 
-  @ApiOperation(value = "pageDefinitionGroups", response = AlertDefinitionGroupPagedResponse.class)
+  @ApiOperation(
+      value = "List all alert groups (paginated)",
+      response = AlertDefinitionGroupPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "PageDefinitionGroupsRequest",
@@ -207,7 +212,7 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "listDefinitionGroups",
+      value = "Get filtered list of definition groups",
       response = AlertDefinitionGroup.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -228,7 +233,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(groups);
   }
 
-  @ApiOperation(value = "createDefinitionGroup", response = AlertDefinitionGroup.class)
+  @ApiOperation(value = "Create an alert group", response = AlertDefinitionGroup.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateGroupRequest",
@@ -250,7 +255,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(group);
   }
 
-  @ApiOperation(value = "updateDefinitionGroup", response = AlertDefinitionGroup.class)
+  @ApiOperation(value = "Update an alert group", response = AlertDefinitionGroup.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateGroupRequest",
@@ -278,7 +283,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(group);
   }
 
-  @ApiOperation(value = "deleteDefinitionGroup", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Delete an alert group", response = YWResults.YWSuccess.class)
   public Result deleteDefinitionGroup(UUID customerUUID, UUID groupUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -290,7 +295,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  @ApiOperation(value = "createAlertReceiver", response = AlertReceiver.class)
+  @ApiOperation(value = "Create an alert receiver", response = AlertReceiver.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateAlertReceiverRequest",
@@ -307,7 +312,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(receiver);
   }
 
-  @ApiOperation(value = "getAlertReceiver", response = AlertReceiver.class)
+  @ApiOperation(value = "Get an alert receiver", response = AlertReceiver.class)
   public Result getAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
     return YWResults.withData(
@@ -315,7 +320,7 @@ public class AlertController extends AuthenticatedController {
             alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID)));
   }
 
-  @ApiOperation(value = "updateAlertReceiver", response = AlertReceiver.class)
+  @ApiOperation(value = "Update an alert receiver", response = AlertReceiver.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateAlertReceiverRequest",
@@ -334,7 +339,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(CommonUtils.maskObject(receiver));
   }
 
-  @ApiOperation(value = "deleteAlertReceiver", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Delete an alert receiver", response = YWResults.YWSuccess.class)
   public Result deleteAlertReceiver(UUID customerUUID, UUID alertReceiverUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertReceiver receiver = alertReceiverService.getOrBadRequest(customerUUID, alertReceiverUUID);
@@ -345,7 +350,7 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "listAlertReceivers",
+      value = "List all alert receivers",
       response = AlertReceiver.class,
       responseContainer = "List")
   public Result listAlertReceivers(UUID customerUUID) {
@@ -358,7 +363,7 @@ public class AlertController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
-  @ApiOperation(value = "createAlertRoute", response = AlertRoute.class)
+  @ApiOperation(value = "Create an alert route", response = AlertRoute.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateAlertRouteRequest",
@@ -379,13 +384,13 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(route);
   }
 
-  @ApiOperation(value = "getAlertRoute", response = AlertRoute.class)
+  @ApiOperation(value = "Get an alert route", response = AlertRoute.class)
   public Result getAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
     return YWResults.withData(alertRouteService.getOrBadRequest(customerUUID, alertRouteUUID));
   }
 
-  @ApiOperation(value = "updateAlertRoute", response = AlertRoute.class)
+  @ApiOperation(value = "Update an alert route", response = AlertRoute.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateAlertRouteRequest",
@@ -405,7 +410,7 @@ public class AlertController extends AuthenticatedController {
     return YWResults.withData(route);
   }
 
-  @ApiOperation(value = "deleteAlertRoute", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Delete an alert route", response = YWResults.YWSuccess.class)
   public Result deleteAlertRoute(UUID customerUUID, UUID alertRouteUUID) {
     Customer.getOrBadRequest(customerUUID);
     alertRouteService.delete(customerUUID, alertRouteUUID);
@@ -413,7 +418,10 @@ public class AlertController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  @ApiOperation(value = "listAlertRoutes", response = AlertRoute.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List alert routes",
+      response = AlertRoute.class,
+      responseContainer = "List")
   public Result listAlertRoutes(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return YWResults.withData(alertRouteService.listByCustomer(customerUUID));

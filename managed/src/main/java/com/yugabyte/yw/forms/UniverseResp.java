@@ -28,7 +28,9 @@ import org.yaml.snakeyaml.Yaml;
 import play.Play;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@ApiModel(description = "Universe Resp")
+// TODO is this description accurate?
+//
+@ApiModel(description = "Universe-creation response")
 public class UniverseResp {
 
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResp.class);
@@ -45,7 +47,7 @@ public class UniverseResp {
   @ApiModelProperty(value = "Universe name")
   public final String name;
 
-  @ApiModelProperty(value = "Creation time")
+  @ApiModelProperty(value = "Creation date")
   public final String creationDate;
 
   @ApiModelProperty(value = "Version")
@@ -54,13 +56,13 @@ public class UniverseResp {
   @ApiModelProperty(value = "DNS name")
   public final String dnsName;
 
-  @ApiModelProperty(value = "Universe Resources")
+  @ApiModelProperty(value = "Universe resources")
   public final UniverseResourceDetails resources;
 
-  @ApiModelProperty(value = "Universe Details")
+  @ApiModelProperty(value = "Universe details")
   public final UniverseDefinitionTaskParamsResp universeDetails;
 
-  @ApiModelProperty(value = "Universe config")
+  @ApiModelProperty(value = "Universe configuration")
   public final Map<String, String> universeConfig;
 
   @ApiModelProperty(value = "Task UUID")
