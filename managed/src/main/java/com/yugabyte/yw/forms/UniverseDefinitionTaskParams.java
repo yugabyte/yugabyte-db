@@ -33,6 +33,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import io.swagger.annotations.ApiModelProperty;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
 
@@ -343,23 +345,26 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public DeviceInfo deviceInfo;
 
+    @ApiModelProperty(notes = "default: true")
     public boolean assignPublicIP = true;
 
+    @ApiModelProperty(value = "Whether to assign static public IP")
     public boolean assignStaticPublicIP = false;
 
-    public boolean useTimeSync = false;
+    @ApiModelProperty() public boolean useTimeSync = false;
 
-    public boolean enableYSQL = false;
+    @ApiModelProperty() public boolean enableYSQL = false;
 
+    @ApiModelProperty(notes = "default: true")
     public boolean enableYEDIS = true;
 
-    public boolean enableNodeToNodeEncrypt = false;
+    @ApiModelProperty() public boolean enableNodeToNodeEncrypt = false;
 
-    public boolean enableClientToNodeEncrypt = false;
+    @ApiModelProperty() public boolean enableClientToNodeEncrypt = false;
 
-    public boolean enableVolumeEncryption = false;
+    @ApiModelProperty() public boolean enableVolumeEncryption = false;
 
-    public boolean enableIPV6 = false;
+    @ApiModelProperty() public boolean enableIPV6 = false;
 
     // Flag to use if we need to deploy a loadbalancer/some kind of
     // exposing service for the cluster.
@@ -368,6 +373,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Can eventually be used when we create loadbalancer services for
     // our cluster deployments.
     // Setting at user intent level since it can be unique across types of clusters.
+    @ApiModelProperty(notes = "default: NONE")
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
 
     public String awsArnString;
@@ -375,9 +381,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // When this is set to true, YW will setup the universe to communicate by way of hostnames
     // instead of ip addresses. These hostnames will have been provided during on-prem provider
     // setup and will be in-place of privateIP
-    public boolean useHostname = false;
+    @ApiModelProperty() public boolean useHostname = false;
 
-    public boolean useSystemd = false;
+    @ApiModelProperty() public boolean useSystemd = false;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
