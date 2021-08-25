@@ -978,6 +978,32 @@ def create_instance(args):
             len(instance_ids)))
     instance = instance_ids[0]
     instance.wait_until_running()
+    if args.assign_static_public_ip:
+        # Create elastic IP.
+        eip_tags = list(user_tags)
+        eip_tags.extend([
+            __create_tag("Name", "ip-" + args.search_pattern),
+            __create_tag("launched-by", os.environ.get("USER", "unknown")),
+            __create_tag("Created", time.asctime(time.gmtime()))
+        ])
+        ec2_client = boto3.client("ec2", region_name=args.region)
+        eip = ec2_client.allocate_address(
+            Domain="vpc",
+            DryRun=False,
+            TagSpecifications=[{
+                "ResourceType": "elastic-ip",
+                "Tags": eip_tags
+            }]
+        )
+        # Associate elastic IP with instance.
+        ec2_client.associate_address(
+            AllocationId=eip["AllocationId"],
+            InstanceId=instance.id,
+            DryRun=False
+        )
+        logging.info("[app] Created Elastic IP address at {} in region {} for AWS VM {}"
+                     .format(eip["PublicIp"], args.region, args.search_pattern))
+
     logging.info("[app] AWS VM {} created.".format(args.search_pattern))
 
 

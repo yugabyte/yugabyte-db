@@ -37,6 +37,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public String subnetId;
 
     public boolean assignPublicIP = true;
+    public boolean assignStaticPublicIP = false;
 
     // For AWS, this will dictate if we use the Time Sync Service.
     public boolean useTimeSync = false;
