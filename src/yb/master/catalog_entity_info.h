@@ -865,6 +865,13 @@ void FillInfoEntry(const Info& info, SysRowEntry* entry) {
   entry->set_data(info.metadata().state().pb.SerializeAsString());
 }
 
+template <class Info>
+auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
+  auto lock = info->LockForRead();
+  FillInfoEntry(*info, out->Add());
+  return lock;
+}
+
 }  // namespace master
 }  // namespace yb
 

@@ -158,6 +158,22 @@ TableType GetTableTypeForDatabase(const YQLDatabase database_type) {
   }
 }
 
+Result<bool> NamespaceMatchesIdentifier(
+    const NamespaceId& namespace_id, YQLDatabase db_type, const NamespaceName& namespace_name,
+    const NamespaceIdentifierPB& ns_identifier) {
+  if (ns_identifier.has_id()) {
+    return namespace_id == ns_identifier.id();
+  }
+  if (ns_identifier.has_database_type() && ns_identifier.database_type() != db_type) {
+    return false;
+  }
+  if (ns_identifier.has_name()) {
+    return namespace_name == ns_identifier.name();
+  }
+  return STATUS_FORMAT(
+    InvalidArgument, "Wrong namespace identifier format: $0", ns_identifier);
+}
+
 Result<bool> TableMatchesIdentifier(
     const TableId& id, const SysTablesEntryPB& table, const TableIdentifierPB& table_identifier) {
   if (table_identifier.has_table_id()) {
@@ -167,19 +183,9 @@ Result<bool> TableMatchesIdentifier(
     return false;
   }
   if (table_identifier.has_namespace_()) {
-    const auto& ns = table_identifier.namespace_();
-    if (ns.has_id()) {
-      return table.namespace_id() == ns.id();
-    }
-    if (ns.has_database_type() &&
-        ns.database_type() != master::GetDatabaseTypeForTable(table.table_type())) {
-      return false;
-    }
-    if (ns.has_name()) {
-      return table.namespace_name() == ns.name();
-    }
-    return STATUS_FORMAT(
-      InvalidArgument, "Wrong namespace identifier format: $0", ns);
+    return NamespaceMatchesIdentifier(
+        table.namespace_id(), master::GetDatabaseTypeForTable(table.table_type()),
+        table.namespace_name(), table_identifier.namespace_());
   }
   return STATUS_FORMAT(
     InvalidArgument, "Wrong table identifier format: $0", table_identifier);
