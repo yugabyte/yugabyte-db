@@ -7674,7 +7674,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		create_stmt->tablegroup->has_tablegroup = true;
 		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_id);
 		Assert(create_stmt->tablegroup->tablegroup_name);
-	} else if ((*mutable_rel)->rd_options) {
+	} else if ((*mutable_rel)->rd_options && MyDatabaseColocated) {
 		const bool colocated = RelationGetColocated(*mutable_rel);
 		create_stmt->options = lappend(create_stmt->options,
 			makeDefElem("colocated", (Node *) makeInteger(colocated), -1));
