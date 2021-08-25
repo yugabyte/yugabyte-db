@@ -64,6 +64,8 @@ class SnapshotOperation :
   void AddedAsPending() override;
   void RemovedFromPending() override;
 
+  bool NeedOperationFilter() const;
+
   CHECKED_STATUS CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const override;
 

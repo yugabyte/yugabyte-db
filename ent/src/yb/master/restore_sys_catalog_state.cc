@@ -26,6 +26,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/master/catalog_loaders.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
@@ -77,6 +78,32 @@ bool TableDeleted(const SysTablesEntryPB& table) {
          table.hide_state() == SysTablesEntryPB::HIDDEN;
 }
 
+Result<bool> MatchNamespace(
+    const SnapshotScheduleFilterPB& filter, const NamespaceId& id,
+    const SysNamespaceEntryPB& ns) {
+  VLOG(1) << __func__ << "(" << id << ", " << ns.ShortDebugString() << ")";
+  for (const auto& table_identifier : filter.tables().tables()) {
+    if (table_identifier.has_namespace_() &&
+        VERIFY_RESULT(master::NamespaceMatchesIdentifier(
+            id, ns.database_type(), ns.name(), table_identifier.namespace_()))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Result<bool> MatchTable(
+    const SnapshotScheduleFilterPB& filter, const TableId& id,
+    const SysTablesEntryPB& table) {
+  VLOG(1) << __func__ << "(" << id << ", " << table.ShortDebugString() << ")";
+  for (const auto& table_identifier : filter.tables().tables()) {
+    if (VERIFY_RESULT(master::TableMatchesIdentifier(id, table, table_identifier))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 template <class PB>
 struct GetEntryType;
 
@@ -94,155 +121,151 @@ template<> struct GetEntryType<SysTabletsEntryPB>
 RestoreSysCatalogState::RestoreSysCatalogState(SnapshotScheduleRestoration* restoration)
     : restoration_(*restoration) {}
 
+Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
+    const std::string& id, SysNamespaceEntryPB* pb) {
+  return true;
+}
+
+Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
+    const std::string& id, SysTablesEntryPB* pb) {
+  if (pb->schema().table_properties().is_ysql_catalog_table()) {
+    LOG(INFO) << "PITR: Adding " << pb->name() << " for restoring. ID: " << id;
+    restoration_.system_tables_to_restore.emplace(id, pb->name());
+
+    return false;
+  }
+
+  auto it = existing_objects_.tables.find(id);
+  if (it == existing_objects_.tables.end()) {
+    return STATUS_FORMAT(NotFound, "Not found restoring table: $0", id);
+  }
+
+  if (pb->version() != it->second.version()) {
+    // Force schema update after restoration, if schema has changes.
+    pb->set_version(it->second.version() + 1);
+  }
+
+  return true;
+}
+
+Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
+    const std::string& id, SysTabletsEntryPB* pb) {
+  return true;
+}
+
 template <class PB>
-void RestoreSysCatalogState::AddRestoringEntry(
-    const std::string& id, const PB& pb, faststring* buffer) {
+Status RestoreSysCatalogState::AddRestoringEntry(
+    const std::string& id, PB* pb, faststring* buffer) {
   auto type = GetEntryType<PB>::value;
-  VLOG(1) << "Add restore " << SysRowEntry::Type_Name(type) << ": " << id;
+  VLOG_WITH_FUNC(1) << SysRowEntry::Type_Name(type) << ": " << id << ", " << pb->ShortDebugString();
+
+  if (!VERIFY_RESULT(PatchRestoringEntry(id, pb))) {
+    return Status::OK();
+  }
   auto& entry = *entries_.mutable_entries()->Add();
   entry.set_type(type);
   entry.set_id(id);
-  pb_util::SerializeToString(pb, buffer);
+  pb_util::SerializeToString(*pb, buffer);
   entry.set_data(buffer->data(), buffer->size());
+  restoration_.non_system_objects_to_restore.emplace(id, type);
+
+  return Status::OK();
 }
 
 Status RestoreSysCatalogState::Process() {
   VLOG_WITH_FUNC(1) << "Restoring: " << restoring_objects_.SizesToString() << ", existing: "
                     << existing_objects_.SizesToString();
 
-  RETURN_NOT_OK_PREPEND(PatchVersions(), "Patch versions");
-
   VLOG_WITH_FUNC(2) << "Check restoring objects";
+  VLOG_WITH_FUNC(4) << "Restoring namespaces: " << AsString(restoring_objects_.namespaces);
+  faststring buffer;
   RETURN_NOT_OK_PREPEND(DetermineEntries(
-      restoring_objects_, true,
-      [this](const auto& id_and_pb, faststring* buffer) {
-        AddRestoringEntry(id_and_pb.first, id_and_pb.second, buffer);
+      &restoring_objects_,
+      [this, &buffer](const auto& id, auto* pb) {
+        return AddRestoringEntry(id, pb, &buffer);
   }), "Determine restoring entries failed");
 
   VLOG_WITH_FUNC(2) << "Check existing objects";
   RETURN_NOT_OK_PREPEND(DetermineEntries(
-      existing_objects_, false,
-      [this](const auto& id_and_pb, faststring* buffer) {
-        CheckExistingEntry(id_and_pb.first, id_and_pb.second, buffer);
+      &existing_objects_,
+      [this](const auto& id, auto* pb) {
+        return CheckExistingEntry(id, *pb);
   }), "Determine obsolete entries failed");
 
-  for (const auto& table : restoring_objects_.tables) {
-    if (!restoration_.non_system_objects_to_restore.count(table.first)) {
-      continue;
-    }
-    auto it = existing_objects_.tables.find(table.first);
-    if (it == existing_objects_.tables.end()) {
-      restoration_.non_system_modified_tables.push_back(ModifiedTable{
-        .name = table.second.name(),
-        .type = table.second.table_type(),
-        .modification = TableModificationType::kDrop,
-      });
-    } else if (table.second.version() != it->second.version()) {
-      restoration_.non_system_modified_tables.push_back(ModifiedTable{
-        .name = table.second.name(),
-        .type = table.second.table_type(),
-        .modification = TableModificationType::kAlter,
-      });
-    }
-  }
-
   // Sort generated vectors, so binary search could be used to check whether object is obsolete.
+  auto compare_by_first = [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; };
   std::sort(restoration_.non_system_obsolete_tablets.begin(),
-            restoration_.non_system_obsolete_tablets.end());
+            restoration_.non_system_obsolete_tablets.end(),
+            compare_by_first);
   std::sort(restoration_.non_system_obsolete_tables.begin(),
-            restoration_.non_system_obsolete_tables.end());
+            restoration_.non_system_obsolete_tables.end(),
+            compare_by_first);
 
   return Status::OK();
 }
 
 template <class ProcessEntry>
 Status RestoreSysCatalogState::DetermineEntries(
-    const Objects& objects, bool is_restoration_objects, const ProcessEntry& process_entry) {
-  std::unordered_set<NamespaceId> restored_namespaces;
-  std::unordered_set<NamespaceId> non_deleted_restored_namespaces;
-  std::unordered_set<TableId> restored_tables;
-  std::unordered_set<TableId> non_deleted_restored_tables;
-  faststring buffer;
-  for (const auto& id_and_metadata : objects.tables) {
+    Objects* objects, const ProcessEntry& process_entry) {
+  std::unordered_set<NamespaceId> namespaces;
+  std::unordered_set<TableId> tables;
+
+  for (auto& id_and_metadata : objects->namespaces) {
+    if (!VERIFY_RESULT(MatchNamespace(
+            restoration_.filter, id_and_metadata.first, id_and_metadata.second))) {
+      continue;
+    }
+    if (!namespaces.insert(id_and_metadata.first).second) {
+      continue;
+    }
+    RETURN_NOT_OK(process_entry(id_and_metadata.first, &id_and_metadata.second));
+  }
+
+  for (auto& id_and_metadata : objects->tables) {
     VLOG_WITH_FUNC(3) << "Checking: " << id_and_metadata.first << ", "
                       << id_and_metadata.second.ShortDebugString();
 
-    bool match, deleted;
+    bool match;
+    if (TableDeleted(id_and_metadata.second)) {
+      continue;
+    }
     if (id_and_metadata.second.has_index_info()) {
-      auto it = objects.tables.find(id_and_metadata.second.index_info().indexed_table_id());
-      if (it == objects.tables.end()) {
+      auto it = objects->tables.find(id_and_metadata.second.index_info().indexed_table_id());
+      if (it == objects->tables.end()) {
         return STATUS_FORMAT(
             NotFound, "Indexed table $0 not found for index $1 ($2)",
             id_and_metadata.second.index_info().indexed_table_id(), id_and_metadata.first,
             id_and_metadata.second.name());
       }
-      match = VERIFY_RESULT(objects.MatchTable(restoration_.filter, it->first, it->second));
-      deleted = TableDeleted(it->second);
+      match = VERIFY_RESULT(MatchTable(restoration_.filter, it->first, it->second));
     } else {
-      match = VERIFY_RESULT(objects.MatchTable(
+      match = VERIFY_RESULT(MatchTable(
           restoration_.filter, id_and_metadata.first, id_and_metadata.second));
-      deleted = TableDeleted(id_and_metadata.second);
     }
     if (!match) {
       continue;
     }
     // Process pg_catalog tables that need to be restored.
-    if (id_and_metadata.second.schema().table_properties().is_ysql_catalog_table()) {
-      if (is_restoration_objects) {
-        LOG(INFO) << "PITR: Adding " << id_and_metadata.second.name()
-                  << " for restoring. ID: " << id_and_metadata.first;
-        restoration_.system_tables_to_restore.emplace(
-          id_and_metadata.first,
-          id_and_metadata.second.name()
-        );
-      } else if (restoration_.system_tables_to_restore.count(id_and_metadata.first) == 0) {
-        return STATUS_FORMAT(
-            NotFound, "PG Catalog table $0 not found in the present set of tables"
-            " but found in the objects to restore.", id_and_metadata.second.name());
-      }
-      continue;
-    }
-    if (is_restoration_objects && !deleted) {
-      auto type = GetEntryType<SysTablesEntryPB>::value;
-      restoration_.non_system_objects_to_restore.emplace(id_and_metadata.first, type);
-
-      if (non_deleted_restored_namespaces.insert(id_and_metadata.second.namespace_id()).second) {
-        auto namespace_it = objects.namespaces.find(id_and_metadata.second.namespace_id());
-        if (namespace_it == objects.namespaces.end()) {
-          return STATUS_FORMAT(
-              NotFound, "Namespace $0 not found for table $1",
-              id_and_metadata.second.namespace_id(),
-              id_and_metadata.first, id_and_metadata.second.name());
-        }
-        auto type = GetEntryType<SysNamespaceEntryPB>::value;
-        restoration_.non_system_objects_to_restore.emplace(namespace_it->first, type);
-      }
-
-      non_deleted_restored_tables.insert(id_and_metadata.first);
-    }
-    if (restored_namespaces.insert(id_and_metadata.second.namespace_id()).second) {
-      auto namespace_it = objects.namespaces.find(id_and_metadata.second.namespace_id());
-      if (namespace_it == objects.namespaces.end()) {
+    if (namespaces.insert(id_and_metadata.second.namespace_id()).second) {
+      auto namespace_it = objects->namespaces.find(id_and_metadata.second.namespace_id());
+      if (namespace_it == objects->namespaces.end()) {
         return STATUS_FORMAT(
             NotFound, "Namespace $0 not found for table $1", id_and_metadata.second.namespace_id(),
             id_and_metadata.first, id_and_metadata.second.name());
       }
-      process_entry(*namespace_it, &buffer);
+      RETURN_NOT_OK(process_entry(namespace_it->first, &namespace_it->second));
     }
-    process_entry(id_and_metadata, &buffer);
-    restored_tables.insert(id_and_metadata.first);
+    RETURN_NOT_OK(process_entry(id_and_metadata.first, &id_and_metadata.second));
+    tables.insert(id_and_metadata.first);
     VLOG(2) << "Table to restore: " << id_and_metadata.first << ", "
             << id_and_metadata.second.ShortDebugString();
   }
-  for (const auto& id_and_metadata : objects.tablets) {
-    if (restored_tables.count(id_and_metadata.second.table_id()) == 0) {
+  for (auto& id_and_metadata : objects->tablets) {
+    auto it = tables.find(id_and_metadata.second.table_id());
+    if (it == tables.end()) {
       continue;
     }
-    if (non_deleted_restored_tables.count(id_and_metadata.second.table_id()) != 0) {
-      auto type = GetEntryType<SysTabletsEntryPB>::value;
-      restoration_.non_system_objects_to_restore.emplace(id_and_metadata.first, type);
-    }
-    process_entry(id_and_metadata, &buffer);
+    RETURN_NOT_OK(process_entry(id_and_metadata.first, &id_and_metadata.second));
     VLOG(2) << "Tablet to restore: " << id_and_metadata.first << ", "
             << id_and_metadata.second.ShortDebugString();
   }
@@ -254,18 +277,6 @@ std::string RestoreSysCatalogState::Objects::SizesToString() const {
                 tablets.size(), tables.size(), namespaces.size());
 }
 
-Result<bool> RestoreSysCatalogState::Objects::MatchTable(
-    const SnapshotScheduleFilterPB& filter, const TableId& id,
-    const SysTablesEntryPB& table) const {
-  VLOG(1) << __func__ << "(" << id << ", " << table.ShortDebugString() << ")";
-  for (const auto& table_identifier : filter.tables().tables()) {
-    if (VERIFY_RESULT(master::TableMatchesIdentifier(id, table, table_identifier))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 template <class PB>
 Status RestoreSysCatalogState::IterateSysCatalog(
     const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
@@ -275,7 +286,11 @@ Status RestoreSysCatalogState::IterateSysCatalog(
       ReadHybridTime::SingleTime(read_time), nullptr);
   return EnumerateSysCatalog(iter.get(), schema, GetEntryType<PB>::value, [map](
           const Slice& id, const Slice& data) -> Status {
-    if (!map->emplace(id.ToBuffer(), VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data))).second) {
+    auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
+    if (!ShouldLoadObject(pb)) {
+      return Status::OK();
+    }
+    if (!map->emplace(id.ToBuffer(), std::move(pb)).second) {
       return STATUS_FORMAT(IllegalState, "Duplicate $0: $1",
                            SysRowEntry::Type_Name(GetEntryType<PB>::value), id.ToBuffer());
     }
@@ -301,49 +316,44 @@ Status RestoreSysCatalogState::LoadExistingObjects(
   return LoadObjects(schema, doc_db, HybridTime::kMax, &existing_objects_);
 }
 
-Status RestoreSysCatalogState::PatchVersions() {
-  for (auto& id_and_pb : restoring_objects_.tables) {
-    auto it = existing_objects_.tables.find(id_and_pb.first);
-    if (it == existing_objects_.tables.end()) {
-      return STATUS_FORMAT(NotFound, "Not found restoring table: $0", id_and_pb.first);
-    }
-
-    if (id_and_pb.second.version() != it->second.version()) {
-      // Force schema update after restoration, if schema has changes.
-      id_and_pb.second.set_version(it->second.version() + 1);
-    }
+Status RestoreSysCatalogState::CheckExistingEntry(
+    const std::string& id, const SysTabletsEntryPB& pb) {
+  VLOG_WITH_FUNC(4) << "Tablet: " << id << ", " << pb.ShortDebugString();
+  if (restoring_objects_.tablets.count(id)) {
+    return Status::OK();
   }
+  LOG(INFO) << "PITR: Will remove tablet: " << id;
+  restoration_.non_system_obsolete_tablets.emplace_back(id, pb);
   return Status::OK();
 }
 
-void RestoreSysCatalogState::CheckExistingEntry(
-    const std::string& id, const SysTabletsEntryPB& pb, faststring*) {
-  VLOG_WITH_FUNC(4) << "Tablet: " << id << ", " << pb.ShortDebugString();
-  if (restoring_objects_.tablets.count(id)) {
-    return;
+Status RestoreSysCatalogState::CheckExistingEntry(
+    const std::string& id, const SysTablesEntryPB& pb) {
+  if (pb.schema().table_properties().is_ysql_catalog_table()) {
+    if (restoration_.system_tables_to_restore.count(id) == 0) {
+      return STATUS_FORMAT(
+          NotFound,
+          "PG Catalog table $0 not found in the present set of tables"
+          " but found in the objects to restore.",
+          pb.name());
+    }
+    return Status::OK();
   }
-  LOG(INFO) << "PITR: Will remove tablet: " << id;
-  restoration_.non_system_obsolete_tablets.push_back(id);
-}
 
-void RestoreSysCatalogState::CheckExistingEntry(
-    const std::string& id, const SysTablesEntryPB& pb, faststring*) {
   VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
   if (restoring_objects_.tables.count(id)) {
-    return;
+    return Status::OK();
   }
   LOG(INFO) << "PITR: Will remove table: " << id;
-  restoration_.non_system_obsolete_tables.push_back(id);
-  restoration_.non_system_modified_tables.push_back(ModifiedTable {
-    .name = pb.name(),
-    .type = pb.table_type(),
-    .modification = TableModificationType::kCreate,
-  });
+  restoration_.non_system_obsolete_tables.emplace_back(id, pb);
+
+  return Status::OK();
 }
 
 // We don't delete newly created namespaces, because our filters namespace based.
-void RestoreSysCatalogState::CheckExistingEntry(
-    const std::string& id, const SysNamespaceEntryPB& pb, faststring*) {
+Status RestoreSysCatalogState::CheckExistingEntry(
+    const std::string& id, const SysNamespaceEntryPB& pb) {
+  return Status::OK();
 }
 
 Status RestoreSysCatalogState::PrepareWriteBatch(
@@ -355,6 +365,16 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
         &write_request));
     RETURN_NOT_OK(ApplyWriteRequest(schema, &write_request, write_batch));
   }
+
+  for (const auto& tablet_id_and_pb : restoration_.non_system_obsolete_tablets) {
+    RETURN_NOT_OK(PrepareTabletCleanup(
+        tablet_id_and_pb.first, tablet_id_and_pb.second, schema, write_batch));
+  }
+  for (const auto& table_id_and_pb : restoration_.non_system_obsolete_tables) {
+    RETURN_NOT_OK(PrepareTableCleanup(
+        table_id_and_pb.first, table_id_and_pb.second, schema, write_batch));
+  }
+
   return Status::OK();
 }
 
@@ -374,6 +394,7 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
     docdb::DocWriteBatch* write_batch) {
   QLWriteRequestPB write_request;
   pb.set_state(SysTablesEntryPB::DELETING);
+  pb.set_version(pb.version() + 1);
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntry::TABLE, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
@@ -382,7 +403,7 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
 
 Result<bool> RestoreSysCatalogState::TEST_MatchTable(
     const TableId& id, const SysTablesEntryPB& table) {
-  return restoring_objects_.MatchTable(restoration_.filter, id, table);
+  return MatchTable(restoration_.filter, id, table);
 }
 
 void RestoreSysCatalogState::WriteToRocksDB(

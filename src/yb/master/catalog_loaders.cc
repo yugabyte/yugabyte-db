@@ -46,9 +46,14 @@ using namespace std::placeholders;
 // Table Loader
 ////////////////////////////////////////////////////////////
 
+bool ShouldLoadObject(const SysTablesEntryPB& metadata) {
+  // TODO: We need to properly remove deleted tables.  This can happen async of master loading.
+  return !FLAGS_master_ignore_deleted_on_load || metadata.state() != SysTablesEntryPB::DELETED;
+}
+
 Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metadata) {
   // TODO: We need to properly remove deleted tables.  This can happen async of master loading.
-  if (FLAGS_master_ignore_deleted_on_load && metadata.state() == SysTablesEntryPB::DELETED) {
+  if (!ShouldLoadObject(metadata)) {
     return Status::OK();
   }
 
@@ -100,7 +105,15 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 // Tablet Loader
 ////////////////////////////////////////////////////////////
 
+bool ShouldLoadObject(const SysTabletsEntryPB& pb) {
+  return true;
+}
+
 Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) {
+  if (!ShouldLoadObject(metadata)) {
+    return Status::OK();
+  }
+
   // Lookup the table.
   TableInfoPtr first_table = FindPtrOrNull(*catalog_manager_->table_ids_map_, metadata.table_id());
 
@@ -250,7 +263,15 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 // Namespace Loader
 ////////////////////////////////////////////////////////////
 
+bool ShouldLoadObject(const SysNamespaceEntryPB& metadata) {
+  return true;
+}
+
 Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryPB& metadata) {
+  if (!ShouldLoadObject(metadata)) {
+    return Status::OK();
+  }
+
   CHECK(!ContainsKey(catalog_manager_->namespace_ids_map_, ns_id))
     << "Namespace already exists: " << ns_id;
 

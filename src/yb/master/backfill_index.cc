@@ -277,16 +277,10 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   l.mutable_data()->pb.clear_fully_applied_schema_version();
   l.mutable_data()->pb.clear_fully_applied_indexes();
   l.mutable_data()->pb.clear_fully_applied_index_info();
-  if (update_state_to_running) {
-    l.mutable_data()->set_state(
-        SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
-  } else {
-    l.mutable_data()->set_state(
-        SysTablesEntryPB::ALTERING, Substitute("Current schema version=$0", current_version));
-  }
+  auto new_state = update_state_to_running ? SysTablesEntryPB::RUNNING : SysTablesEntryPB::ALTERING;
+  l.mutable_data()->set_state(new_state, Format("Current schema version=$0", current_version));
 
-  Status s =
-      catalog_manager->sys_catalog_->Upsert(catalog_manager->leader_ready_term(), table);
+  Status s = catalog_manager->sys_catalog_->Upsert(catalog_manager->leader_ready_term(), table);
   if (!s.ok()) {
     LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
                  << ". This master may not be the leader anymore.";
@@ -294,7 +288,8 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   }
 
   l.Commit();
-  LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version;
+  LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version
+            << ", state: " << SysTablesEntryPB::State_Name(new_state);
   return Status::OK();
 }
 
@@ -1059,7 +1054,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     {
       VLOG(2) << __func__ << ": Trying to lock index table for Read";
       auto l = index_table_info->LockForRead();
-      is_ready = (l->pb.state() == SysTablesEntryPB::RUNNING);
+      is_ready = l->pb.state() == SysTablesEntryPB::RUNNING;
     }
     VLOG(2) << __func__ << ": Unlocked index table for Read";
   } while (!is_ready);

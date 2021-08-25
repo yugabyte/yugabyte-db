@@ -309,7 +309,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
 
   std::string description() const override {
     return Format("CreateTablet RPC for tablet $0 ($1) on TS=$2",
-                  tablet_id_, table_->ToString(), permanent_uuid_);
+                  tablet_id_, table_, permanent_uuid_);
   }
 
  protected:
@@ -338,7 +338,7 @@ class AsyncStartElection : public RetrySpecificTSRpcTask {
 
   std::string description() const override {
     return Format("RunLeaderElection RPC for tablet $0 ($1) on TS=$2",
-                  tablet_id_, table_->ToString(), permanent_uuid_);
+                  tablet_id_, table_, permanent_uuid_);
   }
 
  protected:
@@ -375,7 +375,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
 
   std::string description() const override {
     return Format("$0Tablet RPC for tablet $1 ($2) on TS=$3",
-                  hide_only_ ? "Hide" : "Delete", tablet_id_, table_->ToString(), permanent_uuid_);
+                  hide_only_ ? "Hide" : "Delete", tablet_id_, table_, permanent_uuid_);
   }
 
   void set_hide_only(bool value) {

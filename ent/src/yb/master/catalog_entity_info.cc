@@ -113,13 +113,6 @@ void SnapshotInfo::AddEntries(
       table_description, pb.mutable_entries(), pb.mutable_tablet_snapshots(), added_namespaces);
 }
 
-template <class Info>
-auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
-  auto lock = info->LockForRead();
-  FillInfoEntry(*info, out->Add());
-  return lock;
-}
-
 void SnapshotInfo::AddEntries(
     const TableDescription& table_description,
     google::protobuf::RepeatedPtrField<SysRowEntry>* out,

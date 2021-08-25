@@ -181,7 +181,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return pgwrapper::PGConn::Connect(HostPort(ts->bind_host(), ts->pgsql_rpc_port()), db_name);
   }
 
-  Result<std::string> PrepareCql() {
+  Result<std::string> PrepareCql(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
     RETURN_NOT_OK(PrepareCommon());
 
     auto conn = VERIFY_RESULT(CqlConnect());
@@ -189,7 +189,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         "CREATE KEYSPACE IF NOT EXISTS $0", client::kTableName.namespace_name())));
 
     return CreateSnapshotScheduleAndWaitSnapshot(
-        "ycql." + client::kTableName.namespace_name(), kInterval, kRetention);
+        "ycql." + client::kTableName.namespace_name(), interval, retention);
   }
 
   template <class... Args>
@@ -1083,6 +1083,45 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestoreFailover,
 
   auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
   ASSERT_EQ(rows, "1;3");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, DropKeyspaceAndSchedule) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, kInterval));
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
+      "WITH transactions = { 'enabled' : true }"));
+
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'before')"));
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'after')"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.ExecuteQuery("DROP TABLE test_table"));
+  // Wait until table completely removed, because of schedule retention.
+  std::this_thread::sleep_for(kInterval * 3);
+  ASSERT_NOK(conn.ExecuteQuery(Format("DROP KEYSPACE $0", client::kTableName.namespace_name())));
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+  ASSERT_OK(conn.ExecuteQuery(Format("DROP KEYSPACE $0", client::kTableName.namespace_name())));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
+      "WITH transactions = { 'enabled' : true }"));
+
+  for (int i = 0; i != 3; ++i) {
+    LOG(INFO) << "Iteration: " << i;
+    ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'value')"));
+    Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+    ASSERT_OK(conn.ExecuteQuery("CREATE UNIQUE INDEX test_table_idx ON test_table (value)"));
+    ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  }
 }
 
 }  // namespace tools

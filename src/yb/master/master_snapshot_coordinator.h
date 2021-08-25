@@ -34,14 +34,6 @@
 namespace yb {
 namespace master {
 
-YB_DEFINE_ENUM(TableModificationType, (kCreate)(kDrop)(kAlter))
-
-struct ModifiedTable {
-  TableName name;
-  TableType type;
-  TableModificationType modification;
-};
-
 struct ModifiedPgCatalogTable {
   TableName name = "";
   uint32_t num_inserts = 0;
@@ -57,9 +49,8 @@ struct SnapshotScheduleRestoration {
   HybridTime write_time;
   int64_t term;
   SnapshotScheduleFilterPB filter;
-  std::vector<TabletId> non_system_obsolete_tablets;
-  std::vector<TableId> non_system_obsolete_tables;
-  std::vector<ModifiedTable> non_system_modified_tables;
+  std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
+  std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
   std::unordered_map<std::string, SysRowEntry::Type> non_system_objects_to_restore;
   // pg_catalog_tables to restore for YSQL tables.
   std::unordered_map<TableId, TableName> system_tables_to_restore;
