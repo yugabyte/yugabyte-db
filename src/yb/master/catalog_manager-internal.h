@@ -57,10 +57,7 @@ inline CHECKED_STATUS SetupError(MasterErrorPB* error,
 
 inline CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
   StatusToPB(s, error->mutable_status());
-  MasterError master_error(s);
-  if (master_error.value() != MasterErrorPB::Code()) {
-    error->set_code(master_error.value());
-  }
+  error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
   return s;
 }
 

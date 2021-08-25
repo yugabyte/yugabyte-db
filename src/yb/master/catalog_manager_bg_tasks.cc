@@ -141,6 +141,7 @@ void CatalogManagerBgTasks::Run() {
         for (const auto& entries : to_process) {
           LOG(INFO) << "Processing pending assignments for table: " << entries.first;
           Status s = catalog_manager_->ProcessPendingAssignments(entries.second);
+          WARN_NOT_OK(s, "Assignment failed");
           // Set processed_tablets as true if the call succeeds for at least one table.
           processed_tablets = processed_tablets || s.ok();
           // TODO Add tests for this in the revision that makes
