@@ -941,6 +941,11 @@ public class NodeManager extends DevopsBase {
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
+            if (config.getBoolean("yb.cloud.enabled")
+                && taskParam.assignPublicIP
+                && taskParam.assignStaticPublicIP) {
+              commandArgs.add("--assign_static_public_ip");
+            }
           }
 
           if (taskParam.isSystemdUpgrade) {
@@ -1072,6 +1077,9 @@ public class NodeManager extends DevopsBase {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (appConfig.getBoolean("yb.cloud.enabled") && userIntent.assignStaticPublicIP) {
+            commandArgs.add("--delete_static_public_ip");
+          }
           break;
         }
       case Pause:
