@@ -47,6 +47,44 @@ class RestoreSysCatalogState {
   // Prepare write batch with object changes.
   CHECKED_STATUS PrepareWriteBatch(const Schema& schema, docdb::DocWriteBatch* write_batch);
 
+  Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
+
+  void TEST_AddNamespace(const NamespaceId& id, const SysNamespaceEntryPB& value) {
+    restoring_objects_.namespaces.emplace(id, value);
+  }
+
+ private:
+  struct Objects;
+
+  // Determine entries that should be restored. I.e. apply filter and serialize.
+  template <class ProcessEntry>
+  CHECKED_STATUS DetermineEntries(Objects* objects, const ProcessEntry& process_entry);
+
+  template <class PB>
+  CHECKED_STATUS IterateSysCatalog(
+      const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
+      std::unordered_map<std::string, PB>* map);
+
+  template <class PB>
+  CHECKED_STATUS AddRestoringEntry(
+      const std::string& id, PB* pb, faststring* buffer);
+
+  Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
+  Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);
+  Result<bool> PatchRestoringEntry(const std::string& id, SysTabletsEntryPB* pb);
+
+  CHECKED_STATUS CheckExistingEntry(
+      const std::string& id, const SysNamespaceEntryPB& pb);
+
+  CHECKED_STATUS CheckExistingEntry(
+      const std::string& id, const SysTablesEntryPB& pb);
+
+  CHECKED_STATUS CheckExistingEntry(
+      const std::string& id, const SysTabletsEntryPB& pb);
+
+  CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db,
+                             HybridTime read_time, Objects* objects);
+
   // Prepare write batch to delete obsolete tablet.
   CHECKED_STATUS PrepareTabletCleanup(
       const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
@@ -57,56 +95,10 @@ class RestoreSysCatalogState {
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
       docdb::DocWriteBatch* write_batch);
 
-  Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
-
-  void TEST_AddNamespace(const NamespaceId& id, const SysNamespaceEntryPB& value) {
-    restoring_objects_.namespaces.emplace(id, value);
-  }
-
- private:
-  struct Objects;
-
-  // Patch table versions, so restored tables will have greater schema version to force schema
-  // update.
-  CHECKED_STATUS PatchVersions();
-
-  // Determine entries that should be restored. I.e. apply filter and serialize.
-  template <class ProcessEntry>
-  CHECKED_STATUS DetermineEntries(const Objects& objects, bool is_restoration_objects,
-                                  const ProcessEntry& process_entry);
-
-  template <class PB>
-  CHECKED_STATUS IterateSysCatalog(
-      const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
-      std::unordered_map<std::string, PB>* map);
-
-  template <class PB>
-  void AddRestoringEntry(const std::string& id, const PB& pb, faststring* buffer);
-
-  void CheckExistingEntry(
-      const std::string& id, const SysNamespaceEntryPB& pb, faststring* buffer);
-
-  void CheckExistingEntry(
-      const std::string& id, const SysTabletsEntryPB& pb, faststring* buffer);
-
-  void CheckExistingEntry(
-      const std::string& id, const SysTablesEntryPB& pb, faststring* buffer);
-
-  CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db,
-                             HybridTime read_time, Objects* objects);
-
   struct Objects {
     std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;
     std::unordered_map<TableId, SysTablesEntryPB> tables;
     std::unordered_map<TabletId, SysTabletsEntryPB> tablets;
-
-    Result<bool> MatchTable(
-        const SnapshotScheduleFilterPB& filter, const TableId& id,
-        const SysTablesEntryPB& table) const;
-
-    Result<bool> TableMatchesIdentifier(
-        const TableId& id, const SysTablesEntryPB& table,
-        const TableIdentifierPB& table_identifier) const;
 
     std::string SizesToString() const;
   };

@@ -781,7 +781,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
-      CollectFlags flags);
+      CollectFlags flags,
+      std::unordered_set<NamespaceId>* namespaces = nullptr);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -1280,6 +1281,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       SysRowEntry::Type type) {
     return SnapshotSchedulesToObjectIdsMap();
   }
+
+  Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
+                           DeleteNamespaceResponsePB* resp,
+                           rpc::RpcContext* rpc);
 
   // ----------------------------------------------------------------------------------------------
   // Private member fields

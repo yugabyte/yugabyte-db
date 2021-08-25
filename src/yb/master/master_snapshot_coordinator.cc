@@ -511,7 +511,7 @@ class MasterSnapshotCoordinator::Impl {
       auto status = context_.VerifyRestoredObjects(*restoration);
       LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
       std::vector<TabletId> restore_tablets;
-      for (const auto& id_and_type : restoration->objects_to_restore) {
+      for (const auto& id_and_type : restoration->non_system_objects_to_restore) {
         if (id_and_type.second == SysRowEntry::TABLET) {
           restore_tablets.push_back(id_and_type.first);
         }
@@ -531,7 +531,9 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& schedule : schedules_) {
-        schedules.emplace_back(schedule->id(), schedule->options().filter());
+        if (!schedule->deleted()) {
+          schedules.emplace_back(schedule->id(), schedule->options().filter());
+        }
       }
     }
     SnapshotSchedulesToObjectIdsMap result;
