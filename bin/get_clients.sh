@@ -3,7 +3,7 @@
 
 set -e
 
-VERSION=2.2
+VERSION=2.6
 PKG_PREFIX=yugabyte-client
 
 uname=$(uname | tr '[:upper:]' '[:lower:]')
