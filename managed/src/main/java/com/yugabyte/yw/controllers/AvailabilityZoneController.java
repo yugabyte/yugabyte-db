@@ -23,7 +23,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
-    value = "AvailabilityZone",
+    value = "Availability Zones",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AvailabilityZoneController extends AuthenticatedController {
 
@@ -32,10 +32,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
   /**
    * GET endpoint for listing availability zones
    *
-   * @return JSON response with availability zone's
+   * @return JSON response with availability zones
    */
   @ApiOperation(
-      value = "listAZ",
+      value = "List availability zones",
       response = AvailabilityZone.class,
       responseContainer = "List",
       nickname = "listOfAZ")
@@ -53,14 +53,14 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @return JSON response of newly created region(s)
    */
   @ApiOperation(
-      value = "createAZ",
+      value = "Create an availability zone",
       response = AvailabilityZone.class,
       responseContainer = "Map",
       nickname = "createAZ")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "azFormData",
-          value = "az form data",
+          value = "Availability zone form data",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
           required = true))
@@ -88,7 +88,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @param azUUID AvailabilityZone UUID
    * @return JSON response on whether or not delete region was successful or not.
    */
-  @ApiOperation(value = "deleteAZ", response = YWResults.YWSuccess.class, nickname = "deleteAZ")
+  @ApiOperation(
+      value = "Delete an availability zone",
+      response = YWResults.YWSuccess.class,
+      nickname = "deleteAZ")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);

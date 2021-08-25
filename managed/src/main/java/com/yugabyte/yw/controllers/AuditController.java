@@ -26,7 +26,7 @@ public class AuditController extends AuthenticatedController {
    * @return JSON response with audit entries belonging to the user.
    */
   @ApiOperation(
-      value = "list",
+      value = "List a user's audit entries",
       response = Audit.class,
       responseContainer = "List",
       nickname = "ListOfAudit")
@@ -37,7 +37,7 @@ public class AuditController extends AuthenticatedController {
     return YWResults.withData(auditList);
   }
 
-  @ApiOperation(value = "get", response = Audit.class)
+  @ApiOperation(value = "Get audit info for a task", response = Audit.class)
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
@@ -49,7 +49,7 @@ public class AuditController extends AuthenticatedController {
    *
    * @return JSON response with the corresponding audit entry.
    */
-  @ApiOperation(value = "get user from task", response = Audit.class)
+  @ApiOperation(value = "Get the user associated with a task", response = Audit.class)
   public Result getUserFromTask(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
