@@ -50,6 +50,7 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -298,6 +299,11 @@ public class CustomerController extends AuthenticatedController {
       value = "Add metrics to a customer",
       response = Object.class,
       responseContainer = "Map")
+  @ApiResponses(
+      @io.swagger.annotations.ApiResponse(
+          code = BAD_REQUEST,
+          message = "When request fails validations.",
+          response = YWResults.YWStructuredError.class))
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Metrics",
