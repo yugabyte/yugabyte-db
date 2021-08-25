@@ -541,7 +541,9 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& schedule : schedules_) {
-        schedules.emplace_back(schedule->id(), schedule->options().filter());
+        if (!schedule->deleted()) {
+          schedules.emplace_back(schedule->id(), schedule->options().filter());
+        }
       }
     }
     SnapshotSchedulesToObjectIdsMap result;

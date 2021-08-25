@@ -414,8 +414,15 @@ Result<SysRowEntries> CatalogManager::CollectEntries(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
   SysRowEntries entries;
-  auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags));
   std::unordered_set<NamespaceId> namespaces;
+  auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
+  if (!namespaces.empty()) {
+    SharedLock lock(mutex_);
+    for (const auto& ns_id : namespaces) {
+      auto ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(ns_id));
+      AddInfoEntry(ns_info.get(), entries.mutable_entries());
+    }
+  }
   for (const auto& table : tables) {
     // TODO(txn_snapshot) use single lock to resolve all tables to tablets
     SnapshotInfo::AddEntries(table, entries.mutable_entries(), /* tablet_infos= */ nullptr,
@@ -1520,22 +1527,6 @@ Status CatalogManager::RestoreSysCatalog(
   RETURN_NOT_OK(state.ProcessPgCatalogRestores(tablet, &write_batch));
   // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
-  for (const auto& tablet_id : restoration->non_system_obsolete_tablets) {
-    auto info = GetTabletInfo(tablet_id);
-    if (!info.ok()) {
-      continue;
-    }
-    RETURN_NOT_OK(state.PrepareTabletCleanup(
-        tablet_id, (**info).LockForRead()->pb, schema(), &write_batch));
-  }
-  for (const auto& table_id : restoration->non_system_obsolete_tables) {
-    auto info = GetTableInfo(table_id);
-    if (!info) {
-      continue;
-    }
-    RETURN_NOT_OK(state.PrepareTableCleanup(
-        table_id, info->LockForRead()->pb, schema(), &write_batch));
-  }
 
   // Apply write batch to RocksDB.
   state.WriteToRocksDB(&write_batch, restoration->write_time, restoration->op_id, tablet);
