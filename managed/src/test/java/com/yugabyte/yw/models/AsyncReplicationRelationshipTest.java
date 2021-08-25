@@ -1,14 +1,10 @@
 package com.yugabyte.yw.models;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -16,6 +12,12 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 @RunWith(JUnitParamsRunner.class)
 public class AsyncReplicationRelationshipTest extends FakeDBApplication {
@@ -74,6 +76,26 @@ public class AsyncReplicationRelationshipTest extends FakeDBApplication {
             relationship.targetUniverse.universeUUID, relationship.targetTableID);
 
     assertEquals(relationship, queryResult);
+  }
+
+  @Test
+  public void testGetBetweenUniverses() {
+    AsyncReplicationRelationship relationship1 =
+        AsyncReplicationRelationship.create(
+            source, "sourceTableID1", target, "targetTableID1", false);
+
+    AsyncReplicationRelationship relationship2 =
+        AsyncReplicationRelationship.create(
+            source, "sourceTableID2", target, "targetTableID2", false);
+
+    List<AsyncReplicationRelationship> queryResult =
+        AsyncReplicationRelationship.getBetweenUniverses(source.universeUUID, target.universeUUID);
+    queryResult.sort(Comparator.comparing(r -> r.uuid));
+
+    List<AsyncReplicationRelationship> expectedResult = Arrays.asList(relationship1, relationship2);
+    expectedResult.sort(Comparator.comparing(r -> r.uuid));
+
+    assertArrayEquals(expectedResult.toArray(), queryResult.toArray());
   }
 
   @Test
