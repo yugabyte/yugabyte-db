@@ -262,8 +262,8 @@ function getFormData(currentUniverse, formType, clusterType) {
     universeDetails: { clusters, encryptionAtRestConfig, rootCA }
   } = currentUniverse.data;
   const cluster = getClusterByType(clusters, clusterType);
+  const data = {};
   if (isDefinedNotNull(cluster)) {
-    const data = {};
     const userIntent = cluster.userIntent;
     data[clusterType] = {};
     data[clusterType].universeName = currentUniverse.data.name;
@@ -309,9 +309,8 @@ function getFormData(currentUniverse, formType, clusterType) {
       data[clusterType].enableEncryptionAtRest = encryptionAtRestConfig.encryptionAtRestEnabled;
       data[clusterType].selectEncryptionAtRestConfig = encryptionAtRestConfig.kmsConfigUUID;
     }
-    return data;
   }
-  return null;
+  return data;
 }
 
 function mapStateToProps(state, ownProps) {
@@ -363,11 +362,12 @@ function mapStateToProps(state, ownProps) {
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type !== 'Create') {
     // TODO (vit.pankin): don't like this type having Async in it,
     // it should be clusterType or currentView
-    data = getFormData(
+    const formResult = getFormData(
       currentUniverse,
       ownProps.type,
       ownProps.type === 'Async' ? 'async' : 'primary'
-    ) ?? data;
+    );
+    data = isEmptyObject(formResult) ? data : formResult;
   }
 
   const selector = formValueSelector('UniverseForm');
