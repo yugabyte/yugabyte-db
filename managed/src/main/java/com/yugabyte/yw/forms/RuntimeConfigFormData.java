@@ -27,10 +27,10 @@ import java.util.List;
 import java.util.UUID;
 import play.mvc.Http;
 
-@ApiModel(value = "RuntimeConfigData", description = "Runtime config data")
+@ApiModel(value = "RuntimeConfigData", description = "Runtime configuration data")
 public class RuntimeConfigFormData {
 
-  @ApiModelProperty(value = "list of scoped config")
+  @ApiModelProperty(value = "List of scoped configurations")
   public final List<ScopedConfig> scopedConfigList = new ArrayList<>();
 
   public void addGlobalScope(boolean asSuperAdmin) {
@@ -42,7 +42,7 @@ public class RuntimeConfigFormData {
     scopedConfigList.add(new ScopedConfig(type, uuid, true));
   }
 
-  @ApiModel(description = "Scoped config")
+  @ApiModel(description = "Scoped configuration")
   public static class ScopedConfig {
     @ApiModelProperty(value = "Scope type")
     public final ScopeType type;
@@ -56,7 +56,7 @@ public class RuntimeConfigFormData {
     @ApiModelProperty(value = "Is scope mutable")
     public final boolean mutableScope;
 
-    @ApiModelProperty(value = "List of configs")
+    @ApiModelProperty(value = "List of configurations")
     public final List<ConfigEntry> configEntries = new ArrayList<>();
 
     public ScopedConfig(ScopeType type, UUID uuid) {
@@ -95,20 +95,20 @@ public class RuntimeConfigFormData {
     }
   }
 
-  @ApiModel(description = "Configs entry")
+  @ApiModel(description = "Configuration entry")
   public static class ConfigEntry {
     /**
      * When includeInherited is true; we will return inherited entries. For example a key may not be
      * defined in customer scope but may be defined in global scope will be returned with inherited
      * set to true.
      */
-    @ApiModelProperty(value = "Is config inherited")
+    @ApiModelProperty(value = "Is this configuration inherited")
     public final boolean inherited;
 
-    @ApiModelProperty(value = "Config key")
+    @ApiModelProperty(value = "Configuration key")
     public final String key;
 
-    @ApiModelProperty(value = "Config value")
+    @ApiModelProperty(value = "Configuration value")
     public final String value;
 
     public ConfigEntry(boolean inherited, String key, String value) {

@@ -50,7 +50,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
-    value = "Encryption At Rest",
+    value = "Encryption at rest",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
@@ -101,11 +101,11 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
-  @ApiOperation(value = "Create KMS config", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Create a KMS configuration", response = YWResults.YWTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
-        name = "KMS Config",
-        value = "KMS Config to be created",
+        name = "KMS config",
+        value = "KMS config to be created",
         required = true,
         dataType = "Object",
         paramType = "body")
@@ -148,7 +148,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "KMS config detail by config UUID",
+      value = "Get details of a KMS configuration",
       response = Object.class,
       responseContainer = "Map")
   public Result getKMSConfig(UUID customerUUID, UUID configUUID) {
@@ -165,7 +165,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   // TODO: Cleanup raw json
-  @ApiOperation(value = "List KMS config", response = Object.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List KMS configurations",
+      response = Object.class,
+      responseContainer = "List")
   public Result listKMSConfigs(UUID customerUUID) {
     LOG.info(String.format("Listing KMS configurations for customer %s", customerUUID.toString()));
     List<JsonNode> kmsConfigs =
@@ -200,7 +203,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return YWResults.withData(kmsConfigs);
   }
 
-  @ApiOperation(value = "Delete KMS config", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Delete a KMS configuration", response = YWResults.YWTask.class)
   public Result deleteKMSConfig(UUID customerUUID, UUID configUUID) {
     LOG.info(
         String.format(
@@ -234,7 +237,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
-  @ApiOperation(value = "Retrive KMS key", response = Object.class, responseContainer = "Map")
+  @ApiOperation(
+      value = "Retrive a universe's KMS key",
+      response = Object.class,
+      responseContainer = "Map")
   public Result retrieveKey(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -262,7 +268,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return recoveredKey;
   }
 
-  @ApiOperation(value = "Get key ref History", response = Object.class, responseContainer = "List")
+  @ApiOperation(
+      value = "Get a universe's key reference history",
+      response = Object.class,
+      responseContainer = "List")
   public Result getKeyRefHistory(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -281,7 +290,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
-  @ApiOperation(value = "Remove key ref History", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Remove a universe's key reference history",
+      response = YWResults.YWSuccess.class)
   public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -292,7 +303,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return YWResults.YWSuccess.withMessage("Key ref was successfully removed");
   }
 
-  @ApiOperation(value = "Get key ref", response = Object.class, responseContainer = "Map")
+  @ApiOperation(
+      value = "Get a universe's key reference",
+      response = Object.class,
+      responseContainer = "Map")
   public Result getCurrentKeyRef(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
