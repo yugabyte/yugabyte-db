@@ -42,7 +42,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
-    value = "Instance Type",
+    value = "Instance types",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class InstanceTypeController extends AuthenticatedController {
 
@@ -67,14 +67,14 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return JSON response with instance types
    */
   @ApiOperation(
-      value = "list Instance Types for specific provider.",
+      value = "List a provider's instance types",
       response = YWResults.class,
       responseContainer = "List",
       nickname = "listOfInstanceType")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
-          message = "If there was a server or database issue when listing the backups",
+          message = "If there was a server or database issue when listing the instance types",
           response = YWError.class))
   public Result list(UUID customerUUID, UUID providerUUID, List<String> zoneCodes) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
@@ -152,13 +152,13 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return JSON response of newly created instance type
    */
   @ApiOperation(
-      value = "create Instance type",
+      value = "Create an instance type",
       response = InstanceType.class,
       nickname = "createInstanceType")
   @ApiImplicitParams(
       @ApiImplicitParam(
-          name = "instance type",
-          value = "instance type data of the instance to be stored",
+          name = "Instance type",
+          value = "Instance type data of the instance to be stored",
           paramType = "body",
           dataType = "com.yugabyte.yw.models.InstanceType",
           required = true))
@@ -182,11 +182,11 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider
-   * @param instanceTypeCode, Instance TaskType code.
+   * @param instanceTypeCode, Instance type code.
    * @return JSON response to denote if the delete was successful or not.
    */
   @ApiOperation(
-      value = "delete",
+      value = "Delete an instance type",
       response = YWResults.YWSuccess.class,
       nickname = "deleteInstanceType")
   public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
@@ -207,7 +207,7 @@ public class InstanceTypeController extends AuthenticatedController {
    * @return JSON response with instance type information.
    */
   @ApiOperation(
-      value = "get instance type through instance type code.",
+      value = "Get details of an instance type",
       response = InstanceType.class,
       nickname = "instanceTypeDetail")
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
@@ -226,7 +226,10 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of EBS volumes.
    */
-  @ApiOperation(value = "get EBS types", response = StorageType.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List supported EBS volume types",
+      response = StorageType.class,
+      responseContainer = "List")
   public Result getEBSTypes() {
     return YWResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
@@ -239,7 +242,10 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of GCP disks.
    */
-  @ApiOperation(value = "get GCP types", response = StorageType.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List supported GCP disk types",
+      response = StorageType.class,
+      responseContainer = "List")
   public Result getGCPTypes() {
 
     return YWResults.withData(
@@ -253,7 +259,10 @@ public class InstanceTypeController extends AuthenticatedController {
    *
    * @return a list of all supported types of AZU disks.
    */
-  @ApiOperation(value = "get AZU types", response = StorageType.class, responseContainer = "List")
+  @ApiOperation(
+      value = "List supported Azure disk types",
+      response = StorageType.class,
+      responseContainer = "List")
   public Result getAZUTypes() {
     return YWResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())

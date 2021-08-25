@@ -20,7 +20,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-@ApiModel(description = "Alert configuration template.")
+@ApiModel(description = "Alert configuration template")
 public class AlertDefinitionTemplate {
   @ApiModelProperty(value = "Alert definition group with template defaults", accessMode = READ_ONLY)
   @JsonUnwrapped

@@ -31,13 +31,15 @@ import java.util.UUID;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Provider", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Cloud providers",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
 
   @ApiOperation(
-      value = "listProvider",
+      value = "List cloud providers",
       response = Provider.class,
       responseContainer = "List",
       nickname = "getListOfProviders")
@@ -46,8 +48,9 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "deleteProvider",
-      notes = "This endpoint we are using only for deleting provider for integration test purpose.",
+      value = "Delete a cloud provider",
+      notes = "This endpoint is used only for integration tests.",
+      hidden = true,
       response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -57,7 +60,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
-  @ApiOperation(value = "refreshPricing", notes = "Refresh Provider pricing info")
+  @ApiOperation(value = "Refresh pricing", notes = "Refresh provider pricing info")
   public Result refreshPricing(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
@@ -65,7 +68,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YWSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
   }
 
-  @ApiOperation(value = "editProvider", response = Provider.class, nickname = "editProvider")
+  @ApiOperation(value = "Update a provider", response = Provider.class, nickname = "editProvider")
   @ApiImplicitParams(
       @ApiImplicitParam(
           value = "edit provider form data",
@@ -84,7 +87,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "createProvider",
+      value = "Create a provider",
       response = YWResults.YWTask.class,
       nickname = "createProviders")
   @ApiImplicitParams(

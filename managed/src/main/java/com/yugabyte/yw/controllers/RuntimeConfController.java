@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
 import play.mvc.Result;
 
 @Api(
-    value = "RuntimeConfig",
+    value = "Runtime configuration",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RuntimeConfController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfController.class);
@@ -98,7 +98,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "list Mutable keys",
+      value = "List mutable keys",
       response = String.class,
       responseContainer = "List",
       notes = "List all the mutable runtime config keys")
@@ -107,7 +107,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "listScopes",
+      value = "List configuration scopes",
       response = RuntimeConfigFormData.class,
       notes =
           "Lists all (including empty scopes) runtime config scopes for current customer. "
@@ -119,9 +119,9 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "list config entries for a scope",
+      value = "List configuration entries for a scope",
       response = RuntimeConfigFormData.class,
-      notes = "Lists all runtime config entries for a given scopes for current customer.")
+      notes = "Lists all runtime config entries for a given scope for current customer.")
   public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
     LOG.trace(
         "customerUUID: {} scopeUUID: {} includeInherited: {}",
@@ -149,7 +149,10 @@ public class RuntimeConfController extends AuthenticatedController {
     return YWResults.withData(scopedConfig);
   }
 
-  @ApiOperation(value = "getKey", produces = "text/plain")
+  @ApiOperation(
+      value = "Get a configuration key",
+      nickname = "getConfigurationKey",
+      produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
@@ -165,11 +168,11 @@ public class RuntimeConfController extends AuthenticatedController {
     return ok(runtimeConfigEntry.getValue());
   }
 
-  @ApiOperation(value = "setKey", consumes = "text/plain")
+  @ApiOperation(value = "Update a configuration key", consumes = "text/plain")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "newValue",
-          value = "new value for config key",
+          value = "New value for config key",
           paramType = "body",
           dataType = "java.lang.String",
           required = true))
@@ -192,7 +195,7 @@ public class RuntimeConfController extends AuthenticatedController {
     return ok();
   }
 
-  @ApiOperation(value = "deleteKey")
+  @ApiOperation(value = "Delete a configuration key")
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);

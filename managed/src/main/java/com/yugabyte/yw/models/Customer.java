@@ -92,8 +92,7 @@ public class Customer extends Model {
   @ApiModelProperty(
       value = "Universe UUIDs",
       accessMode = READ_ONLY,
-      example =
-          "[\"c3595ca7-68a3-47f0-b1b2-1725886d5ed5\", \"9e0bb733-556c-4935-83dd-6b742a2c32e6\"]")
+      example = "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]")
   private String universeUUIDs = "";
 
   public synchronized void addUniverseUUID(UUID universeUUID) {

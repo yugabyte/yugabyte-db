@@ -76,7 +76,10 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
-@Api(value = "Import", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Import a universe",
+    tags = "Universe actions",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class ImportController extends AuthenticatedController {
 
@@ -103,7 +106,7 @@ public class ImportController extends AuthenticatedController {
     executor = ybThreadPoolExecutorFactory.createExecutor("import", namedThreadFactory);
   }
 
-  @ApiOperation(value = "import", response = ImportUniverseFormData.class)
+  @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
   public Result importUniverse(UUID customerUUID) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =
@@ -145,7 +148,7 @@ public class ImportController extends AuthenticatedController {
     }
   }
 
-  // Helper function to convert comma seperated list of host:port into a list of host ips.
+  // Helper function to convert comma separated list of host:port into a list of host ips.
   // Returns null if there are parsing or invalid port errors.
   private Map<String, Integer> getMastersList(String masterAddresses) {
     Map<String, Integer> userMasterIpPorts = new HashMap<>();
@@ -552,9 +555,10 @@ public class ImportController extends AuthenticatedController {
   }
 
   /**
-   * This method queries the master leader and returns a list of tserver ip addresses. TODO: We need
-   * to get the number of nodes information also from the end user and check that count matches what
-   * master leader provides, to ensure no unreachable/failed tservers.
+   * This method queries the master leader and returns a list of tserver ip addresses.
+   *
+   * <p>TODO: We need to get the number of nodes information also from the end user and check that
+   * count matches what master leader provides, to ensure no unreachable/failed tservers.
    */
   private Map<String, Integer> getTServers(
       String masterAddresses, ImportUniverseResponseData results) {

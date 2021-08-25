@@ -168,7 +168,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return result of the universe update operation.
    */
   @Deprecated
-  @ApiOperation(value = "Upgrade  the universe", response = YWResults.YWTask.class, hidden = true)
+  @ApiOperation(
+      value = "Upgrade a universe",
+      notes = "Queues a task to perform an upgrade and a rolling restart in a universe.",
+      nickname = "upgradeUniverse",
+      response = YWResults.YWTask.class,
+      hidden = true)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "upgrade_params",
@@ -187,7 +192,10 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
   }
 
-  @ApiOperation(value = "updateDiskSize", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Update a universe's disk size",
+      nickname = "updateDiskSize",
+      response = YWResults.YWTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "univ_def",
