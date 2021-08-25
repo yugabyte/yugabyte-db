@@ -20,21 +20,29 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.YWResults.YWTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import play.mvc.Result;
 
+@Api(
+    value = "UniverseClusterMutations",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseClustersController extends AuthenticatedController {
-
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject private UniverseCRUDHandler universeCRUDHandler;
 
-  /**
-   * Will configure and create universe with (optionally) multiple clusters. Just fill in the
-   * userIntent for PRIMARY and (optionally) an ASYNC cluster
-   */
+  @ApiOperation(
+      value = "Create Universe Clusters",
+      notes =
+          "This will configure and create universe with (optionally) multiple clusters. "
+              + "Just fill in the userIntent for PRIMARY and (optionally) an ASYNC cluster",
+      response = YWTask.class,
+      nickname = "createAllClusters")
   public Result createAllClusters(UUID customerUUID) {
     // TODO: add assertions that only expected params are set or bad_request
     // Basically taskParams.clusters[]->userIntent and may be few more things
@@ -61,6 +69,13 @@ public class UniverseClustersController extends AuthenticatedController {
   }
 
   /** Takes UDTParams and update universe. Just fill in the userIntent for PRIMARY cluster. */
+  @ApiOperation(
+      value = "Update Primary Cluster",
+      notes =
+          "This will update primary cluster of existing universe."
+              + "Just fill in the userIntent for PRIMARY cluster",
+      response = YWTask.class,
+      nickname = "updatePrimaryCluster")
   public Result updatePrimaryCluster(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -77,6 +92,11 @@ public class UniverseClustersController extends AuthenticatedController {
   }
 
   /** Takes UDTParams and update universe. Just fill in the userIntent for ASYNC cluster. */
+  @ApiOperation(
+      value = "Create ReadOnly Cluster",
+      notes = "This will add a readonly cluster to existing universe.",
+      response = YWTask.class,
+      nickname = "createReadOnlyCluster")
   public Result createReadOnlyCluster(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -91,6 +111,11 @@ public class UniverseClustersController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID, universeUUID).asResult();
   }
 
+  @ApiOperation(
+      value = "Delete Readonly Cluster",
+      notes = "This will delete readonly cluster of existing universe.",
+      response = YWTask.class,
+      nickname = "deleteReadonlyCluster")
   public Result deleteReadonlyCluster(
       UUID customerUUID, UUID universeUUID, UUID clusterUUID, Boolean isForceDelete) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -107,6 +132,13 @@ public class UniverseClustersController extends AuthenticatedController {
    * Takes UDTParams and update universe. Just fill in the userIntent for either PRIMARY or ASYNC
    * cluster. Only one cluster can be updated at a time.
    */
+  @ApiOperation(
+      value = "Update Readonly Cluster",
+      notes =
+          "This will update readonly cluster of existing universe."
+              + "Just fill in the userIntent for ASYNC cluster",
+      response = YWTask.class,
+      nickname = "updateReadOnlyCluster")
   public Result updateReadOnlyCluster(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);

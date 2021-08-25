@@ -46,11 +46,13 @@ public class YWResults {
 
   @ApiModel(description = "Generic error response from the Yugabyte Platform API")
   public static class YWError {
+    @ApiModelProperty(value = "Always set to false to indicate failure", example = "false")
     public boolean success = false;
 
     @ApiModelProperty(
         value = "User visible unstructured error message",
-        example = "There was a problem creating the universe")
+        example = "There was a problem creating the universe",
+        required = false)
     public String error;
 
     // for json deserialization
@@ -65,6 +67,11 @@ public class YWResults {
   public static class YWStructuredError {
     public boolean success = false;
 
+    @ApiModelProperty(
+        value = "User visible error message as json object",
+        dataType = "Object",
+        example = "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
+        required = false)
     public JsonNode error;
 
     // for json deserialization
