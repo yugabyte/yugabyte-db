@@ -120,11 +120,6 @@ export default class RestoreBackup extends Component {
       }
     }
 
-    // fetch the provider of pimary cluster for current universe.
-    let currentUniverseCloud = currentUniverse.data.universeDetails.clusters.filter(
-      (cluster) => cluster.clusterType === 'PRIMARY'
-    )[0].userIntent.providerType;
-
     const kmsConfigList = cloud.authConfig.data.map((config) => {
       const labelName = config.metadata.provider + ' - ' + config.metadata.name;
       return { value: config.metadata.configUUID, label: labelName };
@@ -213,8 +208,7 @@ export default class RestoreBackup extends Component {
             disabled={isMultiTableBackup}
             label={'Table'}
           />
-          {currentUniverseCloud === 'aws' &&
-            (featureFlags.test?.addRestoreTimeStamp ||
+          {(featureFlags.test?.addRestoreTimeStamp ||
               featureFlags.released?.addRestoreTimeStamp) && (
               <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
             )}
