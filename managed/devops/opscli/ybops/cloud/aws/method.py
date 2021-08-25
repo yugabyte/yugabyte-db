@@ -142,7 +142,7 @@ class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
         return host_info["root_volume"]
 
     def delete_instance(self, args, instance_id):
-        self.cloud.delete_instance(args.region, instance_id)
+        self.cloud.delete_instance(args.region, instance_id, args.assign_static_public_ip)
 
 
 class AwsDestroyInstancesMethod(DestroyInstancesMethod):
@@ -169,7 +169,9 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-
+        if args.delete_static_public_ip:
+            self.cloud.delete_instance(args.region, host_info["id"], True)
+            return
         self.extra_vars.update({
             "cloud_subnet": host_info["subnet"],
             "cloud_region": host_info["region"],

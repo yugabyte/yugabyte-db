@@ -247,7 +247,7 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
 
 
 class DestroyInstancesMethod(AbstractInstancesMethod):
-    """Superclass for destroying an instnace.
+    """Superclass for destroying an instance.
     """
 
     def __init__(self, base_command):
@@ -257,6 +257,11 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
         super(DestroyInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
                                  help="The ip of the instance to delete.")
+        self.parser.add_argument(
+            "--delete_static_public_ip",
+            action="store_true",
+            default=False,
+            help="Delete the static public ip.")
 
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
@@ -290,6 +295,11 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  action="store_true",
                                  default=False,
                                  help="The ip of the instance to provision")
+
+        self.parser.add_argument("--assign_static_public_ip",
+                                 action="store_true",
+                                 default=False,
+                                 help="Assign a static public ip to the instance")
 
         self.parser.add_argument("--boot_disk_size_gb",
                                  type=int,
@@ -348,6 +358,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             self.extra_vars["network_name"] = args.network
 
         self.extra_vars["assign_public_ip"] = "yes" if args.assign_public_ip else "no"
+        self.extra_vars["assign_static_public_ip"] = "yes" if args.assign_static_public_ip else "no"
         self.update_ansible_vars_with_args(args)
 
     def preprovision(self, args):

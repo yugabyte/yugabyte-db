@@ -675,6 +675,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.instanceType = cloudInfo.instance_type;
     // Set the assign public ip param.
     params.assignPublicIP = cloudInfo.assignPublicIP;
+    params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
     params.machineImage = node.machineImage;
     params.useTimeSync = cloudInfo.useTimeSync;
     params.cmkArn = taskParams().cmkArn;

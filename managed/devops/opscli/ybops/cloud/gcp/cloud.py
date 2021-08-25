@@ -101,7 +101,8 @@ class GcpCloud(AbstractCloud):
         if args.node_ip is None or host_info['private_ip'] != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
-        self.get_admin().delete_instance(args.zone, args.search_pattern)
+        self.get_admin().delete_instance(
+            args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()

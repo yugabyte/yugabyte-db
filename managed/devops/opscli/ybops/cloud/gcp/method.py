@@ -69,7 +69,7 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
             args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
             server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
             args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
-            ssh_keys, boot_script=args.boot_script,
+            args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags)
 
 
@@ -111,7 +111,8 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
         return res["targetLink"]
 
     def delete_instance(self, args, instance_id):
-        self.cloud.get_admin().delete_instance(args.zone, instance_id)
+        self.cloud.get_admin().delete_instance(
+            args.region, args.zone, instance_id, has_static_ip=args.delete_static_public_ip)
 
 
 class GcpDestroyInstancesMethod(DestroyInstancesMethod):

@@ -345,6 +345,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public boolean assignPublicIP = true;
 
+    public boolean assignStaticPublicIP = false;
+
     public boolean useTimeSync = false;
 
     public boolean enableYSQL = false;
@@ -415,6 +417,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + useTimeSync
           + ", publicIP="
           + assignPublicIP
+          + ", staticPublicIP="
+          + assignStaticPublicIP
           + ", tags="
           + instanceTags;
     }
@@ -433,9 +437,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
+      newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
-      newUserIntent.assignPublicIP = assignPublicIP;
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
       newUserIntent.enableYEDIS = enableYEDIS;
@@ -458,6 +462,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd) {
         return true;
@@ -477,6 +482,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync) {
         return true;
       }
