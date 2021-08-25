@@ -32,7 +32,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Region", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Region management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class RegionController extends AuthenticatedController {
   @Inject ConfigHelper configHelper;
 
@@ -45,7 +47,7 @@ public class RegionController extends AuthenticatedController {
   // complaint
 
   @ApiOperation(
-      value = "list Regions for a specific provider",
+      value = "List a provider's regions",
       response = Region.class,
       responseContainer = "List",
       nickname = "getRegion")
@@ -63,7 +65,7 @@ public class RegionController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "list all Regions across all providers",
+      value = "List regions for all providers",
       response = Region.class,
       responseContainer = "List")
   // todo: include provider field in response
@@ -88,7 +90,7 @@ public class RegionController extends AuthenticatedController {
    *
    * @return JSON response of newly created region
    */
-  @ApiOperation(value = "create new region", response = Region.class, nickname = "createRegion")
+  @ApiOperation(value = "Create a new region", response = Region.class, nickname = "createRegion")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "region",
@@ -164,7 +166,7 @@ public class RegionController extends AuthenticatedController {
    * @param regionUUID Region UUID
    * @return JSON response on whether or not delete region was sucessful or not.
    */
-  @ApiOperation(value = "delete", response = Object.class, nickname = "deleteRegion")
+  @ApiOperation(value = "Delete a region", response = Object.class, nickname = "deleteRegion")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     region.disableRegionAndZones();

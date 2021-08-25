@@ -45,7 +45,7 @@ public class BackupsController extends AuthenticatedController {
   @Inject Commissioner commissioner;
 
   @ApiOperation(
-      value = "list Backups for a specific customer",
+      value = "List a customer's backups",
       response = Backup.class,
       responseContainer = "List",
       nickname = "ListOfBackups")
@@ -84,7 +84,7 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "list Backups for a specific task",
+      value = "List a task's backups",
       response = Backup.class,
       responseContainer = "List")
   @ApiResponses(
@@ -101,13 +101,13 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "restore Backups",
+      value = "Restore from a backup",
       response = YWResults.YWTask.class,
       responseContainer = "Restore")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "backup",
-          value = "backup params of the backup to be restored",
+          value = "Parameters of the backup to be restored",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.BackupTableParams",
           required = true))
@@ -209,7 +209,10 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID).asResult();
   }
 
-  @ApiOperation(value = "delete", response = YWResults.YWTask.class, nickname = "deleteBackups")
+  @ApiOperation(
+      value = "Delete backups",
+      response = YWResults.YWTask.class,
+      nickname = "deleteBackups")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // TODO(API): Let's get rid of raw Json.
@@ -246,6 +249,10 @@ public class BackupsController extends AuthenticatedController {
     return new YWResults.YWTasks(taskUUIDList).asResult();
   }
 
+  @ApiOperation(
+      value = "Stop a backup",
+      notes = "Stop an in-progress backup",
+      nickname = "stopBackup")
   public Result stop(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);

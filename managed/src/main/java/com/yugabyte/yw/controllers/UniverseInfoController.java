@@ -42,7 +42,7 @@ import play.mvc.Result;
 import play.mvc.Results;
 
 @Api(
-    value = "UniverseInfo",
+    value = "Universe information",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class UniverseInfoController extends AuthenticatedController {
@@ -60,7 +60,7 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return result of the universe status operation.
    */
   @ApiOperation(
-      value = "Status of the Universe",
+      value = "Get a universe's status",
       notes = "This will return a Map of node name to its status in json format",
       responseContainer = "Map",
       response = Object.class)
@@ -75,7 +75,7 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Api to get the resource estimate for a universe",
+      value = "Get a resource usage estimate for a universe",
       hidden = true,
       notes =
           "Expects UniverseDefinitionTaskParams in request body and calculates the resource "
@@ -87,7 +87,10 @@ public class UniverseInfoController extends AuthenticatedController {
         universeInfoHandler.getUniverseResources(universe.getUniverseDetails()));
   }
 
-  @ApiOperation(value = "universeCost", response = UniverseResourceDetails.class)
+  @ApiOperation(
+      value = "Get a cost estimate for a universe",
+      nickname = "getUniverseCost",
+      response = UniverseResourceDetails.class)
   public Result universeCost(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -98,7 +101,8 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "list universe cost for all universes",
+      value = "Get a cost estimate for all universes",
+      nickname = "getUniverseCostForAll",
       responseContainer = "List",
       response = UniverseResourceDetails.class)
   public Result universeListCost(UUID customerUUID) {
@@ -113,7 +117,10 @@ public class UniverseInfoController extends AuthenticatedController {
    * @param universeUUID UUID of Universe to retrieve the master leader private IP of.
    * @return The private IP of the master leader.
    */
-  @ApiOperation(value = "getMasterLeaderIP", response = Object.class)
+  @ApiOperation(
+      value = "Get IP address of a universe's master leader",
+      nickname = "getMasterLeaderIP",
+      response = Object.class)
   public Result getMasterLeaderIP(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -123,7 +130,10 @@ public class UniverseInfoController extends AuthenticatedController {
     return YWResults.withRawData(result);
   }
 
-  @ApiOperation(value = "getLiveQueries", response = Object.class)
+  @ApiOperation(
+      value = "Get live queries for a universe",
+      nickname = "getLiveQueries",
+      response = Object.class)
   public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -132,7 +142,10 @@ public class UniverseInfoController extends AuthenticatedController {
     return YWResults.withRawData(resultNode);
   }
 
-  @ApiOperation(value = "getSlowQueries", response = Object.class)
+  @ApiOperation(
+      value = "Get slow queries for a universe",
+      nickname = "getSlowQueries",
+      response = Object.class)
   public Result getSlowQueries(UUID customerUUID, UUID universeUUID) {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -147,7 +160,10 @@ public class UniverseInfoController extends AuthenticatedController {
     return Results.ok(resultNode);
   }
 
-  @ApiOperation(value = "resetSlowQueries", response = Object.class)
+  @ApiOperation(
+      value = "Reset slow queries for a universe",
+      nickname = "resetSlowQueries",
+      response = Object.class)
   public Result resetSlowQueries(UUID customerUUID, UUID universeUUID) {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -162,7 +178,12 @@ public class UniverseInfoController extends AuthenticatedController {
    *
    * @return result of the checker script
    */
-  @ApiOperation(value = "health Check", response = Object.class)
+  @ApiOperation(
+      value = "Run a universe health check",
+      notes =
+          "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
+      nickname = "healthCheckUniverse",
+      response = Object.class)
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -175,12 +196,16 @@ public class UniverseInfoController extends AuthenticatedController {
    * API that downloads the log files for a particular node in a universe. Synchronized due to
    * potential race conditions.
    *
-   * @param customerUUID ID of custoemr
+   * @param customerUUID ID of customer
    * @param universeUUID ID of universe
    * @param nodeName name of the node
    * @return tar file of the tserver and master log files (if the node is a master server).
    */
-  @ApiOperation(value = "download Node logs", produces = "application/x-compressed")
+  @ApiOperation(
+      value = "Download a node's logs",
+      notes = "Downloads the log files from a given node.",
+      nickname = "downloadNodeLogs",
+      produces = "application/x-compressed")
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
     return CompletableFuture.supplyAsync(

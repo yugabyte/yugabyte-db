@@ -29,7 +29,9 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Release", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Release management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class ReleaseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseController.class);
 
@@ -38,7 +40,7 @@ public class ReleaseController extends AuthenticatedController {
   @Inject ValidatingFormFactory formFactory;
 
   @ApiOperation(
-      value = "Create release",
+      value = "Create a release",
       response = YWResults.YWSuccess.class,
       nickname = "createRelease")
   @ApiImplicitParams({
@@ -77,7 +79,7 @@ public class ReleaseController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get list of releases",
+      value = "List all releases",
       response = Object.class,
       responseContainer = "Map",
       nickname = "getListOfReleases")
@@ -97,7 +99,7 @@ public class ReleaseController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Update release",
+      value = "Update a release",
       response = ReleaseManager.ReleaseMetadata.class,
       nickname = "updateRelease")
   @ApiImplicitParams({
@@ -131,7 +133,7 @@ public class ReleaseController extends AuthenticatedController {
     return YWResults.withData(m);
   }
 
-  @ApiOperation(value = "Refresh release", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Refresh a release", response = YWResults.YWSuccess.class)
   public Result refresh(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

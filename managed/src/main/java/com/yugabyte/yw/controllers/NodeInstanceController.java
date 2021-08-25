@@ -37,7 +37,7 @@ import play.mvc.Result;
 import play.mvc.Results;
 
 @Api(
-    value = "Node Instances",
+    value = "Node instances",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class NodeInstanceController extends AuthenticatedController {
 
@@ -53,7 +53,7 @@ public class NodeInstanceController extends AuthenticatedController {
    * @return JSON response with Node data
    */
   @ApiOperation(
-      value = "Get node instance by UUID",
+      value = "Get a node instance",
       response = NodeInstance.class,
       nickname = "getNodeInstance")
   public Result get(UUID customerUuid, UUID nodeUuid) {
@@ -70,7 +70,7 @@ public class NodeInstanceController extends AuthenticatedController {
    * @return JSON response with list of nodes
    */
   @ApiOperation(
-      value = "List of node instances by zone",
+      value = "List all of a zone's node instances",
       response = NodeInstance.class,
       responseContainer = "List")
   public Result listByZone(UUID customerUuid, UUID zoneUuid) {
@@ -86,7 +86,7 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List of node instances by provider",
+      value = "List all of a provider's node instances",
       response = NodeInstance.class,
       responseContainer = "List")
   public Result listByProvider(UUID customerUUID, UUID providerUUID) {
@@ -107,7 +107,7 @@ public class NodeInstanceController extends AuthenticatedController {
    * @return JSON response of newly created Nodes
    */
   @ApiOperation(
-      value = "Create node instance",
+      value = "Create a node instance",
       response = NodeInstance.class,
       responseContainer = "Map",
       nickname = "createNodeInstance")
@@ -145,7 +145,7 @@ public class NodeInstanceController extends AuthenticatedController {
    * Endpoint deletes the configured instance for a provider. Since instance name and instance uuid
    * are absent in a pristine (unused) instance We use IP to query for Instance and delete it
    */
-  @ApiOperation(value = "Delete node instance by IP")
+  @ApiOperation(value = "Delete a node instance")
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
     // Validate customer UUID and universe UUID and AWS provider.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -168,7 +168,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
   }
 
-  @ApiOperation(value = "Update node actions", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Update a node", response = YWResults.YWTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Node action",

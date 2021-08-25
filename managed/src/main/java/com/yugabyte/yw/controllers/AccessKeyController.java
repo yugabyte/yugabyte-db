@@ -32,7 +32,9 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
-@Api(value = "AccessKey", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Access Keys",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AccessKeyController extends AuthenticatedController {
 
   @Inject AccessManager accessManager;
@@ -41,7 +43,7 @@ public class AccessKeyController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
-  @ApiOperation(value = "get access Key", response = AccessKey.class)
+  @ApiOperation(value = "Get an access key", response = AccessKey.class)
   public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -50,7 +52,7 @@ public class AccessKeyController extends AuthenticatedController {
     return YWResults.withData(accessKey);
   }
 
-  @ApiOperation(value = "list AccessKeys for a specific provider", response = AccessKey.class)
+  @ApiOperation(value = "List access keys for a specific provider", response = AccessKey.class)
   public Result list(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -60,7 +62,7 @@ public class AccessKeyController extends AuthenticatedController {
     return YWResults.withData(accessKeys);
   }
 
-  @ApiOperation(value = "create access Key", response = AccessKey.class)
+  @ApiOperation(value = "Create an access key", response = AccessKey.class)
   public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
     Form<AccessKeyFormData> formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class);
 
@@ -139,7 +141,7 @@ public class AccessKeyController extends AuthenticatedController {
     return YWResults.withData(accessKey);
   }
 
-  @ApiOperation(value = "delete access Key", response = YWSuccess.class)
+  @ApiOperation(value = "Delete an access key", response = YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);

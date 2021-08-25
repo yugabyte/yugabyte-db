@@ -44,13 +44,13 @@ public class YWResults {
     return Results.ok(Json.toJson(data));
   }
 
-  @ApiModel(description = "Generic error response from Yugawware Platform API")
+  @ApiModel(description = "Generic error response from the Yugabyte Platform API")
   public static class YWError {
     public boolean success = false;
 
     @ApiModelProperty(
-        value = "User visible unstructurred error message",
-        example = "There was a problem creating universe")
+        value = "User visible unstructured error message",
+        example = "There was a problem creating the universe")
     public String error;
 
     // for json deserialization
@@ -84,11 +84,13 @@ public class YWResults {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class YWSuccess extends OkResult {
 
-    @ApiModelProperty(value = "Has API success", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+    @ApiModelProperty(
+        value = "API operation success",
+        accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final boolean success;
 
     @ApiModelProperty(
-        value = "API response mssage.",
+        value = "API response message.",
         accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final String message;
 
@@ -116,7 +118,7 @@ public class YWResults {
     public UUID taskUUID;
 
     @ApiModelProperty(
-        value = "UUID of the resource being modified  by the task",
+        value = "UUID of the resource being modified by the task",
         accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     @VisibleForTesting
     public UUID resourceUUID;

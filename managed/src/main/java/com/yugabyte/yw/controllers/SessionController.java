@@ -89,7 +89,7 @@ import play.mvc.Result;
 import play.mvc.Results;
 import play.mvc.With;
 
-@Api(value = "Session")
+@Api(value = "Session management")
 public class SessionController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);

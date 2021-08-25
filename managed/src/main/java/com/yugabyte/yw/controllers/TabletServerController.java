@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 import play.mvc.Result;
 
 @Api(
-    value = "Tablet Server",
+    value = "Tablet server management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TabletServerController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
@@ -36,7 +36,11 @@ public class TabletServerController extends AuthenticatedController {
    * @param universeUUID UUID of the universe
    * @return Result tablet server information
    */
-  @ApiOperation(value = "List of tablet server", response = Object.class, responseContainer = "Map")
+  @ApiOperation(
+      value = "List all tablet servers",
+      nickname = "listTabletServers",
+      response = Object.class,
+      responseContainer = "Map")
   public Result listTabletServers(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);

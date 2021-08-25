@@ -20,7 +20,7 @@ import play.data.validation.Constraints;
 
 public class UniverseTaskParams extends AbstractTaskParams {
 
-  @ApiModel(description = "Encryption at rest config")
+  @ApiModel(description = "Encryption at rest configuration")
   public static class EncryptionAtRestConfig {
     public enum OpType {
       @EnumValue("ENABLE")
@@ -32,22 +32,23 @@ public class UniverseTaskParams extends AbstractTaskParams {
     }
 
     // Whether a universe is currently encrypted at rest or not
-    @ApiModelProperty(value = "Whether a universe is currently encrypted at rest or not")
+    @ApiModelProperty(value = "Whether a universe is currently encrypted at rest")
     public boolean encryptionAtRestEnabled;
 
     // The KMS Configuration associated with the encryption keys being used on this universe
     @JsonAlias({"configUUID"})
-    @ApiModelProperty(value = "KMS configuration")
+    @ApiModelProperty(value = "KMS configuration UUID")
     public UUID kmsConfigUUID;
 
     // Whether to enable/disable/rotate universe key/encryption at rest
     @JsonAlias({"key_op"})
-    @ApiModelProperty(value = "Whether to enable/disable/rotate universe key/encryption at rest")
+    @ApiModelProperty(
+        value = "Operation type: enable, disable, or rotate the universe key/encryption at rest")
     public OpType opType;
 
     // Whether to generate a data key or just retrieve the CMK arn
     @JsonAlias({"key_type"})
-    @ApiModelProperty(value = "Whether to generate a data key or just retrieve the CMK arn")
+    @ApiModelProperty(value = "Whether to generate a data key or just retrieve the CMK ARN")
     public KeyType type;
 
     public EncryptionAtRestConfig() {
@@ -77,34 +78,34 @@ public class UniverseTaskParams extends AbstractTaskParams {
     }
 
     // Ports that are customizable universe-wide.
-    @ApiModelProperty(value = "HTTP port for master table")
+    @ApiModelProperty(value = "Master table HTTP port")
     public int masterHttpPort;
 
-    @ApiModelProperty(value = "RCP port for master table")
+    @ApiModelProperty(value = "Master table RCP port")
     public int masterRpcPort;
 
-    @ApiModelProperty(value = "HTTP port for tserver")
+    @ApiModelProperty(value = "Tablet server HTTP port")
     public int tserverHttpPort;
 
-    @ApiModelProperty(value = "RPC port for tserver")
+    @ApiModelProperty(value = "Tablet server RPC port")
     public int tserverRpcPort;
 
-    @ApiModelProperty(value = "HTTP port for redis")
+    @ApiModelProperty(value = "Redis HTTP port")
     public int redisServerHttpPort;
 
-    @ApiModelProperty(value = "RPC port for redis")
+    @ApiModelProperty(value = "Redis RPC port")
     public int redisServerRpcPort;
 
-    @ApiModelProperty(value = "HTTP port for yql")
+    @ApiModelProperty(value = "YQL HTTP port")
     public int yqlServerHttpPort;
 
-    @ApiModelProperty(value = "RPC port for yql")
+    @ApiModelProperty(value = "YQL RPC port")
     public int yqlServerRpcPort;
 
-    @ApiModelProperty(value = "HTTP port for ysql")
+    @ApiModelProperty(value = "YSQL HTTP port")
     public int ysqlServerHttpPort;
 
-    @ApiModelProperty(value = "RPC port for ysql")
+    @ApiModelProperty(value = "YSQL RPC port")
     public int ysqlServerRpcPort;
 
     @ApiModelProperty(value = "Node exporter port")
@@ -153,7 +154,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModel(description = "Extra dependencies")
   public static class ExtraDependencies {
     // Flag to install node_exporter on nodes.
-    @ApiModelProperty(value = "Is install node exporter required")
+    @ApiModelProperty(value = "Install node exporter on nodes")
     public boolean installNodeExporter = true;
   }
 
@@ -197,7 +198,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @JsonProperty(
       value = "targetAsyncReplicationRelationships",
       access = JsonProperty.Access.READ_ONLY)
-  @ApiModelProperty(value = "Async replication relationships as the target universe")
+  @ApiModelProperty(value = "The target universe's async replication relationships")
   public List<AsyncReplicationConfig> getTargetAsyncReplicationRelationships() {
     if (universeUUID == null) {
       return new ArrayList<>();
@@ -212,7 +213,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @JsonProperty(
       value = "sourceAsyncReplicationRelationships",
       access = JsonProperty.Access.READ_ONLY)
-  @ApiModelProperty(value = "Async replication relationships as the source universe")
+  @ApiModelProperty(value = "The source universe's sync replication relationships")
   public List<AsyncReplicationConfig> getSourceAsyncReplicationRelationships() {
     if (universeUUID == null) {
       return new ArrayList<>();
@@ -233,7 +234,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
   public DeviceInfo deviceInfo;
 
   // The universe against which this operation is being executed.
-  @ApiModelProperty(value = "Associate universe UUID")
+  @ApiModelProperty(value = "Associated universe UUID")
   public UUID universeUUID;
 
   // Previous version used for task info.
@@ -242,7 +243,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
   // Expected version of the universe for operation execution. Set to -1 if an operation should
   // not verify expected version of the universe.
-  @ApiModelProperty(value = "Universe version")
+  @ApiModelProperty(
+      value = "Expected universe version",
+      notes = "The expected version of the universe. Set to -1 to skip version checking.")
   public Integer expectedUniverseVersion;
 
   // If an AWS backed universe has chosen EBS volume encryption, this will be set to the
@@ -269,6 +272,6 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
   // Whether this task has been tried before or not. Awkward naming because we cannot use
   // `isRetry` due to play reading the "is" prefix differently.
-  @ApiModelProperty(value = "Whether this task has been tried before or not")
+  @ApiModelProperty(value = "Whether this task has been tried before")
   public boolean firstTry = true;
 }

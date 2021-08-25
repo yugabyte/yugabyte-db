@@ -23,7 +23,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
-    value = "Customer Config",
+    value = "Customer Configuration",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
@@ -31,7 +31,7 @@ public class CustomerConfigController extends AuthenticatedController {
   @Inject private CustomerConfigValidator configValidator;
 
   @ApiOperation(
-      value = "Create customer configuration",
+      value = "Create a customer configuration",
       response = CustomerConfig.class,
       nickname = "createCustomerConfig")
   @ApiImplicitParams({
@@ -67,7 +67,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Delete customer configuration",
+      value = "Delete a customer configuration",
       response = YWResults.YWSuccess.class,
       nickname = "deleteCustomerConfig")
   public Result delete(UUID customerUUID, UUID configUUID) {
@@ -78,7 +78,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List of customer configuration",
+      value = "List all customer configurations",
       response = CustomerConfig.class,
       responseContainer = "List",
       nickname = "getListOfCustomerConfig")
@@ -87,7 +87,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List of customer configuration",
+      value = "Update a customer configuration",
       response = CustomerConfig.class,
       nickname = "getCustomerConfig")
   @ApiImplicitParams({

@@ -12,7 +12,7 @@ import java.util.UUID;
 import org.yb.Common.TableType;
 import play.data.validation.Constraints;
 
-@ApiModel(description = "Backup table params")
+@ApiModel(description = "Backup table parameters")
 public class BackupTableParams extends TableManagerParams {
   public enum ActionType {
     CREATE,
@@ -22,10 +22,10 @@ public class BackupTableParams extends TableManagerParams {
   }
 
   @Constraints.Required
-  @ApiModelProperty(value = "Storage config UUID", required = true)
+  @ApiModelProperty(value = "Storage configuration UUID", required = true)
   public UUID storageConfigUUID;
 
-  @ApiModelProperty(value = "KMS config UUID")
+  @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
 
   // Specifies the backup storage location in case of S3 it would have
@@ -43,7 +43,7 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Tables")
   public List<String> tableNameList;
 
-  @ApiModelProperty(value = "Tables UUID's")
+  @ApiModelProperty(value = "Table UUIDs")
   public List<UUID> tableUUIDList;
 
   // Allows bundling multiple backup params. Used only in the case
@@ -52,28 +52,28 @@ public class BackupTableParams extends TableManagerParams {
   public List<BackupTableParams> backupList;
 
   // Specifies the frequency for running the backup in milliseconds.
-  @ApiModelProperty(value = "Frequency for running the backup in milliseconds")
+  @ApiModelProperty(value = "Frequency to run the backup, in milliseconds")
   public long schedulingFrequency = 0L;
 
   // Specifies the cron expression in case a recurring backup is expected.
-  @ApiModelProperty(value = "Cron expression in case a recurring backup")
+  @ApiModelProperty(value = "Cron expression for a recurring backup")
   public String cronExpression = null;
 
   // Specifies the time in millisecs before deleting the backup from the storage
   // bucket.
-  @ApiModelProperty(value = "Time in millisecs before deleting the backup from the storage")
+  @ApiModelProperty(value = "Time before deleting the backup from storage, in milliseconds")
   public long timeBeforeDelete = 0L;
 
   // Should backup script enable verbose logging.
-  @ApiModelProperty(value = "Is verbose logging is enable")
+  @ApiModelProperty(value = "Is verbose logging enabled")
   public boolean enableVerboseLogs = false;
 
   // Should the backup be transactional across tables
-  @ApiModelProperty(value = "Is backup be transactional across tables")
+  @ApiModelProperty(value = "Is backup transactional across tables")
   public boolean transactionalBackup = false;
 
   // The number of concurrent commands to run on nodes over SSH
-  @ApiModelProperty(value = "The number of concurrent commands to run on nodes over SSH")
+  @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
 
   // The associated schedule UUID (if applicable)
@@ -86,7 +86,7 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Backup UUID")
   public UUID backupUuid = null;
 
-  @ApiModelProperty(value = "Is table backup errors ignored")
+  @ApiModelProperty(value = "Should table backup errors be ignored")
   public Boolean ignoreErrors = false;
 
   @ApiModelProperty(value = "Restore TimeStamp")

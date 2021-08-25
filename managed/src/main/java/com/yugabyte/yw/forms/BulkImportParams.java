@@ -6,7 +6,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
 
-@ApiModel(description = "Bulk import params")
+@ApiModel(description = "Bulk import parameters")
 public class BulkImportParams extends TableManagerParams {
 
   // S3 bucket containing data to be bulk imported (should be of format s3://<path>/)

@@ -30,7 +30,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Users", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "User management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
@@ -45,7 +47,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response with user.
    */
-  @ApiOperation(value = "User detail by UUID", response = Users.class, nickname = "usersDetail")
+  @ApiOperation(value = "Get a user's details", nickname = "getUserDetails", response = Users.class)
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -58,10 +60,10 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response with users belonging to the customer.
    */
   @ApiOperation(
-      value = "List of Users",
+      value = "List all users",
+      nickname = "listUsers",
       response = Users.class,
-      responseContainer = "List",
-      nickname = "ListOfUsers")
+      responseContainer = "List")
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
@@ -73,11 +75,11 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response of newly created user.
    */
-  @ApiOperation(value = "Create User", response = Users.class, nickname = "createUsers")
+  @ApiOperation(value = "Create a user", nickname = "createUser", response = Users.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "User",
-        value = "Users data to be created",
+        value = "Details of the new user",
         required = true,
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
@@ -103,9 +105,10 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response on whether or not delete user was successful or not.
    */
   @ApiOperation(
-      value = "Delete customer",
-      response = YWResults.YWSuccess.class,
-      nickname = "deleteUsers")
+      value = "Delete a user",
+      nickname = "deleteUser",
+      notes = "Deletes the specified user. Note that you can't delete a customer's primary user.",
+      response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -128,7 +131,7 @@ public class UsersController extends AuthenticatedController {
       return YWResults.YWSuccess.empty();
     } else {
       throw new YWServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete User UUID: " + userUUID);
+          INTERNAL_SERVER_ERROR, "Unable to delete user UUID: " + userUUID);
     }
   }
 
@@ -137,7 +140,10 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response on whether role change was successful or not.
    */
-  @ApiOperation(value = "Change role of user by UUID", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Change a user's role",
+      nickname = "updateUserRole",
+      response = YWResults.YWSuccess.class)
   public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
@@ -163,11 +169,14 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response on whether role change was successful or not.
    */
-  @ApiOperation(value = "Chnage password of User", response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Change a user's password",
+      nickname = "updateUserPassword",
+      response = YWResults.YWSuccess.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Users",
-        value = "Users data to be updated",
+        value = "User data containing the new password",
         required = true,
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
@@ -195,7 +204,7 @@ public class UsersController extends AuthenticatedController {
         return YWResults.YWSuccess.empty();
       }
     }
-    throw new YWServiceException(BAD_REQUEST, "Invalid User Credentials.");
+    throw new YWServiceException(BAD_REQUEST, "Invalid user credentials.");
   }
 
   private void updateFeatures(Users user) {

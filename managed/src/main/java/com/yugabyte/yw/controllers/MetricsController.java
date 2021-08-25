@@ -38,7 +38,10 @@ public class MetricsController extends Controller {
 
   @Inject private MetricService metricService;
 
-  @ApiOperation(value = "index", response = String.class, nickname = "MetricsDetail")
+  @ApiOperation(
+      value = "Get Prometheus metrics",
+      response = String.class,
+      nickname = "MetricsDetail")
   public Result index() {
     final ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
     try {

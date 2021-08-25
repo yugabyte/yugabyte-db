@@ -63,7 +63,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Customer", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Customer management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
@@ -96,7 +98,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List customer",
+      value = "List customers",
       response = Customer.class,
       responseContainer = "List",
       nickname = "ListOfCustomers")
@@ -105,7 +107,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get customer by UUID",
+      value = "Get a customer's details",
       response = CustomerDetailsData.class,
       nickname = "CustomerDetail")
   public Result index(UUID customerUUID) {
@@ -142,10 +144,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(
-      value = "Update customer by UUID",
-      response = Customer.class,
-      nickname = "UpdateCustomer")
+  @ApiOperation(value = "Update a customer", response = Customer.class, nickname = "UpdateCustomer")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Customer",
@@ -242,7 +241,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Delete customer by UUID",
+      value = "Delete a customer",
       response = YWResults.YWSuccess.class,
       nickname = "deleteCustomer")
   public Result delete(UUID customerUUID) {
@@ -265,7 +264,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Upsert features of customer by UUID",
+      value = "Create or update a customer's features",
       hidden = true,
       responseContainer = "Map",
       response = Object.class)
@@ -296,7 +295,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Add metrics of customer by UUID",
+      value = "Add metrics to a customer",
       response = Object.class,
       responseContainer = "Map")
   @ApiImplicitParams({
@@ -423,7 +422,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get host info by customer UUID",
+      value = "Get a customer's host info",
       responseContainer = "Map",
       response = Object.class)
   public Result getHostInfo(UUID customerUUID) {
