@@ -770,6 +770,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS TEST_SplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code);
 
+  CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id);
+
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
 

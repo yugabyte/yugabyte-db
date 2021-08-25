@@ -2116,6 +2116,19 @@ Status CatalogManager::TEST_SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
+Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& table_id) {
+  auto table_info = GetTableInfo(table_id);
+  SCHECK(table_info != nullptr, NotFound, Format("Table $0 not found", table_id));
+
+  LockGuard lock(mutex_);
+  auto table_lock = table_info->LockForWrite();
+  auto& table_pb = table_lock.mutable_data()->pb;
+  table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(table_info.get(), leader_ready_term()));
+  table_lock.Commit();
+  return Status::OK();
+}
+
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
     const std::string& split_partition_key) {
