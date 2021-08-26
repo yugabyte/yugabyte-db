@@ -17,17 +17,16 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Universe;
-
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class AnsibleSetupServer extends NodeTaskBase {
+public class AnsibleCreateServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+  protected AnsibleCreateServer(
+      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
     super(baseTaskDependencies, nodeManager);
   }
 
@@ -36,16 +35,17 @@ public class AnsibleSetupServer extends NodeTaskBase {
     // The VPC into which the node is to be provisioned.
     public String subnetId;
 
-    // For AWS, this will dictate if we use the Time Sync Service.
-    public boolean useTimeSync = false;
+    public boolean assignPublicIP = true;
+    public boolean assignStaticPublicIP = false;
 
+    // If this is set to the universe's AWS KMS CMK arn, AWS EBS volume
+    // encryption will be enabled
+    public String cmkArn;
+
+    // If set, we will use this Amazon Resource Name of the user's
+    // instance profile instead of an access key id and secret
+    public String ipArnString;
     public String machineImage;
-
-    // Systemd vs Cron Option (Default: Cron)
-    public boolean useSystemd = false;
-
-    // For cron to systemd upgrades
-    public boolean isSystemdUpgrade = false;
   }
 
   @Override
@@ -59,21 +59,17 @@ public class AnsibleSetupServer extends NodeTaskBase {
     List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    taskParams().useSystemd =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-
     // For now we will skipProvision if it's set in accessKeys.
     if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
       skipProvision = accessKeys.get(0).getKeyInfo().skipProvisioning;
     }
 
     if (skipProvision) {
-      log.info("Skipping ansible provision.");
+      log.info("Skipping ansible creation.");
     } else {
-      // Execute the ansible command.
+      //   Execute the ansible command.
       ShellResponse response =
-          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Provision, taskParams());
+          getNodeManager().nodeCommand(NodeManager.NodeCommandType.Create, taskParams());
       processShellResponse(response);
     }
   }
