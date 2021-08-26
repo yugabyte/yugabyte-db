@@ -43,12 +43,16 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import org.apache.commons.validator.routines.InetAddressValidator;
+import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
@@ -247,6 +251,15 @@ public class CertificateHelper {
           false,
           clientCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
       clientCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
+
+      InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
+      if (ipAddressValidator.isValid(username)) {
+        List<GeneralName> altNames = new ArrayList<>();
+        altNames.add(new GeneralName(GeneralName.iPAddress, username));
+        GeneralNames subjectAltNames =
+            GeneralNames.getInstance(new DERSequence(altNames.toArray(new GeneralName[] {})));
+        clientCertBuilder.addExtension(Extension.subjectAlternativeName, false, subjectAltNames);
+      }
 
       X509CertificateHolder clientCertHolder = clientCertBuilder.build(csrContentSigner);
       X509Certificate clientCert =
