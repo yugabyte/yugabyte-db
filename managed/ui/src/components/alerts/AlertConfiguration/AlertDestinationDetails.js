@@ -19,11 +19,11 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
         <>
           <li>
             <label>Target Type:</label>
-            <div>{detail.targetType}</div>
+            <div>{detail.channelType}</div>
           </li>
           <li>
             <label>Target Name:</label>
-            <div>{detail.targetName}</div>
+            <div>{detail.channelName}</div>
           </li>
         </>
       );
@@ -50,7 +50,7 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
 
       showList.push(
         <ul key={i} className="cert-details-modal__list">
-          {detail.targetType === 'Slack' ? slackDetails : emailDetails}
+          {detail.channelType === 'Slack' ? slackDetails : emailDetails}
         </ul>
       );
     });

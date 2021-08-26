@@ -37,7 +37,7 @@ public class MetricLabel extends Model implements UniqueKeyListValue<MetricLabel
   @ManyToOne @JsonIgnore @EqualsAndHashCode.Exclude @ToString.Exclude private Metric metric;
 
   @Column(nullable = false)
-  private boolean targetLabel;
+  private boolean sourceLabel;
 
   public MetricLabel() {
     this.key = new MetricLabelKey();

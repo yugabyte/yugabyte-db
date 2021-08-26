@@ -12,13 +12,13 @@ import lombok.Value;
 @Builder
 @EqualsAndHashCode
 public class MetricKey {
-  MetricTargetKey targetKey;
-  String targetLabels;
+  MetricSourceKey sourceKey;
+  String sourceLabels;
 
   public static class MetricKeyBuilder {
     private UUID customerUuid;
     private String name;
-    private UUID targetUuid;
+    private UUID sourceUuid;
 
     public MetricKeyBuilder customerUuid(UUID customerUuid) {
       this.customerUuid = customerUuid;
@@ -31,33 +31,33 @@ public class MetricKey {
     }
 
     public MetricKeyBuilder targetUuid(UUID targetUuid) {
-      this.targetUuid = targetUuid;
+      this.sourceUuid = targetUuid;
       return this;
     }
 
     public MetricKey build() {
-      MetricTargetKey targetKey = this.targetKey;
-      if (targetKey == null) {
-        targetKey =
-            MetricTargetKey.builder()
+      MetricSourceKey sourceKey = this.sourceKey;
+      if (sourceKey == null) {
+        sourceKey =
+            MetricSourceKey.builder()
                 .customerUuid(customerUuid)
                 .name(name)
-                .targetUuid(targetUuid)
+                .sourceUuid(sourceUuid)
                 .build();
       }
-      return new MetricKey(targetKey, targetLabels);
+      return new MetricKey(sourceKey, sourceLabels);
     }
   }
 
   public static MetricKey from(Metric metric) {
     return MetricKey.builder()
-        .targetKey(MetricTargetKey.from(metric))
-        .targetLabels(
-            Metric.getTargetLabelsStr(
+        .sourceKey(MetricSourceKey.from(metric))
+        .sourceLabels(
+            Metric.getSourceLabelsStr(
                 metric
                     .getLabels()
                     .stream()
-                    .filter(MetricLabel::isTargetLabel)
+                    .filter(MetricLabel::isSourceLabel)
                     .collect(Collectors.toList())))
         .build();
   }

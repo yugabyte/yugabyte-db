@@ -43,7 +43,7 @@ const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall, setInitia
             className="alert-config-list"
             disabled
             onClick={() => {
-              handleMetricsCall('CUSTOMER');
+              handleMetricsCall('PLATFORM');
               onCreateAlert(true);
               enablePlatformAlert(true);
               setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
@@ -100,7 +100,7 @@ export const AlertsList = (props) => {
   useEffect(onInit, []);
 
   /**
-   * This method is used to congifure the routeUUID with its repsective
+   * This method is used to congifure the destinationUUID with its repsective
    * destination name.
    *
    * @param {string} cell Not in-use.
@@ -108,8 +108,8 @@ export const AlertsList = (props) => {
    */
   const formatRoutes = (cell, row) => {
     return alertDestinationList
-      .map((route) => {
-        return route.uuid === row.routeUUID ? route.name : null;
+      .map((destination) => {
+        return destination.uuid === row.destinationUUID ? destination.name : null;
       })
       .filter((res) => res !== null);
   };
@@ -142,15 +142,15 @@ export const AlertsList = (props) => {
    * @param {object} row Respective row object.
    */
   const onEditAlertConfig = (row) => {
-    row.targetType === 'CUSTOMER' ? enablePlatformAlert(true) : enablePlatformAlert(false);
+    row.targetType === 'PLATFORM' ? enablePlatformAlert(true) : enablePlatformAlert(false);
 
     // setting up ALERT_DESTINATION_LIST.
     const destination = alertDestinationList
-      .map((route) => {
-        return route.uuid === row.routeUUID
+      .map((destination) => {
+        return destination.uuid === row.destinationUUID
           ? {
-            value: route.uuid,
-            label: route.name
+            value: destination.uuid,
+            label: destination.name
           }
           : null;
       })
@@ -183,7 +183,7 @@ export const AlertsList = (props) => {
       ALERT_METRICS_CONDITION: row.template,
       ALERT_METRICS_DURATION: row.durationSec,
       ALERT_METRICS_CONDITION_POLICY: condition,
-      ALERT_DESTINATION_LIST: destination[0].value
+      ALERT_DESTINATION_LIST: destination[0]?.value
     };
 
     setInitialValues(initialVal);
@@ -280,7 +280,7 @@ export const AlertsList = (props) => {
               Severity
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="routeUUID"
+              dataField="destinationUUID"
               dataFormat={formatRoutes}
               columnClassName="no-border name-column"
               className="no-border"

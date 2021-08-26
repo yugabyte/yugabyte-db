@@ -1,0 +1,213 @@
+/*
+ * Copyright 2021 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
+package com.yugabyte.yw.common.alerts;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertDestination;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
+import io.ebean.annotation.Transactional;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+
+@Singleton
+@Slf4j
+public class AlertDestinationService {
+
+  private final AlertConfigurationService alertConfigurationService;
+
+  private final AlertChannelService alertChannelService;
+
+  @Inject
+  public AlertDestinationService(
+      AlertChannelService alertChannelService,
+      AlertConfigurationService alertConfigurationService) {
+    this.alertChannelService = alertChannelService;
+    this.alertConfigurationService = alertConfigurationService;
+  }
+
+  public void delete(UUID customerUUID, UUID destinationUUID) {
+    AlertDestination destination = getOrBadRequest(customerUUID, destinationUUID);
+    if (destination.isDefaultDestination()) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Unable to delete default alert destination %s,"
+                  + " make another destination default at first.",
+              destinationUUID));
+    }
+
+    AlertConfigurationFilter configurationFilter =
+        AlertConfigurationFilter.builder().destinationUuid(destination.getUuid()).build();
+    List<AlertConfiguration> configurations = alertConfigurationService.list(configurationFilter);
+    if (!configurations.isEmpty()) {
+      throw new YWServiceException(
+          BAD_REQUEST,
+          "Unable to delete alert destination: "
+              + destinationUUID
+              + ". "
+              + configurations.size()
+              + " alert configurations are linked to it. Examples: "
+              + configurations
+                  .stream()
+                  .limit(5)
+                  .map(AlertConfiguration::getName)
+                  .collect(Collectors.toList()));
+    }
+    if (!destination.delete()) {
+      throw new YWServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete alert destination: " + destinationUUID);
+    }
+    log.info("Deleted alert destination {} for customer {}", destinationUUID, customerUUID);
+  }
+
+  @Transactional
+  public AlertDestination save(AlertDestination destination) {
+    AlertDestination oldValue = null;
+    if (destination.getUuid() == null) {
+      destination.generateUUID();
+    } else {
+      oldValue = get(destination.getCustomerUUID(), destination.getUuid());
+    }
+
+    try {
+      validate(oldValue, destination);
+    } catch (YWValidateException e) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Unable to create/update alert destination: " + e.getMessage());
+    }
+
+    // Next will check that all the channels exist.
+    alertChannelService.getOrBadRequest(
+        destination.getCustomerUUID(),
+        destination
+            .getChannelsList()
+            .stream()
+            .map(AlertChannel::getUuid)
+            .collect(Collectors.toList()));
+
+    AlertDestination defaultDestination = getDefaultDestination(destination.getCustomerUUID());
+    destination.save();
+
+    // Resetting default destination flag for the previous default destination only if the
+    // new destination save succeeded.
+    if (destination.isDefaultDestination()
+        && (defaultDestination != null)
+        && !defaultDestination.getUuid().equals(destination.getUuid())) {
+      defaultDestination.setDefaultDestination(false);
+      defaultDestination.save();
+      log.info(
+          "For customer {} switched default destination to {}",
+          destination.getCustomerUUID(),
+          destination.getUuid());
+    }
+    return destination;
+  }
+
+  private AlertDestination get(UUID customerUUID, String destinationName) {
+    return AlertDestination.createQuery()
+        .eq("customerUUID", customerUUID)
+        .eq("name", destinationName)
+        .findOne();
+  }
+
+  public AlertDestination get(UUID customerUUID, UUID destinationUUID) {
+    return AlertDestination.get(customerUUID, destinationUUID);
+  }
+
+  public AlertDestination getOrBadRequest(UUID customerUUID, UUID destinationUUID) {
+    AlertDestination alertDestination = get(customerUUID, destinationUUID);
+    if (alertDestination == null) {
+      throw new YWServiceException(
+          BAD_REQUEST, "Invalid Alert Destination UUID: " + destinationUUID);
+    }
+    return alertDestination;
+  }
+
+  public List<AlertDestination> listByCustomer(UUID customerUUID) {
+    return AlertDestination.createQuery().eq("customerUUID", customerUUID).findList();
+  }
+
+  public AlertDestination getDefaultDestination(UUID customerUUID) {
+    return AlertDestination.createQuery()
+        .eq("customerUUID", customerUUID)
+        .eq("defaultDestination", true)
+        .findOne();
+  }
+
+  /**
+   * Creates default destination for the specified customer. Created destination has only one
+   * channel of type Email with the set of passed recipients. Also it doesn't have own SMTP
+   * configuration and uses default SMTP settings (from the platform configuration).
+   *
+   * @param customerUUID
+   * @return
+   */
+  public AlertDestination createDefaultDestination(UUID customerUUID) {
+    AlertChannelEmailParams defaultParams = new AlertChannelEmailParams();
+    defaultParams.defaultSmtpSettings = true;
+    defaultParams.defaultRecipients = true;
+    AlertChannel defaultChannel =
+        new AlertChannel()
+            .setCustomerUUID(customerUUID)
+            .setName("Default Channel")
+            .setParams(defaultParams);
+    defaultChannel = alertChannelService.save(defaultChannel);
+
+    AlertDestination destination =
+        new AlertDestination()
+            .setCustomerUUID(customerUUID)
+            .setName("Default Destination")
+            .setChannelsList(Collections.singletonList(defaultChannel))
+            .setDefaultDestination(true);
+    save(destination);
+    return destination;
+  }
+
+  private void validate(AlertDestination oldValue, AlertDestination destination)
+      throws YWValidateException {
+    if (CollectionUtils.isEmpty(destination.getChannelsList())) {
+      throw new YWValidateException("Can't save alert destination without channels.");
+    }
+
+    if (StringUtils.isEmpty(destination.getName())) {
+      throw new YWValidateException("Name is mandatory.");
+    }
+
+    if (destination.getName().length() > AlertDestination.MAX_NAME_LENGTH / 4) {
+      throw new YWValidateException(
+          String.format("Name length (%d) is exceeded.", AlertChannel.MAX_NAME_LENGTH / 4));
+    }
+
+    if ((oldValue != null)
+        && oldValue.isDefaultDestination()
+        && !destination.isDefaultDestination()) {
+      throw new YWValidateException(
+          "Can't set the alert destination as non-default."
+              + " Make another destination as default at first.");
+    }
+
+    AlertDestination valueWithSameName = get(destination.getCustomerUUID(), destination.getName());
+    if ((valueWithSameName != null) && !destination.getUuid().equals(valueWithSameName.getUuid())) {
+      throw new YWValidateException("Alert destination with such name already exists.");
+    }
+  }
+}

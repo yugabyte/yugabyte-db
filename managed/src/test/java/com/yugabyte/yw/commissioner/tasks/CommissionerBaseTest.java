@@ -24,7 +24,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.YWGuiceApplicationBaseTest;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -71,7 +71,7 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
   protected MetricService metricService;
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
-  protected AlertDefinitionGroupService alertDefinitionGroupService;
+  protected AlertConfigurationService alertConfigurationService;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -91,8 +91,8 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
     SettableRuntimeConfigFactory configFactory = new SettableRuntimeConfigFactory(app.config());
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(alertDefinitionService, configFactory);
+    alertConfigurationService =
+        new AlertConfigurationService(alertDefinitionService, configFactory);
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(app.config());
@@ -103,8 +103,8 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
     when(mockBaseTaskDependencies.getTableManager()).thenReturn(mockTableManager);
     when(mockBaseTaskDependencies.getMetricService()).thenReturn(metricService);
     when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(configFactory);
-    when(mockBaseTaskDependencies.getAlertDefinitionGroupService())
-        .thenReturn(alertDefinitionGroupService);
+    when(mockBaseTaskDependencies.getAlertConfigurationService())
+        .thenReturn(alertConfigurationService);
     when(mockBaseTaskDependencies.getExecutorFactory())
         .thenReturn(app.injector().instanceOf(YBThreadPoolExecutorFactory.class));
   }

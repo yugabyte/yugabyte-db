@@ -41,7 +41,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
   private Universe universe;
 
-  private AlertDefinitionGroup group;
+  private AlertConfiguration configuration;
 
   @InjectMocks private AlertDefinitionService alertDefinitionService;
 
@@ -49,7 +49,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
     universe = ModelFactory.createUniverse();
-    group = ModelFactory.createAlertDefinitionGroup(customer, universe);
+    configuration = ModelFactory.createAlertConfiguration(customer, universe);
   }
 
   @Test
@@ -154,7 +154,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinition definition =
         new AlertDefinition()
             .setCustomerUUID(customer.uuid)
-            .setGroupUUID(group.getUuid())
+            .setConfigurationUUID(configuration.getUuid())
             .setQuery(TEST_DEFINITION_QUERY)
             .setLabels(Arrays.asList(label1, knownLabel));
     return alertDefinitionService.save(definition);
@@ -165,7 +165,7 @@ public class AlertDefinitionTest extends FakeDBApplication {
     AlertDefinition definition =
         new AlertDefinition()
             .setCustomerUUID(customer.uuid)
-            .setGroupUUID(group.getUuid())
+            .setConfigurationUUID(configuration.getUuid())
             .setQuery(TEST_DEFINITION_QUERY)
             .setLabels(Collections.singletonList(label2));
     return alertDefinitionService.save(definition);

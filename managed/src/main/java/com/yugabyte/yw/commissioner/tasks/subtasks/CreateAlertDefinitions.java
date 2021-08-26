@@ -5,10 +5,10 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -38,21 +38,21 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       Customer customer = Customer.get(universe.customerId);
 
-      AlertDefinitionGroupFilter filter =
-          AlertDefinitionGroupFilter.builder()
+      AlertConfigurationFilter filter =
+          AlertConfigurationFilter.builder()
               .customerUuid(customer.getUuid())
-              .targetType(AlertDefinitionGroup.TargetType.UNIVERSE)
+              .targetType(AlertConfiguration.TargetType.UNIVERSE)
               .build();
 
-      List<AlertDefinitionGroup> groups =
-          alertDefinitionGroupService
+      List<AlertConfiguration> configurations =
+          alertConfigurationService
               .list(filter)
               .stream()
               .filter(group -> group.getTarget().isAll())
               .collect(Collectors.toList());
 
       // Just need to save - service will create definition itself.
-      alertDefinitionGroupService.save(groups);
+      alertConfigurationService.save(configurations);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());

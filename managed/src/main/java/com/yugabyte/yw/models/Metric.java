@@ -84,9 +84,9 @@ public class Metric extends Model {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date expireTime;
 
-  @Column private UUID targetUuid;
+  @Column private UUID sourceUuid;
 
-  @Column private String targetLabels;
+  @Column private String sourceLabels;
 
   @OneToMany(mappedBy = "metric", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<MetricLabel> labels;
@@ -142,7 +142,7 @@ public class Metric extends Model {
 
   public Metric setLabel(String name, String value, boolean keyLabel) {
     MetricLabel toAdd = new MetricLabel(this, name, value);
-    toAdd.setTargetLabel(keyLabel);
+    toAdd.setSourceLabel(keyLabel);
     this.labels = setUniqueListValue(labels, toAdd);
     return this;
   }
@@ -166,32 +166,32 @@ public class Metric extends Model {
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());
     }
-    if (filter.getTargetUuid() != null) {
-      query.eq("targetUuid", filter.getTargetUuid());
+    if (filter.getSourceUuid() != null) {
+      query.eq("sourceUuid", filter.getSourceUuid());
     }
     List<String> metricNames =
         filter.getMetrics().stream().map(PlatformMetrics::name).collect(Collectors.toList());
     appendInClause(query, "name", metricNames);
     if (!CollectionUtils.isEmpty(filter.getKeys())
-        || !CollectionUtils.isEmpty(filter.getTargetKeys())) {
-      if (filter.getKeys().size() + filter.getTargetKeys().size() > DB_OR_CHAIN_TO_WARN) {
+        || !CollectionUtils.isEmpty(filter.getSourceKeys())) {
+      if (filter.getKeys().size() + filter.getSourceKeys().size() > DB_OR_CHAIN_TO_WARN) {
         log.warn("Querying for {} metric keys - may affect performance", filter.getKeys().size());
       }
       Junction<Metric> orExpr = query.or();
       for (MetricKey key : filter.getKeys()) {
         Junction<Metric> andExpr = orExpr.and();
-        MetricTargetKey targetKey = key.getTargetKey();
-        appendMetricTargetKey(andExpr, targetKey);
-        if (!StringUtils.isEmpty(key.getTargetLabels())) {
-          andExpr.eq("targetLabels", key.getTargetLabels());
+        MetricSourceKey sourceKey = key.getSourceKey();
+        appendMetricSourceKey(andExpr, sourceKey);
+        if (!StringUtils.isEmpty(key.getSourceLabels())) {
+          andExpr.eq("sourceLabels", key.getSourceLabels());
         } else {
-          andExpr.isNull("targetLabels");
+          andExpr.isNull("sourceLabels");
         }
         orExpr.endAnd();
       }
-      for (MetricTargetKey targetKey : filter.getTargetKeys()) {
+      for (MetricSourceKey sourceKey : filter.getSourceKeys()) {
         Junction<Metric> andExpr = orExpr.and();
-        appendMetricTargetKey(andExpr, targetKey);
+        appendMetricSourceKey(andExpr, sourceKey);
         orExpr.endAnd();
       }
       query.endOr();
@@ -206,21 +206,21 @@ public class Metric extends Model {
     return query;
   }
 
-  private static void appendMetricTargetKey(Junction<Metric> andExpr, MetricTargetKey key) {
+  private static void appendMetricSourceKey(Junction<Metric> andExpr, MetricSourceKey key) {
     andExpr.eq("name", key.getName());
     if (key.getCustomerUuid() != null) {
       andExpr.eq("customerUUID", key.getCustomerUuid());
     } else {
       andExpr.isNull("customerUUID");
     }
-    if (key.getTargetUuid() != null) {
-      andExpr.eq("targetUuid", key.getTargetUuid());
+    if (key.getSourceUuid() != null) {
+      andExpr.eq("sourceUuid", key.getSourceUuid());
     } else {
-      andExpr.isNull("targetUuid");
+      andExpr.isNull("sourceUuid");
     }
   }
 
-  public static String getTargetLabelsStr(List<MetricLabel> labels) {
+  public static String getSourceLabelsStr(List<MetricLabel> labels) {
     if (CollectionUtils.isEmpty(labels)) {
       return null;
     }

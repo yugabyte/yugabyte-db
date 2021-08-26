@@ -11,7 +11,7 @@ export const AddDestinationChannelForm = (props) => {
   const [customSMTP, setCustomSMTP] = useState(true);
 
   // TODO: Add option for pagerDuty oce API is avaialable
-  const targetTypeList = [
+  const channelTypeList = [
     <option key={1} value="email">
       Email
     </option>,
@@ -39,16 +39,16 @@ export const AddDestinationChannelForm = (props) => {
       params: {}
     };
 
-    switch (values.ALERT_TARGET_TYPE) {
+    switch (values.CHANNEL_TYPE) {
       case 'slack':
         payload['name'] = values['slack_name'];
-        payload['params']['targetType'] = 'Slack';
+        payload['params']['channelType'] = 'Slack';
         payload['params']['webhookUrl'] = values.webhookURL;
         payload['params']['username'] = values['slack_name'];
         break;
       case 'email':
         payload['name'] = values['email_name'];
-        payload['params']['targetType'] = 'Email';
+        payload['params']['channelType'] = 'Email';
         payload['params']['recipients'] = values.emailIds.split(',');
         if (!customSMTP) {
           payload['params']['smtpData'] = values.smtpData;
@@ -61,14 +61,14 @@ export const AddDestinationChannelForm = (props) => {
     }
     try {
       props.createAlertChannel(payload).then(() => {
-        props.getAlertReceivers().then((receivers) => {
-          receivers = receivers.map((receiver) => {
+        props.getAlertChannels().then((channels) => {
+          channels = channels.map((channel) => {
             return {
-              value: receiver['uuid'],
-              label: receiver['name']
+              value: channel['uuid'],
+              label: channel['name']
             };
           });
-          props.updateDestinationChannel(receivers);
+          props.updateDestinationChannel(channels);
         });
       });
       onModalHide();
@@ -291,7 +291,7 @@ export const AddDestinationChannelForm = (props) => {
       onFormSubmit={(values) => {
         const payload = {
           ...values,
-          ALERT_TARGET_TYPE: channelType
+          CHANNEL_TYPE: channelType
         };
 
         handleAddDestination(payload);
@@ -302,8 +302,8 @@ export const AddDestinationChannelForm = (props) => {
           <Col lg={8}>
             <div className="form-item-custom-label">Target</div>
             <YBSelectWithLabel
-              name="ALERT_TARGET_TYPE"
-              options={targetTypeList}
+              name="CHANNEL_TYPE"
+              options={channelTypeList}
               value={channelType}
               onInputChanged={handleChannelTypeChange}
             />

@@ -13,11 +13,11 @@ import {
   createAlertConfigResponse,
   createAlertDestination,
   createAlertDestinationResponse,
-  createAlertReceiver,
-  createAlertReceiverResponse,
+  createAlertChannel,
+  createAlertChannelResponse,
   deleteAlertConfig,
   deleteAlertDestination,
-  getAlertReceivers,
+  getAlertChannels,
   getTargetMetrics,
   setInitialValues,
   updateAlertConfig,
@@ -89,18 +89,18 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     createAlertChannel: (payload) => {
-      return dispatch(createAlertReceiver(payload)).then((response) => {
+      return dispatch(createAlertChannel(payload)).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
         } else {
           toast.success('Successfully created the channel');
         }
-        return dispatch(createAlertReceiverResponse(response.payload));
+        return dispatch(createAlertChannelResponse(response.payload));
       });
     },
-    getAlertReceivers: () => {
-      return dispatch(getAlertReceivers()).then((response) => {
+    getAlertChannels: () => {
+      return dispatch(getAlertChannels()).then((response) => {
         if (response.error) {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
@@ -127,7 +127,7 @@ const mapDispatchToProps = (dispatch) => {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
         } else {
-          toast.success('Successfully added the destination');
+          toast.success('Successfully added the alert configuration');
         }
         return dispatch(createAlertConfigResponse(response.payload));
       });
@@ -138,7 +138,7 @@ const mapDispatchToProps = (dispatch) => {
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(errorMessage);
         } else {
-          toast.success('Successfully updated the config');
+          toast.success('Successfully updated the alert configuration');
         }
         return dispatch(updateAlertConfigResponse(response.payload));
       });

@@ -14,7 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.EmailFixtures;
-import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import java.util.Collections;
 import org.junit.Test;
 import play.libs.Json;
@@ -108,15 +108,15 @@ public class CommonUtilsTest {
 
   @Test
   public void testMaskComplexObject() {
-    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+    AlertChannelEmailParams params = new AlertChannelEmailParams();
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = EmailFixtures.createSmtpData();
 
-    AlertReceiverEmailParams maskedParams = CommonUtils.maskObject(params);
+    AlertChannelEmailParams maskedParams = CommonUtils.maskObject(params);
     assertThat(maskedParams, not(params));
     assertThat(maskedParams.smtpData.smtpPassword, not(params.smtpData.smtpPassword));
 
-    AlertReceiverEmailParams unmaskedParams = CommonUtils.unmaskObject(params, maskedParams);
+    AlertChannelEmailParams unmaskedParams = CommonUtils.unmaskObject(params, maskedParams);
     assertThat(unmaskedParams, not(maskedParams));
     assertThat(unmaskedParams, equalTo(params));
   }

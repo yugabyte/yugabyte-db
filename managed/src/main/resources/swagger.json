@@ -37,6 +37,18 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "configurationType" : {
+          "description" : "Alert configuration type.",
+          "enum" : [ "PLATFORM", "UNIVERSE" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "configurationUuid" : {
+          "description" : "Alert configuration Uuid.",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "createTime" : {
           "description" : "Create Date time info.",
           "format" : "date-time",
@@ -50,19 +62,7 @@
           "type" : "string"
         },
         "definitionUuid" : {
-          "description" : "Alert Definition Uuid",
-          "format" : "uuid",
-          "readOnly" : true,
-          "type" : "string"
-        },
-        "groupType" : {
-          "description" : "Alert definition group type.",
-          "enum" : [ "CUSTOMER", "UNIVERSE" ],
-          "readOnly" : true,
-          "type" : "string"
-        },
-        "groupUuid" : {
-          "description" : "Alert group Uuid.",
+          "description" : "Alert definition Uuid",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -74,7 +74,7 @@
           "type" : "array"
         },
         "message" : {
-          "description" : "Alert Message.",
+          "description" : "Alert message.",
           "readOnly" : true,
           "type" : "string"
         },
@@ -114,7 +114,7 @@
           "type" : "string"
         },
         "severity" : {
-          "description" : "Alert definition group serverity.",
+          "description" : "Alert configuration serverity.",
           "enum" : [ "SEVERE", "WARNING" ],
           "readOnly" : true,
           "type" : "string"
@@ -123,8 +123,13 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "sourceName" : {
+          "description" : "Alert source name.",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "state" : {
-          "description" : "Alert State.",
+          "description" : "Alert state.",
           "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
@@ -132,11 +137,6 @@
         "stateIndex" : {
           "format" : "int32",
           "type" : "integer"
-        },
-        "targetName" : {
-          "description" : "Alert target name.",
-          "readOnly" : true,
-          "type" : "string"
         },
         "uuid" : {
           "description" : "Alert uuid",
@@ -148,7 +148,7 @@
       "required" : [ "labels", "severityIndex", "stateIndex" ],
       "type" : "object"
     },
-    "Alert configuration group target." : {
+    "Alert configuration target." : {
       "properties" : {
         "all" : {
           "description" : "Alert applicable for all targets",
@@ -183,15 +183,15 @@
     },
     "AlertApiFilter" : {
       "properties" : {
-        "groupTypes" : {
+        "configurationTypes" : {
           "items" : {
-            "enum" : [ "CUSTOMER", "UNIVERSE" ],
+            "enum" : [ "PLATFORM", "UNIVERSE" ],
             "type" : "string"
           },
           "type" : "array",
           "uniqueItems" : true
         },
-        "groupUuid" : {
+        "configurationUuid" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -203,6 +203,9 @@
           "type" : "array",
           "uniqueItems" : true
         },
+        "sourceName" : {
+          "type" : "string"
+        },
         "states" : {
           "items" : {
             "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
@@ -210,9 +213,6 @@
           },
           "type" : "array",
           "uniqueItems" : true
-        },
-        "targetName" : {
-          "type" : "string"
         },
         "uuids" : {
           "items" : {
@@ -223,14 +223,107 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "groupTypes", "groupUuid", "severities", "states", "targetName", "uuids" ],
+      "required" : [ "configurationTypes", "configurationUuid", "severities", "sourceName", "states", "uuids" ],
       "type" : "object"
     },
-    "AlertDefinitionGroup" : {
-      "description" : "Alert configuration group.",
+    "AlertChannel" : {
+      "properties" : {
+        "customer_uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "params" : {
+          "$ref" : "#/definitions/AlertChannelParams"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "name", "params", "uuid" ],
+      "type" : "object"
+    },
+    "AlertChannelEmailParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "defaultRecipients" : {
+            "type" : "boolean"
+          },
+          "defaultSmtpSettings" : {
+            "type" : "boolean"
+          },
+          "recipients" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "smtpData" : {
+            "$ref" : "#/definitions/SmtpData"
+          }
+        },
+        "required" : [ "defaultRecipients", "defaultSmtpSettings", "recipients", "smtpData" ],
+        "type" : "object"
+      } ]
+    },
+    "AlertChannelFormData" : {
+      "properties" : {
+        "alertChannelUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "params" : {
+          "$ref" : "#/definitions/AlertChannelParams"
+        }
+      },
+      "required" : [ "alertChannelUUID", "name", "params" ],
+      "type" : "object"
+    },
+    "AlertChannelParams" : {
+      "discriminator" : "channelType",
+      "properties" : {
+        "textTemplate" : {
+          "type" : "string"
+        },
+        "titleTemplate" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "textTemplate", "titleTemplate" ],
+      "type" : "object"
+    },
+    "AlertChannelSlackParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "iconUrl" : {
+            "type" : "string"
+          },
+          "username" : {
+            "type" : "string"
+          },
+          "webhookUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "iconUrl", "username", "webhookUrl" ],
+        "type" : "object"
+      } ]
+    },
+    "AlertConfiguration" : {
+      "description" : "Alert configuration.",
       "properties" : {
         "active" : {
-          "description" : "Is group alerts raised or not",
+          "description" : "Is configured alerts raised or not",
           "type" : "boolean"
         },
         "createTime" : {
@@ -246,7 +339,12 @@
           "type" : "string"
         },
         "description" : {
-          "description" : "Group description",
+          "description" : "Description",
+          "type" : "string"
+        },
+        "destinationUUID" : {
+          "description" : "Alert destination uuid",
+          "format" : "uuid",
           "type" : "string"
         },
         "durationSec" : {
@@ -255,21 +353,16 @@
           "type" : "integer"
         },
         "name" : {
-          "description" : "Group name",
-          "type" : "string"
-        },
-        "routeUUID" : {
-          "description" : "Alert route uuid",
-          "format" : "uuid",
+          "description" : "Name",
           "type" : "string"
         },
         "target" : {
-          "$ref" : "#/definitions/Alert configuration group target.",
-          "description" : "Group target"
+          "$ref" : "#/definitions/Alert configuration target.",
+          "description" : "Target"
         },
         "targetType" : {
-          "description" : "Group target type",
-          "enum" : [ "CUSTOMER", "UNIVERSE" ],
+          "description" : "Target type",
+          "enum" : [ "PLATFORM", "UNIVERSE" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -289,11 +382,11 @@
           "additionalProperties" : {
             "$ref" : "#/definitions/Alert configuration threshold."
           },
-          "description" : "Group thresholds",
+          "description" : "Thresholds",
           "type" : "object"
         },
         "uuid" : {
-          "description" : "Group uuid",
+          "description" : "Configuration uuid",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -301,20 +394,20 @@
       },
       "type" : "object"
     },
-    "AlertDefinitionGroupApiFilter" : {
+    "AlertConfigurationApiFilter" : {
       "properties" : {
         "active" : {
           "type" : "boolean"
         },
-        "name" : {
-          "type" : "string"
-        },
-        "routeUuid" : {
+        "destinationUuid" : {
           "format" : "uuid",
           "type" : "string"
         },
+        "name" : {
+          "type" : "string"
+        },
         "targetType" : {
-          "enum" : [ "CUSTOMER", "UNIVERSE" ],
+          "enum" : [ "PLATFORM", "UNIVERSE" ],
           "type" : "string"
         },
         "template" : {
@@ -330,17 +423,17 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "active", "name", "routeUuid", "targetType", "template", "uuids" ],
+      "required" : [ "active", "destinationUuid", "name", "targetType", "template", "uuids" ],
       "type" : "object"
     },
-    "AlertDefinitionGroupPagedApiQuery" : {
+    "AlertConfigurationPagedApiQuery" : {
       "properties" : {
         "direction" : {
           "enum" : [ "ASC", "DESC" ],
           "type" : "string"
         },
         "filter" : {
-          "$ref" : "#/definitions/AlertDefinitionGroupApiFilter"
+          "$ref" : "#/definitions/AlertConfigurationApiFilter"
         },
         "limit" : {
           "format" : "int32",
@@ -361,11 +454,11 @@
       "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
       "type" : "object"
     },
-    "AlertDefinitionGroupPagedResponse" : {
+    "AlertConfigurationPagedResponse" : {
       "properties" : {
         "entities" : {
           "items" : {
-            "$ref" : "#/definitions/AlertDefinitionGroup"
+            "$ref" : "#/definitions/AlertConfiguration"
           },
           "type" : "array"
         },
@@ -383,11 +476,11 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
-    "AlertDefinitionTemplate" : {
+    "AlertConfigurationTemplate" : {
       "description" : "Alert configuration template",
       "properties" : {
         "active" : {
-          "description" : "Is group alerts raised or not",
+          "description" : "Is configured alerts raised or not",
           "type" : "boolean"
         },
         "createTime" : {
@@ -403,7 +496,12 @@
           "type" : "string"
         },
         "description" : {
-          "description" : "Group description",
+          "description" : "Description",
+          "type" : "string"
+        },
+        "destinationUUID" : {
+          "description" : "Alert destination uuid",
+          "format" : "uuid",
           "type" : "string"
         },
         "durationSec" : {
@@ -412,21 +510,16 @@
           "type" : "integer"
         },
         "name" : {
-          "description" : "Group name",
-          "type" : "string"
-        },
-        "routeUUID" : {
-          "description" : "Alert route uuid",
-          "format" : "uuid",
+          "description" : "Name",
           "type" : "string"
         },
         "target" : {
-          "$ref" : "#/definitions/Alert configuration group target.",
-          "description" : "Group target"
+          "$ref" : "#/definitions/Alert configuration target.",
+          "description" : "Target"
         },
         "targetType" : {
-          "description" : "Group target type",
-          "enum" : [ "CUSTOMER", "UNIVERSE" ],
+          "description" : "Target type",
+          "enum" : [ "PLATFORM", "UNIVERSE" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -463,11 +556,11 @@
           "additionalProperties" : {
             "$ref" : "#/definitions/Alert configuration threshold."
           },
-          "description" : "Group thresholds",
+          "description" : "Thresholds",
           "type" : "object"
         },
         "uuid" : {
-          "description" : "Group uuid",
+          "description" : "Configuration uuid",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -475,17 +568,110 @@
       },
       "type" : "object"
     },
-    "AlertDefinitionTemplateApiFilter" : {
+    "AlertDefinition" : {
       "properties" : {
+        "configurationUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "labels" : {
+          "items" : {
+            "$ref" : "#/definitions/AlertDefinitionLabel"
+          },
+          "type" : "array"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "version" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "configurationUUID", "customerUUID", "labels", "query", "universeUUID", "uuid", "version" ],
+      "type" : "object"
+    },
+    "AlertDefinitionLabel" : {
+      "properties" : {
+        "key" : {
+          "$ref" : "#/definitions/AlertDefinitionLabelKey"
+        },
         "name" : {
           "type" : "string"
         },
-        "targetType" : {
-          "enum" : [ "CUSTOMER", "UNIVERSE" ],
+        "value" : {
           "type" : "string"
         }
       },
-      "required" : [ "name", "targetType" ],
+      "required" : [ "key", "name", "value" ],
+      "type" : "object"
+    },
+    "AlertDefinitionLabelKey" : {
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
+      "type" : "object"
+    },
+    "AlertDestination" : {
+      "properties" : {
+        "channels" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "customerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "defaultDestination" : {
+          "type" : "boolean"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "defaultDestination", "name", "uuid" ],
+      "type" : "object"
+    },
+    "AlertDestinationFormData" : {
+      "properties" : {
+        "channels" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "defaultDestination" : {
+          "type" : "boolean"
+        },
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "channels", "defaultDestination", "name" ],
       "type" : "object"
     },
     "AlertLabel" : {
@@ -533,7 +719,7 @@
           "type" : "integer"
         },
         "sortBy" : {
-          "enum" : [ "uuid", "createTime", "severity", "name", "targetName", "state" ],
+          "enum" : [ "uuid", "createTime", "severity", "name", "sourceName", "state" ],
           "type" : "string"
         }
       },
@@ -562,144 +748,17 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
-    "AlertReceiver" : {
+    "AlertTemplateApiFilter" : {
       "properties" : {
-        "customer_uuid" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "name" : {
           "type" : "string"
         },
-        "params" : {
-          "$ref" : "#/definitions/AlertReceiverParams"
-        },
-        "uuid" : {
-          "format" : "uuid",
+        "targetType" : {
+          "enum" : [ "PLATFORM", "UNIVERSE" ],
           "type" : "string"
         }
       },
-      "required" : [ "name", "params", "uuid" ],
-      "type" : "object"
-    },
-    "AlertReceiverEmailParams" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/AlertReceiverParams"
-      }, {
-        "properties" : {
-          "defaultRecipients" : {
-            "type" : "boolean"
-          },
-          "defaultSmtpSettings" : {
-            "type" : "boolean"
-          },
-          "recipients" : {
-            "items" : {
-              "type" : "string"
-            },
-            "type" : "array"
-          },
-          "smtpData" : {
-            "$ref" : "#/definitions/SmtpData"
-          }
-        },
-        "required" : [ "defaultRecipients", "defaultSmtpSettings", "recipients", "smtpData" ],
-        "type" : "object"
-      } ]
-    },
-    "AlertReceiverFormData" : {
-      "properties" : {
-        "alertReceiverUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "params" : {
-          "$ref" : "#/definitions/AlertReceiverParams"
-        }
-      },
-      "required" : [ "alertReceiverUUID", "name", "params" ],
-      "type" : "object"
-    },
-    "AlertReceiverParams" : {
-      "discriminator" : "targetType",
-      "properties" : {
-        "textTemplate" : {
-          "type" : "string"
-        },
-        "titleTemplate" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "textTemplate", "titleTemplate" ],
-      "type" : "object"
-    },
-    "AlertReceiverSlackParams" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/AlertReceiverParams"
-      }, {
-        "properties" : {
-          "iconUrl" : {
-            "type" : "string"
-          },
-          "username" : {
-            "type" : "string"
-          },
-          "webhookUrl" : {
-            "type" : "string"
-          }
-        },
-        "required" : [ "iconUrl", "username", "webhookUrl" ],
-        "type" : "object"
-      } ]
-    },
-    "AlertRoute" : {
-      "properties" : {
-        "customerUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "defaultRoute" : {
-          "type" : "boolean"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "receivers" : {
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "readOnly" : true,
-          "type" : "array"
-        },
-        "uuid" : {
-          "format" : "uuid",
-          "type" : "string"
-        }
-      },
-      "required" : [ "customerUUID", "defaultRoute", "name", "uuid" ],
-      "type" : "object"
-    },
-    "AlertRouteFormData" : {
-      "properties" : {
-        "defaultRoute" : {
-          "type" : "boolean"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "receivers" : {
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "type" : "array"
-        }
-      },
-      "required" : [ "defaultRoute", "name", "receivers" ],
+      "required" : [ "name", "targetType" ],
       "type" : "object"
     },
     "AlertingData" : {
@@ -4608,63 +4667,23 @@
         "tags" : [ "Customer management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/alert_definition_groups" : {
-      "post" : {
+    "/api/v1/customers/{cUUID}/alert_channels" : {
+      "get" : {
         "description" : "",
-        "operationId" : "createDefinitionGroup",
+        "operationId" : "listAlertChannels",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
-        }, {
-          "in" : "body",
-          "name" : "CreateGroupRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertDefinitionGroup"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AlertDefinitionGroup"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create an alert group",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_definition_groups/list" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "listDefinitionGroups",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "body",
-          "name" : "ListGroupsRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertDefinitionGroupApiFilter"
-          }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertDefinitionGroup"
+                "$ref" : "#/definitions/AlertChannel"
               },
               "type" : "array"
             }
@@ -4673,14 +4692,12 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get filtered list of definition groups",
+        "summary" : "List all alert channels",
         "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_definition_groups/page" : {
+      },
       "post" : {
         "description" : "",
-        "operationId" : "pageDefinitionGroups",
+        "operationId" : "createAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -4689,31 +4706,31 @@
           "type" : "string"
         }, {
           "in" : "body",
-          "name" : "PageDefinitionGroupsRequest",
+          "name" : "CreateAlertChannelRequest",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AlertDefinitionGroupPagedApiQuery"
+            "$ref" : "#/definitions/AlertChannelFormData"
           }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/AlertDefinitionGroupPagedResponse"
+              "$ref" : "#/definitions/AlertChannel"
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all alert groups (paginated)",
+        "summary" : "Create an alert channel",
         "tags" : [ "Alerts" ]
       }
     },
-    "/api/v1/customers/{cUUID}/alert_definition_groups/{groupUUID}" : {
+    "/api/v1/customers/{cUUID}/alert_channels/{acUUID}" : {
       "delete" : {
         "description" : "",
-        "operationId" : "deleteDefinitionGroup",
+        "operationId" : "deleteAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -4723,7 +4740,7 @@
         }, {
           "format" : "uuid",
           "in" : "path",
-          "name" : "groupUUID",
+          "name" : "acUUID",
           "required" : true,
           "type" : "string"
         } ],
@@ -4738,12 +4755,12 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete an alert group",
+        "summary" : "Delete an alert channel",
         "tags" : [ "Alerts" ]
       },
       "get" : {
         "description" : "",
-        "operationId" : "getDefinitionGroup",
+        "operationId" : "getAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -4753,7 +4770,7 @@
         }, {
           "format" : "uuid",
           "in" : "path",
-          "name" : "groupUUID",
+          "name" : "acUUID",
           "required" : true,
           "type" : "string"
         } ],
@@ -4761,19 +4778,19 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/AlertDefinitionGroup"
+              "$ref" : "#/definitions/AlertChannel"
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get an alert group",
+        "summary" : "Get an alert channel",
         "tags" : [ "Alerts" ]
       },
       "put" : {
         "description" : "",
-        "operationId" : "updateDefinitionGroup",
+        "operationId" : "updateAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -4783,36 +4800,396 @@
         }, {
           "format" : "uuid",
           "in" : "path",
-          "name" : "groupUUID",
+          "name" : "acUUID",
           "required" : true,
           "type" : "string"
         }, {
           "in" : "body",
-          "name" : "UpdateGroupRequest",
+          "name" : "UpdateAlertChannelRequest",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AlertDefinitionGroup"
+            "$ref" : "#/definitions/AlertChannelFormData"
           }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/AlertDefinitionGroup"
+              "$ref" : "#/definitions/AlertChannel"
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update an alert group",
+        "summary" : "Update an alert channel",
         "tags" : [ "Alerts" ]
       }
     },
-    "/api/v1/customers/{cUUID}/alert_definition_templates" : {
+    "/api/v1/customers/{cUUID}/alert_configurations" : {
       "post" : {
         "description" : "",
-        "operationId" : "listDefinitionGroupTemplates",
+        "operationId" : "createAlertConfiguration",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "CreateAlertConfigurationRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertConfiguration"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfiguration"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create an alert configuration",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_configurations/list" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "listAlertConfigurations",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "ListAlertConfigurationsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertConfigurationApiFilter"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertConfiguration"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get filtered list of alert configurations",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_configurations/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "pageAlertConfigurations",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PageAlertConfigurationsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertConfigurationPagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfigurationPagedResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all alert configurations (paginated)",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_configurations/{configurationUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteAlertConfiguration",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configurationUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete an alert configuration",
+        "tags" : [ "Alerts" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getAlertConfiguration",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configurationUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfiguration"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get an alert configuration",
+        "tags" : [ "Alerts" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "updateAlertConfiguration",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "configurationUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UpdateAlertConfigurationRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertConfiguration"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfiguration"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update an alert configuration",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_destinations" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAlertDestinations",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertDefinition"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List alert destinations",
+        "tags" : [ "Alerts" ]
+      },
+      "post" : {
+        "description" : "",
+        "operationId" : "createAlertDestination",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "CreateAlertDestinationRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertDestinationFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertDestination"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create an alert destination",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_destinations/{adUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteAlertDestination",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "adUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YWSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete an alert destination",
+        "tags" : [ "Alerts" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getAlertDestination",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "adUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertDestination"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get an alert destination",
+        "tags" : [ "Alerts" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "updateAlertDestination",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "adUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UpdateAlertDestinationRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertDestinationFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertDestination"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update an alert destination",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_templates" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "listAlertTemplates",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -4824,7 +5201,7 @@
           "name" : "ListTemplatesRequest",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AlertDefinitionTemplateApiFilter"
+            "$ref" : "#/definitions/AlertTemplateApiFilter"
           }
         } ],
         "responses" : {
@@ -4832,7 +5209,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertDefinitionTemplate"
+                "$ref" : "#/definitions/AlertConfigurationTemplate"
               },
               "type" : "array"
             }
@@ -4841,325 +5218,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all alert groups",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_receivers" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "listAlertReceivers",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/AlertReceiver"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List all alert receivers",
-        "tags" : [ "Alerts" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "createAlertReceiver",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "body",
-          "name" : "CreateAlertReceiverRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertReceiverFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AlertReceiver"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create an alert receiver",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_receivers/{arcUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteAlertReceiver",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "arcUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete an alert receiver",
-        "tags" : [ "Alerts" ]
-      },
-      "get" : {
-        "description" : "",
-        "operationId" : "getAlertReceiver",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "arcUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AlertReceiver"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get an alert receiver",
-        "tags" : [ "Alerts" ]
-      },
-      "put" : {
-        "description" : "",
-        "operationId" : "updateAlertReceiver",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "arcUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "body",
-          "name" : "UpdateAlertReceiverRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertReceiverFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AlertReceiver"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Update an alert receiver",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_routes" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "listAlertRoutes",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/AlertRoute"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List alert routes",
-        "tags" : [ "Alerts" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "createAlertRoute",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "body",
-          "name" : "CreateAlertRouteRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertRouteFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AlertRoute"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create an alert route",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_routes/{artUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteAlertRoute",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "artUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete an alert route",
-        "tags" : [ "Alerts" ]
-      },
-      "get" : {
-        "description" : "",
-        "operationId" : "getAlertRoute",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "artUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AlertRoute"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get an alert route",
-        "tags" : [ "Alerts" ]
-      },
-      "put" : {
-        "description" : "",
-        "operationId" : "updateAlertRoute",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "artUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "body",
-          "name" : "UpdateAlertRouteRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertRouteFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AlertRoute"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Update an alert route",
+        "summary" : "Get filtered list of alert configuration templates",
         "tags" : [ "Alerts" ]
       }
     },

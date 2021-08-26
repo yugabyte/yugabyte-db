@@ -69,7 +69,7 @@ public class Alert extends Model implements AlertLabelsProvider {
     createTime("createTime"),
     severity("severityIndex"),
     name("name"),
-    targetName("targetName"),
+    sourceName("sourceName"),
     state("stateIndex");
 
     private final String sortField;
@@ -111,8 +111,8 @@ public class Alert extends Model implements AlertLabelsProvider {
   private Date resolvedTime;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Alert definition group serverity.", accessMode = READ_ONLY)
-  private AlertDefinitionGroup.Severity severity;
+  @ApiModelProperty(value = "Alert configuration serverity.", accessMode = READ_ONLY)
+  private AlertConfiguration.Severity severity;
 
   @Transient
   @Formula(
@@ -127,14 +127,14 @@ public class Alert extends Model implements AlertLabelsProvider {
   private String name;
 
   @Column(columnDefinition = "Text", nullable = false)
-  @ApiModelProperty(value = "Alert Message.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert message.", accessMode = READ_ONLY)
   private String message;
 
-  @ApiModelProperty(value = "Alert target name.", accessMode = READ_ONLY)
-  private String targetName;
+  @ApiModelProperty(value = "Alert source name.", accessMode = READ_ONLY)
+  private String sourceName;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Alert State.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert state.", accessMode = READ_ONLY)
   private State state = State.ACTIVE;
 
   @Transient
@@ -147,14 +147,14 @@ public class Alert extends Model implements AlertLabelsProvider {
               + " else 0 end)")
   private Integer stateIndex;
 
-  @ApiModelProperty(value = "Alert Definition Uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert definition Uuid", accessMode = READ_ONLY)
   private UUID definitionUuid;
 
-  @ApiModelProperty(value = "Alert group Uuid.", accessMode = READ_ONLY)
-  private UUID groupUuid;
+  @ApiModelProperty(value = "Alert configuration Uuid.", accessMode = READ_ONLY)
+  private UUID configurationUuid;
 
-  @ApiModelProperty(value = "Alert definition group type.", accessMode = READ_ONLY)
-  private AlertDefinitionGroup.TargetType groupType;
+  @ApiModelProperty(value = "Alert configuration type.", accessMode = READ_ONLY)
+  private AlertConfiguration.TargetType configurationType;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
@@ -247,14 +247,14 @@ public class Alert extends Model implements AlertLabelsProvider {
           .eq("labels.key.name", filter.getLabel().getName())
           .eq("labels.value", filter.getLabel().getValue());
     }
-    if (filter.getGroupUuid() != null) {
-      query.eq("groupUuid", filter.getGroupUuid());
+    if (filter.getConfigurationUuid() != null) {
+      query.eq("configurationUuid", filter.getConfigurationUuid());
     }
-    if (!StringUtils.isEmpty(filter.getTargetName())) {
-      query.like("targetName", filter.getTargetName() + "%");
+    if (!StringUtils.isEmpty(filter.getSourceName())) {
+      query.like("sourceName", filter.getSourceName() + "%");
     }
     appendInClause(query, "severity", filter.getSeverities());
-    appendInClause(query, "groupType", filter.getGroupTypes());
+    appendInClause(query, "configurationType", filter.getConfigurationTypes());
 
     if (filter.getNotificationPending() != null) {
       if (filter.getNotificationPending()) {

@@ -54,8 +54,8 @@ export const GET_ALERTS = 'GET_ALERTS';
 export const GET_ALERTS_SUCCESS = 'GET_ALERTS_SUCCESS';
 export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
 
-export const CREATE_ALERT_RECEIVER = 'CREATE_ALERT_RECEIVER';
-export const CREATE_ALERT_RECEIVER_RESPONSE = 'CREATE_ALERT_RECEIVER_RESPONSE';
+export const CREATE_ALERT_CHANNEL = 'CREATE_ALERT_CHANNEL';
+export const CREATE_ALERT_CHANNEL_RESPONSE = 'CREATE_ALERT_CHANNEL_RESPONSE';
 
 export const CREATE_ALERT_DESTINATION = 'CREATE_ALERT_DESTINATION';
 export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPONSE';
@@ -72,13 +72,13 @@ export const UPDATE_ALERT_DESTINATION_RESPONSE = 'UPDATE_ALERT_DESTINATION_RESPO
 export const DELETE_ALERT_DESTINATION = 'DELETE_ALERT_DESTINATION';
 export const DELETE_ALERT_CONFIG = 'DELETE_ALERT_CONFIG';
 
-export const GET_ALERT_RECEIVERS = 'GET_ALERT_RECEIVERS';
-export const GET_ALERT_RECEIVERS_SUCCESS = 'GET_ALERT_RECEIVERS_SUCCESS';
-export const GET_ALERT_RECEIVERS_FAILURE = 'GET_ALERT_RECEIVERS_FAILURE';
+export const GET_ALERT_CHANNELS = 'GET_ALERT_CHANNELS';
+export const GET_ALERT_CHANNELS_SUCCESS = 'GET_ALERT_CHANNELS_SUCCESS';
+export const GET_ALERT_CHANNELS_FAILURE = 'GET_ALERT_CHANNELS_FAILURE';
 
 export const GET_ALERT_CONFIGS = 'GET_ALERT_CONFIGS';
 export const GET_ALERT_DESTINATIONS = 'GET_ALERT_DESTINATIONS';
-export const GET_ALERT_DEFINATION_TEMPLATES = 'GET_ALERT_DEFINATION_TEMPLATES';
+export const GET_ALERT_TEMPLATES = 'GET_ALERT_TEMPLATES';
 
 export const FETCH_YUGAWARE_VERSION = 'FETCH_YUGAWARE_VERSION';
 export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE';
@@ -479,25 +479,25 @@ export function getAlerts() {
     payload: request
   };
 }
-export function createAlertReceiver(payload) {
+export function createAlertChannel(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_receivers`, payload);
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_channels`, payload);
   return {
-    type: CREATE_ALERT_RECEIVER,
+    type: CREATE_ALERT_CHANNEL,
     payload: request
   };
 }
 
-export function createAlertReceiverResponse(response) {
+export function createAlertChannelResponse(response) {
   return {
-    type: CREATE_ALERT_RECEIVER_RESPONSE,
+    type: CREATE_ALERT_CHANNEL_RESPONSE,
     payload: response
   };
 }
 
 export function createAlertDestination(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_routes`, payload);
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_destinations`, payload);
   return {
     type: CREATE_ALERT_DESTINATION,
     payload: request
@@ -513,7 +513,7 @@ export function createAlertDestinationResponse(response) {
 
 export function createAlertConfig(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups`, payload);
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations`, payload);
   return {
     type: CREATE_ALERT_CONFIG,
     payload: request
@@ -523,7 +523,7 @@ export function createAlertConfig(payload) {
 export function updateAlertConfig(payload, uuid) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.put(
-    `${ROOT_URL}/customers/${cUUID}/alert_definition_groups/${uuid}`,
+    `${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`,
     payload
   );
   return {
@@ -548,7 +548,7 @@ export function createAlertConfigResponse(response) {
 
 export function updateAlertDestination(payload, uuid) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_routes/${uuid}`, payload);
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_destinations/${uuid}`, payload);
   return {
     type: UPDATE_ALERT_DESTINATION,
     payload: request
@@ -564,7 +564,7 @@ export function updateAlertDestinationResponse(response) {
 
 export function deleteAlertDestination(uuid) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_routes/${uuid}`);
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_destinations/${uuid}`);
   return {
     type: DELETE_ALERT_DESTINATION,
     payload: request
@@ -573,39 +573,39 @@ export function deleteAlertDestination(uuid) {
 
 export function deleteAlertConfig(uuid) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_definition_groups/${uuid}`);
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`);
   return {
     type: DELETE_ALERT_CONFIG,
     payload: request
   };
 }
 
-export function getAlertReceivers() {
+export function getAlertChannels() {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_receivers`);
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_channels`);
   return {
-    type: GET_ALERT_RECEIVERS,
+    type: GET_ALERT_CHANNELS,
     payload: request
   };
 }
 
-export function getAlertReceiversSuccess(response) {
+export function getAlertChannelsSuccess(response) {
   return {
-    type: GET_ALERT_RECEIVERS_SUCCESS,
+    type: GET_ALERT_CHANNELS_SUCCESS,
     payload: response
   };
 }
 
-export function getAlertReceiversFaliure(response) {
+export function getAlertChannelsFaliure(response) {
   return {
-    type: GET_ALERT_RECEIVERS_FAILURE,
+    type: GET_ALERT_CHANNELS_FAILURE,
     payload: response
   };
 }
 
 export function alertDestinations() {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_routes`);
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_destinations`);
   return {
     type: GET_ALERT_DESTINATIONS,
     payload: request
@@ -614,11 +614,11 @@ export function alertDestinations() {
 
 export function getTargetMetrics(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_definition_templates`, {
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_templates`, {
     targetType: payload
   });
   return {
-    type: GET_ALERT_DEFINATION_TEMPLATES,
+    type: GET_ALERT_TEMPLATES,
     payload: request
   };
 }
@@ -626,7 +626,7 @@ export function getTargetMetrics(payload) {
 export function alertConfigs(payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.post(
-    `${ROOT_URL}/customers/${cUUID}/alert_definition_groups/list`,
+    `${ROOT_URL}/customers/${cUUID}/alert_configurations/list`,
     payload
   );
   return {

@@ -10,9 +10,9 @@
 package com.yugabyte.yw.common.alerts;
 
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinitionLabel;
 import java.text.DecimalFormat;
 import java.util.UUID;
@@ -32,31 +32,31 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
   private static final String LABEL_PREFIX = "          ";
 
   public AlertRuleTemplateSubstitutor(
-      AlertDefinitionGroup group,
+      AlertConfiguration configuration,
       AlertDefinition definition,
-      AlertDefinitionGroup.Severity severity) {
+      AlertConfiguration.Severity severity) {
     super(
         key -> {
           switch (key) {
             case DEFINITION_NAME:
-              return group.getName();
+              return configuration.getName();
             case DEFINITION_EXPR:
               return getQueryWithThreshold(
-                  definition.getQuery(), group.getThresholds().get(severity));
+                  definition.getQuery(), configuration.getThresholds().get(severity));
             case DURATION:
-              return group.getDurationSec() + "s";
+              return configuration.getDurationSec() + "s";
             case LABELS:
               return definition
-                  .getEffectiveLabels(group, severity)
+                  .getEffectiveLabels(configuration, severity)
                   .stream()
                   .map(label -> LABEL_PREFIX + label.getName() + ": " + label.getValue())
                   .collect(Collectors.joining("\n"));
             case SUMMARY_TEMPLATE:
-              AlertDefinitionGroupLabelProvider labelProvider =
-                  new AlertDefinitionGroupLabelProvider(group, definition, severity);
-              AlertTemplateSubstitutor<AlertDefinitionGroupLabelProvider> substitutor =
+              AlertConfigurationLabelProvider labelProvider =
+                  new AlertConfigurationLabelProvider(configuration, definition, severity);
+              AlertTemplateSubstitutor<AlertConfigurationLabelProvider> substitutor =
                   new AlertTemplateSubstitutor<>(labelProvider);
-              return substitutor.replace(group.getTemplate().getSummaryTemplate());
+              return substitutor.replace(configuration.getTemplate().getSummaryTemplate());
             default:
               throw new IllegalArgumentException(
                   "Unexpected placeholder " + key + " in rule template file");
@@ -64,24 +64,23 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
         });
   }
 
-  public static String getQueryWithThreshold(
-      String query, AlertDefinitionGroupThreshold threshold) {
+  public static String getQueryWithThreshold(String query, AlertConfigurationThreshold threshold) {
     return query
         .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
         .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
   }
 
   @RequiredArgsConstructor
-  private static class AlertDefinitionGroupLabelProvider implements AlertLabelsProvider {
+  private static class AlertConfigurationLabelProvider implements AlertLabelsProvider {
 
-    private final AlertDefinitionGroup alertDefinitionGroup;
+    private final AlertConfiguration alertConfiguration;
     private final AlertDefinition alertDefinition;
-    private final AlertDefinitionGroup.Severity severity;
+    private final AlertConfiguration.Severity severity;
 
     @Override
     public String getLabelValue(String name) {
       return alertDefinition
-          .getEffectiveLabels(alertDefinitionGroup, severity)
+          .getEffectiveLabels(alertConfiguration, severity)
           .stream()
           .filter(label -> name.equals(label.getName()))
           .map(AlertDefinitionLabel::getValue)

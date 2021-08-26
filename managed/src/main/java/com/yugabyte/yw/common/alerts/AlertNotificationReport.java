@@ -20,7 +20,7 @@ public class AlertNotificationReport {
   int totalResolveAttempt;
   int failedRaise;
   int failedResolve;
-  private final Map<UUID, Integer> failuresByReceiver = new HashMap<>();
+  private final Map<UUID, Integer> failuresByChannel = new HashMap<>();
   boolean raiseOrResolve;
 
   public boolean isEmpty() {
@@ -45,11 +45,11 @@ public class AlertNotificationReport {
     }
   }
 
-  public void failReceiver(UUID receiverUuid) {
-    failuresByReceiver.put(receiverUuid, failuresByReceiver(receiverUuid) + 1);
+  public void failChannel(UUID channelUuid) {
+    failuresByChannel.put(channelUuid, failuresByChannel(channelUuid) + 1);
   }
 
-  public int failuresByReceiver(UUID receiverUuid) {
-    return failuresByReceiver.getOrDefault(receiverUuid, 0);
+  public int failuresByChannel(UUID channelUuid) {
+    return failuresByChannel.getOrDefault(channelUuid, 0);
   }
 }

@@ -70,8 +70,20 @@ export class AlertsPolicy extends Component {
       case 'MILLISECOND':
         metricUnit = 'ms';
         break;
+      case 'SECOND':
+        metricUnit = 'sec';
+        break;
+      case 'DAY':
+        metricUnit = 'day';
+        break;
       case 'PERCENT':
         metricUnit = '%';
+        break;
+      case 'STATUS':
+        metricUnit = '';
+        break;
+      case 'COUNT':
+        metricUnit = '';
         break;
       default:
         metricUnit = '%';

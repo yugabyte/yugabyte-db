@@ -18,10 +18,9 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import java.util.List;
@@ -108,12 +107,6 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       // Run all the tasks.
       subTaskGroupQueue.run();
-
-      alertDefinitionGroupService.handleTargetRemoval(
-          params().customerUUID,
-          AlertDefinitionGroup.TargetType.UNIVERSE,
-          universe.getUniverseUUID());
-      metricService.handleTargetRemoval(params().customerUUID, universe.getUniverseUUID());
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {

@@ -223,9 +223,10 @@ public class AlertService {
         throw new YWServiceException(
             BAD_REQUEST, "Can't change definition for alert " + alert.getUuid());
       }
-      if (before.getGroupUuid() != null && !alert.getGroupUuid().equals(before.getGroupUuid())) {
+      if (before.getConfigurationUuid() != null
+          && !alert.getConfigurationUuid().equals(before.getConfigurationUuid())) {
         throw new YWServiceException(
-            BAD_REQUEST, "Can't change group for alert " + alert.getUuid());
+            BAD_REQUEST, "Can't change configuration for alert " + alert.getUuid());
       }
       if (!alert.getCreateTime().equals(before.getCreateTime())) {
         throw new YWServiceException(
