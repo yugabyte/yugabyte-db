@@ -39,6 +39,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
@@ -468,20 +469,53 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add("--num_disks");
         expectedCommand.add(String.valueOf(crvParams.numVolumes));
         // intentional fall-thru
-      case Provision:
-        AnsibleSetupServer.Params setupParams = (AnsibleSetupServer.Params) params;
+      case Create:
+        AnsibleCreateServer.Params createParams = (AnsibleCreateServer.Params) params;
         if (!cloud.equals(Common.CloudType.onprem)) {
           expectedCommand.add("--instance_type");
-          expectedCommand.add(setupParams.instanceType);
+          expectedCommand.add(createParams.instanceType);
           expectedCommand.add("--cloud_subnet");
-          expectedCommand.add(setupParams.subnetId);
+          expectedCommand.add(createParams.subnetId);
           String ybImage = testData.region.ybImage;
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(ybImage);
           }
-          if (setupParams.assignPublicIP) {
+          if (createParams.assignPublicIP) {
             expectedCommand.add("--assign_public_ip");
+          }
+        }
+
+        if (cloud.equals(Common.CloudType.aws)) {
+          if (createParams.cmkArn != null) {
+            expectedCommand.add("--cmk_res_name");
+            expectedCommand.add(createParams.cmkArn);
+          }
+          if (createParams.ipArnString != null) {
+            expectedCommand.add("--iam_profile_arn");
+            expectedCommand.add(createParams.ipArnString);
+          }
+          if (!createParams.clusters.isEmpty()
+              && createParams.clusters.get(0) != null
+              && !createParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
+            expectedCommand.add("--instance_tags");
+            expectedCommand.add(
+                Json.stringify(Json.toJson(createParams.clusters.get(0).userIntent.instanceTags)));
+          }
+        }
+        break;
+      case Provision:
+        AnsibleSetupServer.Params setupParams = (AnsibleSetupServer.Params) params;
+        if (cloud.equals(Common.CloudType.aws)) {
+          expectedCommand.add("--instance_type");
+          expectedCommand.add(setupParams.instanceType);
+        }
+
+        if (cloud.equals(Common.CloudType.gcp)) {
+          String ybImage = testData.region.ybImage;
+          if (ybImage != null && !ybImage.isEmpty()) {
+            expectedCommand.add("--machine_image");
+            expectedCommand.add(ybImage);
           }
         }
 
@@ -489,17 +523,6 @@ public class NodeManagerTest extends FakeDBApplication {
             && setupParams.useTimeSync) {
           expectedCommand.add("--use_chrony");
         }
-
-        if (cloud.equals(Common.CloudType.aws)) {
-          if (!setupParams.clusters.isEmpty()
-              && setupParams.clusters.get(0) != null
-              && !setupParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
-            expectedCommand.add("--instance_tags");
-            expectedCommand.add(
-                Json.stringify(Json.toJson(setupParams.clusters.get(0).userIntent.instanceTags)));
-          }
-        }
-
         break;
       case Configure:
         AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
@@ -824,24 +847,34 @@ public class NodeManagerTest extends FakeDBApplication {
       }
 
       if (type == NodeManager.NodeCommandType.Provision
-          || type == NodeManager.NodeCommandType.Create_Root_Volumes) {
+          || type == NodeManager.NodeCommandType.Create_Root_Volumes
+          || type == NodeManager.NodeCommandType.Create) {
         if (deviceInfo.storageType != null) {
-          expectedCommand.add("--volume_type");
-          expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-          if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
-            expectedCommand.add("--disk_iops");
-            expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+          if (type == NodeManager.NodeCommandType.Create
+              || type == NodeManager.NodeCommandType.Create_Root_Volumes) {
+            expectedCommand.add("--volume_type");
+            expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
+            if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
+              expectedCommand.add("--disk_iops");
+              expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+            }
+            if (deviceInfo.storageType.isThroughputProvisioning()
+                && deviceInfo.throughput != null) {
+              expectedCommand.add("--disk_throughput");
+              expectedCommand.add(Integer.toString(deviceInfo.throughput));
+            }
           }
-          if (deviceInfo.storageType.isThroughputProvisioning() && deviceInfo.throughput != null) {
-            expectedCommand.add("--disk_throughput");
-            expectedCommand.add(Integer.toString(deviceInfo.throughput));
+          if (type == NodeManager.NodeCommandType.Provision && cloud.equals(Common.CloudType.gcp)) {
+            expectedCommand.add("--volume_type");
+            expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
           }
         }
-
-        String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
-        if (packagePath != null) {
-          expectedCommand.add("--local_package_path");
-          expectedCommand.add(packagePath);
+        if (type == NodeManager.NodeCommandType.Provision) {
+          String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
+          if (packagePath != null) {
+            expectedCommand.add("--local_package_path");
+            expectedCommand.add(packagePath);
+          }
         }
       }
     }
@@ -928,33 +961,6 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
-    }
-  }
-
-  @Test
-  public void testProvisionNodeCommandWithoutAssignPublicIP() {
-    for (TestData t : testData) {
-      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(
-          t,
-          params,
-          Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
-      addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
-      if (t.cloudType.equals(Common.CloudType.aws)) {
-        params.assignPublicIP = false;
-      }
-
-      List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
-      if (t.cloudType.equals(Common.CloudType.aws)) {
-        Predicate<String> stringPredicate = p -> p.equals("--assign_public_ip");
-        expectedCommand.removeIf(stringPredicate);
-      }
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
@@ -1082,11 +1088,9 @@ public class NodeManagerTest extends FakeDBApplication {
 
       // Set up expected command
       int accessKeyIndexOffset = 5;
-      if (t.cloudType.equals(Common.CloudType.aws)) {
+      if (t.cloudType.equals(Common.CloudType.aws)
+          && params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
         accessKeyIndexOffset += 2;
-        if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
-          accessKeyIndexOffset += 2;
-        }
       }
 
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
@@ -1103,11 +1107,11 @@ public class NodeManagerTest extends FakeDBApplication {
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyCommands.add("--key_pair_name");
         accessKeyCommands.add(userIntent.accessKeyCode);
-        String customSecurityGroupId = t.region.getSecurityGroupId();
-        if (customSecurityGroupId != null) {
-          accessKeyCommands.add("--security_group_id");
-          accessKeyCommands.add(customSecurityGroupId);
-        }
+        // String customSecurityGroupId = t.region.getSecurityGroupId();
+        // if (customSecurityGroupId != null) {
+        //   accessKeyCommands.add("--security_group_id");
+        //   accessKeyCommands.add(customSecurityGroupId);
+        // }
       }
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
@@ -1151,6 +1155,250 @@ public class NodeManagerTest extends FakeDBApplication {
         fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleSetupServer.Params"));
+      }
+    }
+  }
+
+  @Test
+  public void testCreateNodeCommand() {
+    for (TestData t : testData) {
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testCreateNodeCommandWithoutAssignPublicIP() {
+    for (TestData t : testData) {
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        params.assignPublicIP = false;
+      }
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        Predicate<String> stringPredicate = p -> p.equals("--assign_public_ip");
+        expectedCommand.removeIf(stringPredicate);
+      }
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testCreateNodeCommandWithLocalPackage() {
+    String packagePath = "/tmp/third-party";
+    new File(packagePath).mkdir();
+    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+
+    for (TestData t : testData) {
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+
+    File file = new File(packagePath);
+    file.delete();
+  }
+
+  @Test
+  public void testCreateWithAWSTags() {
+    for (TestData t : testData) {
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      UUID univUUID = createUniverse().universeUUID;
+      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
+      buildValidParams(t, params, universe);
+      addValidDeviceInfo(t, params);
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        ApiUtils.insertInstanceTags(univUUID);
+        setInstanceTags(params);
+      }
+
+      ArrayList<String> expectedCommandArrayList = new ArrayList();
+      expectedCommandArrayList.addAll(t.baseCommand);
+      expectedCommandArrayList.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommandArrayList), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  private void runAndTestCreateWithAccessKeyAndSG(String sgId) {
+    for (TestData t : testData) {
+      t.region.setSecurityGroupId(sgId);
+      t.region.save();
+      // Create AccessKey
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.privateKey = "/path/to/private.key";
+      keyInfo.publicKey = "/path/to/public.key";
+      keyInfo.vaultFile = "/path/to/vault_file";
+      keyInfo.vaultPasswordFile = "/path/to/vault_password";
+      keyInfo.sshPort = 3333;
+      keyInfo.airGapInstall = true;
+      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+
+      // Set up task params
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          new UniverseDefinitionTaskParams.UserIntent();
+      userIntent.numNodes = 3;
+      userIntent.accessKeyCode = "demo-access";
+      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList.add(t.region.uuid);
+      userIntent.providerType = t.cloudType;
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(userIntent)));
+      addValidDeviceInfo(t, params);
+
+      // Set up expected command
+      int accessKeyIndexOffset = 5;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        accessKeyIndexOffset += 2;
+        if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
+          accessKeyIndexOffset += 2;
+        }
+      }
+
+      List<String> expectedCommand = new ArrayList<>(t.baseCommand);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      List<String> accessKeyCommands =
+          new ArrayList<String>(
+              ImmutableList.of(
+                  "--vars_file",
+                  "/path/to/vault_file",
+                  "--vault_password_file",
+                  "/path/to/vault_password",
+                  "--private_key_file",
+                  "/path/to/private.key"));
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        accessKeyCommands.add("--key_pair_name");
+        accessKeyCommands.add(userIntent.accessKeyCode);
+        String customSecurityGroupId = t.region.getSecurityGroupId();
+        if (customSecurityGroupId != null) {
+          accessKeyCommands.add("--security_group_id");
+          accessKeyCommands.add(customSecurityGroupId);
+        }
+      }
+      accessKeyCommands.add("--custom_ssh_port");
+      accessKeyCommands.add("3333");
+      expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommands);
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testCreateNodeCommandWithAccessKeyNoSG() {
+    String sgId = null;
+    runAndTestCreateWithAccessKeyAndSG(sgId);
+  }
+
+  @Test
+  public void testCreateNodeCommandWithAccessKeyCustomSG() {
+    String sgId = "custom_sg_id";
+    runAndTestCreateWithAccessKeyAndSG(sgId);
+  }
+
+  @Test
+  public void testCreateNodeCommandWithCMK() {
+    for (TestData t : testData) {
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        params.cmkArn = "cmkArn";
+      }
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testCreateNodeCommandWithIAM() {
+    for (TestData t : testData) {
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        params.ipArnString = "ipArnString";
+      }
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
+  public void testCreateNodeCommandWithInvalidParam() {
+    for (TestData t : testData) {
+      try {
+        NodeTaskParams params = new NodeTaskParams();
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleCreateServer.Params"));
       }
     }
   }
