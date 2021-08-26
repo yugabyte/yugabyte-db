@@ -13,7 +13,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDestination;
 import io.ebean.ExpressionList;
@@ -46,7 +46,7 @@ public class AlertChannelService {
   public AlertChannel getOrBadRequest(UUID customerUUID, @Required UUID channelName) {
     AlertChannel alertChannel = get(customerUUID, channelName);
     if (alertChannel == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Channel UUID: " + channelName);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Channel UUID: " + channelName);
     }
     return alertChannel;
   }
@@ -62,7 +62,7 @@ public class AlertChannelService {
           result.stream().map(AlertChannel::getUuid).collect(Collectors.toSet());
       Set<UUID> uuidsToReport = new HashSet<>(uuids);
       uuidsToReport.removeAll(uuidsToRemove);
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Invalid Alert Channel UUID: "
               + uuidsToReport
@@ -85,8 +85,8 @@ public class AlertChannelService {
 
     try {
       validate(channel);
-    } catch (YWValidateException e) {
-      throw new YWServiceException(
+    } catch (PlatformValidationException e) {
+      throw new PlatformServiceException(
           BAD_REQUEST, "Unable to create/update alert channel: " + e.getMessage());
     }
 
@@ -106,7 +106,7 @@ public class AlertChannelService {
             .sorted()
             .collect(Collectors.toList());
     if (!blockingDestinations.isEmpty()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Unable to delete alert channel: %s. %d alert destinations have it as a last channel."
@@ -117,29 +117,29 @@ public class AlertChannelService {
     }
 
     if (!channel.delete()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete alert channel: " + channelUUID);
     }
     log.info("Deleted alert channel {} for customer {}", channelUUID, customerUUID);
   }
 
-  public void validate(AlertChannel channel) throws YWValidateException {
+  public void validate(AlertChannel channel) throws PlatformValidationException {
     if (StringUtils.isEmpty(channel.getName())) {
-      throw new YWValidateException("Name is mandatory.");
+      throw new PlatformValidationException("Name is mandatory.");
     }
 
     if (channel.getName().length() > AlertChannel.MAX_NAME_LENGTH / 4) {
-      throw new YWValidateException(
+      throw new PlatformValidationException(
           String.format("Name length (%d) is exceeded.", AlertChannel.MAX_NAME_LENGTH / 4));
     }
 
     AlertChannel valueWithSameName = get(channel.getCustomerUUID(), channel.getName());
     if ((valueWithSameName != null) && !channel.getUuid().equals(valueWithSameName.getUuid())) {
-      throw new YWValidateException("Alert channel with such name already exists.");
+      throw new PlatformValidationException("Alert channel with such name already exists.");
     }
 
     if (channel.getParams() == null) {
-      throw new YWValidateException("Incorrect parameters in AlertChannel.");
+      throw new PlatformValidationException("Incorrect parameters in AlertChannel.");
     }
     channel.getParams().validate();
   }

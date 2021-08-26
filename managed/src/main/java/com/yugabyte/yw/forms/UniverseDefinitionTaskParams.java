@@ -17,7 +17,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -253,11 +253,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       DeviceInfo deviceInfo = userIntent.deviceInfo;
       if (cloudType.isRequiresDeviceInfo()) {
         if (deviceInfo == null) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "deviceInfo can't be empty for universe on " + cloudType + " provider");
         }
         if (cloudType == CloudType.onprem && StringUtils.isEmpty(deviceInfo.mountPoints)) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Mount points are mandatory for onprem cluster");
         }
         deviceInfo.validate();
@@ -273,19 +273,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (cloudType == CloudType.aws && isAwsClusterWithEphemeralStorage()) {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "AWS instance with ephemeral storage can't have" + " storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "storageType can't be empty for universe on " + cloudType + " provider");
         }
       }
       PublicCloudConstants.StorageType storageType = deviceInfo.storageType;
       if (storageType != null) {
         if (storageType.getCloudType() != cloudType) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST,
               "Cloud type "
                   + cloudType.name()

@@ -6,7 +6,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
@@ -159,7 +159,7 @@ public class Audit extends Model {
     Audit entry =
         find.query().where().eq("task_uuid", taskUUID).eq("customer_uuid", customerUUID).findOne();
     if (entry == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Task " + taskUUID + " does not belong to customer " + customerUUID);
     }
     return entry;

@@ -20,7 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
@@ -68,7 +68,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
   public void testQueryWithInvalidParams() {
     try {
       metricQueryHelper.query(Collections.emptyList(), Collections.emptyMap());
-    } catch (YWServiceException re) {
+    } catch (PlatformServiceException re) {
       assertEquals(BAD_REQUEST, re.getResult().status());
       assertEquals(
           "Empty metricKeys data provided.",
@@ -84,7 +84,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
-    } catch (YWServiceException re) {
+    } catch (PlatformServiceException re) {
       assertEquals(BAD_REQUEST, re.getResult().status());
       assertEquals(
           "Invalid filter params provided, it should be a hash.",

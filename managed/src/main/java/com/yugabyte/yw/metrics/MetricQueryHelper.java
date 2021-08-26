@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
@@ -76,7 +76,7 @@ public class MetricQueryHelper {
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides) {
     if (metricKeys.isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
+      throw new PlatformServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
     }
 
     long timeDifference;
@@ -100,7 +100,7 @@ public class MetricQueryHelper {
       try {
         additionalFilters = new ObjectMapper().readValue(params.get("filters"), HashMap.class);
       } catch (IOException e) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Invalid filter params provided, it should be a hash.");
       }
     }

@@ -16,9 +16,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Singleton
-public class YWModelConverter implements ModelConverter {
+public class PlatformModelConverter implements ModelConverter {
 
-  static final YWModelConverter SINGLETON = new YWModelConverter();
+  static final PlatformModelConverter SINGLETON = new PlatformModelConverter();
 
   static void register() {
     // remove if one is already registers to avoid duplicates in tests
@@ -28,7 +28,7 @@ public class YWModelConverter implements ModelConverter {
 
   private static final ImmutableSet<String> SKIPPED_PACKAGES =
       ImmutableSet.of("play.mvc", "io.ebean", "com.fasterxml.jackson.databind");
-  public static final Logger LOG = LoggerFactory.getLogger(YWModelConverter.class);
+  public static final Logger LOG = LoggerFactory.getLogger(PlatformModelConverter.class);
   private static final double maxLevel = 300;
 
   @Override

@@ -28,7 +28,7 @@ public class TemplateManager extends DevopsBase {
   private String getOrCreateProvisionFilePath(UUID providerUUID) {
     File provisionBasePathName = new File(appConfig.getString("yb.storage.path"), "/provision");
     if (!provisionBasePathName.exists() && !provisionBasePathName.mkdirs()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Provision path " + provisionBasePathName.getAbsolutePath() + " doesn't exists.");
     }
@@ -37,7 +37,7 @@ public class TemplateManager extends DevopsBase {
     if (provisionFilePath.isDirectory() || provisionFilePath.mkdirs()) {
       return provisionFilePath.getAbsolutePath();
     }
-    throw new YWServiceException(
+    throw new PlatformServiceException(
         INTERNAL_SERVER_ERROR,
         "Unable to create provision file path " + provisionFilePath.getAbsolutePath());
   }
@@ -100,7 +100,7 @@ public class TemplateManager extends DevopsBase {
       accessKey.setKeyInfo(keyInfo);
       accessKey.save();
     } else {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, result);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, result);
     }
   }
 }

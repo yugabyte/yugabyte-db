@@ -19,7 +19,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -134,7 +134,7 @@ public class AlertConfigurationService {
 
   public AlertConfiguration get(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Can't get Alert Configuration by null uuid");
+      throw new PlatformServiceException(BAD_REQUEST, "Can't get Alert Configuration by null uuid");
     }
     return list(AlertConfigurationFilter.builder().uuid(uuid).build())
         .stream()
@@ -144,11 +144,11 @@ public class AlertConfigurationService {
 
   public AlertConfiguration getOrBadRequest(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
     }
     AlertConfiguration configuration = get(uuid);
     if (configuration == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
     }
     return configuration;
   }
@@ -213,24 +213,24 @@ public class AlertConfigurationService {
 
   private void validate(AlertConfiguration configuration, AlertConfiguration before) {
     if (configuration.getCustomerUUID() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (StringUtils.isEmpty(configuration.getName())) {
-      throw new YWServiceException(BAD_REQUEST, "Name field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Name field is mandatory");
     }
     if (configuration.getName().length() > MAX_NAME_LENGTH) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Name field can't be longer than " + MAX_NAME_LENGTH + " characters");
     }
     if (configuration.getTargetType() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Target type field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Target type field is mandatory");
     }
     if (configuration.getTarget() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Target field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Target field is mandatory");
     }
     AlertConfigurationTarget target = configuration.getTarget();
     if (target.isAll() != CollectionUtils.isEmpty(target.getUuids())) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Should select either all entries or particular UUIDs as target");
     }
     if (!CollectionUtils.isEmpty(target.getUuids())) {
@@ -244,38 +244,39 @@ public class AlertConfigurationService {
           Set<UUID> missingUuids = new HashSet<>(configuration.getTarget().getUuids());
           missingUuids.removeAll(existingUuids);
           if (!missingUuids.isEmpty()) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 BAD_REQUEST,
                 "Universe(s) missing for uuid(s) "
                     + missingUuids.stream().map(UUID::toString).collect(Collectors.joining(", ")));
           }
           break;
         default:
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST,
               configuration.getTargetType().name() + " configuration can't have target uuids");
       }
     }
     if (configuration.getTemplate() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Template field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Template field is mandatory");
     }
     if (configuration.getTemplate().getTargetType() != configuration.getTargetType()) {
-      throw new YWServiceException(BAD_REQUEST, "Target type should be consistent with template");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Target type should be consistent with template");
     }
     if (MapUtils.isEmpty(configuration.getThresholds())) {
-      throw new YWServiceException(BAD_REQUEST, "Query thresholds are mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Query thresholds are mandatory");
     }
     if (configuration.getDestinationUUID() != null
         && AlertDestination.get(configuration.getCustomerUUID(), configuration.getDestinationUUID())
             == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Alert destination " + configuration.getDestinationUUID() + " is missing");
     }
     if (configuration.getThresholdUnit() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Threshold unit is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Threshold unit is mandatory");
     }
     if (configuration.getThresholdUnit() != configuration.getTemplate().getDefaultThresholdUnit()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Can't set threshold unit incompatible with alert definition template");
     }
     configuration
@@ -284,42 +285,42 @@ public class AlertConfigurationService {
         .forEach(
             threshold -> {
               if (threshold.getCondition() == null) {
-                throw new YWServiceException(BAD_REQUEST, "Threshold condition is mandatory");
+                throw new PlatformServiceException(BAD_REQUEST, "Threshold condition is mandatory");
               }
               if (threshold.getThreshold() == null) {
-                throw new YWServiceException(BAD_REQUEST, "Threshold value is mandatory");
+                throw new PlatformServiceException(BAD_REQUEST, "Threshold value is mandatory");
               }
               if (threshold.getThreshold() < configuration.getTemplate().getThresholdMinValue()) {
-                throw new YWServiceException(
+                throw new PlatformServiceException(
                     BAD_REQUEST,
                     "Threshold value can't be less than "
                         + doubleToString(configuration.getTemplate().getThresholdMinValue()));
               }
               if (threshold.getThreshold() > configuration.getTemplate().getThresholdMaxValue()) {
-                throw new YWServiceException(
+                throw new PlatformServiceException(
                     BAD_REQUEST,
                     "Threshold value can't be greater than "
                         + doubleToString(configuration.getTemplate().getThresholdMaxValue()));
               }
             });
     if (configuration.getDurationSec() == null || configuration.getDurationSec() < 0) {
-      throw new YWServiceException(BAD_REQUEST, "Duration can't be less than 0");
+      throw new PlatformServiceException(BAD_REQUEST, "Duration can't be less than 0");
     }
     if (before != null) {
       if (!configuration.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change customer UUID for configuration " + configuration.getUuid());
       }
       if (!configuration.getTargetType().equals(before.getTargetType())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change target type for configuration " + configuration.getUuid());
       }
       if (!configuration.getCreateTime().equals(before.getCreateTime())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change create time for configuration " + configuration.getUuid());
       }
     } else if (!configuration.isNew()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Can't update missing configuration " + configuration.getUuid());
     }
   }
