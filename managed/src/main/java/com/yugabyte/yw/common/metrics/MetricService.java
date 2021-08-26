@@ -21,7 +21,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.MetricLabel;
-import com.yugabyte.yw.models.MetricTargetKey;
+import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.filters.MetricFilter.MetricFilterBuilder;
@@ -52,13 +52,13 @@ public class MetricService {
   public static final long DEFAULT_METRIC_EXPIRY_SEC = TimeUnit.DAYS.toSeconds(10);
   public static final double STATUS_OK = 1D;
   public static final double STATUS_NOT_OK = 0D;
-  private static final Comparator<MetricTargetKey> METRIC_TARGET_KEY_COMPARATOR =
-      Comparator.comparing(MetricTargetKey::getName)
-          .thenComparing(MetricTargetKey::getCustomerUuid)
-          .thenComparing(MetricTargetKey::getTargetUuid);
+  private static final Comparator<MetricSourceKey> METRIC_SOURCE_KEY_COMPARATOR =
+      Comparator.comparing(MetricSourceKey::getName)
+          .thenComparing(MetricSourceKey::getCustomerUuid)
+          .thenComparing(MetricSourceKey::getSourceUuid);
   private static final Comparator<MetricKey> METRIC_KEY_COMPARATOR =
-      Comparator.comparing(MetricKey::getTargetKey, METRIC_TARGET_KEY_COMPARATOR)
-          .thenComparing(MetricKey::getTargetLabels);
+      Comparator.comparing(MetricKey::getSourceKey, METRIC_SOURCE_KEY_COMPARATOR)
+          .thenComparing(MetricKey::getSourceLabels);
   private final MultiKeyLock<MetricKey> metricKeyLock = new MultiKeyLock<>(METRIC_KEY_COMPARATOR);
 
   @Transactional
@@ -188,10 +188,10 @@ public class MetricService {
   }
 
   @Transactional
-  public void handleTargetRemoval(UUID customerUuid, UUID targetUuid) {
+  public void handleSourceRemoval(UUID customerUuid, UUID sourceUuid) {
     MetricFilterBuilder filter = MetricFilter.builder().customerUuid(customerUuid);
-    if (targetUuid != null) {
-      filter.targetUuid(targetUuid);
+    if (sourceUuid != null) {
+      filter.sourceUuid(sourceUuid);
     }
     delete(filter.build());
   }
@@ -209,11 +209,11 @@ public class MetricService {
   }
 
   private Metric prepareForSave(Metric metric, Metric before) {
-    List<MetricLabel> newTargetLabels =
-        metric.getLabels().stream().filter(MetricLabel::isTargetLabel).collect(Collectors.toList());
-    String newTargetLabelStr = Metric.getTargetLabelsStr(newTargetLabels);
+    List<MetricLabel> newSourceLabels =
+        metric.getLabels().stream().filter(MetricLabel::isSourceLabel).collect(Collectors.toList());
+    String newSourceLabelStr = Metric.getSourceLabelsStr(newSourceLabels);
     Metric result = before == null ? metric : before;
-    result.setTargetLabels(newTargetLabelStr);
+    result.setSourceLabels(newSourceLabelStr);
     result.setUpdateTime(CommonUtils.nowWithoutMillis());
     if (before != null) {
       result.setValue(metric.getValue());
@@ -252,8 +252,8 @@ public class MetricService {
       PlatformMetrics metric, Customer customer, long metricExpiryPeriodSec) {
     return buildMetricTemplate(metric, metricExpiryPeriodSec)
         .setCustomerUUID(customer.getUuid())
-        .setTargetUuid(customer.getUuid())
-        .setLabels(MetricLabelsBuilder.create().appendTarget(customer).getMetricLabels());
+        .setSourceUuid(customer.getUuid())
+        .setLabels(MetricLabelsBuilder.create().appendSource(customer).getMetricLabels());
   }
 
   public static Metric buildMetricTemplate(PlatformMetrics metric, Universe universe) {
@@ -275,7 +275,7 @@ public class MetricService {
       PlatformMetrics metric, Customer customer, Universe universe, long metricExpiryPeriodSec) {
     return buildMetricTemplate(metric, metricExpiryPeriodSec)
         .setCustomerUUID(customer.getUuid())
-        .setTargetUuid(universe.getUniverseUUID())
-        .setLabels(MetricLabelsBuilder.create().appendTarget(universe).getMetricLabels());
+        .setSourceUuid(universe.getUniverseUUID())
+        .setLabels(MetricLabelsBuilder.create().appendSource(universe).getMetricLabels());
   }
 }

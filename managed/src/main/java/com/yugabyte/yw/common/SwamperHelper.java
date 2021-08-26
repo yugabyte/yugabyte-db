@@ -19,7 +19,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.PatternFilenameFilter;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -240,7 +240,7 @@ public class SwamperHelper {
     return null;
   }
 
-  public void writeAlertDefinition(AlertDefinitionGroup group, AlertDefinition definition) {
+  public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
     String swamperFile = getSwamperRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
@@ -263,14 +263,14 @@ public class SwamperHelper {
     }
 
     fileContent +=
-        group
+        configuration
             .getThresholds()
             .keySet()
             .stream()
             .map(
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
-                      new AlertRuleTemplateSubstitutor(group, definition, severity);
+                      new AlertRuleTemplateSubstitutor(configuration, definition, severity);
                   return substitutor.replace(template);
                 })
             .collect(Collectors.joining());

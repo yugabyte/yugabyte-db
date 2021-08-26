@@ -39,7 +39,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.MetricTargetKey;
+import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
@@ -853,18 +853,18 @@ public class HealthChecker {
 
   private MetricFilter metricTargetKeysFilter(
       Customer customer, Universe universe, List<PlatformMetrics> metrics) {
-    List<MetricTargetKey> metricTargetKeys =
+    List<MetricSourceKey> metricSourceKeys =
         metrics
             .stream()
             .map(
                 nodeMetric ->
-                    MetricTargetKey.builder()
+                    MetricSourceKey.builder()
                         .customerUuid(customer.getUuid())
                         .name(nodeMetric.getMetricName())
-                        .targetUuid(universe.getUniverseUUID())
+                        .sourceUuid(universe.getUniverseUUID())
                         .build())
             .collect(Collectors.toList());
-    return MetricFilter.builder().targetKeys(metricTargetKeys).build();
+    return MetricFilter.builder().sourceKeys(metricSourceKeys).build();
   }
 
   private PlatformMetrics getCountMetricByCheckName(String checkName, boolean isMaster) {

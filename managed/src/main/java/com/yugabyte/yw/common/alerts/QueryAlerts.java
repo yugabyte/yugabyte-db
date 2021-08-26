@@ -23,12 +23,12 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -75,7 +75,7 @@ public class QueryAlerts {
 
   private final AlertDefinitionService alertDefinitionService;
 
-  private final AlertDefinitionGroupService alertDefinitionGroupService;
+  private final AlertConfigurationService alertConfigurationService;
 
   private final AlertManager alertManager;
 
@@ -87,7 +87,7 @@ public class QueryAlerts {
       MetricQueryHelper queryHelper,
       MetricService metricService,
       AlertDefinitionService alertDefinitionService,
-      AlertDefinitionGroupService alertDefinitionGroupService,
+      AlertConfigurationService alertConfigurationService,
       AlertManager alertManager) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
@@ -95,7 +95,7 @@ public class QueryAlerts {
     this.alertService = alertService;
     this.metricService = metricService;
     this.alertDefinitionService = alertDefinitionService;
-    this.alertDefinitionGroupService = alertDefinitionGroupService;
+    this.alertConfigurationService = alertConfigurationService;
     this.alertManager = alertManager;
     this.initialize();
   }
@@ -147,12 +147,12 @@ public class QueryAlerts {
         alerts
             .stream()
             .filter(alertData -> getCustomerUuid(alertData) != null)
-            .filter(alertData -> getGroupUuid(alertData) != null)
+            .filter(alertData -> getConfigurationUuid(alertData) != null)
             .filter(alertData -> getDefinitionUuid(alertData) != null)
             .collect(Collectors.toList());
     if (alerts.size() > validAlerts.size()) {
       log.warn(
-          "Found {} alerts without customer, group or definition uuid",
+          "Found {} alerts without customer, configuration or definition uuid",
           alerts.size() - validAlerts.size());
     }
     metricService.setMetric(
@@ -209,19 +209,19 @@ public class QueryAlerts {
               .stream()
               .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
 
-      Set<UUID> groupUuids =
+      Set<UUID> configurationUuids =
           existingDefinitionsByUuid
               .values()
               .stream()
-              .map(AlertDefinition::getGroupUUID)
+              .map(AlertDefinition::getConfigurationUUID)
               .collect(Collectors.toSet());
-      AlertDefinitionGroupFilter groupFilter =
-          AlertDefinitionGroupFilter.builder().uuids(groupUuids).build();
-      Map<UUID, AlertDefinitionGroup> existingGroupsByUuid =
-          alertDefinitionGroupService
-              .list(groupFilter)
+      AlertConfigurationFilter configurationFilter =
+          AlertConfigurationFilter.builder().uuids(configurationUuids).build();
+      Map<UUID, AlertConfiguration> existingConfigsByUuid =
+          alertConfigurationService
+              .list(configurationFilter)
               .stream()
-              .collect(Collectors.toMap(AlertDefinitionGroup::getUuid, Function.identity()));
+              .collect(Collectors.toMap(AlertConfiguration::getUuid, Function.identity()));
 
       List<Alert> toSave =
           batch
@@ -232,7 +232,7 @@ public class QueryAlerts {
                           data,
                           existingAlertsByKey,
                           existingDefinitionsByUuid,
-                          existingGroupsByUuid))
+                          existingConfigsByUuid))
               .filter(Objects::nonNull)
               .collect(Collectors.toList());
       metricService.setMetric(
@@ -277,62 +277,63 @@ public class QueryAlerts {
     return alertData.getLabels().get(KnownAlertLabels.DEFINITION_UUID.labelName());
   }
 
-  private String getGroupUuid(AlertData alertData) {
+  private String getConfigurationUuid(AlertData alertData) {
     if (Collections.isEmpty(alertData.getLabels())) {
       return null;
     }
-    return alertData.getLabels().get(KnownAlertLabels.GROUP_UUID.labelName());
+    return alertData.getLabels().get(KnownAlertLabels.CONFIGURATION_UUID.labelName());
   }
 
-  private String getTargetUuid(AlertData alertData) {
+  private String getSourceUuid(AlertData alertData) {
     if (Collections.isEmpty(alertData.getLabels())) {
       return null;
     }
-    return alertData.getLabels().get(KnownAlertLabels.TARGET_UUID.labelName());
+    return alertData.getLabels().get(KnownAlertLabels.SOURCE_UUID.labelName());
   }
 
   private AlertKey getAlertKey(AlertData alertData) {
-    return new AlertKey(getDefinitionUuid(alertData), getTargetUuid(alertData));
+    return new AlertKey(getDefinitionUuid(alertData), getSourceUuid(alertData));
   }
 
   private AlertKey getAlertKey(Alert alert) {
     return new AlertKey(
-        alert.getDefinitionUuid().toString(), alert.getLabelValue(KnownAlertLabels.TARGET_UUID));
+        alert.getDefinitionUuid().toString(), alert.getLabelValue(KnownAlertLabels.SOURCE_UUID));
   }
 
-  private AlertDefinitionGroup.Severity getSeverity(AlertData alertData) {
+  private AlertConfiguration.Severity getSeverity(AlertData alertData) {
     if (Collections.isEmpty(alertData.getLabels())) {
-      return AlertDefinitionGroup.Severity.SEVERE;
+      return AlertConfiguration.Severity.SEVERE;
     }
     return Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.SEVERITY.labelName()))
-        .map(AlertDefinitionGroup.Severity::valueOf)
-        .orElse(AlertDefinitionGroup.Severity.SEVERE);
+        .map(AlertConfiguration.Severity::valueOf)
+        .orElse(AlertConfiguration.Severity.SEVERE);
   }
 
-  private AlertDefinitionGroup.TargetType getGroupType(AlertData alertData) {
+  private AlertConfiguration.TargetType getConfigurationType(AlertData alertData) {
     if (Collections.isEmpty(alertData.getLabels())) {
-      return AlertDefinitionGroup.TargetType.UNIVERSE;
+      return AlertConfiguration.TargetType.UNIVERSE;
     }
-    return Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.GROUP_TYPE.labelName()))
-        .map(AlertDefinitionGroup.TargetType::valueOf)
-        .orElse(AlertDefinitionGroup.TargetType.UNIVERSE);
+    return Optional.ofNullable(
+            alertData.getLabels().get(KnownAlertLabels.CONFIGURATION_TYPE.labelName()))
+        .map(AlertConfiguration.TargetType::valueOf)
+        .orElse(AlertConfiguration.TargetType.UNIVERSE);
   }
 
   private Alert processAlert(
       AlertData alertData,
       Map<AlertKey, Alert> existingAlertsByKey,
       Map<UUID, AlertDefinition> definitionsByUuid,
-      Map<UUID, AlertDefinitionGroup> groupsByUuid) {
+      Map<UUID, AlertConfiguration> configsByUuid) {
     AlertKey alertKey = getAlertKey(alertData);
     if (alertKey.getDefinitionUuid() == null) {
       // Should be filtered earlier
       log.error("Alert {} has no definition uuid", alertData);
       return null;
     }
-    String groupUuidStr = getGroupUuid(alertData);
-    if (groupUuidStr == null) {
+    String configurationUuidStr = getConfigurationUuid(alertData);
+    if (configurationUuidStr == null) {
       // Should be filtered earlier
-      log.error("Alert {} has no group uuid", alertData);
+      log.error("Alert {} has no configuration uuid", alertData);
       return null;
     }
     if (alertData.getState() == AlertState.pending) {
@@ -346,10 +347,10 @@ public class QueryAlerts {
       log.debug("Definition is missing for alert {}", alertData);
       return null;
     }
-    UUID groupUuid = UUID.fromString(groupUuidStr);
-    AlertDefinitionGroup group = groupsByUuid.get(groupUuid);
-    if (group == null || !group.isActive()) {
-      log.debug("Definition group is missing or inactive for alert {}", alertData);
+    UUID configurationUuid = UUID.fromString(configurationUuidStr);
+    AlertConfiguration configuration = configsByUuid.get(configurationUuid);
+    if (configuration == null || !configuration.isActive()) {
+      log.debug("Alert configuration is missing or inactive for alert {}", alertData);
       return null;
     }
     Alert alert = existingAlertsByKey.get(alertKey);
@@ -365,12 +366,12 @@ public class QueryAlerts {
               .setCreateTime(Date.from(alertData.getActiveAt().toInstant()))
               .setCustomerUUID(UUID.fromString(customerUuid))
               .setDefinitionUuid(definitionUuid)
-              .setGroupUuid(groupUuid)
+              .setConfigurationUuid(configurationUuid)
               .setName(alertData.getLabels().get(KnownAlertLabels.DEFINITION_NAME.labelName()))
-              .setTargetName(alertData.getLabels().get(KnownAlertLabels.TARGET_NAME.labelName()));
+              .setSourceName(alertData.getLabels().get(KnownAlertLabels.SOURCE_NAME.labelName()));
     }
-    AlertDefinitionGroup.Severity severity = getSeverity(alertData);
-    AlertDefinitionGroup.TargetType groupType = getGroupType(alertData);
+    AlertConfiguration.Severity severity = getSeverity(alertData);
+    AlertConfiguration.TargetType configurationType = getConfigurationType(alertData);
     String message = alertData.getAnnotations().get(SUMMARY_ANNOTATION_NAME);
 
     List<AlertLabel> labels =
@@ -381,13 +382,17 @@ public class QueryAlerts {
             .map(e -> new AlertLabel(e.getKey(), e.getValue()))
             .sorted(Comparator.comparing(AlertLabel::getName))
             .collect(Collectors.toList());
-    alert.setSeverity(severity).setGroupType(groupType).setMessage(message).setLabels(labels);
+    alert
+        .setSeverity(severity)
+        .setConfigurationType(configurationType)
+        .setMessage(message)
+        .setLabels(labels);
     return alert;
   }
 
   @Value
   private static class AlertKey {
     String definitionUuid;
-    String targetUuid;
+    String sourceUuid;
   }
 }

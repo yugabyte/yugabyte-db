@@ -144,7 +144,7 @@ public class AlertDefinitionService {
     if (definition.getCustomerUUID() == null) {
       throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
-    if (definition.getGroupUUID() == null) {
+    if (definition.getConfigurationUUID() == null) {
       throw new YWServiceException(BAD_REQUEST, "Group UUID field is mandatory");
     }
     if (StringUtils.isEmpty(definition.getQuery())) {

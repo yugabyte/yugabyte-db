@@ -28,9 +28,9 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertRouteService;
-import com.yugabyte.yw.common.alerts.impl.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
@@ -39,7 +39,7 @@ import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.forms.YWResults.YWSuccess;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -112,9 +112,9 @@ public class SessionController extends Controller {
 
   @Inject private PasswordPolicyService passwordPolicyService;
 
-  @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
+  @Inject private AlertConfigurationService alertConfigurationService;
 
-  @Inject private AlertRouteService alertRouteService;
+  @Inject private AlertDestinationService alertDestinationService;
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
@@ -428,15 +428,16 @@ public class SessionController extends Controller {
         role = Role.SuperAdmin;
       }
       passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-      alertRouteService.createDefaultRoute(cust.uuid);
+      alertDestinationService.createDefaultDestination(cust.uuid);
 
-      List<AlertDefinitionGroup> alertGroups =
+      List<AlertConfiguration> alertConfigurations =
           Arrays.stream(AlertTemplate.values())
               .filter(AlertTemplate::isCreateForNewCustomer)
-              .map(template -> alertDefinitionGroupService.createDefinitionTemplate(cust, template))
-              .map(AlertDefinitionTemplate::getDefaultGroup)
+              .map(
+                  template -> alertConfigurationService.createConfigurationTemplate(cust, template))
+              .map(AlertConfigurationTemplate::getDefaultConfiguration)
               .collect(Collectors.toList());
-      alertDefinitionGroupService.save(alertGroups);
+      alertConfigurationService.save(alertConfigurations);
 
       Users user =
           Users.create(
