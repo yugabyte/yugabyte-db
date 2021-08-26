@@ -110,6 +110,10 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Retrieves the next key to read after the iterator finishes for the given page.
   CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const override;
 
+  void set_debug_dump(bool value) {
+    debug_dump_ = value;
+  }
+
  private:
   template <class T>
   CHECKED_STATUS DoInit(const T& spec);
@@ -221,6 +225,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   mutable std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
 
   mutable bool ignore_ttl_ = false;
+
+  bool debug_dump_ = false;
 };
 
 }  // namespace docdb
