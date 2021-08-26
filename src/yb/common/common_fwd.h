@@ -54,6 +54,7 @@ class TableProperties;
 struct ColumnId;
 struct OpId;
 struct QLTableColumn;
+struct ReadHybridTime;
 
 enum class PgSystemAttrNum : int;
 
