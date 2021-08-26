@@ -18,17 +18,16 @@ import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertReceiverService;
-import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
+import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
@@ -67,9 +66,9 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Mock private EmailHelper emailHelper;
 
-  @Mock private AlertReceiverManager receiversManager;
+  @Mock private AlertChannelManager channelsManager;
 
-  @Mock private AlertReceiverEmail emailReceiver;
+  @Mock private AlertChannelEmail emailReceiver;
 
   private QueryAlerts queryAlerts;
 
@@ -82,11 +81,11 @@ public class QueryAlertsTest extends FakeDBApplication {
   private AlertDefinition definition;
 
   private MetricService metricService;
-  private AlertDefinitionGroupService alertDefinitionGroupService;
+  private AlertConfigurationService alertConfigurationService;
   private AlertDefinitionService alertDefinitionService;
   private AlertService alertService;
-  private AlertReceiverService alertReceiverService;
-  private AlertRouteService alertRouteService;
+  private AlertChannelService alertChannelService;
+  private AlertDestinationService alertDestinationService;
   private AlertManager alertManager;
 
   @Before
@@ -95,7 +94,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
 
     SmtpData smtpData = new SmtpData();
-    when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
+    when(channelsManager.get(ChannelType.Email.name())).thenReturn(emailReceiver);
     when(emailHelper.getDestinations(customer.uuid))
         .thenReturn(Collections.singletonList("to@to.com"));
     when(emailHelper.getSmtpData(customer.uuid)).thenReturn(smtpData);
@@ -103,18 +102,19 @@ public class QueryAlertsTest extends FakeDBApplication {
     metricService = new MetricService();
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(alertDefinitionService, configFactory);
-    alertReceiverService = new AlertReceiverService();
-    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
+    alertConfigurationService =
+        new AlertConfigurationService(alertDefinitionService, configFactory);
+    alertChannelService = new AlertChannelService();
+    alertDestinationService =
+        new AlertDestinationService(alertChannelService, alertConfigurationService);
     alertManager =
         new AlertManager(
             emailHelper,
             alertService,
-            alertDefinitionGroupService,
-            alertReceiverService,
-            alertRouteService,
-            receiversManager,
+            alertConfigurationService,
+            alertChannelService,
+            alertDestinationService,
+            channelsManager,
             metricService);
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     queryAlerts =
@@ -125,7 +125,7 @@ public class QueryAlertsTest extends FakeDBApplication {
             queryHelper,
             metricService,
             alertDefinitionService,
-            alertDefinitionGroupService,
+            alertConfigurationService,
             alertManager);
 
     universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -173,7 +173,7 @@ public class QueryAlertsTest extends FakeDBApplication {
         .thenReturn(
             ImmutableList.of(
                 createAlertData(raisedTime),
-                createAlertData(raisedTime, AlertDefinitionGroup.Severity.WARNING)));
+                createAlertData(raisedTime, AlertConfiguration.Severity.WARNING)));
 
     queryAlerts.scheduleRunner();
 
@@ -342,31 +342,32 @@ public class QueryAlertsTest extends FakeDBApplication {
         .setCreateTime(Date.from(raisedTime.toInstant()))
         .setCustomerUUID(customer.getUuid())
         .setDefinitionUuid(definition.getUuid())
-        .setGroupUuid(definition.getGroupUUID())
-        .setGroupType(AlertDefinitionGroup.TargetType.UNIVERSE)
-        .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+        .setConfigurationUuid(definition.getConfigurationUUID())
+        .setConfigurationType(AlertConfiguration.TargetType.UNIVERSE)
+        .setSeverity(AlertConfiguration.Severity.SEVERE)
         .setName("Clock Skew Alert")
         .setMessage("Clock Skew Alert for universe Test is firing")
         .setState(Alert.State.ACTIVE)
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, customer.getUuid().toString())
         .setLabel(KnownAlertLabels.DEFINITION_UUID, definition.getUuid().toString())
-        .setLabel(KnownAlertLabels.GROUP_UUID, definition.getGroupUUID().toString())
-        .setLabel(KnownAlertLabels.GROUP_TYPE, AlertDefinitionGroup.TargetType.UNIVERSE.name())
+        .setLabel(KnownAlertLabels.CONFIGURATION_UUID, definition.getConfigurationUUID().toString())
+        .setLabel(
+            KnownAlertLabels.CONFIGURATION_TYPE, AlertConfiguration.TargetType.UNIVERSE.name())
         .setLabel(KnownAlertLabels.DEFINITION_NAME, "Clock Skew Alert")
-        .setLabel(KnownAlertLabels.SEVERITY, AlertDefinitionGroup.Severity.SEVERE.name());
+        .setLabel(KnownAlertLabels.SEVERITY, AlertConfiguration.Severity.SEVERE.name());
   }
 
   private AlertData createAlertData(ZonedDateTime raisedTime) {
-    return createAlertData(raisedTime, AlertDefinitionGroup.Severity.SEVERE);
+    return createAlertData(raisedTime, AlertConfiguration.Severity.SEVERE);
   }
 
   private AlertData createAlertData(
-      ZonedDateTime raisedTime, AlertDefinitionGroup.Severity severity) {
+      ZonedDateTime raisedTime, AlertConfiguration.Severity severity) {
     Map<String, String> labels = new HashMap<>();
     labels.put("customer_uuid", customer.getUuid().toString());
     labels.put("definition_uuid", definition.getUuid().toString());
-    labels.put("group_uuid", definition.getGroupUUID().toString());
-    labels.put("group_type", "UNIVERSE");
+    labels.put("configuration_uuid", definition.getConfigurationUUID().toString());
+    labels.put("configuration_type", "UNIVERSE");
     labels.put("definition_name", "Clock Skew Alert");
     labels.put("severity", severity.name());
     return AlertData.builder()

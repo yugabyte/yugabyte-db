@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import static com.yugabyte.yw.common.ModelFactory.createAlertDefinitionGroup;
+import static com.yugabyte.yw.common.ModelFactory.createAlertConfiguration;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -20,8 +20,8 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.models.Alert.SortBy;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.AlertDefinitionGroup.Severity;
-import com.yugabyte.yw.models.AlertDefinitionGroup.TargetType;
+import com.yugabyte.yw.models.AlertConfiguration.Severity;
+import com.yugabyte.yw.models.AlertConfiguration.TargetType;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -49,7 +49,7 @@ public class AlertTest extends FakeDBApplication {
 
   private Customer cust1;
   private Universe universe;
-  private AlertDefinitionGroup group;
+  private AlertConfiguration configuration;
   private AlertDefinition definition;
 
   @InjectMocks private AlertService alertService;
@@ -58,7 +58,7 @@ public class AlertTest extends FakeDBApplication {
   public void setUp() {
     cust1 = ModelFactory.testCustomer("Customer 1");
     universe = ModelFactory.createUniverse(cust1.getCustomerId());
-    group = createAlertDefinitionGroup(cust1, universe);
+    configuration = createAlertConfiguration(cust1, universe);
     definition = createDefinition();
   }
 
@@ -169,7 +169,7 @@ public class AlertTest extends FakeDBApplication {
     AlertDefinition definition2 = ModelFactory.createAlertDefinition(cust2, universe2);
     Alert alert2 = ModelFactory.createAlert(cust2, definition2);
     alert2.setState(Alert.State.RESOLVED);
-    alert2.setTargetName("Some other target");
+    alert2.setSourceName("Some other source");
 
     alertService.save(alert2);
 
@@ -193,7 +193,7 @@ public class AlertTest extends FakeDBApplication {
     filter = AlertFilter.builder().excludeUuid(alert2.getUuid()).build();
     queryAndAssertByFilter(filter, definition);
 
-    filter = AlertFilter.builder().targetName("Target 1").build();
+    filter = AlertFilter.builder().sourceName("Source 1").build();
     queryAndAssertByFilter(filter, definition);
   }
 
@@ -211,16 +211,15 @@ public class AlertTest extends FakeDBApplication {
             cust1, definition, alert -> alert.setUuid(replaceFirstChar(alert.getUuid(), 'c')));
 
     alert2.setName("Alert 2");
-    alert2.setTargetName("Target 3");
-    alert2.setGroupType(TargetType.CUSTOMER);
-    alert2.setGroupType(TargetType.CUSTOMER);
+    alert2.setSourceName("Source 3");
+    alert2.setConfigurationType(TargetType.PLATFORM);
     alert2.setSeverity(Severity.WARNING);
     alert2.setState(State.ACKNOWLEDGED);
     alert2.setCreateTime(Date.from(alert1.getCreateTime().toInstant().minusSeconds(5)));
     alert2.update();
 
     alert3.setName("Alert 3");
-    alert3.setTargetName("Target 2");
+    alert3.setSourceName("Source 2");
     alert3.setState(Alert.State.RESOLVED);
     alert3.setCreateTime(Date.from(alert1.getCreateTime().toInstant().minusSeconds(2)));
     alert3.update();
@@ -244,7 +243,7 @@ public class AlertTest extends FakeDBApplication {
     result = alertService.pagedList(query).getEntities();
     assertThat(result, contains(alert1, alert2, alert3));
 
-    query.setSortBy(SortBy.targetName);
+    query.setSortBy(SortBy.sourceName);
     result = alertService.pagedList(query).getEntities();
     assertThat(result, contains(alert1, alert3, alert2));
 
@@ -324,25 +323,25 @@ public class AlertTest extends FakeDBApplication {
   }
 
   public AlertDefinition createDefinition() {
-    return ModelFactory.createAlertDefinition(cust1, universe, group);
+    return ModelFactory.createAlertDefinition(cust1, universe, configuration);
   }
 
   private Alert createAlert() {
     List<AlertLabel> labels =
         definition
-            .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
+            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());
     return new Alert()
         .setCustomerUUID(definition.getCustomerUUID())
-        .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+        .setSeverity(AlertConfiguration.Severity.SEVERE)
         .setName("Alert 1")
-        .setTargetName("Target 1")
+        .setSourceName("Source 1")
         .setMessage("Universe on fire!")
         .setDefinitionUuid(definition.getUuid())
-        .setGroupUuid(group.getUuid())
-        .setGroupType(group.getTargetType())
+        .setConfigurationUuid(configuration.getUuid())
+        .setConfigurationType(configuration.getTargetType())
         .setLabels(labels);
   }
 
@@ -365,42 +364,47 @@ public class AlertTest extends FakeDBApplication {
     AlertLabel targetUuidLabel =
         new AlertLabel(
             alert,
-            KnownAlertLabels.TARGET_UUID.labelName(),
-            definition.getLabelValue(KnownAlertLabels.TARGET_UUID));
+            KnownAlertLabels.SOURCE_UUID.labelName(),
+            definition.getLabelValue(KnownAlertLabels.SOURCE_UUID));
     AlertLabel targetNameLabel =
         new AlertLabel(
             alert,
-            KnownAlertLabels.TARGET_NAME.labelName(),
-            definition.getLabelValue(KnownAlertLabels.TARGET_NAME));
+            KnownAlertLabels.SOURCE_NAME.labelName(),
+            definition.getLabelValue(KnownAlertLabels.SOURCE_NAME));
     AlertLabel targetTypeLabel =
         new AlertLabel(
             alert,
-            KnownAlertLabels.TARGET_TYPE.labelName(),
-            definition.getLabelValue(KnownAlertLabels.TARGET_TYPE));
+            KnownAlertLabels.SOURCE_TYPE.labelName(),
+            definition.getLabelValue(KnownAlertLabels.SOURCE_TYPE));
     AlertLabel groupUuidLabel =
         new AlertLabel(
-            alert, KnownAlertLabels.GROUP_UUID.labelName(), definition.getGroupUUID().toString());
+            alert,
+            KnownAlertLabels.CONFIGURATION_UUID.labelName(),
+            definition.getConfigurationUUID().toString());
     AlertLabel groupTypeLabel =
         new AlertLabel(
-            alert, KnownAlertLabels.GROUP_TYPE.labelName(), group.getTargetType().name());
+            alert,
+            KnownAlertLabels.CONFIGURATION_TYPE.labelName(),
+            configuration.getTargetType().name());
     AlertLabel severityLabel =
         new AlertLabel(
             alert,
             KnownAlertLabels.SEVERITY.labelName(),
-            AlertDefinitionGroup.Severity.SEVERE.name());
+            AlertConfiguration.Severity.SEVERE.name());
     AlertLabel thresholdLabel = new AlertLabel(alert, KnownAlertLabels.THRESHOLD.labelName(), "1");
     AlertLabel definitionUuidLabel =
         new AlertLabel(
             alert, KnownAlertLabels.DEFINITION_UUID.labelName(), definition.getUuid().toString());
     AlertLabel definitionNameLabel =
-        new AlertLabel(alert, KnownAlertLabels.DEFINITION_NAME.labelName(), group.getName());
+        new AlertLabel(
+            alert, KnownAlertLabels.DEFINITION_NAME.labelName(), configuration.getName());
     assertThat(alert.getCustomerUUID(), is(cust1.uuid));
-    assertThat(alert.getSeverity(), is(AlertDefinitionGroup.Severity.SEVERE));
+    assertThat(alert.getSeverity(), is(AlertConfiguration.Severity.SEVERE));
     assertThat(alert.getName(), is("Alert 1"));
-    assertThat(alert.getTargetName(), is("Target 1"));
+    assertThat(alert.getSourceName(), is("Source 1"));
     assertThat(alert.getMessage(), is("Universe on fire!"));
     assertThat(alert.getDefinitionUuid(), equalTo(definition.getUuid()));
-    assertThat(alert.getGroupUuid(), equalTo(group.getUuid()));
+    assertThat(alert.getConfigurationUuid(), equalTo(configuration.getUuid()));
     assertThat(
         alert.getLabels(),
         containsInAnyOrder(

@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
@@ -40,10 +41,9 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertReceiverService;
-import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -75,7 +75,7 @@ import play.test.Helpers;
 
 public class SessionControllerTest {
 
-  private AlertRouteService alertRouteService;
+  private AlertDestinationService alertDestinationService;
 
   private Application app;
 
@@ -108,11 +108,12 @@ public class SessionControllerTest {
 
     AlertService alertService = new AlertService();
     AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
-    AlertDefinitionGroupService alertDefinitionGroupService =
-        new AlertDefinitionGroupService(
+    AlertConfigurationService alertConfigurationService =
+        new AlertConfigurationService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    AlertReceiverService alertReceiverService = new AlertReceiverService();
-    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
+    AlertChannelService alertChannelService = new AlertChannelService();
+    alertDestinationService =
+        new AlertDestinationService(alertChannelService, alertConfigurationService);
   }
 
   @After
@@ -244,7 +245,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertAuditEntry(0, c1.uuid);
-    assertNotNull(alertRouteService.getDefaultRoute(c1.uuid));
+    assertNotNull(alertDestinationService.getDefaultDestination(c1.uuid));
   }
 
   @Test

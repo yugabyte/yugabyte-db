@@ -9,11 +9,11 @@ import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
+import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
@@ -31,7 +31,7 @@ public class AlertUtilsTest extends FakeDBApplication {
 
   private static final String TEXT_TEMPLATE = "<html>Text template is here</html>";
 
-  private static final String ALERT_RECEIVER_NAME = "Test AlertReceiver";
+  private static final String ALERT_CHANNEL_NAME = "Test AlertChannel";
 
   private Customer defaultCustomer;
 
@@ -40,36 +40,36 @@ public class AlertUtilsTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
   }
 
-  private AlertReceiver createEmailReceiver() {
-    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
+  private AlertChannel createEmailChannel() {
+    AlertChannelEmailParams params = new AlertChannelEmailParams();
     params.recipients = Arrays.asList("test@test.com", "me@google.com");
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
     params.smtpData = EmailFixtures.createSmtpData();
-    return ModelFactory.createAlertReceiver(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
+    return ModelFactory.createAlertChannel(defaultCustomer.uuid, ALERT_CHANNEL_NAME, params);
   }
 
-  private AlertReceiver createEmailReceiverWithEmptyTemplates() {
-    AlertReceiver receiver = createEmailReceiver();
-    AlertReceiverEmailParams params = (AlertReceiverEmailParams) receiver.getParams();
+  private AlertChannel createEmailChannelWithEmptyTemplates() {
+    AlertChannel channel = createEmailChannel();
+    AlertChannelEmailParams params = (AlertChannelEmailParams) channel.getParams();
     params.titleTemplate = null;
     params.textTemplate = null;
-    receiver.setParams(params);
-    receiver.save();
-    return receiver;
+    channel.setParams(params);
+    channel.save();
+    return channel;
   }
 
   @Test
   public void testFromDB_Email() {
-    AlertReceiver receiver = createEmailReceiver();
-    AlertReceiver fromDb = AlertReceiver.get(defaultCustomer.uuid, receiver.getUuid());
+    AlertChannel channel = createEmailChannel();
+    AlertChannel fromDb = AlertChannel.get(defaultCustomer.uuid, channel.getUuid());
     assertNotNull(fromDb);
-    assertEquals(receiver, fromDb);
+    assertEquals(channel, fromDb);
   }
 
   @Test
   public void testFromDB_Slack() {
-    AlertReceiverSlackParams params = new AlertReceiverSlackParams();
+    AlertChannelSlackParams params = new AlertChannelSlackParams();
     params.textTemplate = TEXT_TEMPLATE;
     params.titleTemplate = TITLE_TEMPLATE;
 
@@ -77,87 +77,87 @@ public class AlertUtilsTest extends FakeDBApplication {
     params.webhookUrl = "hook-url";
     params.iconUrl = "icon-url";
 
-    AlertReceiver receiver =
-        ModelFactory.createAlertReceiver(defaultCustomer.uuid, ALERT_RECEIVER_NAME, params);
-    AlertReceiver fromDb = AlertReceiver.get(defaultCustomer.uuid, receiver.getUuid());
+    AlertChannel channel =
+        ModelFactory.createAlertChannel(defaultCustomer.uuid, ALERT_CHANNEL_NAME, params);
+    AlertChannel fromDb = AlertChannel.get(defaultCustomer.uuid, channel.getUuid());
     assertNotNull(fromDb);
-    assertEquals(receiver, fromDb);
+    assertEquals(channel, fromDb);
   }
 
   @Test
   public void testCreateParamsInstance() {
-    for (TargetType targetType : TargetType.values()) {
-      assertNotNull(AlertUtils.createParamsInstance(targetType));
+    for (ChannelType channelType : ChannelType.values()) {
+      assertNotNull(AlertUtils.createParamsInstance(channelType));
     }
   }
 
   @Test
-  public void testGetNotificationTitle_TemplateInReceiver() {
+  public void testGetNotificationTitle_TemplateInChannel() {
     Universe universe = ModelFactory.createUniverse();
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
     alert.setDefinitionUuid(definition.getUuid());
-    AlertReceiver receiver = createEmailReceiver();
+    AlertChannel channel = createEmailChannel();
 
     assertEquals(
-        receiver.getParams().titleTemplate, AlertUtils.getNotificationTitle(alert, receiver));
+        channel.getParams().titleTemplate, AlertUtils.getNotificationTitle(alert, channel));
   }
 
   @Test
   public void testGetNotificationTitle_DefaultTitle() {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
-    AlertReceiver receiver = createEmailReceiverWithEmptyTemplates();
+    AlertChannel channel = createEmailChannelWithEmptyTemplates();
 
     assertEquals(
         String.format(AlertUtils.DEFAULT_ALERT_NOTIFICATION_TITLE, defaultCustomer.getTag()),
-        AlertUtils.getNotificationTitle(alert, receiver));
+        AlertUtils.getNotificationTitle(alert, channel));
   }
 
   @Test
-  public void testGetNotificationText_TemplateInReceiver() {
+  public void testGetNotificationText_TemplateInChannel() {
     Universe universe = ModelFactory.createUniverse();
     AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
-    AlertReceiver receiver = createEmailReceiver();
-    assertEquals(
-        receiver.getParams().textTemplate, AlertUtils.getNotificationText(alert, receiver));
+    AlertChannel channel = createEmailChannel();
+    assertEquals(channel.getParams().textTemplate, AlertUtils.getNotificationText(alert, channel));
   }
 
   @Test
   public void testGetNotificationText_DefaultTemplate() {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    AlertReceiver receiver = createEmailReceiverWithEmptyTemplates();
+    AlertChannel channel = createEmailChannelWithEmptyTemplates();
 
     assertEquals(
         AlertUtils.getDefaultNotificationText(alert),
-        AlertUtils.getNotificationText(alert, receiver));
+        AlertUtils.getNotificationText(alert, channel));
   }
 
   @Test
   public void testGetNotificationText_TemplateInAlert() {
     Universe universe = ModelFactory.createUniverse();
-    AlertDefinitionGroup group = ModelFactory.createAlertDefinitionGroup(defaultCustomer, universe);
+    AlertConfiguration configuration =
+        ModelFactory.createAlertConfiguration(defaultCustomer, universe);
     AlertDefinition definition =
-        ModelFactory.createAlertDefinition(defaultCustomer, universe, group);
+        ModelFactory.createAlertDefinition(defaultCustomer, universe, configuration);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
     alert.setDefinitionUuid(definition.getUuid());
 
     List<AlertLabel> labels =
         definition
-            .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
+            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());
     alert.setLabels(labels);
-    AlertReceiver receiver = createEmailReceiverWithEmptyTemplates();
+    AlertChannel channel = createEmailChannelWithEmptyTemplates();
 
     AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
     assertEquals(
         substitutor.replace(AlertUtils.DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE),
-        AlertUtils.getNotificationText(alert, receiver));
+        AlertUtils.getNotificationText(alert, channel));
   }
 }

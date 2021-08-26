@@ -19,7 +19,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
@@ -57,7 +57,7 @@ public class AlertConfigurationWriter {
 
   private final AlertDefinitionService alertDefinitionService;
 
-  private final AlertDefinitionGroupService alertDefinitionGroupService;
+  private final AlertConfigurationService alertConfigurationService;
 
   private final SwamperHelper swamperHelper;
 
@@ -71,7 +71,7 @@ public class AlertConfigurationWriter {
       ActorSystem actorSystem,
       MetricService metricService,
       AlertDefinitionService alertDefinitionService,
-      AlertDefinitionGroupService alertDefinitionGroupService,
+      AlertConfigurationService alertConfigurationService,
       SwamperHelper swamperHelper,
       MetricQueryHelper metricQueryHelper,
       RuntimeConfigFactory configFactory) {
@@ -79,7 +79,7 @@ public class AlertConfigurationWriter {
     this.executionContext = executionContext;
     this.metricService = metricService;
     this.alertDefinitionService = alertDefinitionService;
-    this.alertDefinitionGroupService = alertDefinitionGroupService;
+    this.alertConfigurationService = alertConfigurationService;
     this.swamperHelper = swamperHelper;
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
@@ -112,9 +112,11 @@ public class AlertConfigurationWriter {
   private SyncResult syncDefinition(UUID definitionUuid) {
     try {
       AlertDefinition definition = alertDefinitionService.get(definitionUuid);
-      AlertDefinitionGroup group =
-          definition != null ? alertDefinitionGroupService.get(definition.getGroupUUID()) : null;
-      if (definition == null || group == null || !group.isActive()) {
+      AlertConfiguration configuration =
+          definition != null
+              ? alertConfigurationService.get(definition.getConfigurationUUID())
+              : null;
+      if (definition == null || configuration == null || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         return SyncResult.REMOVED;
       }
@@ -122,7 +124,7 @@ public class AlertConfigurationWriter {
         LOG.info("Alert definition {} has config in sync", definitionUuid);
         return SyncResult.IN_SYNC;
       }
-      swamperHelper.writeAlertDefinition(group, definition);
+      swamperHelper.writeAlertDefinition(configuration, definition);
       definition.setConfigWritten(true);
       alertDefinitionService.save(definition);
       requiresReload.set(true);
