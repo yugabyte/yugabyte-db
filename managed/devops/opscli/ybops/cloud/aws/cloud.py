@@ -170,7 +170,7 @@ class AwsCloud(AbstractCloud):
         metadata_subset = self._subset_region_data(per_region_meta)
         # Override region CIDR info, if any.
         for k in metadata_subset:
-            custom_cidr = per_region_meta[k]["vpcCidr"]
+            custom_cidr = per_region_meta[k].get("vpcCidr")
             if custom_cidr is not None:
                 cidr_pieces = custom_cidr.split(".")
                 if len(cidr_pieces) != 4:
@@ -363,9 +363,26 @@ class AwsCloud(AbstractCloud):
     def create_instance(self, args):
         return create_instance(args)
 
-    def delete_instance(self, region, instance_id):
+    def delete_instance(self, region, instance_id, has_elastic_ip=False):
+        logging.info("Deleting AWS instance {} in region {}".format(instance_id, region))
         ec2 = boto3.resource('ec2', region)
         instance = ec2.Instance(instance_id)
+        if has_elastic_ip:
+            client = boto3.client('ec2', region)
+            elastic_ip = client.describe_addresses(
+                Filters=[{'Name': 'public-ip', 'Values': [instance.public_ip_address]}],
+                DryRun=False
+            )["Addresses"][0]
+            client.disassociate_address(
+                AssociationId=elastic_ip["AssociationId"],
+                DryRun=False
+            )
+            client.release_address(
+                AllocationId=elastic_ip["AllocationId"],
+                DryRun=False
+            )
+            logging.info(
+                "Deleted elastic ip at {} from VM {}".format(elastic_ip["PublicIp"], instance_id))
         instance.terminate()
         instance.wait_until_terminated()
 

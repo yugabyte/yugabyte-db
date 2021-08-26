@@ -67,8 +67,8 @@ public class AlertService {
     Map<EntityOperation, List<Alert>> toCreateAndUpdate =
         alerts
             .stream()
+            .map(alert -> prepareForSave(alert, beforeAlertMap.get(alert.getUuid())))
             .peek(alert -> validate(alert, beforeAlertMap.get(alert.getUuid())))
-            .map(this::prepareForSave)
             .collect(Collectors.groupingBy(alert -> alert.isNew() ? CREATE : UPDATE));
 
     if (toCreateAndUpdate.containsKey(CREATE)) {
@@ -112,19 +112,15 @@ public class AlertService {
   @Transactional
   public List<Alert> markResolved(AlertFilter filter) {
     AlertFilter notResolved =
-        filter
-            .toBuilder()
-            .targetState(Alert.State.CREATED, Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
-            .build();
+        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
             .peek(
                 alert -> {
-                  alert.setTargetState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
-                  // Resolve immediately to avoid resolve notifications.
-                  if (alert.getState() == Alert.State.ACKNOWLEDGED) {
-                    alert.setState(Alert.State.RESOLVED);
+                  alert.setState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
+                  if (alert.getNotifiedState() != Alert.State.ACKNOWLEDGED) {
+                    alert.setNextNotificationTime(nowWithoutMillis());
                   }
                 })
             .collect(Collectors.toList());
@@ -133,15 +129,13 @@ public class AlertService {
 
   @Transactional
   public List<Alert> acknowledge(AlertFilter filter) {
-    AlertFilter notResolved =
-        filter.toBuilder().targetState(Alert.State.CREATED, Alert.State.ACTIVE).build();
+    AlertFilter notResolved = filter.toBuilder().state(Alert.State.ACTIVE).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
             .map(
                 alert ->
                     alert
-                        .setTargetState(Alert.State.ACKNOWLEDGED)
                         .setState(Alert.State.ACKNOWLEDGED)
                         .setAcknowledgedTime(nowWithoutMillis())
                         .setNextNotificationTime(null)
@@ -165,7 +159,7 @@ public class AlertService {
 
   public List<Alert> listNotResolved(AlertFilter filter) {
     AlertFilter notResolved =
-        filter.toBuilder().targetState(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
+        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
     return list(notResolved);
   }
 
@@ -189,9 +183,10 @@ public class AlertService {
   }
 
   @Transactional
-  public void delete(AlertFilter filter) {
+  public int delete(AlertFilter filter) {
     int deleted = createQueryByFilter(filter).delete();
     log.debug("{} alerts deleted", deleted);
+    return deleted;
   }
 
   /**
@@ -199,7 +194,10 @@ public class AlertService {
    * Will only need to insert definition related labels once all alerts will have underlying
    * definition.
    */
-  private Alert prepareForSave(Alert alert) {
+  private Alert prepareForSave(Alert alert, Alert before) {
+    if (before != null) {
+      alert.setCreateTime(before.getCreateTime());
+    }
     return alert
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, alert.getCustomerUUID().toString())
         .setLabel(KnownAlertLabels.SEVERITY, alert.getSeverity().name());
@@ -225,9 +223,10 @@ public class AlertService {
         throw new YWServiceException(
             BAD_REQUEST, "Can't change definition for alert " + alert.getUuid());
       }
-      if (before.getGroupUuid() != null && !alert.getGroupUuid().equals(before.getGroupUuid())) {
+      if (before.getConfigurationUuid() != null
+          && !alert.getConfigurationUuid().equals(before.getConfigurationUuid())) {
         throw new YWServiceException(
-            BAD_REQUEST, "Can't change group for alert " + alert.getUuid());
+            BAD_REQUEST, "Can't change configuration for alert " + alert.getUuid());
       }
       if (!alert.getCreateTime().equals(before.getCreateTime())) {
         throw new YWServiceException(

@@ -275,6 +275,9 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster,
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
 
+std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
+    MiniCluster* cluster, const TableId& table_id);
+
 // By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
 // i.e. not yet completed split or deleted (tombstoned).
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(

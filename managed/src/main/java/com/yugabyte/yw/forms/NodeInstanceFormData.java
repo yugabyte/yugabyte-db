@@ -14,40 +14,34 @@ public class NodeInstanceFormData {
   @ApiModelProperty(value = "Node instances", required = true)
   public List<NodeInstanceData> nodes;
 
-  @ApiModel(description = "Detail of node instance")
+  @ApiModel(description = "Details of a node instance")
   public static class NodeInstanceData {
 
     @Constraints.Required()
-    @ApiModelProperty(value = "IP address of node instance", example = "1.1.1.1", required = true)
+    @ApiModelProperty(value = "IP address", example = "1.1.1.1", required = true)
     public String ip;
 
     @Constraints.Required()
-    @ApiModelProperty(value = "SSH user of node instance", example = "centos", required = true)
+    @ApiModelProperty(value = "SSH user", example = "centos", required = true)
     public String sshUser;
 
     @Constraints.Required()
-    @ApiModelProperty(value = "Region of node instance", example = "south-east", required = true)
+    @ApiModelProperty(value = "Region", example = "south-east", required = true)
     public String region;
 
     @Constraints.Required()
-    @ApiModelProperty(value = "Zone of node instance", example = "south-east", required = true)
+    @ApiModelProperty(value = "Zone", example = "south-east", required = true)
     public String zone;
 
     @Constraints.Required()
-    @ApiModelProperty(
-        value = "Instance type of node instance",
-        example = "c5large",
-        required = true)
+    @ApiModelProperty(value = "Node instance type", example = "c5large", required = true)
     public String instanceType;
 
     @Constraints.Required()
-    @ApiModelProperty(
-        value = "Instance name of node instance",
-        example = "Mumbai instance",
-        required = true)
+    @ApiModelProperty(value = "Node instance name", example = "Mumbai instance", required = true)
     public String instanceName;
 
-    @ApiModelProperty(value = "Node name of node instance", example = "India node")
+    @ApiModelProperty(value = "Node instance name", example = "India node")
     public String nodeName;
   }
 }

@@ -15,11 +15,12 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import java.util.List;
@@ -39,6 +40,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     public UUID customerUUID;
     public Boolean isForceDelete;
     public Boolean isDeleteBackups;
+    public Boolean isDeleteAssociatedCerts;
   }
 
   public Params params() {
@@ -98,14 +100,13 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Update the swamper target file.
       createSwamperTargetUpdateTask(true /* removeFile */);
 
+      if (params().isDeleteAssociatedCerts) {
+        createDeleteCertificatesTaskGroup(universe.getUniverseDetails())
+            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
+
       // Run all the tasks.
       subTaskGroupQueue.run();
-
-      alertDefinitionGroupService.handleTargetRemoval(
-          params().customerUUID,
-          AlertDefinitionGroup.TargetType.UNIVERSE,
-          universe.getUniverseUUID());
-      metricService.handleTargetRemoval(params().customerUUID, universe.getUniverseUUID());
     } catch (Throwable t) {
       // If for any reason destroy fails we would just unlock the universe for update
       try {
@@ -134,5 +135,42 @@ public class DestroyUniverse extends UniverseTaskBase {
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createDeleteCertificatesTaskGroup(
+      UniverseDefinitionTaskParams universeDetails) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteCertificates", executor);
+
+    // Create the task to delete rootCerts.
+    DeleteCertificate rootCertDeletiontask =
+        createDeleteCertificateTask(params().customerUUID, universeDetails.rootCA);
+    // Add it to the task list.
+    if (rootCertDeletiontask != null) {
+      subTaskGroup.addTask(rootCertDeletiontask);
+    }
+
+    if (!universeDetails.rootAndClientRootCASame) {
+      // Create the task to delete clientRootCerts.
+      DeleteCertificate clientRootCertDeletiontask =
+          createDeleteCertificateTask(params().customerUUID, universeDetails.clientRootCA);
+      // Add it to the task list.
+      if (clientRootCertDeletiontask != null) {
+        subTaskGroup.addTask(clientRootCertDeletiontask);
+      }
+    }
+
+    if (subTaskGroup.getNumTasks() > 0) {
+      subTaskGroupQueue.add(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  public DeleteCertificate createDeleteCertificateTask(UUID customerUUID, UUID certUUID) {
+    DeleteCertificate.Params params = new DeleteCertificate.Params();
+    params.customerUUID = customerUUID;
+    params.certUUID = certUUID;
+    DeleteCertificate task = createTask(DeleteCertificate.class);
+    task.initialize(params);
+    return task;
   }
 }

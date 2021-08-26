@@ -41,6 +41,8 @@ public enum TaskType {
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
 
+  ExternalScript("ExternalScript"),
+
   @Deprecated
   KubernetesProvision("KubernetesProvision"),
 
@@ -73,6 +75,8 @@ public enum TaskType {
 
   PersistResizeNode("subtasks.PersistResizeNode"),
 
+  PersistSystemdUpgrade("subtasks.PersistSystemdUpgrade"),
+
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
@@ -104,6 +108,14 @@ public enum TaskType {
 
   SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
 
+  CreateXClusterReplication("CreateXClusterReplication"),
+
+  DeleteXClusterReplication("DeleteXClusterReplication"),
+
+  EditXClusterReplication("EditXClusterReplication"),
+
+  PauseOrResumeXClusterReplication("PauseOrResumeXClusterReplication"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -116,6 +128,8 @@ public enum TaskType {
   ResumeServer("subtasks.ResumeServer"),
 
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
+
+  AnsibleCreateServer("subtasks.AnsibleCreateServer"),
 
   PrecheckNode("subtasks.PrecheckNode"),
 
@@ -173,6 +187,8 @@ public enum TaskType {
 
   WaitForServerReady("subtasks.WaitForServerReady"),
 
+  RunExternalScript("subtasks.RunExternalScript"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 
@@ -219,9 +235,22 @@ public enum TaskType {
 
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
+
   AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
 
-  ResetUniverseVersion("subtasks.ResetUniverseVersion");
+  ResetUniverseVersion("subtasks.ResetUniverseVersion"),
+
+  AlterXClusterReplicationAddTables("subtasks.AlterXClusterReplicationAddTables"),
+
+  AlterXClusterReplicationRemoveTables("subtasks.AlterXClusterReplicationRemoveTables"),
+
+  AlterXClusterReplicationChangeMasterAddresses(
+      "subtasks.AlterXClusterReplicationChangeMasterAddresses"),
+
+  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive"),
+
+  DeleteCertificate("subtasks.DeleteCertificate");
 
   private String relativeClassPath;
 

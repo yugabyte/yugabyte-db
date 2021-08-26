@@ -22,6 +22,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/version_set.h"
+#include <memory>
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -45,6 +46,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -3554,6 +3556,11 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
   if (c->ShouldFormSubcompactions()) {
     read_options.total_order_seek = true;
   }
+  std::unique_ptr<CompactionFileFilter> file_filter;
+  auto file_filter_factory = cfd->ioptions()->compaction_file_filter_factory;
+  if (file_filter_factory) {
+    file_filter = file_filter_factory->CreateCompactionFileFilter();
+  }
 
   // Level-0 files have to be merged together.  For other levels,
   // we will make a concatenating iterator per level.
@@ -3568,6 +3575,15 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
       if (c->level(which) == 0) {
         const LevelFilesBrief* flevel = c->input_levels(which);
         for (size_t i = 0; i < flevel->num_files; i++) {
+          FileMetaData* fmd = c->input(which, i);
+          // File filtering logic requires the assumption that files will always be processed in
+          // order of "earliest created" to "latest created" to prevent premature expiration
+          // exposing old data.
+          if (file_filter && file_filter->Filter(fmd) == FilterDecision::kDiscard) {
+            RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_FILTERED);
+            continue;
+          }
+          RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_NOT_FILTERED);
           list[num++] = cfd->table_cache()->NewIterator(
               read_options, env_options_compactions_,
               cfd->internal_comparator(), flevel->files[i].fd, flevel->files[i].user_filter_data,

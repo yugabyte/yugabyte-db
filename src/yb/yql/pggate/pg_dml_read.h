@@ -93,10 +93,12 @@ class PgDmlRead : public PgDml {
   PgsqlReadRequestPB *read_req_ = nullptr;
 
  private:
+  // Indicates that current operation reads concrete row by specifying row's DocKey.
+  bool IsConcreteRowRead() const;
   CHECKED_STATUS ProcessEmptyPrimaryBinds();
   bool CanBuildYbctidsFromPrimaryBinds() const;
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
-  CHECKED_STATUS SubstitutePrimaryBindsWithYbctids();
+  CHECKED_STATUS SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
   CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const PgsqlConditionPB& in_operator);
   CHECKED_STATUS CopyBoundValue(
       const PgColumn& col, const PgsqlExpressionPB& src, QLValuePB* dest) const;

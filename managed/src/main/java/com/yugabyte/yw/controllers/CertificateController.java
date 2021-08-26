@@ -1,6 +1,5 @@
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CertificateDetails;
@@ -35,7 +34,7 @@ public class CertificateController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
-  @ApiOperation(value = "restore Backups", response = UUID.class)
+  @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "certificate",
@@ -108,7 +107,7 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withData(certUUID);
   }
 
-  @ApiOperation(value = "post certificate info", response = CertificateDetails.class)
+  @ApiOperation(value = "Add a client certificate", response = CertificateDetails.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "certificate",
@@ -131,7 +130,8 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withData(result);
   }
 
-  @ApiOperation(value = "get root certificate", response = JsonNode.class)
+  // TODO: cleanup raw json
+  @ApiOperation(value = "Get a customer's root certificate", response = Object.class)
   public Result getRootCert(UUID customerUUID, UUID rootCA) {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo.getOrBadRequest(rootCA, customerUUID);
@@ -144,7 +144,7 @@ public class CertificateController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "list Certificates for a specific customer",
+      value = "List a customer's certificates",
       response = CertificateInfo.class,
       responseContainer = "List",
       nickname = "getListOfCertificate")
@@ -158,14 +158,17 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.withData(certs);
   }
 
-  @ApiOperation(value = "get certificate UUID", response = UUID.class, nickname = "getCertificate")
+  @ApiOperation(
+      value = "Get a certificate's UUID",
+      response = UUID.class,
+      nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
     CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
     return YWResults.withData(cert.uuid);
   }
 
   @ApiOperation(
-      value = "delete certificate",
+      value = "Delete a certificate",
       response = YWResults.YWSuccess.class,
       nickname = "deleteCertificate")
   public Result delete(UUID customerUUID, UUID reqCertUUID) {
@@ -175,7 +178,7 @@ public class CertificateController extends AuthenticatedController {
     return YWResults.YWSuccess.empty();
   }
 
-  @ApiOperation(value = "update empty certs", response = CertificateInfo.class)
+  @ApiOperation(value = "Update an empty certificate", response = CertificateInfo.class)
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
     Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
     Customer.getOrBadRequest(customerUUID);

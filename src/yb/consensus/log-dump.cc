@@ -43,7 +43,6 @@
 #include "yb/consensus/log_reader.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -86,7 +85,6 @@ using std::string;
 using std::vector;
 using std::cout;
 using std::endl;
-using tablet::RaftGroupMetadata;
 using tserver::WriteRequestPB;
 
 enum PrintEntryType {

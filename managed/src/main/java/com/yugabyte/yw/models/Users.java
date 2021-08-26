@@ -84,7 +84,7 @@ public class Users extends Model {
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
-  @ApiModelProperty(value = "User email id", example = "username1@email.com", required = true)
+  @ApiModelProperty(value = "User email id", example = "username1@example.com", required = true)
   public String email;
 
   public String getEmail() {
@@ -120,7 +120,7 @@ public class Users extends Model {
   private String apiToken;
 
   @Column(nullable = true, columnDefinition = "TEXT")
-  @ApiModelProperty(value = "Features", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
   // The role of the user.
@@ -272,7 +272,7 @@ public class Users extends Model {
     if (apiToken == null) {
       return null;
     }
-    return apiToken.toString();
+    return apiToken;
   }
 
   /**

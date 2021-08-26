@@ -37,7 +37,7 @@ public class CloudBootstrap extends CloudTaskBase {
     super(baseTaskDependencies);
   }
 
-  @ApiModel("CloudBootstrapParams")
+  @ApiModel(value = "Cloud bootstrap parameters", description = "")
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
       Params taskParams = new Params();
@@ -100,9 +100,16 @@ public class CloudBootstrap extends CloudTaskBase {
         //    perRegionMetadata.subnetId = can only be set per zone
         perRegionMetadata.vpcId = region.getVnetName();
         //    perRegionMetadata.vpcCidr = never used
-        perRegionMetadata.azToSubnetIds =
-            region.zones.stream().collect(Collectors.toMap(zone -> zone.name, zone -> zone.subnet));
-
+        if (region.zones == null) {
+          perRegionMetadata.azToSubnetIds = new HashMap<>();
+        } else {
+          perRegionMetadata.azToSubnetIds =
+              region
+                  .zones
+                  .stream()
+                  .filter(zone -> zone.name != null && zone.subnet != null)
+                  .collect(Collectors.toMap(zone -> zone.name, zone -> zone.subnet));
+        }
         return perRegionMetadata;
       }
     }

@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.YWServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
-@ApiModel(value = "Device info", description = "Device information")
+@ApiModel(description = "Device information")
 public class DeviceInfo {
 
   // The size of each volume in each instance (if specified).
@@ -30,7 +30,7 @@ public class DeviceInfo {
 
   // Name of storage class (if specified)
   @ApiModelProperty(value = "Name of storage class")
-  public String storageClass = "standard";
+  public String storageClass = "";
 
   // Comma separated list of mount points for the devices in each instance (if specified).
   @ApiModelProperty(value = "Comma separated list of mount points for the devices in each instance")

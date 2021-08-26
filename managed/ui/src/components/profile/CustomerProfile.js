@@ -7,10 +7,10 @@ import { isNonAvailable, isDisabled, showOrRedirect, isNotHidden } from '../../u
 import { YBTabsWithLinksPanel } from '../panels';
 import { isDefinedNotNull } from '../../utils/ObjectUtils';
 import UserProfileForm from './UserProfileForm';
-import AlertProfileForm from './AlertProfileForm';
 import UserList from './UserList';
 import { YBLoading } from '../common/indicators';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import AlertProfileForm from './AlertProfileForm';
 
 export default class CustomerProfile extends Component {
   constructor(props) {
@@ -24,6 +24,7 @@ export default class CustomerProfile extends Component {
   componentDidMount() {
     const { customer } = this.props;
     this.props.getCustomerUsers();
+    this.props.validateRegistration();
     if (isNonAvailable(customer.features, 'main.profile')) browserHistory.push('/');
   }
 

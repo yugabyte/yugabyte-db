@@ -99,7 +99,7 @@ namespace docdb {
     ((kColumnId, 'K'))  /* ASCII code 75 */ \
     ((kDoubleDescending, 'L'))  /* ASCII code 76 */ \
     ((kFloatDescending, 'M')) /* ASCII code 77 */ \
-    ((kUInt32, 'O'))  /* ASCII code 78 */ \
+    ((kUInt32, 'O'))  /* ASCII code 79 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \

@@ -103,12 +103,14 @@ public class Region extends Model {
   }
 
   static class RegionDetails {
+
     public String sg_id; // Security group ID.
     public String vnet; // Vnet key.
   }
 
   @DbJson
   @Column(columnDefinition = "TEXT")
+  @ApiModelProperty(value = "UI ONLY: TODO @JsonIgnore after removing UI dependency", hidden = true)
   public RegionDetails details;
 
   public void setSecurityGroupId(String securityGroupId) {
@@ -119,6 +121,7 @@ public class Region extends Model {
     save();
   }
 
+  @ApiModelProperty(required = false)
   public String getSecurityGroupId() {
     if (details != null) {
       String sgNode = details.sg_id;
@@ -135,6 +138,7 @@ public class Region extends Model {
     save();
   }
 
+  @ApiModelProperty(required = false)
   public String getVnetName() {
     if (details != null) {
       String vnetNode = details.vnet;
@@ -154,7 +158,6 @@ public class Region extends Model {
       currConfig.put(key, configMap.get(key));
     }
     this.config = currConfig;
-    this.save();
   }
 
   @JsonProperty("config")
@@ -186,6 +189,7 @@ public class Region extends Model {
   public static Region create(Provider provider, String code, String name, String ybImage) {
     return create(provider, code, name, ybImage, 0.0, 0.0);
   }
+
   // Overload create function with lat, long values for OnPrem case
   public static Region create(
       Provider provider,

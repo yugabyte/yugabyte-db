@@ -132,6 +132,25 @@ public class UpgradeUniverseHandler {
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
 
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
+    // This is there only for legacy support, no need if rootCA and clientRootCA are different.
+    if (userIntent.enableClientToNodeEncrypt && requestParams.rootAndClientRootCASame) {
+      CertificateInfo rootCert = CertificateInfo.get(requestParams.rootCA);
+      if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+        CertificateHelper.createClientCertificate(
+            requestParams.rootCA,
+            String.format(
+                CertificateHelper.CERT_PATH,
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+                customer.uuid.toString(),
+                requestParams.rootCA.toString()),
+            CertificateHelper.DEFAULT_CLIENT,
+            null,
+            null);
+      }
+    }
+
     return submitUpgradeTask(
         TaskType.CertsRotate, CustomerTask.TaskType.CertsRotate, requestParams, customer, universe);
   }

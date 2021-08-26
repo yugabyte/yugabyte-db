@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @Entity
-@ApiModel(description = "Scheduled backup")
+@ApiModel(description = "Backup schedule")
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
   SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
@@ -56,7 +56,7 @@ public class Schedule extends Model {
     return scheduleUUID;
   }
 
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   @Column(nullable = false)
   private UUID customerUUID;
 
@@ -80,7 +80,10 @@ public class Schedule extends Model {
     return frequency;
   }
 
-  @ApiModelProperty(value = "Schedule task params", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Schedule task params",
+      accessMode = READ_WRITE,
+      dataType = "com.yugabyte.yw.commissioner.tasks.MultiTableBackup$Params")
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
@@ -89,7 +92,7 @@ public class Schedule extends Model {
     return taskParams;
   }
 
-  @ApiModelProperty(value = "Type of the task to be schedules", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Type of the task to be scheduled", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
@@ -119,12 +122,13 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
   }
 
-  public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
-
-  public static Schedule create(
-      UUID customerUUID, ITaskParams params, TaskType taskType, long frequency) {
-    return create(customerUUID, params, taskType, frequency, null);
+  public void setCronExperssionandTaskParams(String cronExpression, ITaskParams params) {
+    this.cronExpression = cronExpression;
+    this.taskParams = Json.toJson(params);
+    save();
   }
+
+  public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
   public static Schedule create(
       UUID customerUUID,

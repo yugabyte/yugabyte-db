@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -30,11 +31,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -51,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -74,6 +78,7 @@ public class NodeManager extends DevopsBase {
   // Currently we need to define the enum such that the lower case value matches the action
   public enum NodeCommandType {
     Provision,
+    Create,
     Configure,
     CronCheck,
     Destroy,
@@ -90,11 +95,19 @@ public class NodeManager extends DevopsBase {
     Replace_Root_Volume
   }
 
+  public enum CertRotateAction {
+    APPEND_NEW_ROOT_CERT,
+    REMOVE_OLD_ROOT_CERT,
+    ROTATE_CERTS,
+  }
+
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
   @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject ConfigHelper configHelper;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
@@ -151,21 +164,25 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--private_key_file");
         subCommand.add(keyInfo.privateKey);
 
-        // We only need to include keyPair name for setup server call and if this is aws.
-        if (params instanceof AnsibleSetupServer.Params
+        // We only need to include keyPair name for create instance method and if this is aws.
+        if ((params instanceof AnsibleCreateServer.Params
+                || params instanceof AnsibleSetupServer.Params)
             && userIntent.providerType.equals(Common.CloudType.aws)) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
-          // Also we will add the security group information.
-          Region r = params.getRegion();
-          String customSecurityGroupId = r.getSecurityGroupId();
-          if (customSecurityGroupId != null) {
-            subCommand.add("--security_group_id");
-            subCommand.add(customSecurityGroupId);
+          // Also we will add the security group information for create
+          if (params instanceof AnsibleCreateServer.Params) {
+            Region r = params.getRegion();
+            String customSecurityGroupId = r.getSecurityGroupId();
+            if (customSecurityGroupId != null) {
+              subCommand.add("--security_group_id");
+              subCommand.add(customSecurityGroupId);
+            }
           }
         }
       }
-      if (params instanceof AnsibleSetupServer.Params
+      // security group is only used during Azure create instance method
+      if (params instanceof AnsibleCreateServer.Params
           && userIntent.providerType.equals(Common.CloudType.azu)) {
         Region r = params.getRegion();
         String customSecurityGroupId = r.getSecurityGroupId();
@@ -183,7 +200,9 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if ((type == NodeCommandType.Provision || type == NodeCommandType.Destroy)
+      if ((type == NodeCommandType.Provision
+              || type == NodeCommandType.Destroy
+              || type == NodeCommandType.Create)
           && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
@@ -257,15 +276,29 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
-  // Return the List of Strings which gives the certificate paths for the specific taskParams
   private List<String> getCertificatePaths(
       AnsibleConfigureServers.Params taskParam, String nodeIP, String yb_home_dir) {
-    ArrayList<String> subcommandStrings = new ArrayList<String>();
+    return getCertificatePaths(
+        taskParam,
+        CertificateHelper.isRootCARequired(taskParam),
+        CertificateHelper.isClientRootCARequired(taskParam),
+        nodeIP,
+        yb_home_dir);
+  }
+
+  // Return the List of Strings which gives the certificate paths for the specific taskParams
+  private List<String> getCertificatePaths(
+      AnsibleConfigureServers.Params taskParam,
+      boolean isRootCARequired,
+      boolean isClientRootCARequired,
+      String nodeIP,
+      String yb_home_dir) {
+    ArrayList<String> subcommandStrings = new ArrayList<>();
 
     String serverCertFile = String.format("node.%s.crt", nodeIP);
     String serverKeyFile = String.format("node.%s.key", nodeIP);
 
-    if (CertificateHelper.isRootCARequired(taskParam)) {
+    if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
       subcommandStrings.add(yb_home_dir + "/yugabyte-tls-config");
 
@@ -293,18 +326,15 @@ public class NodeManager extends DevopsBase {
                   serverCertFile,
                   serverKeyFile);
               rootCertPath = rootCert.certificate;
-              serverCertPath =
-                  String.format("%s/%s", tempStorageDirectory.toString(), serverCertFile);
-              serverKeyPath =
-                  String.format("%s/%s", tempStorageDirectory.toString(), serverKeyFile);
+              serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
+              serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
 
               if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
                 // These client certs are used for node to postgres communication
-                // These are seprate from clientRoot certs which are used for server to client
+                // These are separate from clientRoot certs which are used for server to client
                 // communication These are not required anymore as this is not mandatory now and
-                // can be removed
-                // The code is still here to mantain backward compatibility
+                // can be removed. The code is still here to maintain backward compatibility
                 subcommandStrings.add("--client_cert_path");
                 subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
                 subcommandStrings.add("--client_key_path");
@@ -362,7 +392,7 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add("--certs_location");
       subcommandStrings.add(certsLocation);
     }
-    if (CertificateHelper.isClientRootCARequired(taskParam)) {
+    if (isClientRootCARequired) {
       subcommandStrings.add("--certs_client_dir");
       subcommandStrings.add(yb_home_dir + "/yugabyte-client-tls-config");
 
@@ -379,7 +409,8 @@ public class NodeManager extends DevopsBase {
             try {
               // Creating a temp directory to save Server Cert and Key from Root for the node
               Path tempStorageDirectory =
-                  Files.createTempDirectory(String.format("SelfSignedClient%s", taskParam.rootCA))
+                  Files.createTempDirectory(
+                          String.format("SelfSignedClient%s", taskParam.clientRootCA))
                       .toAbsolutePath();
               CertificateHelper.createServerCertificate(
                   taskParam.clientRootCA,
@@ -460,7 +491,26 @@ public class NodeManager extends DevopsBase {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
       if (releaseMetadata != null) {
-        ybServerPackage = releaseMetadata.filePath;
+        if (releaseMetadata.s3 != null) {
+          subcommand.add("--s3_remote_download");
+          ybServerPackage = releaseMetadata.s3.paths.x86_64;
+          subcommand.add("--aws_access_key");
+          subcommand.add(releaseMetadata.s3.accessKeyId);
+          subcommand.add("--aws_secret_key");
+          subcommand.add(releaseMetadata.s3.secretAccessKey);
+        } else if (releaseMetadata.gcs != null) {
+          subcommand.add("--gcs_remote_download");
+          ybServerPackage = releaseMetadata.gcs.paths.x86_64;
+          subcommand.add("--gcs_credentials_json");
+          subcommand.add(releaseMetadata.gcs.credentialsJson);
+        } else if (releaseMetadata.http != null) {
+          subcommand.add("--http_remote_download");
+          ybServerPackage = releaseMetadata.http.paths.x86_64;
+          subcommand.add("--http_package_checksum");
+          subcommand.add(releaseMetadata.http.paths.x86_64_checksum);
+        } else {
+          ybServerPackage = releaseMetadata.filePath;
+        }
       }
     }
 
@@ -647,13 +697,10 @@ public class NodeManager extends DevopsBase {
         break;
       case Certs:
         {
-          CertificateInfo cert = CertificateInfo.get(taskParam.rootCA);
-          if (cert == null) {
-            throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
+          if (taskParam.certRotateAction == null) {
+            throw new RuntimeException("Cert Rotation Action is null.");
           }
-          if (cert.certType == CertificateInfo.Type.SelfSigned) {
-            throw new RuntimeException("Self signed certs cannot be rotated.");
-          }
+
           String processType = taskParam.getProperty("processType");
           if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
@@ -661,103 +708,151 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--yb_process_type");
             subcommand.add(processType.toLowerCase());
           }
-          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-          subcommand.add("--rotating_certs");
-          subcommand.add("--root_cert_path");
-          subcommand.add(customCertInfo.rootCertPath);
-          subcommand.add("--node_cert_path");
-          subcommand.add(customCertInfo.nodeCertPath);
-          subcommand.add("--node_key_path");
-          subcommand.add(customCertInfo.nodeKeyPath);
-          subcommand.add("--certs_location");
-          subcommand.add(CERT_LOCATION_NODE);
-          if (taskParam.rootAndClientRootCASame
-              && taskParam.enableClientToNodeEncrypt
-              && customCertInfo.clientCertPath != null
-              && !customCertInfo.clientCertPath.isEmpty()
-              && customCertInfo.clientKeyPath != null
-              && !customCertInfo.clientKeyPath.isEmpty()) {
-            subcommand.add("--client_cert_path");
-            subcommand.add(customCertInfo.clientCertPath);
-            subcommand.add("--client_key_path");
-            subcommand.add(customCertInfo.clientKeyPath);
+
+          String yb_home_dir =
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+
+          subcommand.add("--cert_rotate_action");
+          subcommand.add(taskParam.certRotateAction.toString());
+
+          CertificateInfo rootCert = null;
+          if (taskParam.rootCA != null) {
+            rootCert = CertificateInfo.get(taskParam.rootCA);
+          }
+
+          switch (taskParam.certRotateAction) {
+            case APPEND_NEW_ROOT_CERT:
+            case REMOVE_OLD_ROOT_CERT:
+              {
+                if (taskParam.rootCARotationType != CertRotationType.RootCert) {
+                  throw new RuntimeException(
+                      taskParam.certRotateAction
+                          + " is needed only when there is rootCA rotation.");
+                }
+                if (rootCert == null) {
+                  throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
+                }
+                if (rootCert.certType == Type.CustomServerCert) {
+                  throw new RuntimeException(
+                      "Root certificate cannot be of type CustomServerCert.");
+                }
+
+                String rootCertPath = "";
+                String certsLocation = "";
+                if (rootCert.certType == Type.SelfSigned) {
+                  rootCertPath = rootCert.certificate;
+                  certsLocation = CERT_LOCATION_PLATFORM;
+                } else if (rootCert.certType == Type.CustomCertHostPath) {
+                  rootCertPath = rootCert.getCustomCertInfo().rootCertPath;
+                  certsLocation = CERT_LOCATION_NODE;
+                }
+
+                subcommand.add("--root_cert_path");
+                subcommand.add(rootCertPath);
+                subcommand.add("--certs_location");
+                subcommand.add(certsLocation);
+                subcommand.add("--certs_node_dir");
+                subcommand.add(certsNodeDir);
+              }
+              break;
+            case ROTATE_CERTS:
+              {
+                subcommand.addAll(
+                    getCertificatePaths(
+                        taskParam,
+                        taskParam.rootCARotationType != CertRotationType.None,
+                        taskParam.clientRootCARotationType != CertRotationType.None,
+                        node.cloudInfo.private_ip,
+                        yb_home_dir));
+              }
+              break;
           }
         }
         break;
       case ToggleTls:
-        String processType = taskParam.getProperty("processType");
-        String subType = taskParam.getProperty("taskSubType");
+        {
+          String processType = taskParam.getProperty("processType");
+          String subType = taskParam.getProperty("taskSubType");
 
-        if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
-          throw new RuntimeException("Invalid processType: " + processType);
-        } else {
-          subcommand.add("--yb_process_type");
-          subcommand.add(processType.toLowerCase());
-        }
-
-        String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
-        String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
-        String allowInsecureString = String.valueOf(taskParam.allowInsecure);
-
-        String yb_home_dir =
-            Provider.getOrBadRequest(
-                    UUID.fromString(
-                        universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
-                .getYbHome();
-        String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
-
-        if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
-          if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
-            subcommand.add("--adding_certs");
-          }
-          subcommand.addAll(getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
-        } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(subType)) {
-          Map<String, String> gflags = new HashMap<>();
-          if (taskParam.nodeToNodeChange > 0) {
-            gflags.put("use_node_to_node_encryption", nodeToNodeString);
-            gflags.put("use_client_to_server_encryption", clientToNodeString);
-            gflags.put("allow_insecure_connections", "true");
-            if (CertificateHelper.isRootCARequired(taskParam)) {
-              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-            }
-            if (CertificateHelper.isClientRootCARequired(taskParam)) {
-              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
-            }
-          } else if (taskParam.nodeToNodeChange < 0) {
-            gflags.put("allow_insecure_connections", "true");
+          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+            throw new RuntimeException("Invalid processType: " + processType);
           } else {
-            gflags.put("use_node_to_node_encryption", nodeToNodeString);
-            gflags.put("use_client_to_server_encryption", clientToNodeString);
-            gflags.put("allow_insecure_connections", allowInsecureString);
-            if (CertificateHelper.isRootCARequired(taskParam)) {
-              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-            }
-            if (CertificateHelper.isClientRootCARequired(taskParam)) {
-              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
-            }
+            subcommand.add("--yb_process_type");
+            subcommand.add(processType.toLowerCase());
           }
 
-          subcommand.add("--replace_gflags");
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-        } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(subType)) {
-          Map<String, String> gflags = new HashMap<>();
-          if (taskParam.nodeToNodeChange > 0) {
-            gflags.put("allow_insecure_connections", allowInsecureString);
-          } else if (taskParam.nodeToNodeChange < 0) {
-            gflags.put("use_node_to_node_encryption", nodeToNodeString);
-            gflags.put("use_client_to_server_encryption", clientToNodeString);
-            gflags.put("allow_insecure_connections", allowInsecureString);
-            gflags.put("certs_dir", certsNodeDir);
+          String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
+          String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
+          String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+
+          String yb_home_dir =
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+
+          if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
+            if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+              subcommand.add("--cert_rotate_action");
+              subcommand.add(CertRotateAction.ROTATE_CERTS.toString());
+            }
+            subcommand.addAll(
+                getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
+              .equals(subType)) {
+            Map<String, String> gflags = new HashMap<>();
+            if (taskParam.nodeToNodeChange > 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", "true");
+              if (CertificateHelper.isRootCARequired(taskParam)) {
+                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              }
+              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              }
+            } else if (taskParam.nodeToNodeChange < 0) {
+              gflags.put("allow_insecure_connections", "true");
+            } else {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              if (CertificateHelper.isRootCARequired(taskParam)) {
+                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              }
+              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              }
+            }
+
+            subcommand.add("--replace_gflags");
+            subcommand.add("--gflags");
+            subcommand.add(Json.stringify(Json.toJson(gflags)));
+          } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name()
+              .equals(subType)) {
+            Map<String, String> gflags = new HashMap<>();
+            if (taskParam.nodeToNodeChange > 0) {
+              gflags.put("allow_insecure_connections", allowInsecureString);
+            } else if (taskParam.nodeToNodeChange < 0) {
+              gflags.put("use_node_to_node_encryption", nodeToNodeString);
+              gflags.put("use_client_to_server_encryption", clientToNodeString);
+              gflags.put("allow_insecure_connections", allowInsecureString);
+              gflags.put("certs_dir", certsNodeDir);
+            } else {
+              LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+            }
+
+            subcommand.add("--replace_gflags");
+            subcommand.add("--gflags");
+            subcommand.add(Json.stringify(Json.toJson(gflags)));
           } else {
-            LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+            throw new RuntimeException("Invalid taskSubType property: " + subType);
           }
-
-          subcommand.add("--replace_gflags");
-          subcommand.add("--gflags");
-          subcommand.add(Json.stringify(Json.toJson(gflags)));
-        } else {
-          throw new RuntimeException("Invalid taskSubType property: " + subType);
         }
         break;
     }
@@ -789,12 +884,12 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
         // intentional fall-thru
-      case Provision:
+      case Create:
         {
-          if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
-            throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
+          if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
-          AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
+          AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
             commandArgs.add("--instance_type");
@@ -857,17 +952,11 @@ public class NodeManager extends DevopsBase {
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
-          }
-
-          // Systemd vs Cron Option
-          if (taskParam.useSystemd) {
-            commandArgs.add("--systemd_services");
-          }
-
-          if (taskParam.useTimeSync
-              && (cloudType.equals(Common.CloudType.aws)
-                  || cloudType.equals(Common.CloudType.gcp))) {
-            commandArgs.add("--use_chrony");
+            if (config.getBoolean("yb.cloud.enabled")
+                && taskParam.assignPublicIP
+                && taskParam.assignStaticPublicIP) {
+              commandArgs.add("--assign_static_public_ip");
+            }
           }
 
           if (cloudType.equals(Common.CloudType.aws)) {
@@ -879,11 +968,6 @@ public class NodeManager extends DevopsBase {
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
               commandArgs.add(taskParam.ipArnString);
-            }
-
-            if (!taskParam.remotePackagePath.isEmpty()) {
-              commandArgs.add("--remote_package_path");
-              commandArgs.add(taskParam.remotePackagePath);
             }
           }
           if (cloudType.equals(Common.CloudType.azu)) {
@@ -923,15 +1007,80 @@ public class NodeManager extends DevopsBase {
             }
           }
 
+          break;
+        }
+      case Provision:
+        {
+          if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
+          }
+          AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
+          Common.CloudType cloudType = userIntent.providerType;
+
+          // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws)) {
+            commandArgs.add("--instance_type");
+            commandArgs.add(taskParam.instanceType);
+          }
+
+          // gcp uses machine_image for ansible preprovision.yml
+          if (cloudType.equals(Common.CloudType.gcp)) {
+            String ybImage =
+                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+            if (ybImage != null && !ybImage.isEmpty()) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+          }
+
+          if (taskParam.isSystemdUpgrade) {
+            // Cron to Systemd Upgrade
+            commandArgs.add("--reuse_host");
+            commandArgs.add("--tags");
+            commandArgs.add("systemd_upgrade");
+            commandArgs.add("--systemd_services");
+          } else if (taskParam.useSystemd) {
+            // Systemd for new universes
+            commandArgs.add("--systemd_services");
+          }
+
+          if (taskParam.useTimeSync
+              && (cloudType.equals(Common.CloudType.aws)
+                  || cloudType.equals(Common.CloudType.gcp))) {
+            commandArgs.add("--use_chrony");
+          }
+
+          if (cloudType.equals(Common.CloudType.aws)) {
+            if (!taskParam.remotePackagePath.isEmpty()) {
+              commandArgs.add("--remote_package_path");
+              commandArgs.add(taskParam.remotePackagePath);
+            }
+          }
+
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+            DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
+            // Need volume_type in GCP provision to determine correct device names for mounting
+            if (deviceInfo.storageType != null && cloudType.equals(Common.CloudType.gcp)) {
+              commandArgs.add("--volume_type");
+              commandArgs.add(deviceInfo.storageType.toString().toLowerCase());
+            }
+          }
+
           String localPackagePath = getThirdpartyPackagePath();
           if (localPackagePath != null) {
             commandArgs.add("--local_package_path");
             commandArgs.add(localPackagePath);
           }
 
-          if (taskParam.reprovision) {
-            commandArgs.add("--reuse_host");
-            commandArgs.add("--reprovision");
+          // right now we only need explicit python installation for CentOS 8 graviton instances
+          if (taskParam.instanceType != null
+              && configHelper
+                  .getGravitonInstancePrefixList()
+                  .stream()
+                  .anyMatch(taskParam.instanceType::startsWith)) {
+            commandArgs.add("--install_python");
           }
 
           break;
@@ -944,8 +1093,13 @@ public class NodeManager extends DevopsBase {
           AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params) nodeTaskParam;
           commandArgs.addAll(getConfigureSubCommand(taskParam));
 
-          // Systemd vs Cron Option
-          if (taskParam.useSystemd) {
+          if (taskParam.isSystemdUpgrade) {
+            // Cron to Systemd Upgrade
+            commandArgs.add("--tags");
+            commandArgs.add("systemd_upgrade");
+            commandArgs.add("--systemd_services");
+          } else if (taskParam.useSystemd) {
+            // Systemd for new universes
             commandArgs.add("--systemd_services");
           }
 
@@ -977,6 +1131,9 @@ public class NodeManager extends DevopsBase {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (appConfig.getBoolean("yb.cloud.enabled") && userIntent.assignStaticPublicIP) {
+            commandArgs.add("--delete_static_public_ip");
+          }
           break;
         }
       case Pause:

@@ -758,13 +758,15 @@ class CatalogManager :
   CHECKED_STATUS SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
 
-  CHECKED_STATUS DeleteTablet(
-      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
+  // Deletes a tablet that is no longer serving user requests. This would require that the tablet
+  // has been split and both of its children are now in RUNNING state and serving user requests
+  // instead.
+  CHECKED_STATUS DeleteNotServingTablet(
+      const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   CHECKED_STATUS DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
-
-  CHECKED_STATUS DeleteTablets(const std::vector<TabletId>& tablet_ids);
 
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
@@ -787,7 +789,8 @@ class CatalogManager :
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
-      CollectFlags flags);
+      CollectFlags flags,
+      std::unordered_set<NamespaceId>* namespaces = nullptr);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -1218,6 +1221,9 @@ class CatalogManager :
   // Report metrics.
   void ReportMetrics();
 
+  // Reset metrics.
+  void ResetMetrics();
+
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
 
@@ -1297,6 +1303,10 @@ class CatalogManager :
       SysRowEntry::Type type) {
     return SnapshotSchedulesToObjectIdsMap();
   }
+
+  Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
+                           DeleteNamespaceResponsePB* resp,
+                           rpc::RpcContext* rpc);
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it

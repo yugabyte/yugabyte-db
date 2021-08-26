@@ -9,8 +9,9 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import io.ebean.Finder;
@@ -21,6 +22,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -241,6 +243,28 @@ public class CertificateInfo extends Model {
     return cert;
   }
 
+  public static CertificateInfo createCopy(
+      CertificateInfo certificateInfo, String label, String certFilePath)
+      throws IOException, NoSuchAlgorithmException {
+    CertificateInfo copy = new CertificateInfo();
+    copy.uuid = UUID.randomUUID();
+    copy.customerUUID = certificateInfo.customerUUID;
+    copy.label = label;
+    copy.startDate = certificateInfo.startDate;
+    copy.expiryDate = certificateInfo.expiryDate;
+    copy.privateKey = certificateInfo.privateKey;
+    copy.certificate = certFilePath;
+    copy.certType = certificateInfo.certType;
+    copy.checksum = Util.getFileChecksum(certFilePath);
+    copy.customCertInfo = certificateInfo.customCertInfo;
+    copy.save();
+    return copy;
+  }
+
+  public static boolean isTemporary(CertificateInfo certificateInfo) {
+    return certificateInfo.certificate.endsWith("ca.multi.root.crt");
+  }
+
   private static final Finder<UUID, CertificateInfo> find =
       new Finder<UUID, CertificateInfo>(CertificateInfo.class) {};
 
@@ -280,12 +304,21 @@ public class CertificateInfo extends Model {
   }
 
   public static List<CertificateInfo> getAllNoChecksum() {
-    return find.query().where().isNull("checksum").findList();
+    List<CertificateInfo> certificateInfoList = find.query().where().isNull("checksum").findList();
+    return certificateInfoList
+        .stream()
+        .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+        .collect(Collectors.toList());
   }
 
   public static List<CertificateInfo> getAll(UUID customerUUID) {
     List<CertificateInfo> certificateInfoList =
         find.query().where().eq("customer_uuid", customerUUID).findList();
+    certificateInfoList =
+        certificateInfoList
+            .stream()
+            .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+            .collect(Collectors.toList());
     populateUniverseData(customerUUID, certificateInfoList);
     return certificateInfoList;
   }
@@ -305,7 +338,7 @@ public class CertificateInfo extends Model {
     return true;
   }
 
-  @Transient private Boolean inUse = null;
+  @VisibleForTesting @Transient Boolean inUse = null;
 
   @ApiModelProperty(
       value = "Indicates whether the Certificate is in use or not",
@@ -323,22 +356,22 @@ public class CertificateInfo extends Model {
     this.inUse = inUse;
   }
 
-  @Transient private ArrayNode universeDetails = null;
+  @VisibleForTesting @Transient List<UniverseDetailSubset> universeDetailSubsets = null;
 
   @ApiModelProperty(
       value = "Associated universe details of the Certificate",
       accessMode = READ_ONLY)
-  public ArrayNode getUniverseDetails() {
-    if (universeDetails == null) {
+  public List<UniverseDetailSubset> getUniverseDetails() {
+    if (universeDetailSubsets == null) {
       Set<Universe> universes = Universe.universeDetailsIfCertsExists(this.uuid, this.customerUUID);
       return Util.getUniverseDetails(universes);
     } else {
-      return universeDetails;
+      return universeDetailSubsets;
     }
   }
 
-  public void setUniverseDetails(ArrayNode universeDetails) {
-    this.universeDetails = universeDetails;
+  public void setUniverseDetails(List<UniverseDetailSubset> universeDetailSubsets) {
+    this.universeDetailSubsets = universeDetailSubsets;
   }
 
   public static void populateUniverseData(
@@ -378,7 +411,7 @@ public class CertificateInfo extends Model {
                 Util.getUniverseDetails(certificateUniverseMap.get(certificateInfo.uuid)));
           } else {
             certificateInfo.setInUse(false);
-            certificateInfo.setUniverseDetails(Json.newArray());
+            certificateInfo.setUniverseDetails(new ArrayList<>());
           }
         });
   }

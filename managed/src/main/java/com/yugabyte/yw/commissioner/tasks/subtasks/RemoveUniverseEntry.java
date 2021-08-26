@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
@@ -34,5 +35,11 @@ public class RemoveUniverseEntry extends UniverseTaskBase {
     customer.removeUniverseUUID(taskParams().universeUUID);
     customer.save();
     Universe.delete(taskParams().universeUUID);
+
+    alertConfigurationService.handleSourceRemoval(
+        taskParams().customerUUID,
+        AlertConfiguration.TargetType.UNIVERSE,
+        taskParams().universeUUID);
+    metricService.handleSourceRemoval(taskParams().customerUUID, taskParams().universeUUID);
   }
 }

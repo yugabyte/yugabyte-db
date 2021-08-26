@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
@@ -167,7 +168,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return result of the universe update operation.
    */
   @Deprecated
-  @ApiOperation(value = "Upgrade  the universe", response = YWResults.YWTask.class, hidden = true)
+  @ApiOperation(
+      value = "Upgrade a universe",
+      notes = "Queues a task to perform an upgrade and a rolling restart in a universe.",
+      nickname = "upgradeUniverse",
+      response = YWResults.YWTask.class,
+      hidden = true)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "upgrade_params",
@@ -186,7 +192,10 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
   }
 
-  @ApiOperation(value = "updateDiskSize", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Update a universe's disk size",
+      nickname = "updateDiskSize",
+      response = YWResults.YWTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "univ_def",
@@ -201,6 +210,34 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     UUID taskUUID =
         universeCRUDHandler.updateDiskSize(
             customer, universe, bindFormDataToTaskParams(request(), DiskIncreaseFormData.class));
+    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
+    return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
+  }
+
+  /**
+   * Wrapper API that performs either TLS toggle or Cert Rotation based on request parameters
+   *
+   * @return result of the universe update operation.
+   */
+  @ApiOperation(
+      value = "Update TLS configuration",
+      response = YWResults.YWTask.class,
+      hidden = true)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "update_tls_params",
+          value = "update_tls_params",
+          dataType = "com.yugabyte.yw.forms.TlsConfigUpdateParams",
+          required = true,
+          paramType = "body"))
+  public Result tlsConfigUpdate(UUID customerUUID, UUID universeUUID) {
+    LOG.info("TLS config update: {} for {}.", customerUUID, universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    TlsConfigUpdateParams taskParams =
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+            request(), TlsConfigUpdateParams.class);
+    UUID taskUUID = universeCRUDHandler.tlsConfigUpdate(customer, universe, taskParams);
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
   }

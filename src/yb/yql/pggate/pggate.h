@@ -62,6 +62,10 @@ class PgApiImpl {
   PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
   virtual ~PgApiImpl();
 
+  const YBCPgCallbacks* pg_callbacks() {
+    return &pg_callbacks_;
+  }
+
   //------------------------------------------------------------------------------------------------
   // Access function to Pggate attribute.
   client::YBClient* client() {
@@ -500,7 +504,7 @@ class PgApiImpl {
     std::unique_ptr<rpc::Messenger> messenger;
   };
 
-  void ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
+  Result<client::YBClient::TabletServersInfo> ListTabletServers();
 
  private:
   // Control variables.

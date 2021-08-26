@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -72,6 +73,8 @@ public class AsyncReplicationPlatformSyncTest extends FakeDBApplication {
     }
 
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
+    when(baseTaskDependencies.getExecutorFactory())
+        .thenReturn(app.injector().instanceOf(YBThreadPoolExecutorFactory.class));
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
 
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();

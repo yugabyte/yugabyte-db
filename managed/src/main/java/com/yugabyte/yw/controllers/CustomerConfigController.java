@@ -23,7 +23,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
-    value = "Customer Config",
+    value = "Customer Configuration",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
@@ -31,7 +31,7 @@ public class CustomerConfigController extends AuthenticatedController {
   @Inject private CustomerConfigValidator configValidator;
 
   @ApiOperation(
-      value = "Create customer configuration",
+      value = "Create a customer configuration",
       response = CustomerConfig.class,
       nickname = "createCustomerConfig")
   @ApiImplicitParams({
@@ -54,13 +54,20 @@ public class CustomerConfigController extends AuthenticatedController {
       throw new YWServiceException(BAD_REQUEST, errorJson);
     }
 
+    String configName = formData.get("configName").textValue();
+    CustomerConfig existentConfig = CustomerConfig.get(customerUUID, configName);
+    if (existentConfig != null) {
+      throw new YWServiceException(
+          CONFLICT, String.format("Configuration %s already exists", configName));
+    }
+
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     auditService().createAuditEntry(ctx(), request(), formData);
     return YWResults.withData(customerConfig);
   }
 
   @ApiOperation(
-      value = "Delete customer configuration",
+      value = "Delete a customer configuration",
       response = YWResults.YWSuccess.class,
       nickname = "deleteCustomerConfig")
   public Result delete(UUID customerUUID, UUID configUUID) {
@@ -71,7 +78,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List of customer configuration",
+      value = "List all customer configurations",
       response = CustomerConfig.class,
       responseContainer = "List",
       nickname = "getListOfCustomerConfig")
@@ -80,7 +87,7 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List of customer configuration",
+      value = "Update a customer configuration",
       response = CustomerConfig.class,
       nickname = "getCustomerConfig")
   @ApiImplicitParams({
@@ -96,6 +103,14 @@ public class CustomerConfigController extends AuthenticatedController {
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
       throw new YWServiceException(BAD_REQUEST, errorJson);
+    }
+
+    String configName = formData.get("configName").textValue();
+    CustomerConfig existentConfig = CustomerConfig.get(customerUUID, configName);
+    if (existentConfig != null
+        && !StringUtils.equals(existentConfig.configUUID.toString(), configUUID.toString())) {
+      throw new YWServiceException(
+          CONFLICT, String.format("Configuration %s already exists", configName));
     }
 
     CustomerConfig config = CustomerConfig.getOrBadRequest(customerUUID, configUUID);

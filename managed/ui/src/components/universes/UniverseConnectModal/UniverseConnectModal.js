@@ -124,6 +124,7 @@ class UniverseConnectModal extends Component {
       const {
         universeDetails: { clusters, communicationPorts }
       } = universeInfo;
+
       const primaryCluster = getPrimaryCluster(clusters);
       const userIntent = primaryCluster && primaryCluster.userIntent;
       const universeId = universeInfo.universeUUID;
@@ -153,7 +154,16 @@ class UniverseConnectModal extends Component {
           </YBCodeBlock>
         </Fragment>
       );
+      const isTLSEnabled = userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt;
       const connectIp = this.state.connectIp || '127.0.0.1';
+      const jdbcConnection = `jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`;
+      
+      const jdbcTLSConnection = `${jdbcConnection} --sslmode=require`;
+      const ysqlConnection = 'bin/ysqlsh';
+      const ySqlTLSConnection = `${ysqlConnection} --sslmode=require`;
+      const ycqlConnection = 'bin/ycqlsh';
+      const yCqlTLSConnection = `SSL_CERTFILE=<path to ca.crt> ycqlsh --ssl 172.151.37.101 9042`;
+
       content = (
         <Fragment>
           <h4>Services</h4>
@@ -164,7 +174,7 @@ class UniverseConnectModal extends Component {
                   <td>JDBC</td>
                   <td>:</td>
                   <td title={`jdbc:postgresql://${connectIp}:${ysqlRpcPort}/yugabyte`}>
-                    jdbc:postgresql://{connectIp}:{ysqlRpcPort}/yugabyte
+                    {isTLSEnabled ? jdbcTLSConnection : jdbcConnection}
                   </td>
                 </tr>
                 {(userIntent.enableYSQL ||
@@ -172,13 +182,13 @@ class UniverseConnectModal extends Component {
                   <tr>
                     <td>YSQL Shell</td>
                     <td>: </td>
-                    <td>bin/ysqlsh</td>
+                    <td>{isTLSEnabled ? ySqlTLSConnection : ysqlConnection}</td>
                   </tr>
                 )}
                 <tr>
                   <td>YCQL Shell</td>
                   <td>: </td>
-                  <td>bin/ycqlsh</td>
+                  <td>{isTLSEnabled ? yCqlTLSConnection : ycqlConnection}</td>
                 </tr>
                 {(userIntent.enableYEDIS ||
                   isEnabled(

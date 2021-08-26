@@ -11,7 +11,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -33,16 +33,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.commissioner.CleanExpiredMetrics;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.QueryAlerts;
+import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -57,6 +58,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import org.junit.After;
 import org.junit.Test;
 import org.pac4j.play.CallbackController;
@@ -66,32 +69,25 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.modules.swagger.SwaggerModule;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
 public class SessionControllerTest {
 
-  private HealthChecker mockHealthChecker;
-  private Scheduler mockScheduler;
-  private CallHome mockCallHome;
-  private CallbackController mockCallbackController;
-  private PlayCacheSessionStore mockSessionStore;
-  private QueryAlerts mockQueryAlerts;
-  private CleanExpiredMetrics mockCleanExpiredMetrics;
-  private AlertConfigurationWriter mockAlertConfigurationWriter;
-  private AlertRouteService alertRouteService;
+  private AlertDestinationService alertDestinationService;
 
   private Application app;
 
   private void startApp(boolean isMultiTenant) {
-    mockHealthChecker = mock(HealthChecker.class);
-    mockScheduler = mock(Scheduler.class);
-    mockCallHome = mock(CallHome.class);
-    mockCallbackController = mock(CallbackController.class);
-    mockSessionStore = mock(PlayCacheSessionStore.class);
-    mockQueryAlerts = mock(QueryAlerts.class);
-    mockCleanExpiredMetrics = mock(CleanExpiredMetrics.class);
-    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
+    HealthChecker mockHealthChecker = mock(HealthChecker.class);
+    Scheduler mockScheduler = mock(Scheduler.class);
+    CallHome mockCallHome = mock(CallHome.class);
+    CallbackController mockCallbackController = mock(CallbackController.class);
+    PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
+    QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
+    PlatformMetricsProcessor mockPlatformMetricsProcessor = mock(PlatformMetricsProcessor.class);
+    AlertConfigurationWriter mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
             .disable(SwaggerModule.class)
@@ -103,7 +99,8 @@ public class SessionControllerTest {
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
             .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
-            .overrides(bind(CleanExpiredMetrics.class).toInstance(mockCleanExpiredMetrics))
+            .overrides(
+                bind(PlatformMetricsProcessor.class).toInstance(mockPlatformMetricsProcessor))
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();
@@ -111,10 +108,12 @@ public class SessionControllerTest {
 
     AlertService alertService = new AlertService();
     AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
-    AlertDefinitionGroupService alertDefinitionGroupService =
-        new AlertDefinitionGroupService(
+    AlertConfigurationService alertConfigurationService =
+        new AlertConfigurationService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    AlertChannelService alertChannelService = new AlertChannelService();
+    alertDestinationService =
+        new AlertDestinationService(alertChannelService, alertConfigurationService);
   }
 
   @After
@@ -139,14 +138,16 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testLoginWithInvalidPassword() {
+  public void testLoginWithInvalidPassword()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer();
     ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
     loginJson.put("password", "password1");
-    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    Result result =
+        routeWithYWErrHandler(fakeRequest("POST", "/api/login").bodyJson(loginJson), app);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
@@ -192,7 +193,8 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testInsecureLoginWithoutReadOnlyUser() {
+  public void testInsecureLoginWithoutReadOnlyUser()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     ModelFactory.testUser(customer, "tc1@test.com", Role.Admin);
@@ -200,18 +202,19 @@ public class SessionControllerTest {
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
 
-    Result result = route(fakeRequest("GET", "/api/insecure_login"));
+    Result result = routeWithYWErrHandler(fakeRequest("GET", "/api/insecure_login"), app);
     assertUnauthorized(result, "No read only customer exists.");
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
-  public void testInsecureLoginInvalid() {
+  public void testInsecureLoginInvalid()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     ModelFactory.testUser(customer);
 
-    Result result = route(fakeRequest("GET", "/api/insecure_login"));
+    Result result = routeWithYWErrHandler(fakeRequest("GET", "/api/insecure_login"), app);
 
     assertUnauthorized(result, "Insecure login unavailable.");
     assertAuditEntry(0, customer.uuid);
@@ -242,7 +245,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertAuditEntry(0, c1.uuid);
-    assertNotNull(alertRouteService.getDefaultRoute(c1.uuid));
+    assertNotNull(alertDestinationService.getDefaultDestination(c1.uuid));
   }
 
   @Test
@@ -296,7 +299,8 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testRegisterMultiCustomerNoAuth() {
+  public void testRegisterMultiCustomerNoAuth()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
@@ -318,13 +322,15 @@ public class SessionControllerTest {
     registerJson2.put("password", "pAssw_0rd");
     registerJson2.put("name", "Foo");
 
-    result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson2));
+    result =
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson2), app);
 
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
 
   @Test
-  public void testRegisterMultiCustomerWrongAuth() {
+  public void testRegisterMultiCustomerWrongAuth()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
@@ -364,10 +370,11 @@ public class SessionControllerTest {
     registerJson3.put("name", "Foo");
 
     result =
-        route(
+        routeWithYWErrHandler(
             fakeRequest("POST", "/api/register")
                 .bodyJson(registerJson3)
-                .header("X-AUTH-TOKEN", authToken2));
+                .header("X-AUTH-TOKEN", authToken2),
+            app);
 
     assertBadRequest(result, "Only Super Admins can register tenant.");
   }
@@ -390,7 +397,8 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testRegisterCustomerExceedingLimit() {
+  public void testRegisterCustomerExceedingLimit()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     ModelFactory.testCustomer("Test Customer 1");
     ObjectNode registerJson = Json.newObject();
@@ -398,7 +406,8 @@ public class SessionControllerTest {
     registerJson.put("email", "foo2@bar.com");
     registerJson.put("password", "pAssw_0rd");
     registerJson.put("name", "Foo");
-    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    Result result =
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson), app);
     assertBadRequest(result, "Cannot register multiple accounts in Single tenancy.");
   }
 
@@ -543,33 +552,38 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testProxyRequestInvalidFormat() {
+  public void testProxyRequestInvalidFormat()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    Result result =
-        doRequestWithAuthToken(
-            "GET", "/universes/" + universe.universeUUID + "/proxy/www.test.com", authToken);
+    Http.RequestBuilder request =
+        fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/www.test.com")
+            .header("X-AUTH-TOKEN", authToken);
+    Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(result, "Invalid proxy request");
   }
 
   @Test
-  public void testProxyRequestInvalidIP() {
+  public void testProxyRequestInvalidIP()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer);
     String authToken = user.createAuthToken();
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
-    Result result =
-        doRequestWithAuthToken(
-            "GET", "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000", authToken);
+    Http.RequestBuilder request =
+        fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + "127.0.0.1:7000")
+            .header("X-AUTH-TOKEN", authToken);
+    Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(result, "Invalid proxy request");
   }
 
   @Test
-  public void testProxyRequestInvalidPort() {
+  public void testProxyRequestInvalidPort()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer);
@@ -590,20 +604,22 @@ public class SessionControllerTest {
     universe = Universe.getOrBadRequest(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     System.out.println("PRIVATE IP: " + node.cloudInfo.private_ip);
-    Result result =
-        doRequestWithAuthToken(
-            "GET",
-            "/universes/"
-                + universe.universeUUID
-                + "/proxy/"
-                + node.cloudInfo.private_ip
-                + ":7001/",
-            authToken);
+    Http.RequestBuilder request =
+        fakeRequest(
+                "GET",
+                "/universes/"
+                    + universe.universeUUID
+                    + "/proxy/"
+                    + node.cloudInfo.private_ip
+                    + ":7001/")
+            .header("X-AUTH-TOKEN", authToken);
+    Result result = routeWithYWErrHandler(request, app);
     assertBadRequest(result, "Invalid proxy request");
   }
 
   @Test
-  public void testProxyRequestValid() {
+  public void testProxyRequestValid()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer);
@@ -624,9 +640,10 @@ public class SessionControllerTest {
     universe = Universe.getOrBadRequest(universe.universeUUID);
     NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.stream().findFirst().get();
     String nodeAddr = node.cloudInfo.private_ip + ":" + node.masterHttpPort;
-    Result result =
-        doRequestWithAuthToken(
-            "GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/", authToken);
+    Http.RequestBuilder request =
+        fakeRequest("GET", "/universes/" + universe.universeUUID + "/proxy/" + nodeAddr + "/")
+            .header("X-AUTH-TOKEN", authToken);
+    Result result = routeWithYWErrHandler(request, app);
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
     assertInternalServerError(

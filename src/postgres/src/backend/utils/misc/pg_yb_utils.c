@@ -49,6 +49,7 @@
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "common/pg_yb_common.h"
+#include "executor/ybcExpr.h"
 
 #include "utils/resowner_private.h"
 
@@ -58,6 +59,7 @@
 #include "access/tupdesc.h"
 
 #include "tcop/utility.h"
+#include "utils/datum.h"
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -103,7 +105,6 @@ CheckIsYBSupportedRelationByKind(char relkind)
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
 		  relkind == RELKIND_PARTITIONED_INDEX))
-
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -443,6 +444,7 @@ YBInitPostgresBackend(
 		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
+		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -1360,10 +1362,9 @@ yb_servers(PG_FUNCTION_ARGS)
                        "public_ip", TEXTOID, -1, 0);
     funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
-    // Assuming not more than 1000 servers
-    YBCServerDescriptor **servers = (YBCServerDescriptor**)palloc0(1000 * sizeof(YBCServerDescriptor *));
+    YBCServerDescriptor *servers = NULL;
     int numservers = 0;
-    YBCGetTabletServerHosts(servers, &numservers);
+    HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
     funcctx->max_calls = numservers;
     funcctx->user_fctx = servers;
     MemoryContextSwitchTo(oldcontext);
@@ -1374,9 +1375,8 @@ yb_servers(PG_FUNCTION_ARGS)
     Datum		values[8];
     bool		nulls[8];
     HeapTuple	tuple;
-    YBCServerDescriptor** servers = (YBCServerDescriptor **)funcctx->user_fctx;
     int cntr = funcctx->call_cntr;
-    YBCServerDescriptor *server = *(servers + cntr);
+    YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
     bool is_primary = server->isPrimary;
     const char *node_type = is_primary ? "primary" : "read_replica";
     // TODO: Remove hard coding of port and num_connections
@@ -1403,4 +1403,74 @@ bool IsYBSupportedLibcLocale(const char *localebuf) {
 		return true;
 	return strcasecmp(localebuf, "en_US.utf8") == 0 ||
 		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
+}
+
+Datum
+yb_hash_code(PG_FUNCTION_ARGS)
+{
+	/* Create buffer for hashing */
+	char *arg_buf;
+
+	size_t size = 0;
+	for (int i = 0; i < PG_NARGS(); i++)
+	{
+		Oid	argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+
+		if (unlikely(argtype == UNKNOWNOID))
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+				errmsg("undefined datatype given to yb_hash_code")));
+			PG_RETURN_NULL();
+		}
+
+		size_t typesize;
+		const YBCPgTypeEntity *typeentity =
+				 YBCDataTypeFromOidMod(InvalidAttrNumber, argtype);
+		YBCStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity, 
+							PG_ARGISNULL(i), &typesize);
+		if (unlikely(!YBCStatusIsOK(status))) 
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("Unsupported datatype given to yb_hash_code"),
+				errdetail("Only types supported by HASH key columns are allowed"),
+				errhint("Use explicit casts to ensure input types are as desired")));
+			PG_RETURN_NULL();
+		}
+		size += typesize;
+	}
+
+	arg_buf = alloca(size);
+
+	/* TODO(Tanuj): Look into caching the above buffer */
+
+	char *arg_buf_pos = arg_buf;
+	
+	size_t total_bytes = 0;
+	for (int i = 0; i < PG_NARGS(); i++)
+	{
+		Oid	argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+		const YBCPgTypeEntity *typeentity =
+				 YBCDataTypeFromOidMod(InvalidAttrNumber, argtype);
+		size_t written;
+		YBCStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity, 
+							PG_ARGISNULL(i), arg_buf_pos, &written);
+		if (unlikely(!YBCStatusIsOK(status))) 
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("Unsupported datatype given to yb_hash_code"),
+				errdetail("Only types supported by HASH key columns are allowed"),
+				errhint("Use explicit casts to ensure input types are as desired")));
+			PG_RETURN_NULL();
+		}
+		arg_buf_pos += written;
+
+		total_bytes += written;
+	}
+
+	/* hash the contents of the buffer and return */
+	uint16_t hashed_val = YBCCompoundHash(arg_buf, total_bytes);
+	PG_RETURN_UINT16(hashed_val);
 }

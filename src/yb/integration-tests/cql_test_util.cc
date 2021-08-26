@@ -422,6 +422,7 @@ CassandraStatement CassandraPrepared::Bind() {
 }
 
 const MonoDelta kCassandraTimeOut = 20s * kTimeMultiplier;
+const std::string kCqlTestKeyspace = "test";
 
 CppCassandraDriver::CppCassandraDriver(
     const std::vector<std::string>& hosts, uint16_t port,
@@ -467,8 +468,9 @@ Result<CassandraSession> CppCassandraDriver::CreateSession() {
 
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver) {
   auto session = VERIFY_RESULT(driver->CreateSession());
-  RETURN_NOT_OK(session.ExecuteQuery("CREATE KEYSPACE IF NOT EXISTS test;"));
-  RETURN_NOT_OK(session.ExecuteQuery("USE test;"));
+  RETURN_NOT_OK(
+      session.ExecuteQuery(Format("CREATE KEYSPACE IF NOT EXISTS $0;", kCqlTestKeyspace)));
+  RETURN_NOT_OK(session.ExecuteQuery(Format("USE $0;", kCqlTestKeyspace)));
   return session;
 }
 

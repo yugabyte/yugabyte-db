@@ -49,16 +49,6 @@ class RestoreSysCatalogState {
   // Prepare write batch with object changes.
   CHECKED_STATUS PrepareWriteBatch(const Schema& schema, docdb::DocWriteBatch* write_batch);
 
-  // Prepare write batch to delete obsolete tablet.
-  CHECKED_STATUS PrepareTabletCleanup(
-      const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
-      docdb::DocWriteBatch* write_batch);
-
-  // Prepare write batch to delete obsolete table.
-  CHECKED_STATUS PrepareTableCleanup(
-      const TableId& id, SysTablesEntryPB pb, const Schema& schema,
-      docdb::DocWriteBatch* write_batch);
-
   void WriteToRocksDB(
       docdb::DocWriteBatch* pg_catalog_write_batch, const yb::HybridTime& write_time,
       const yb::OpId& op_id, tablet::Tablet* tablet);
@@ -78,14 +68,9 @@ class RestoreSysCatalogState {
  private:
   struct Objects;
 
-  // Patch table versions, so restored tables will have greater schema version to force schema
-  // update.
-  CHECKED_STATUS PatchVersions();
-
   // Determine entries that should be restored. I.e. apply filter and serialize.
   template <class ProcessEntry>
-  CHECKED_STATUS DetermineEntries(
-      const Objects& objects, bool is_restoration_objects, const ProcessEntry& process_entry);
+  CHECKED_STATUS DetermineEntries(Objects* objects, const ProcessEntry& process_entry);
 
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
@@ -93,28 +78,39 @@ class RestoreSysCatalogState {
       std::unordered_map<std::string, PB>* map);
 
   template <class PB>
-  void AddRestoringEntry(const std::string& id, const PB& pb, faststring* buffer);
+  CHECKED_STATUS AddRestoringEntry(
+      const std::string& id, PB* pb, faststring* buffer);
 
-  void CheckExistingEntry(
-      const std::string& id, const SysNamespaceEntryPB& pb, faststring* buffer);
+  Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
+  Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);
+  Result<bool> PatchRestoringEntry(const std::string& id, SysTabletsEntryPB* pb);
 
-  void CheckExistingEntry(
-      const std::string& id, const SysTabletsEntryPB& pb, faststring* buffer);
+  CHECKED_STATUS CheckExistingEntry(
+      const std::string& id, const SysNamespaceEntryPB& pb);
 
-  void CheckExistingEntry(
-      const std::string& id, const SysTablesEntryPB& pb, faststring* buffer);
+  CHECKED_STATUS CheckExistingEntry(
+      const std::string& id, const SysTablesEntryPB& pb);
+
+  CHECKED_STATUS CheckExistingEntry(
+      const std::string& id, const SysTabletsEntryPB& pb);
 
   CHECKED_STATUS LoadObjects(const Schema& schema, const docdb::DocDB& doc_db,
                              HybridTime read_time, Objects* objects);
+
+  // Prepare write batch to delete obsolete tablet.
+  CHECKED_STATUS PrepareTabletCleanup(
+      const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
+      docdb::DocWriteBatch* write_batch);
+
+  // Prepare write batch to delete obsolete table.
+  CHECKED_STATUS PrepareTableCleanup(
+      const TableId& id, SysTablesEntryPB pb, const Schema& schema,
+      docdb::DocWriteBatch* write_batch);
 
   struct Objects {
     std::unordered_map<NamespaceId, SysNamespaceEntryPB> namespaces;
     std::unordered_map<TableId, SysTablesEntryPB> tables;
     std::unordered_map<TabletId, SysTabletsEntryPB> tablets;
-
-    Result<bool> MatchTable(
-        const SnapshotScheduleFilterPB& filter, const TableId& id,
-        const SysTablesEntryPB& table) const;
 
     std::string SizesToString() const;
   };

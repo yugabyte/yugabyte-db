@@ -85,6 +85,10 @@ class GrowableBuffer : public StreamReadBuffer {
   inline size_t capacity_left() const { return buffers_.size() * block_size_ - size_ - pos_; }
   inline size_t limit() const { return limit_; }
 
+  size_t DataAvailable() override {
+    return size_;
+  }
+
   bool Full() override { return pos_ + size_ >= limit_; }
 
   void Swap(GrowableBuffer* rhs);

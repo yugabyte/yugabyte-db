@@ -151,6 +151,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
@@ -427,6 +428,9 @@ TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
 DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
                  "Slows down the alter table rpc's send and response handler so that the TServer "
                  "has a heartbeat delay and triggers tablet leader change.");
+
+DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
+                 "Whether to reject DeleteNotServingTablet RPC.");
 
 namespace yb {
 namespace master {
@@ -1052,6 +1056,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
     RETURN_NOT_OK(Load<RoleLoader>("roles", term));
     RETURN_NOT_OK(Load<SysConfigLoader>("sys config", term));
   }
+  // Clear the hidden tablets vector.
+  hidden_tablets_.clear();
+
   RETURN_NOT_OK(Load<TableLoader>("tables", term));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", term));
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", term));
@@ -1177,7 +1184,8 @@ bool CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
       initial_snapshot_writer_.emplace();
     }
 
-    Status status = PgWrapper::InitDbForYSQL(master_addresses_str, "/tmp");
+    Status status = PgWrapper::InitDbForYSQL(
+        master_addresses_str, "/tmp", master_->GetSharedMemoryFd());
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
       Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
@@ -1867,7 +1875,7 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   // namespace.
   vector<NamespaceId> namespace_id_vec;
   {
-    LockGuard lock(mutex_);
+    SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
@@ -2403,33 +2411,27 @@ Status CatalogManager::SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
-Status CatalogManager::DeleteTablets(const std::vector<TabletId>& tablet_ids) {
-  std::vector<TabletInfoPtr> tablet_infos;
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
+Status CatalogManager::DeleteNotServingTablet(
+    const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const auto& tablet_id = req->tablet_id();
+  const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
 
-    for (const auto& id : tablet_ids) {
-      auto it = tablet_map_->find(id);
-      if (it == tablet_map_->end()) {
-        return STATUS_FORMAT(NotFound, "Tablet $0 not found", id);
-      }
-      tablet_infos.push_back(it->second);
-    }
+  if (PREDICT_FALSE(FLAGS_TEST_reject_delete_not_serving_tablet_rpc)) {
+    TEST_SYNC_POINT("CatalogManager::DeleteNotServingTablet:Reject");
+    return STATUS(
+        InvalidArgument, "Rejecting due to FLAGS_TEST_reject_delete_not_serving_tablet_rpc");
   }
 
-  for (const auto& tablet_info : tablet_infos) {
-    RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(tablet_info->table()));
-    RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
-  }
+  const auto& table_info = tablet_info->table();
 
+  RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(table_info));
+
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
+
+  // TODO(pitr) TODO(tsplit) pass retained_by_snapshot_schedules?
   return DeleteTabletListAndSendRequests(
-      tablet_infos, "Tablet deleted upon request at " + LocalTimeAsString(), {});
-}
-
-Status CatalogManager::DeleteTablet(
-    const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc) {
-  return DeleteTablets({ req->tablet_id() });
+      { tablet_info }, "Not serving tablet deleted upon request at " + LocalTimeAsString(), {});
 }
 
 Status CatalogManager::DdlLog(
@@ -3215,8 +3217,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         "Could not submit VerifyTransaction to thread pool");
   }
 
-  LOG(INFO) << "Successfully created " << object_type << " " << table->ToString()
-            << " per request from " << RequestorString(rpc);
+  LOG(INFO) << "Successfully created " << object_type << " " << table->ToString() << " in "
+            << ns->ToString() << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
 
   if (FLAGS_master_enable_metrics_snapshotter &&
@@ -3870,6 +3872,7 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceByIdUnlocked(
     const NamespaceId& id) const {
   auto it = namespace_ids_map_.find(id);
   if (it == namespace_ids_map_.end()) {
+    VLOG_WITH_FUNC(4) << "Not found: " << id << "\n" << GetStackTrace();
     return STATUS(NotFound, "Keyspace identifier not found", id,
                   MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
   }
@@ -4300,6 +4303,9 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   for (const auto& table : tables) {
+    LOG(INFO)
+        << "Deleting table: " << table.info->name() << ", retained by: "
+        << AsString(table.retained_by_snapshot_schedules, &TryFullyDecodeUuid);
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
@@ -6553,30 +6559,40 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
 Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
                                        DeleteNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
+  auto status = DoDeleteNamespace(req, resp, rpc);
+  if (!status.ok()) {
+    return SetupError(resp->mutable_error(), status);
+  }
+  return status;
+}
+
+Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
+                                         DeleteNamespaceResponsePB* resp,
+                                         rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteNamespace request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
 
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up keyspace");
-  auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
+  auto ns = VERIFY_RESULT(FindNamespace(req->namespace_()));
 
   if (req->has_database_type() && req->database_type() != ns->database_type()) {
     // Could not find the right database to delete.
-    Status s = STATUS(NotFound, "Keyspace not found", ns->name());
-    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    return STATUS(NotFound, "Keyspace not found", ns->name(),
+                  MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
   }
   {
     // Don't allow deletion if the namespace is in a transient state.
     auto cur_state = ns->state();
     if (cur_state != SysNamespaceEntryPB::RUNNING && cur_state != SysNamespaceEntryPB::FAILED) {
       if (cur_state == SysNamespaceEntryPB::DELETED) {
-        Status s = STATUS(NotFound, "Keyspace already deleted", ns->name());
-        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+        return STATUS(NotFound, "Keyspace already deleted", ns->name(),
+                      MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
       } else {
-        Status s = STATUS_SUBSTITUTE(
-            TryAgain, "Namespace deletion not allowed when State = $0",
+        return STATUS_EC_FORMAT(
+            TryAgain, MasterError(MasterErrorPB::IN_TRANSITION_CAN_RETRY),
+            "Namespace deletion not allowed when State = $0",
             SysNamespaceEntryPB::State_Name(cur_state));
-        return SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
       }
     }
   }
@@ -6599,11 +6615,11 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
       auto ltm = entry.second->LockForRead();
 
       if (!ltm->started_deleting() && ltm->namespace_id() == ns->id()) {
-        Status s = STATUS(InvalidArgument,
-                          Substitute("Cannot delete keyspace which has $0: $1 [id=$2]",
-                                     IsTable(ltm->pb) ? "table" : "index",
-                                     ltm->name(), entry.second->id()), req->DebugString());
-        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
+        return STATUS_EC_FORMAT(
+            InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
+            "Cannot delete keyspace which has $0: $1 [id=$2], request: $3",
+            IsTable(ltm->pb) ? "table" : "index", ltm->name(), entry.second->id(),
+            req->ShortDebugString());
       }
     }
 
@@ -6614,10 +6630,23 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
       auto ltm = entry.second->LockForRead();
 
       if (ltm->namespace_id() == ns->id()) {
-        Status s = STATUS(InvalidArgument,
-            Substitute("Cannot delete keyspace which has type: $0 [id=$1]",
-                ltm->name(), entry.second->id()), req->DebugString());
-        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
+        return STATUS_EC_FORMAT(
+            InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
+            "Cannot delete keyspace which has type: $0 [id=$1], request: $2",
+            ltm->name(), entry.second->id(), req->ShortDebugString());
+      }
+    }
+  }
+
+  // Disallow deleting namespaces with snapshot schedules.
+  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::NAMESPACE));
+  for (const auto& schedule_and_objects : map) {
+    for (const auto& id : schedule_and_objects.second) {
+      if (id == ns->id()) {
+        return STATUS_EC_FORMAT(
+            InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
+            "Cannot delete keyspace which has schedule: $0, request: $1",
+            schedule_and_objects.first, req->ShortDebugString());
       }
     }
   }
@@ -6628,10 +6657,9 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   Status s = sys_catalog_->Delete(leader_ready_term(), ns);
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s.ToString();
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    s = s.CloneAndPrepend("An error occurred while updating sys-catalog");
+    LOG(WARNING) << s;
+    return CheckIfNoLongerLeader(s);
   }
 
   // Update the in-memory state.
@@ -7925,7 +7953,7 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
   }
 
   vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
+  table->GetAllTablets(&tablets, IncludeSplitTablets::kTrue);
 
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
@@ -7988,6 +8016,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     } else {
       LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
       tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      tablet->table()->RemoveSplitTablet(tablet->id());
     }
     if (tablet_lock->ListedAsHidden() && !was_hidden) {
       marked_as_hidden.push_back(tablet);
@@ -9205,6 +9234,12 @@ void CatalogManager::ReportMetrics() {
   metric_num_tablet_servers_dead_->set_value(ts_descs.size() - num_live_servers);
 }
 
+void CatalogManager::ResetMetrics() {
+  metric_num_tablet_servers_live_->set_value(0);
+  metric_num_tablet_servers_dead_->set_value(0);
+}
+
+
 std::string CatalogManager::LogPrefix() const {
   if (tablet_peer()) {
     return consensus::MakeTabletLogPrefix(
@@ -9666,7 +9701,8 @@ Status CatalogManager::CollectTable(
 
 Result<vector<TableDescription>> CatalogManager::CollectTables(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
-    CollectFlags flags) {
+    CollectFlags flags,
+    std::unordered_set<NamespaceId>* namespaces) {
   std::vector<std::pair<TableInfoPtr, CollectFlags>> table_with_flags;
 
   {
@@ -9674,14 +9710,25 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
     for (const auto& table_id_pb : table_identifiers) {
       if (table_id_pb.table_name().empty() && table_id_pb.table_id().empty() &&
           table_id_pb.has_namespace_()) {
+        auto namespace_info = FindNamespaceUnlocked(table_id_pb.namespace_());
+        if (!namespace_info.ok()) {
+          if (namespace_info.status().IsNotFound()) {
+            continue;
+          }
+          return namespace_info.status();
+        }
+        if (namespaces) {
+          namespaces->insert((**namespace_info).id());
+        }
+
+
         auto ns_collect_flags = flags;
         // Don't collect indexes, since they should be in the same namespace and will be collected
         // as regular tables.
         // It is necessary because we don't support kAddIndexes for YSQL tables.
         ns_collect_flags.Reset(CollectFlag::kAddIndexes);
-        auto namespace_info = VERIFY_RESULT(FindNamespaceUnlocked(table_id_pb.namespace_()));
         VLOG_WITH_PREFIX_AND_FUNC(1)
-            << "Collecting all tables from: " << namespace_info->ToString() << ", specified as: "
+            << "Collecting all tables from: " << (**namespace_info).ToString() << ", specified as: "
             << table_id_pb.namespace_().ShortDebugString();
         for (const auto& id_and_table : *table_ids_map_) {
           if (id_and_table.second->is_system()) {
@@ -9689,7 +9736,7 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
             continue;
           }
           auto lock = id_and_table.second->LockForRead();
-          if (lock->namespace_id() != namespace_info->id()) {
+          if (lock->namespace_id() != (**namespace_info).id()) {
             VLOG_WITH_PREFIX_AND_FUNC(4)
                 << "Rejected table from other namespace: " << AsString(id_and_table);
             continue;

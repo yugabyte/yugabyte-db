@@ -31,6 +31,7 @@ import {
   isUniverseType
 } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
@@ -45,6 +46,7 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import './UniverseDetail.scss';
+import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
 
@@ -209,6 +211,7 @@ class UniverseDetail extends Component {
       showSoftwareUpgradesModal,
       showTLSConfigurationModal,
       showRollingRestartModal,
+      showUpgradeSystemdModal,
       showRunSampleAppsModal,
       showGFlagsModal,
       showManageKeyModal,
@@ -225,6 +228,10 @@ class UniverseDetail extends Component {
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
+    const primaryCluster = getPrimaryCluster(
+      universe?.currentUniverse?.data?.universeDetails?.clusters
+    );
+    const useSystemd = primaryCluster?.userIntent?.useSystemd;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -283,6 +290,11 @@ class UniverseDetail extends Component {
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
+    let manageKeyAvailability = getFeatureState(
+      currentCustomer.data.features,
+      'universes.details.overview.manageEncryption'
+    );
+
     // enable edit TLS menu item for onprem universes with rootCA of a "CustomCertHostPath" type
     if (isEnabled(editTLSAvailability)) {
       if (isOnpremUniverse(currentUniverse.data) && Array.isArray(customer.userCertificates.data)) {
@@ -538,6 +550,21 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       )}
 
+                      {!universePaused && !useSystemd && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showUpgradeSystemdModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.systemdUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade To Systemd
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
+
                       {!isReadOnlyUniverse &&
                         !universePaused &&
                         isNotHidden(
@@ -703,25 +730,13 @@ class UniverseDetail extends Component {
                   subMenus={{
                     security: (backToMainMenu) => (
                       <>
-                        <MenuItem onClick={backToMainMenu}>
-                          <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">Back</YBLabelWithIcon>
-                        </MenuItem>
-                        <MenuItem divider />
-                        <YBMenuItem
-                          onClick={showTLSConfigurationModal}
-                          availability={editTLSAvailability}
-                        >
-                          Encryption in-Transit
-                        </YBMenuItem>
-                        <YBMenuItem
-                          onClick={showManageKeyModal}
-                          availability={getFeatureState(
-                            currentCustomer.data.features,
-                            'universes.details.overview.manageEncryption'
-                          )}
-                        >
-                          Encryption at-Rest
-                        </YBMenuItem>
+                      <SecurityMenu
+                          backToMainMenu={backToMainMenu}
+                          showTLSConfigurationModal={showTLSConfigurationModal}
+                          editTLSAvailability={editTLSAvailability}
+                          showManageKeyModal={showManageKeyModal}
+                          manageKeyAvailability={manageKeyAvailability}
+                        />
                       </>
                     )
                   }}
@@ -736,7 +751,8 @@ class UniverseDetail extends Component {
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
               visibleModal === 'tlsConfigurationModal' ||
-              visibleModal === 'rollingRestart')
+              visibleModal === 'rollingRestart' ||
+              visibleModal === 'systemdUpgrade')
           }
           onHide={closeModal}
         />

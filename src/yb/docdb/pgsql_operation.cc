@@ -137,6 +137,7 @@ Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     bool is_explicit_request_read_time) {
+  VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << yb::ToString(request);
 
   common::YQLRowwiseIteratorIf::UniPtr result;
   // TODO(neil) Remove the following IF block when it is completely obsolete.
@@ -167,6 +168,15 @@ Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
           actual_read_time.read = start_sub_doc_key.hybrid_time();
         }
       }
+    } else if (request.is_for_backfill()) {
+      RSTATUS_DCHECK(is_explicit_request_read_time, InvalidArgument,
+                     "Backfill request should already be using explicit read times.");
+      PgsqlBackfillSpecPB spec;
+      spec.ParseFromString(a2b_hex(request.backfill_spec()));
+      if (!spec.next_row_key().empty()) {
+        KeyBytes start_key_bytes(spec.next_row_key());
+        RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+      }
     }
     RETURN_NOT_OK(ql_storage.GetIterator(
         request, projection, schema, txn_op_context,
@@ -174,6 +184,27 @@ Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
   }
   return std::move(result);
 }
+
+class DocKeyColumnPathBuilder {
+ public:
+  explicit DocKeyColumnPathBuilder(const RefCntPrefix& doc_key)
+      : doc_key_(doc_key.as_slice()) {
+  }
+
+  RefCntPrefix Build(ColumnIdRep column_id) {
+    buffer_.Clear();
+    buffer_.AppendValueType(ValueType::kColumnId);
+    buffer_.AppendColumnId(ColumnId(column_id));
+    RefCntBuffer path(doc_key_.size() + buffer_.size());
+    doc_key_.CopyTo(path.data());
+    buffer_.AsSlice().CopyTo(path.data() + doc_key_.size());
+    return path;
+  }
+
+ private:
+  Slice doc_key_;
+  KeyBytes buffer_;
+};
 
 } // namespace
 
@@ -604,35 +635,57 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
   *level = RequireReadSnapshot() ? IsolationLevel::SNAPSHOT_ISOLATION
                                  : IsolationLevel::SERIALIZABLE_ISOLATION;
 
-  if (mode == GetDocPathsMode::kIntents) {
-    const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
-    if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
-        request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
-      column_values = &request_.column_values();
-    } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-      column_values = &request_.column_new_values();
-    }
-
-    if (column_values != nullptr && !column_values->empty()) {
-      KeyBytes buffer;
-      for (const auto& column_value : *column_values) {
-        ColumnId column_id(column_value.column_id());
-        Slice doc_key = encoded_doc_key_.as_slice();
-        buffer.Clear();
-        buffer.AppendValueType(ValueType::kColumnId);
-        buffer.AppendColumnId(column_id);
-        RefCntBuffer path(doc_key.size() + buffer.size());
-        memcpy(path.data(), doc_key.data(), doc_key.size());
-        buffer.AsSlice().CopyTo(path.data() + doc_key.size());
-        paths->push_back(RefCntPrefix(path));
+  switch (mode) {
+    case GetDocPathsMode::kLock: {
+      // Weak intent is required to lock the row and prevent it from being removed.
+      // For this purpose path for row's SystemColumnIds::kLivenessColumn column is returned.
+      // The caller code will create strong intent for returned path (raw's column doc key)
+      // and weak intents for all its prefixes (including row's doc key).
+      if (!encoded_doc_key_) {
+        return Status::OK();
       }
-      return Status::OK();
+      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
+        // In case of UPDATE some columns may have expressions instead of exact value.
+        // These expressions may read column value.
+        // Potentially expression for updating column v1 may read value of column v2.
+        //
+        // UPDATE t SET v = v + 10 WHERE k = 1
+        // UPDATE t SET v1 = v2 + 10 WHERE k = 1
+        //
+        // Strong intent for the whole row is required in this case as it may be too expensive to
+        // determine what exact columns are read by the expression.
+
+        for (const auto& column_value : request_.column_new_values()) {
+          if (!column_value.expr().has_value()) {
+            paths->push_back(encoded_doc_key_);
+            return Status::OK();
+          }
+        }
+      }
+      DocKeyColumnPathBuilder builder(encoded_doc_key_);
+      paths->push_back(builder.Build(to_underlying(SystemColumnIds::kLivenessColumn)));
+      break;
+    }
+    case GetDocPathsMode::kIntents: {
+      const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
+      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
+          request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
+        column_values = &request_.column_values();
+      } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
+        column_values = &request_.column_new_values();
+      }
+
+      if (column_values != nullptr && !column_values->empty()) {
+        DocKeyColumnPathBuilder builder(encoded_doc_key_);
+        for (const auto& column_value : *column_values) {
+          paths->push_back(builder.Build(column_value.column_id()));
+        }
+      } else if (encoded_doc_key_) {
+        paths->push_back(encoded_doc_key_);
+      }
+      break;
     }
   }
-  if (encoded_doc_key_) {
-    paths->push_back(encoded_doc_key_);
-  }
-
   return Status::OK();
 }
 
@@ -662,7 +715,7 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
            "ybctid arguments can be batched only");
     fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
         ql_storage, deadline, read_time, schema,
-        request_.unknown_ybctid_allowed(), result_buffer, restart_read_ht));
+        result_buffer, restart_read_ht));
   } else if (request_.has_sampling_state()) {
     fetched_rows = VERIFY_RESULT(ExecuteSample(
         ql_storage, deadline, read_time, is_explicit_request_read_time, schema,
@@ -920,7 +973,6 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const Schema& schema,
-                                                      bool unknown_ybctid_allowed,
                                                       faststring *result_buffer,
                                                       HybridTime *restart_read_ht) {
   Schema projection;
@@ -933,20 +985,16 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
     RETURN_NOT_OK(ql_storage.GetIterator(request_.stmt_id(), projection, schema, txn_op_context_,
                                          deadline, read_time, batch_argument.ybctid().value(),
                                          &table_iter_));
-    row.Clear();
 
-    if (!VERIFY_RESULT(table_iter_->HasNext())) {
-      if (unknown_ybctid_allowed) {
-        continue;
-      } else {
-        return STATUS(Corruption, "Given ybctid is not associated with any row in table");
-      }
+    if (VERIFY_RESULT(table_iter_->HasNext())) {
+      row.Clear();
+      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
+
+      // Populate result set.
+      RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
+      response_.add_batch_orders(batch_argument.order());
+      row_count++;
     }
-    RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
-
-    // Populate result set.
-    RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-    row_count++;
   }
 
   // Set status for this batch.

@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.models;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -31,6 +28,8 @@ import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @ApiModel(description = "Customers Task Information.")
@@ -122,6 +121,9 @@ public class CustomerTask extends Model {
     @EnumValue("VMImageUpgrade")
     VMImageUpgrade,
 
+    @EnumValue("SystemdUpgrade")
+    SystemdUpgrade,
+
     @Deprecated
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
@@ -175,7 +177,25 @@ public class CustomerTask extends Model {
     StartMaster,
 
     @EnumValue("CreateAlertDefinitions")
-    CreateAlertDefinitions;
+    CreateAlertDefinitions,
+
+    @EnumValue("ExternalScript")
+    ExternalScript,
+
+    @EnumValue("CreateXClusterReplication")
+    CreateXClusterReplication,
+
+    @EnumValue("DeleteXClusterReplication")
+    DeleteXClusterReplication,
+
+    @EnumValue("EditXClusterReplication")
+    EditXClusterReplication,
+
+    @EnumValue("PauseXClusterReplication")
+    PauseXClusterReplication,
+
+    @EnumValue("ResumeXClusterReplication")
+    ResumeXClusterReplication;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -193,6 +213,8 @@ public class CustomerTask extends Model {
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case SystemdUpgrade:
+          return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case CertsRotate:
@@ -231,6 +253,18 @@ public class CustomerTask extends Model {
           return completed ? "Started Master process on " : "Starting Master process on ";
         case CreateAlertDefinitions:
           return completed ? "Created alert definitions " : "Creating alert definitions ";
+        case ExternalScript:
+          return completed ? "Script execution completed " : "Script execution is running";
+        case CreateXClusterReplication:
+          return completed ? "Created xCluster replication " : "Creating xCluster replication ";
+        case DeleteXClusterReplication:
+          return completed ? "Deleted xCluster replication " : "Deleting xCluster replication ";
+        case EditXClusterReplication:
+          return completed ? "Edited xCluster replication " : "Editing xCluster replication ";
+        case PauseXClusterReplication:
+          return completed ? "Paused xCluster replication " : "Pausing xCluster replication ";
+        case ResumeXClusterReplication:
+          return completed ? "Resumed xCluster replication " : "Resuming xCluster replication ";
         default:
           return null;
       }

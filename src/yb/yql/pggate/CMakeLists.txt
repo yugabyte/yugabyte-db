@@ -43,7 +43,8 @@ set(PGGATE_SRCS
     pg_txn_manager.cc
     pg_value.cc
     pg_memctx.cc
-    pg_callbacks.cc)
+    pg_callbacks.cc
+    pg_tools.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc

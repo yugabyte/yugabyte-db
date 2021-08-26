@@ -11,20 +11,21 @@
 package com.yugabyte.yw.models.helpers;
 
 public enum KnownAlertLabels {
-  GROUP_UUID,
-  GROUP_TYPE,
+  CONFIGURATION_UUID,
+  CONFIGURATION_TYPE,
   DEFINITION_UUID,
   DEFINITION_NAME,
   UNIVERSE_UUID,
   UNIVERSE_NAME,
   CUSTOMER_UUID,
-  TARGET_UUID,
-  TARGET_NAME,
-  TARGET_TYPE,
+  SOURCE_UUID,
+  SOURCE_NAME,
+  SOURCE_TYPE,
   ALERT_STATE,
   SEVERITY,
   THRESHOLD,
-  ERROR_MESSAGE;
+  ERROR_MESSAGE,
+  NODE_NAME;
 
   public String labelName() {
     return name().toLowerCase();

@@ -238,6 +238,9 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 			HeapTupleSetOid(tuple, GetNewOid(rel));
 	}
 
+	if (IsYsqlUpgrade && HeapTupleGetOid(tuple) >= FirstNormalObjectId)
+		elog(ERROR, "rows inserted during YSQL upgrade must have OIDs below user range");
+
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(dboid,
 	                              relid,
@@ -716,14 +719,8 @@ bool YBCExecuteUpdate(Relation rel,
 		if (!IsRealYBColumn(rel, attnum))
 			continue;
 
-		/*
-		 * Skip unmodified columns if possible.
-		 * Note: we only do this for the single-row case, as otherwise there
-		 * might be triggers that modify the heap tuple to set (other) columns
-		 * (e.g. using the SPI module functions).
-		 */
 		int bms_idx = attnum - YBGetFirstLowInvalidAttributeNumber(rel);
-		if (isSingleRow && !whole_row && !bms_is_member(bms_idx, updatedCols))
+		if (!whole_row && !bms_is_member(bms_idx, updatedCols))
 			continue;
 
 		/* Assign this attr's value, handle expression pushdown if needed. */

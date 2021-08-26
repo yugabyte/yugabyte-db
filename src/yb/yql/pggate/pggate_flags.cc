@@ -67,6 +67,13 @@ DEFINE_int32(ysql_max_read_restart_attempts, 20,
 DEFINE_test_flag(bool, ysql_disable_transparent_cache_refresh_retry, false,
     "Never transparently retry commands that fail with cache version mismatch error");
 
+DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms, 0,
+    "Inject delay between creation and dispatch of RPC ops for testing");
+
+DEFINE_test_flag(bool, index_read_multiple_partitions, false,
+      "Test flag used to set only one partiton to the variable table_partitions_ while testing"
+      "tablet splitting.");
+
 DEFINE_int32(ysql_output_buffer_size, 262144,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "

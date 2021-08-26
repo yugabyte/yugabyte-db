@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.UpgradeSoftware;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -95,13 +97,21 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       UUID targetUUID,
       CustomerTask.TargetType targetType,
       CustomerTask.TaskType taskType,
+      TaskType taskInfoType,
       String targetName,
       String status,
       double percentComplete) {
     ObjectNode responseJson = Json.newObject();
     UUID taskUUID =
         createTaskWithStatusAndResponse(
-            targetUUID, targetType, taskType, targetName, status, percentComplete, responseJson);
+            targetUUID,
+            targetType,
+            taskType,
+            taskInfoType,
+            targetName,
+            status,
+            percentComplete,
+            responseJson);
     when(mockCommissioner.mayGetStatus(taskUUID)).thenReturn(Optional.of(responseJson));
     return taskUUID;
   }
@@ -110,11 +120,17 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       UUID targetUUID,
       CustomerTask.TargetType targetType,
       CustomerTask.TaskType taskType,
+      TaskType taskInfoType,
       String targetName,
       String status,
       double percentComplete,
       ObjectNode responseJson) {
     UUID taskUUID = UUID.randomUUID();
+    TaskInfo taskInfo = new TaskInfo(taskInfoType);
+    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.setTaskDetails(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.save();
     CustomerTask task =
         CustomerTask.create(customer, targetUUID, taskUUID, targetType, taskType, targetName);
     responseJson.put("status", status);
@@ -178,12 +194,55 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpgradeSoftwareTask() {
+    String authToken = user.createAuthToken();
+    UUID universeUUID = UUID.randomUUID();
+    ObjectNode versionNumbers = Json.newObject();
+    final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
+    final String YB_PREV_SOFTWARE_VERSION = "ybPrevSoftwareVersion";
+    versionNumbers.put(YB_SOFTWARE_VERSION, "{Previous Version}");
+    versionNumbers.put(YB_PREV_SOFTWARE_VERSION, "{Current Version}");
+    UUID upgradeUUID =
+        createTaskWithStatus(
+            universeUUID,
+            CustomerTask.TargetType.Universe,
+            UpgradeSoftware,
+            TaskType.SoftwareUpgrade,
+            "Foo",
+            "Success",
+            100.0);
+    String url = "/api/customers/" + customer.uuid + "/tasks";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
+    //    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertTrue(json.isObject());
+    JsonNode universeTasks = json.get(universeUUID.toString());
+    JsonNode upgradeTask = universeTasks.get(0);
+
+    TaskInfo taskInfo = TaskInfo.get(upgradeUUID);
+    taskInfo.setTaskDetails(versionNumbers);
+    JsonNode taskDetails = taskInfo.getTaskDetails();
+    assertTrue(
+        ((upgradeTask.get("type").asText().equals("UpgradeSoftware")
+                && taskDetails.has(YB_PREV_SOFTWARE_VERSION)))
+            || (!upgradeTask.get("type").asText().equals("UpgradeSoftware")
+                && !taskDetails.has(YB_SOFTWARE_VERSION)));
+  }
+
+  @Test
   public void testFetchTaskWithFailedSubtasks() {
     String authToken = user.createAuthToken();
     UUID universeUUID = UUID.randomUUID();
     UUID taskUUID =
         createTaskWithStatus(
-            universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Failure", 50.0);
+            universeUUID,
+            CustomerTask.TargetType.Universe,
+            Create,
+            TaskType.CreateUniverse,
+            "Foo",
+            "Failure",
+            50.0);
     UUID subTaskUUID =
         createSubTask(taskUUID, 0, TaskType.AnsibleSetupServer, TaskInfo.State.Failure);
 
@@ -216,15 +275,33 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     UUID taskUUID =
         createTaskWithStatus(
-            universeUUID, CustomerTask.TargetType.Universe, Create, "Foo", "Running", 50.0);
+            universeUUID,
+            CustomerTask.TargetType.Universe,
+            Create,
+            TaskType.CreateUniverse,
+            "Foo",
+            "Running",
+            50.0);
 
     UUID providerUUID = UUID.randomUUID();
     UUID providerTaskUUID1 =
         createTaskWithStatus(
-            providerUUID, CustomerTask.TargetType.Provider, Create, "Foo", "Success", 100.0);
+            providerUUID,
+            CustomerTask.TargetType.Provider,
+            Create,
+            TaskType.CreateUniverse,
+            "Foo",
+            "Success",
+            100.0);
     UUID providerTaskUUID2 =
         createTaskWithStatus(
-            providerUUID, CustomerTask.TargetType.Provider, Update, "Foo", "Running", 10.0);
+            providerUUID,
+            CustomerTask.TargetType.Provider,
+            Update,
+            TaskType.UpgradeUniverse,
+            "Foo",
+            "Running",
+            10.0);
 
     String url = "/api/customers/" + customer.uuid + "/tasks";
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
@@ -261,9 +338,14 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
 
     UUID providerUUID = UUID.randomUUID();
-    UUID providerTaskUUID2 =
-        createTaskWithStatus(
-            providerUUID, CustomerTask.TargetType.Provider, Update, "Foo", "Running", 10.0);
+    createTaskWithStatus(
+        providerUUID,
+        CustomerTask.TargetType.Provider,
+        Update,
+        TaskType.UpgradeUniverse,
+        "Foo",
+        "Running",
+        10.0);
 
     String url = "/api/customers/" + customer.uuid + "/tasks_list";
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
@@ -295,11 +377,18 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             universe.universeUUID,
             CustomerTask.TargetType.Universe,
             Create,
+            TaskType.CreateUniverse,
             "Foo",
             "Running",
             50.0);
     createTaskWithStatus(
-        universe1.universeUUID, CustomerTask.TargetType.Universe, Create, "Bar", "Running", 90.0);
+        universe1.universeUUID,
+        CustomerTask.TargetType.Universe,
+        Create,
+        TaskType.CreateUniverse,
+        "Bar",
+        "Running",
+        90.0);
     String url = "/api/customers/" + customer.uuid + "/tasks_list?uUUID=" + universe.universeUUID;
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, authToken);
     assertEquals(OK, result.status());
@@ -319,6 +408,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             universe.universeUUID,
             CustomerTask.TargetType.Universe,
             Create,
+            TaskType.CreateUniverse,
             "Foo",
             "Success",
             100.0);
@@ -354,11 +444,18 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             universe.universeUUID,
             CustomerTask.TargetType.Universe,
             Create,
+            TaskType.CreateUniverse,
             "Foo",
             "Running",
             50.0);
     createTaskWithStatus(
-        universe1.universeUUID, CustomerTask.TargetType.Universe, Create, "Bar", "Running", 90.0);
+        universe1.universeUUID,
+        CustomerTask.TargetType.Universe,
+        Create,
+        TaskType.CreateUniverse,
+        "Bar",
+        "Running",
+        90.0);
     Result result =
         FakeApiHelper.doRequestWithAuthToken(
             "GET",
@@ -386,6 +483,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
                     universe.universeUUID,
                     CustomerTask.TargetType.Universe,
                     Create,
+                    TaskType.CreateUniverse,
                     "Foo",
                     "Running",
                     50.0));
@@ -407,6 +505,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             universe.universeUUID,
             CustomerTask.TargetType.Universe,
             Create,
+            TaskType.CreateUniverse,
             "Foo",
             "Success",
             100.0);
@@ -431,6 +530,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             universe.universeUUID,
             CustomerTask.TargetType.Universe,
             Create,
+            TaskType.CreateUniverse,
             "Foo",
             "Success",
             100.0,

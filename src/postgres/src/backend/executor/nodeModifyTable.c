@@ -68,6 +68,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
+#include "utils/typcache.h"
 
 /*  YB includes. */
 #include "access/sysattr.h"
@@ -122,6 +123,9 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 
 		if (tle->resjunk)
 			continue;			/* ignore junk tlist items */
+
+		if (IsYsqlUpgrade && tle->resno == ObjectIdAttributeNumber)
+			continue;			/* ignore oid system column used in YSQL upgrade */
 
 		if (attno >= resultDesc->natts)
 			ereport(ERROR,
@@ -328,9 +332,22 @@ ExecInsert(ModifyTableState *mtstate,
 	 * rows, this'd be the place to do it.  For the moment, we make a point of
 	 * doing this before calling triggers, so that a user-supplied trigger
 	 * could hack the OID if desired.
+	 *
+	 * YB note:
+	 * --------
+	 * YSQL upgrade introduces a hacky way for INSERT to set OID implemented
+	 * via tts_yb_insert_oid. It would become obsolete after upgrade to PG 12
+	 * which would make oid a regular column.
 	 */
 	if (resultRelationDesc->rd_rel->relhasoids)
-		HeapTupleSetOid(tuple, InvalidOid);
+	{
+		Oid tuple_oid = InvalidOid;
+
+		if (IsYsqlUpgrade && IsYBRelation(resultRelationDesc))
+			tuple_oid = slot->tts_yb_insert_oid;
+
+		HeapTupleSetOid(tuple, tuple_oid);
+	}
 
 	/*
 	 * BEFORE ROW INSERT Triggers.
@@ -600,7 +617,7 @@ ExecInsert(ModifyTableState *mtstate,
 		}
 	}
 
-  if (canSetTag)
+	if (canSetTag)
 	{
 		(estate->es_processed)++;
 		estate->es_lastoid = newId;
@@ -1010,6 +1027,83 @@ ldelete:;
 }
 
 /* ----------------------------------------------------------------
+ * YBEqualDatums
+ *
+ * Function compares values of lhs and rhs datums with respect to value type and collation.
+ *
+ * Returns true in case value of lhs and rhs datums match.
+ * ----------------------------------------------------------------
+ */
+static bool
+YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
+{
+	TypeCacheEntry *typentry = lookup_type_cache(atttypid, TYPECACHE_CMP_PROC_FINFO);
+	if (!OidIsValid(typentry->cmp_proc_finfo.fn_oid))
+		ereport(ERROR,
+		        (errcode(ERRCODE_UNDEFINED_FUNCTION),
+		         errmsg("could not identify a comparison function for type %s",
+		                format_type_be(typentry->type_id))));
+
+	FunctionCallInfoData locfcinfo;
+	InitFunctionCallInfoData(locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
+	locfcinfo.arg[0] = lhs;
+	locfcinfo.arg[1] = rhs;
+	locfcinfo.argnull[0] = false;
+	locfcinfo.argnull[1] = false;
+	return DatumGetInt32(FunctionCallInvoke(&locfcinfo)) == 0;
+}
+
+/* ----------------------------------------------------------------
+ * YBBuildExtraUpdatedCols
+ *
+ * Function compares attribute value in oldtuple and newtuple for attributes which are not in the
+ * updatedCols set. Returns set of changed attributes or NULL.
+ * ----------------------------------------------------------------
+ */
+static Bitmapset*
+YBBuildExtraUpdatedCols(Relation rel,
+                        HeapTuple oldtuple,
+                        HeapTuple newtuple,
+                        Bitmapset *updatedCols)
+{
+	if (bms_is_member(InvalidAttrNumber, updatedCols))
+		/* No extra work required in case the whore row is changed */
+		return NULL;
+
+	Bitmapset *result = NULL;
+	AttrNumber firstLowInvalidAttributeNumber = YBGetFirstLowInvalidAttributeNumber(rel);
+	TupleDesc tupleDesc = RelationGetDescr(rel);
+	for (int idx = 0; idx < tupleDesc->natts; ++idx)
+	{
+		FormData_pg_attribute *att_desc = TupleDescAttr(tupleDesc, idx);
+
+		AttrNumber attnum = att_desc->attnum;
+
+		/* Skip virtual (system) and dropped columns */
+		if (!IsRealYBColumn(rel, attnum))
+			continue;
+
+		int bms_idx = attnum - firstLowInvalidAttributeNumber;
+		if (bms_is_member(bms_idx, updatedCols))
+			continue;
+
+		bool old_is_null = false;
+		bool new_is_null = false;
+		Datum old_value = heap_getattr(oldtuple, attnum, tupleDesc, &old_is_null);
+		Datum new_value = heap_getattr(newtuple, attnum, tupleDesc, &new_is_null);
+		if (old_is_null != new_is_null ||
+		    (!new_is_null && !YBEqualDatums(old_value,
+		                                    new_value,
+		                                    att_desc->atttypid,
+		                                    att_desc->attcollation)))
+		{
+			result = bms_add_member(result, bms_idx);
+		}
+	}
+	return result;
+}
+
+/* ----------------------------------------------------------------
  *		ExecUpdate
  *
  *		note: we can't run UPDATE queries with transactions
@@ -1067,6 +1161,8 @@ ExecUpdate(ModifyTableState *mtstate,
 	resultRelInfo = estate->es_result_relation_info;
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
+	bool beforeRowUpdateTriggerFired = false;
+
 	/* BEFORE ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_update_before_row)
@@ -1079,6 +1175,7 @@ ExecUpdate(ModifyTableState *mtstate,
 
 		/* trigger might have changed tuple */
 		tuple = ExecMaterializeSlot(slot);
+		beforeRowUpdateTriggerFired = true;
 	}
 
 	/* INSTEAD OF ROW UPDATE Triggers */
@@ -1149,8 +1246,21 @@ ExecUpdate(ModifyTableState *mtstate,
 
 		bool row_found = false;
 
+		Bitmapset *actualUpdatedCols = rte->updatedCols;
+		Bitmapset *extraUpdatedCols = NULL;
+		if (beforeRowUpdateTriggerFired)
+		{
+			/* trigger might have changed tuple */
+			extraUpdatedCols = YBBuildExtraUpdatedCols(
+				resultRelationDesc, oldtuple, tuple, rte->updatedCols);
+			if (extraUpdatedCols)
+			{
+				extraUpdatedCols = bms_add_members(extraUpdatedCols, rte->updatedCols);
+				actualUpdatedCols = extraUpdatedCols;
+			}
+		}
 		bool is_pk_updated =
-			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), rte->updatedCols);
+			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), actualUpdatedCols);
 
 		if (is_pk_updated)
 		{
@@ -1159,9 +1269,11 @@ ExecUpdate(ModifyTableState *mtstate,
 		}
 		else
 		{
-			row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate, rte->updatedCols);
+			row_found = YBCExecuteUpdate(
+				resultRelationDesc, planSlot, tuple, estate, mtstate, actualUpdatedCols);
 		}
 
+		bms_free(extraUpdatedCols);
 		if (!row_found)
 		{
 			/*

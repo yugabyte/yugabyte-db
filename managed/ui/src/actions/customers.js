@@ -13,6 +13,10 @@ export const VALIDATE_FROM_TOKEN_RESPONSE = 'VALIDATE_FROM_TOKEN_RESPONSE';
 export const REGISTER = 'REGISTER';
 export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
 
+// Validate Customer registration
+export const FETCH_PASSWORD_POLICY = 'FETCH_PASSWORD_POLICY';
+export const FETCH_PASSWORD_POLICY_RESPONSE = 'FETCH_PASSWORD_POLICY_RESPONSE';
+
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
@@ -49,6 +53,32 @@ export const FETCH_CUSTOMER_COUNT = 'FETCH_CUSTOMER_COUNT';
 export const GET_ALERTS = 'GET_ALERTS';
 export const GET_ALERTS_SUCCESS = 'GET_ALERTS_SUCCESS';
 export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
+
+export const CREATE_ALERT_CHANNEL = 'CREATE_ALERT_CHANNEL';
+export const CREATE_ALERT_CHANNEL_RESPONSE = 'CREATE_ALERT_CHANNEL_RESPONSE';
+
+export const CREATE_ALERT_DESTINATION = 'CREATE_ALERT_DESTINATION';
+export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPONSE';
+
+export const CREATE_ALERT_CONFIG = 'CREATE_ALERT_CONFIG';
+export const CREATE_ALERT_CONFIG_RESPONSE = 'CREATE_ALERT_CONFIG_RESPONSE';
+
+export const UPDATE_ALERT_CONFIG = 'UPDATE_ALERT_CONFIG';
+export const UPDATE_ALERT_CONFIG_RESPONSE = 'UPDATE_ALERT_CONFIG_RESPONSE';
+
+export const UPDATE_ALERT_DESTINATION = 'UPDATE_ALERT_DESTINATION';
+export const UPDATE_ALERT_DESTINATION_RESPONSE = 'UPDATE_ALERT_DESTINATION_RESPONSE';
+
+export const DELETE_ALERT_DESTINATION = 'DELETE_ALERT_DESTINATION';
+export const DELETE_ALERT_CONFIG = 'DELETE_ALERT_CONFIG';
+
+export const GET_ALERT_CHANNELS = 'GET_ALERT_CHANNELS';
+export const GET_ALERT_CHANNELS_SUCCESS = 'GET_ALERT_CHANNELS_SUCCESS';
+export const GET_ALERT_CHANNELS_FAILURE = 'GET_ALERT_CHANNELS_FAILURE';
+
+export const GET_ALERT_CONFIGS = 'GET_ALERT_CONFIGS';
+export const GET_ALERT_DESTINATIONS = 'GET_ALERT_DESTINATIONS';
+export const GET_ALERT_TEMPLATES = 'GET_ALERT_TEMPLATES';
 
 export const FETCH_YUGAWARE_VERSION = 'FETCH_YUGAWARE_VERSION';
 export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE';
@@ -112,6 +142,8 @@ export const DELETE_USER_RESPONSE = 'DELETE_USER_RESPONSE';
 
 export const CHANGE_USER_ROLE = 'CHANGE_USER_ROLE';
 
+export const UPDATE_TLS = 'UPDATE_TLS';
+
 export function validateToken() {
   let cUUID = Cookies.get('customerId');
   if (cUUID) {
@@ -163,6 +195,22 @@ export function register(formValues) {
 export function registerResponse(response) {
   return {
     type: REGISTER_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchPasswordPolicy() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/password_policy`);
+  return {
+    type: FETCH_PASSWORD_POLICY,
+    payload: request
+  };
+}
+
+export function fetchPasswordPolicyResponse(response) {
+  return {
+    type: FETCH_PASSWORD_POLICY_RESPONSE,
     payload: response
   };
 }
@@ -428,6 +476,161 @@ export function getAlerts() {
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alerts/active`);
   return {
     type: GET_ALERTS,
+    payload: request
+  };
+}
+export function createAlertChannel(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_channels`, payload);
+  return {
+    type: CREATE_ALERT_CHANNEL,
+    payload: request
+  };
+}
+
+export function createAlertChannelResponse(response) {
+  return {
+    type: CREATE_ALERT_CHANNEL_RESPONSE,
+    payload: response
+  };
+}
+
+export function createAlertDestination(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_destinations`, payload);
+  return {
+    type: CREATE_ALERT_DESTINATION,
+    payload: request
+  };
+}
+
+export function createAlertDestinationResponse(response) {
+  return {
+    type: CREATE_ALERT_DESTINATION_RESPONSE,
+    payload: response
+  };
+}
+
+export function createAlertConfig(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations`, payload);
+  return {
+    type: CREATE_ALERT_CONFIG,
+    payload: request
+  };
+}
+
+export function updateAlertConfig(payload, uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`,
+    payload
+  );
+  return {
+    type: UPDATE_ALERT_CONFIG,
+    payload: request
+  };
+}
+
+export function updateAlertConfigResponse(response) {
+  return {
+    type: UPDATE_ALERT_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
+export function createAlertConfigResponse(response) {
+  return {
+    type: CREATE_ALERT_CONFIG_RESPONSE,
+    payload: response
+  };
+}
+
+export function updateAlertDestination(payload, uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_destinations/${uuid}`, payload);
+  return {
+    type: UPDATE_ALERT_DESTINATION,
+    payload: request
+  };
+}
+
+export function updateAlertDestinationResponse(response) {
+  return {
+    type: UPDATE_ALERT_DESTINATION_RESPONSE,
+    payload: response
+  };
+}
+
+export function deleteAlertDestination(uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_destinations/${uuid}`);
+  return {
+    type: DELETE_ALERT_DESTINATION,
+    payload: request
+  };
+}
+
+export function deleteAlertConfig(uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`);
+  return {
+    type: DELETE_ALERT_CONFIG,
+    payload: request
+  };
+}
+
+export function getAlertChannels() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_channels`);
+  return {
+    type: GET_ALERT_CHANNELS,
+    payload: request
+  };
+}
+
+export function getAlertChannelsSuccess(response) {
+  return {
+    type: GET_ALERT_CHANNELS_SUCCESS,
+    payload: response
+  };
+}
+
+export function getAlertChannelsFaliure(response) {
+  return {
+    type: GET_ALERT_CHANNELS_FAILURE,
+    payload: response
+  };
+}
+
+export function alertDestinations() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_destinations`);
+  return {
+    type: GET_ALERT_DESTINATIONS,
+    payload: request
+  };
+}
+
+export function getTargetMetrics(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_templates`, {
+    targetType: payload
+  });
+  return {
+    type: GET_ALERT_TEMPLATES,
+    payload: request
+  };
+}
+
+export function alertConfigs(payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.post(
+    `${ROOT_URL}/customers/${cUUID}/alert_configurations/list`,
+    payload
+  );
+  return {
+    type: GET_ALERT_CONFIGS,
     payload: request
   };
 }
@@ -713,5 +916,27 @@ export function deleteUserResponse(response) {
   return {
     type: DELETE_USER_RESPONSE,
     payload: response
+  };
+}
+
+export function updateTLS(universeUuid, formValues) {
+  const cUUID = localStorage.getItem('customerId');
+  const values = {
+    "enableNodeToNodeEncrypt": formValues.enableNodeToNodeEncrypt,
+    "enableClientToNodeEncrypt": formValues.enableClientToNodeEncrypt,
+    "rootCA": formValues.rootCA,
+    "clientRootCA": formValues.clientRootCA,
+    "rootAndClientRootCASame": formValues.rootAndClientRootCASame,
+    "upgradeOption": formValues.rollingUpgrade ? "Rolling" : "Non-Rolling",
+    "sleepAfterMasterRestartMillis": formValues.timeDelay * 1000,
+    "sleepAfterTServerRestartMillis": formValues.timeDelay * 1000
+  }
+  const request = axios.post(
+    `${ROOT_URL}/customers/${cUUID}/universes/${universeUuid}/update_tls`,
+    values
+  );
+  return {
+    type: UPDATE_TLS,
+    payload: request
   };
 }

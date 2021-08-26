@@ -32,6 +32,8 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     // The software version to which user updated the universe.
     public String softwareVersion;
+    // The previous software version.
+    public String prevSoftwareVersion;
   }
 
   protected Params taskParams() {

@@ -15,7 +15,9 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.YWResults.YWSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -26,15 +28,18 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.util.UUID;
+import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Provider1", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Cloud providers",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
 
   @ApiOperation(
-      value = "listProvider",
+      value = "List cloud providers",
       response = Provider.class,
       responseContainer = "List",
       nickname = "getListOfProviders")
@@ -42,9 +47,11 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YWResults.withData(Provider.getAll(customerUUID));
   }
 
-  // This endpoint we are using only for deleting provider for integration test purpose. our
-  // UI should call cleanup endpoint.
-  @ApiOperation(value = "TEST_ONLY", hidden = true, response = YWResults.YWSuccess.class)
+  @ApiOperation(
+      value = "Delete a cloud provider",
+      notes = "This endpoint is used only for integration tests.",
+      hidden = true,
+      response = YWResults.YWSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -53,8 +60,34 @@ public class CloudProviderApiController extends AuthenticatedController {
     return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
+  @ApiOperation(value = "Refresh pricing", notes = "Refresh provider pricing info")
+  public Result refreshPricing(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    cloudProviderHandler.refreshPricing(customerUUID, provider);
+    auditService().createAuditEntry(ctx(), request());
+    return YWSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
+  }
+
+  @ApiOperation(value = "Update a provider", response = Provider.class, nickname = "editProvider")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          value = "edit provider form data",
+          name = "EditProviderFormData",
+          dataType = "com.yugabyte.yw.forms.EditProviderRequest",
+          required = true,
+          paramType = "body"))
+  public Result edit(UUID customerUUID, UUID providerUUID) throws IOException {
+    Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    EditProviderRequest editProviderReq =
+        formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
+    cloudProviderHandler.editProvider(provider, editProviderReq);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
+    return YWResults.withData(provider);
+  }
+
   @ApiOperation(
-      value = "createProvider",
+      value = "Create a provider",
       response = YWResults.YWTask.class,
       nickname = "createProviders")
   @ApiImplicitParams(
