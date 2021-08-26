@@ -120,7 +120,7 @@ class PgMiniTest : public PgMiniTestBase {
   // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
   // expected.
   // Otherwise, the scans are in transactions with snapshot isolation, but we still don't expect any
-  // read restarts to be observer because they should be transparently handled on the postgres side.
+  // read restarts to be observed because they should be transparently handled on the postgres side.
   void TestReadRestart(bool deferrable = true);
 
   // Run interleaved INSERT, SELECT with specified isolation level and row mark.  Possible isolation
