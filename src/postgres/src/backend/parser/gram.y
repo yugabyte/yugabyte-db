@@ -899,6 +899,7 @@ stmt :
 			| AlterRoleStmt
 			| AlterSeqStmt
 			| AlterTableStmt
+			| BackfillIndexStmt
 			| CallStmt
 			| ClosePortalStmt
 			| CommentStmt
@@ -963,7 +964,6 @@ stmt :
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze", false); }
-			| BackfillIndexStmt { parser_ybc_beta_feature(@1, "backfill index", false); }
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
 			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| DropTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
