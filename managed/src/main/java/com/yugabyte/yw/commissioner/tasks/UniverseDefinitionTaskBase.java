@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
@@ -673,13 +674,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.subnetId = cloudInfo.subnet_id;
     // Set the instance type.
     params.instanceType = cloudInfo.instance_type;
-    // Set the assign public ip param.
-    params.assignPublicIP = cloudInfo.assignPublicIP;
-    params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
     params.machineImage = node.machineImage;
     params.useTimeSync = cloudInfo.useTimeSync;
-    params.cmkArn = taskParams().cmkArn;
-    params.ipArnString = userIntent.awsArnString;
     // Set the ports to provision a node to use
     params.communicationPorts =
         UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(node);
@@ -692,20 +688,42 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.remotePackagePath = taskParams().remotePackagePath;
   }
 
+  protected void fillCreateParamsForNode(
+      AnsibleCreateServer.Params params, UserIntent userIntent, NodeDetails node) {
+    CloudSpecificInfo cloudInfo = node.cloudInfo;
+    params.deviceInfo = userIntent.deviceInfo;
+    // Set the region code.
+    params.azUuid = node.azUuid;
+    params.placementUuid = node.placementUuid;
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    // Pick one of the subnets in a round robin fashion.
+    params.subnetId = cloudInfo.subnet_id;
+    // Set the instance type.
+    params.instanceType = cloudInfo.instance_type;
+    // Set the assign public ip param.
+    params.assignPublicIP = cloudInfo.assignPublicIP;
+    params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
+    params.machineImage = node.machineImage;
+    params.cmkArn = taskParams().cmkArn;
+    params.ipArnString = userIntent.awsArnString;
+  }
+
   /**
    * Creates a task list for provisioning the list of nodes passed in and adds it to the task queue.
    *
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createSetupServerTasks(
-      Collection<NodeDetails> nodes, boolean reprovision, boolean isSystemdUpgrade) {
+      Collection<NodeDetails> nodes, boolean isSystemdUpgrade) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
-      params.reprovision = reprovision;
       params.isSystemdUpgrade = isSystemdUpgrade;
 
       // Create the Ansible task to setup the server.
@@ -718,13 +736,32 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes, boolean reprovision) {
-    return createSetupServerTasks(nodes, reprovision, false /* isSystemdUpgrade */);
+  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
+    return createSetupServerTasks(nodes, false /* isSystemdUpgrade */);
   }
 
-  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(nodes, false);
+  /**
+   * Creates a task list for provisioning the list of nodes passed in and adds it to the task queue.
+   *
+   * @param nodes : a collection of nodes that need to be created
+   */
+  public SubTaskGroup createCreateServerTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleCreateServer", executor);
+    for (NodeDetails node : nodes) {
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      fillCreateParamsForNode(params, userIntent, node);
+
+      // Create the Ansible task to setup the server.
+      AnsibleCreateServer ansibleCreateServer = createTask(AnsibleCreateServer.class);
+      ansibleCreateServer.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addTask(ansibleCreateServer);
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
+
   /**
    * Creates a task list to configure the newly provisioned nodes and adds it to the task queue.
    * Includes tasks such as setting up the 'yugabyte' user and installing the passed in software
