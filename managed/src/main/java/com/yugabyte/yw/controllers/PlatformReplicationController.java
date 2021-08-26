@@ -15,7 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformBackupFrequencyFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.File;
@@ -116,7 +116,7 @@ public class PlatformReplicationController extends AuthenticatedController {
               .map(File::getName)
               .sorted(Collections.reverseOrder())
               .collect(Collectors.toList());
-      return YWResults.withData(backups);
+      return PlatformResults.withData(backups);
     } catch (Exception e) {
       LOG.error("Error listing backups", e);
 

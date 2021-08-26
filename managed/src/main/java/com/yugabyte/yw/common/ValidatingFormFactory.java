@@ -31,7 +31,7 @@ public class ValidatingFormFactory {
   public <T> Form<T> getFormDataOrBadRequest(Class<T> clazz) {
     Form<T> formData = formFactory.form(clazz).bindFromRequest();
     if (formData.hasErrors()) {
-      throw new YWServiceException(BAD_REQUEST, formData.errorsAsJson());
+      throw new PlatformServiceException(BAD_REQUEST, formData.errorsAsJson());
     }
     return formData;
   }
@@ -40,7 +40,7 @@ public class ValidatingFormFactory {
     // Do this so that constraint get validated
     Form<T> formData = formFactory.form(clazz).bind(jsonNode);
     if (formData.hasErrors()) {
-      throw new YWServiceException(BAD_REQUEST, formData.errorsAsJson());
+      throw new PlatformServiceException(BAD_REQUEST, formData.errorsAsJson());
     }
     return Json.fromJson(jsonNode, clazz);
   }

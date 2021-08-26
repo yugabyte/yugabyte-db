@@ -7,7 +7,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.YWNotificationException;
+import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
@@ -28,7 +28,7 @@ public class AlertChannelSlack implements AlertChannelInterface {
 
   @Override
   public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
-      throws YWNotificationException {
+      throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelSlackParams params = (AlertChannelSlackParams) channel.getParams();
     String title = AlertUtils.getNotificationTitle(alert, channel);
@@ -50,7 +50,7 @@ public class AlertChannelSlack implements AlertChannelInterface {
 
       client.execute(httpPost);
     } catch (IOException e) {
-      throw new YWNotificationException(
+      throw new PlatformNotificationException(
           String.format(
               "Error sending Slack message for alert %s: %s", alert.getUuid(), e.getMessage()),
           e);

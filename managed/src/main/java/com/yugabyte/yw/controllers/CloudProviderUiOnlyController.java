@@ -10,8 +10,9 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.forms.YWResults.YWSuccess;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import io.swagger.annotations.Api;
@@ -51,7 +52,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             cloudProviderFormData.config,
             cloudProviderFormData.region);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(cloudProviderFormData));
-    return YWResults.withData(provider);
+    return PlatformResults.withData(provider);
   }
 
   // TODO: This is temporary endpoint, so we can setup docker, will move this
@@ -62,12 +63,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
 
     List<Provider> providerList = Provider.get(customerUUID, Common.CloudType.docker);
     if (!providerList.isEmpty()) {
-      return YWResults.withData(providerList.get(0));
+      return PlatformResults.withData(providerList.get(0));
     }
 
     Provider newProvider = cloudProviderHandler.setupNewDockerProvider(customer);
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.withData(newProvider);
+    return PlatformResults.withData(newProvider);
   }
 
   // For creating the a multi-cluster kubernetes provider.
@@ -80,7 +81,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     Provider provider =
         cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
     auditService().createAuditEntry(ctx(), request(), requestBody);
-    return YWResults.withData(provider);
+    return PlatformResults.withData(provider);
   }
 
   @ApiOperation(
@@ -94,7 +95,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
+    return PlatformResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
   }
 
   /** @deprecated There is a bug here that */
@@ -102,7 +103,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
-    return YWSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
+    return YBPSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -115,13 +116,13 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, CloudBootstrap.Params.class);
     UUID taskUUID = cloudProviderHandler.bootstrap(customer, provider, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(value = "cleanup", notes = "Unimplemented", hidden = true)
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): this is not currently used, be careful about the API...
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
 
     /*
     CloudCleanup.Params taskParams = new CloudCleanup.Params();

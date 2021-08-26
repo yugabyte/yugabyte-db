@@ -8,7 +8,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -51,41 +51,41 @@ public class TlsToggleParams extends UpgradeTaskParams {
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "TLS toggle can be performed either rolling or non-rolling way.");
     }
 
     if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt
         && this.enableNodeToNodeEncrypt == existingEnableNodeToNodeEncrypt) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "No changes in Tls parameters, cannot perform update operation.");
     }
 
     if (existingRootCA != null && rootCA != null && !existingRootCA.equals(rootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot update root certificate, if already created.");
     }
 
     if (existingClientRootCA != null
         && clientRootCA != null
         && !existingClientRootCA.equals(clientRootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot update client root certificate, if already created.");
     }
 
     if (!CertificateInfo.isCertificateValid(rootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "No valid root certificate found for UUID: " + rootCA);
     }
 
     if (!CertificateInfo.isCertificateValid(clientRootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "No valid client root certificate found for UUID: " + clientRootCA);
     }
 
     if (rootCA != null
         && CertificateInfo.get(rootCA).certType == CertificateInfo.Type.CustomServerCert) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomServerCert are only supported for Client to Server Communication.");
     }
@@ -93,7 +93,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
     if (rootCA != null
         && CertificateInfo.get(rootCA).certType == CertificateInfo.Type.CustomCertHostPath
         && !userIntent.providerType.equals(CloudType.onprem)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "CustomCertHostPath certificates are only supported for on-prem providers.");
     }
@@ -101,7 +101,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
     if (clientRootCA != null
         && CertificateInfo.get(clientRootCA).certType == CertificateInfo.Type.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomCertHostPath certificates are only supported for on-prem providers.");
     }
@@ -113,7 +113,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
         && rootCA != null
         && clientRootCA != null
         && !rootCA.equals(clientRootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
     }

@@ -3133,6 +3133,9 @@
       "required" : [ "azList", "code", "name", "uuid" ],
       "type" : "object"
     },
+    "PlatformResults" : {
+      "type" : "object"
+    },
     "Provider" : {
       "properties" : {
         "active" : {
@@ -4441,13 +4444,18 @@
       "required" : [ "bootstrapIds", "sourceMasterAddressesToChange", "sourceTableIds", "sourceTableIdsToAdd", "sourceTableIdsToRemove", "sourceUniverseUUID" ],
       "type" : "object"
     },
-    "YWError" : {
+    "YBPError" : {
       "description" : "Generic error response from the Yugabyte Platform API",
       "properties" : {
         "error" : {
           "description" : "User visible unstructured error message",
           "example" : "There was a problem creating the universe",
           "type" : "string"
+        },
+        "errorJson" : {
+          "description" : "User visible error message as json object",
+          "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
+          "type" : "object"
         },
         "success" : {
           "description" : "Always set to false to indicate failure",
@@ -4457,24 +4465,7 @@
       },
       "type" : "object"
     },
-    "YWResults" : {
-      "type" : "object"
-    },
-    "YWStructuredError" : {
-      "properties" : {
-        "error" : {
-          "description" : "User visible error message as json object",
-          "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
-          "type" : "object"
-        },
-        "success" : {
-          "type" : "boolean"
-        }
-      },
-      "required" : [ "success" ],
-      "type" : "object"
-    },
-    "YWSuccess" : {
+    "YBPSuccess" : {
       "properties" : {
         "message" : {
           "description" : "API response message.",
@@ -4489,7 +4480,7 @@
       },
       "type" : "object"
     },
-    "YWTask" : {
+    "YBPTask" : {
       "properties" : {
         "resourceUUID" : {
           "description" : "UUID of the resource being modified by the task",
@@ -4504,6 +4495,9 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "YBPTasks" : {
       "type" : "object"
     }
   },
@@ -4600,7 +4594,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -4748,7 +4742,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -4949,7 +4943,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5108,7 +5102,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5428,7 +5422,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTasks"
             }
           }
         },
@@ -5492,7 +5486,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the regions",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -5589,7 +5583,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5784,7 +5778,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5941,7 +5935,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -6013,7 +6007,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -6056,7 +6050,7 @@
           "400" : {
             "description" : "When request fails validations.",
             "schema" : {
-              "$ref" : "#/definitions/YWStructuredError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -6166,7 +6160,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -6265,7 +6259,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6383,7 +6377,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/YWResults"
+                "$ref" : "#/definitions/PlatformResults"
               },
               "type" : "array"
             }
@@ -6391,7 +6385,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the instance types",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -6466,7 +6460,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6640,7 +6634,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the regions",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -6848,7 +6842,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6944,7 +6938,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6968,7 +6962,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -7240,7 +7234,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWResults"
+              "$ref" : "#/definitions/PlatformResults"
             }
           }
         },
@@ -7501,7 +7495,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7577,7 +7571,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7648,7 +7642,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -7688,7 +7682,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7735,7 +7729,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -7767,7 +7761,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7799,7 +7793,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7829,7 +7823,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7873,7 +7867,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7905,7 +7899,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -7969,7 +7963,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8033,7 +8027,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8230,7 +8224,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8334,7 +8328,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8374,7 +8368,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8438,7 +8432,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8478,7 +8472,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8510,7 +8504,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -8633,7 +8627,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8830,7 +8824,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8868,7 +8862,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8989,7 +8983,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9035,7 +9029,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9167,7 +9161,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9199,7 +9193,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9239,7 +9233,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9277,7 +9271,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9315,7 +9309,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9459,7 +9453,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9552,7 +9546,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9617,7 +9611,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9692,7 +9686,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },

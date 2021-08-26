@@ -15,7 +15,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
-import static com.yugabyte.yw.forms.YWResults.withData;
+import static com.yugabyte.yw.forms.PlatformResults.withData;
 import static com.yugabyte.yw.models.Users.Role;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,8 +26,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
@@ -37,8 +37,8 @@ import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.forms.SetSecurityFormData;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.forms.YWResults.YWSuccess;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -130,7 +130,8 @@ public class SessionController extends Controller {
     final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
     return profileManager
         .get(true)
-        .orElseThrow(() -> new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to get profile"));
+        .orElseThrow(
+            () -> new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to get profile"));
   }
 
   @ApiModel(description = "Session information")
@@ -176,7 +177,7 @@ public class SessionController extends Controller {
   @ApiOperation(value = "customerCount", response = CustomerCountResp.class)
   public Result customerCount() {
     int customerCount = Customer.find.all().size();
-    return YWResults.withData(new CustomerCountResp(customerCount));
+    return PlatformResults.withData(new CustomerCountResp(customerCount));
   }
 
   @ApiOperation(value = "appVersion", responseContainer = "Map", response = String.class)
@@ -208,10 +209,10 @@ public class SessionController extends Controller {
         }
         lines.add(line);
       }
-      return YWResults.withData(new LogData(lines));
+      return PlatformResults.withData(new LogData(lines));
     } catch (IOException ex) {
       LOG.error("Log file open failed.", ex);
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not open log file with error " + ex.getMessage());
     }
   }
@@ -220,7 +221,8 @@ public class SessionController extends Controller {
   public Result login() {
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
     if (useOAuth) {
-      throw new YWServiceException(BAD_REQUEST, "Platform login not supported when using SSO.");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Platform login not supported when using SSO.");
     }
 
     CustomerLoginFormData data =
@@ -228,7 +230,7 @@ public class SessionController extends Controller {
     Users user = Users.authWithPassword(data.getEmail().toLowerCase(), data.getPassword());
 
     if (user == null) {
-      throw new YWServiceException(UNAUTHORIZED, "Invalid User Credentials");
+      throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials");
     }
     Customer cust = Customer.get(user.customerUUID);
 
@@ -305,18 +307,19 @@ public class SessionController extends Controller {
   public Result insecure_login() {
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
-      throw new YWServiceException(UNAUTHORIZED, "Cannot allow insecure with multiple customers.");
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Cannot allow insecure with multiple customers.");
     }
     String securityLevel =
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
     if (securityLevel != null && securityLevel.equals("insecure")) {
       List<Users> users = Users.getAllReadOnly();
       if (users.isEmpty()) {
-        throw new YWServiceException(UNAUTHORIZED, "No read only customer exists.");
+        throw new PlatformServiceException(UNAUTHORIZED, "No read only customer exists.");
       }
       Users user = users.get(0);
       if (user == null) {
-        throw new YWServiceException(UNAUTHORIZED, "Invalid User saved.");
+        throw new PlatformServiceException(UNAUTHORIZED, "Invalid User saved.");
       }
       String apiToken = user.getApiToken();
       if (apiToken == null || apiToken.isEmpty()) {
@@ -331,7 +334,7 @@ public class SessionController extends Controller {
                   .build());
       return withData(sessionInfo);
     }
-    throw new YWServiceException(UNAUTHORIZED, "Insecure login unavailable.");
+    throw new PlatformServiceException(UNAUTHORIZED, "Insecure login unavailable.");
   }
 
   // Any changes to security should be authenticated.
@@ -342,7 +345,8 @@ public class SessionController extends Controller {
         formFactory.getFormDataOrBadRequest(SetSecurityFormData.class);
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
-      throw new YWServiceException(UNAUTHORIZED, "Cannot allow insecure with multiple customers.");
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Cannot allow insecure with multiple customers.");
     }
 
     SetSecurityFormData data = formData.get();
@@ -363,7 +367,7 @@ public class SessionController extends Controller {
         LOG.error("Failed to parse sample feature config file for OSS mode.");
       }
     }
-    return YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @With(TokenAuthenticator.class)
@@ -372,7 +376,8 @@ public class SessionController extends Controller {
     Users user = (Users) Http.Context.current().args.get("user");
 
     if (user == null) {
-      throw new YWServiceException(BAD_REQUEST, "Could not find User from given credentials.");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Could not find User from given credentials.");
     }
 
     String apiToken = user.upsertApiToken();
@@ -394,11 +399,11 @@ public class SessionController extends Controller {
     boolean useOAuth = appConfig.getBoolean("yb.security.use_oauth", false);
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
     }
     if (useOAuth && customerCount >= 1) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
     }
     if (customerCount == 0) {
@@ -407,7 +412,7 @@ public class SessionController extends Controller {
       if (TokenAuthenticator.superAdminAuthentication(ctx())) {
         return withData(registerCustomer(data, false));
       } else {
-        throw new YWServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
+        throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
       }
     }
   }
@@ -415,9 +420,9 @@ public class SessionController extends Controller {
   public Result getPasswordPolicy(UUID customerUUID) {
     PasswordPolicyFormData validPolicy = passwordPolicyService.getPasswordPolicyData(customerUUID);
     if (validPolicy != null) {
-      return YWResults.withData(validPolicy);
+      return PlatformResults.withData(validPolicy);
     }
-    throw new YWServiceException(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
+    throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
   }
 
   private SessionInfo registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
@@ -452,7 +457,7 @@ public class SessionController extends Controller {
       return sessionInfo;
     } catch (PersistenceException pe) {
       // TODO: This needs to be more granular exception handling
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Customer already registered.");
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Customer already registered.");
     }
   }
 
@@ -464,7 +469,7 @@ public class SessionController extends Controller {
     if (user != null) {
       user.deleteAuthToken();
     }
-    return YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -472,7 +477,7 @@ public class SessionController extends Controller {
     try {
       return Results.ok(environment.resourceAsStream("theme/theme.css"));
     } catch (NullPointerException ne) {
-      throw new YWServiceException(BAD_REQUEST, "Theme file doesn't exists.");
+      throw new PlatformServiceException(BAD_REQUEST, "Theme file doesn't exists.");
     }
   }
 
@@ -486,7 +491,7 @@ public class SessionController extends Controller {
           Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
           if (!matcher.matches()) {
             LOG.error("Request {} does not match expected pattern", requestUrl);
-            throw new YWServiceException(BAD_REQUEST, "Invalid proxy request");
+            throw new PlatformServiceException(BAD_REQUEST, "Invalid proxy request");
           }
 
           // Extract host + port from request
@@ -497,7 +502,7 @@ public class SessionController extends Controller {
           // Validate that the proxy request is for a node from the specified universe
           if (!universe.nodeExists(host, Integer.parseInt(port))) {
             LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
-            throw new YWServiceException(BAD_REQUEST, "Invalid proxy request");
+            throw new PlatformServiceException(BAD_REQUEST, "Invalid proxy request");
           }
 
           // Add query params to proxied request
@@ -513,7 +518,7 @@ public class SessionController extends Controller {
             r = response.toCompletableFuture().get(1, TimeUnit.MINUTES);
           } catch (Exception e) {
             LOG.error("Error proxying request: " + requestUrl, e);
-            throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+            throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
           }
           // Format the response body
           if (r.getStatus() == 200) {
@@ -535,7 +540,7 @@ public class SessionController extends Controller {
 
             return result.as(r.getContentType());
           } else {
-            throw new YWServiceException(BAD_REQUEST, r.getStatusText());
+            throw new PlatformServiceException(BAD_REQUEST, r.getStatusText());
           }
         },
         ec.current());

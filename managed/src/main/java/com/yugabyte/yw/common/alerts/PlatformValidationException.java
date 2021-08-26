@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.common.alerts;
 
-public class YWValidateException extends Exception {
+public class PlatformValidationException extends Exception {
 
   private static final long serialVersionUID = 1L;
 
-  public YWValidateException(String message) {
+  public PlatformValidationException(String message) {
     super(message);
   }
 }

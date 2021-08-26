@@ -14,7 +14,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -91,7 +91,7 @@ public class AlertDefinitionService {
 
   public AlertDefinition get(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Can't get alert definition by null uuid");
+      throw new PlatformServiceException(BAD_REQUEST, "Can't get alert definition by null uuid");
     }
     return list(AlertDefinitionFilter.builder().uuid(uuid).build())
         .stream()
@@ -101,11 +101,11 @@ public class AlertDefinitionService {
 
   public AlertDefinition getOrBadRequest(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
     }
     AlertDefinition definition = get(uuid);
     if (definition == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Definition UUID: " + uuid);
     }
     return definition;
   }
@@ -142,21 +142,21 @@ public class AlertDefinitionService {
 
   private void validate(AlertDefinition definition, AlertDefinition before) {
     if (definition.getCustomerUUID() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (definition.getConfigurationUUID() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Group UUID field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Group UUID field is mandatory");
     }
     if (StringUtils.isEmpty(definition.getQuery())) {
-      throw new YWServiceException(BAD_REQUEST, "Query field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Query field is mandatory");
     }
     if (before != null) {
       if (!definition.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change customer UUID for definition " + definition.getUuid());
       }
     } else if (!definition.isNew()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Can't update missing definition " + definition.getUuid());
     }
   }

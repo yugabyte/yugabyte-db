@@ -8,7 +8,7 @@ import static java.lang.Math.abs;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Finder;
@@ -242,7 +242,7 @@ public class Backup extends Model {
   public static Backup getOrBadRequest(UUID customerUUID, UUID backupUUID) {
     Backup backup = get(customerUUID, backupUUID);
     if (backup == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid customer/backup UUID");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid customer/backup UUID");
     }
     return backup;
   }

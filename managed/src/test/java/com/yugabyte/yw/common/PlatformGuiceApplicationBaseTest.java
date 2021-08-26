@@ -13,7 +13,7 @@ import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.WithApplication;
 
-public abstract class YWGuiceApplicationBaseTest extends WithApplication {
+public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
   protected HealthChecker mockHealthChecker;
   protected QueryAlerts mockQueryAlerts;
   protected PlatformMetricsProcessor mockPlatformMetricsProcessor;

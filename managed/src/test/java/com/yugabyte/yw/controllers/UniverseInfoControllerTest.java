@@ -15,9 +15,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
@@ -171,7 +171,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("foo-bar")))
         .thenReturn(Json.parse(jsonMsg));
     when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("yugabyte")))
-        .thenThrow(new YWServiceException(BAD_REQUEST, "Incorrect Username or Password"));
+        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Incorrect Username or Password"));
     Universe u = createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/slow_queries";

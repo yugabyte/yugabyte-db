@@ -11,38 +11,39 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.PlatformResults.YBPStructuredError;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
-public class YWServiceException extends RuntimeException {
+public class PlatformServiceException extends RuntimeException {
   private final int httpStatus;
   private final String userVisibleMessage;
   private final JsonNode errJson;
   // TODO: also accept throwable and expose stack trace in when in dev server mode
-  YWServiceException(int httpStatus, String userVisibleMessage, JsonNode errJson) {
+  PlatformServiceException(int httpStatus, String userVisibleMessage, JsonNode errJson) {
     super(userVisibleMessage);
     this.httpStatus = httpStatus;
     this.userVisibleMessage = userVisibleMessage;
     this.errJson = errJson;
   }
 
-  public YWServiceException(int httpStatus, String userVisibleMessage) {
+  public PlatformServiceException(int httpStatus, String userVisibleMessage) {
     this(httpStatus, userVisibleMessage, null);
   }
 
-  public YWServiceException(int httpStatus, JsonNode errJson) {
+  public PlatformServiceException(int httpStatus, JsonNode errJson) {
     this(httpStatus, "errorJson: " + errJson.toString(), errJson);
   }
 
   public Result getResult() {
     if (errJson == null) {
-      YWResults.YWError ywError = new YWResults.YWError(userVisibleMessage);
-      return Results.status(httpStatus, Json.toJson(ywError));
+      YBPError ybpError = new YBPError(userVisibleMessage);
+      return Results.status(httpStatus, Json.toJson(ybpError));
     } else {
-      YWResults.YWStructuredError ywError = new YWResults.YWStructuredError(errJson);
-      return Results.status(httpStatus, Json.toJson(ywError));
+      YBPStructuredError ybpError = new YBPStructuredError(errJson);
+      return Results.status(httpStatus, Json.toJson(ybpError));
     }
   }
 }
