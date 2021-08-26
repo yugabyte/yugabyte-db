@@ -143,7 +143,7 @@ confluent local services connect plugin
 
 The following is a sample output produced by the preceding command:
 
-```json
+```nocopy.json
 {
   "class": "com.datastax.kafkaconnector.DseSinkConnector",
   "type": "sink",
@@ -183,7 +183,7 @@ The console producer waits for input.
 
 The next step is to copy and paste the record, such as the following sample, into the terminal and press Enter:
 
-```json
+```nocopy.json
 {"id": 999, "product": "foo", "quantity": 100, "price": 50}
 ```
 
@@ -279,7 +279,7 @@ You can configure the YCQL Sink connector as follows:
   Expect to see the following ouput:
 
   ```output
-    id | product | quantity | price
+   id | product | quantity | price
   ----+---------+----------+-------
   999 | foo     | 100      |  50
   (1 row)

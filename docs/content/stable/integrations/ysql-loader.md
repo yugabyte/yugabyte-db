@@ -32,7 +32,7 @@ Before starting the migration, ensure that you have the following:
   ```
 
   ```sql
-  # Create the database
+  -- Create the database
   create database <name>;
   ```
 
@@ -111,26 +111,25 @@ You can use YSQL Loader to migrate both schema and data from MySQL, or to migrat
 
 A file containing a Docker command can help you to perform migration. <!-- For more information, see -->
 
-### How to migrate schema and data using Docker
+### Migrate schema and data using Docker
 
 You start migration by running Docker. Using Bash, you access the container and run the YSQL Loader command (`/usr/local/bin/pgloader`). Examples in this section use the Docker image that is based on CentOS 7, so the YSQL Loader command file is stored in the CentOS home directory and the Docker volume is used for mapping the configuration from the `/home/centos` directory to the Docker container directory. The Docker `–rm` flag ensures that the container is removed once YSQL Loader completes its tasks.
 
 ```sh
-docker run --rm --name <name_for_container> -v <local_dir pgloader_config_dir>:<mount_path_in_container>
-yugabytedb/pgloader:v1.1 pgloader
-<mount_path_in_container>/<pgloader_config_file>
+$ docker run --rm --name <name_for_container> \
+         -v <local_dir pgloader_config_dir>:<mount_path_in_container> \
+         yugabytedb/pgloader:v1.1 pgloader \
+         <mount_path_in_container>/<pgloader_config_file>
 ```
 
 The following is a sample YSQL Loader command:
 
-```sh
+```nocopy.sh
 [root@ip-172-161-27-195 centos]# pwd
 /home/centos
 [root@ip-172-161-27-195 centos]# ls
 pgloader.conf
-[root@ip-172-161-27-195 centos]# docker run --rm --name pgloader1 -v
-/home/centos:/tmp yugabytedb/pgloader:v1.1 pgloader -v -L
-/tmp/pgloader.log /tmp/pgloader.conf
+[root@ip-172-161-27-195 centos]# docker run --rm --name pgloader1 -v /home/centos:/tmp yugabytedb/pgloader:v1.1 pgloader -v -L /tmp/pgloader.log /tmp/pgloader.conf
 ```
 
 An output similar to the following is produced when YSQL Loader is running:
@@ -160,7 +159,7 @@ In addition, you can check the live queries by navigating to the **Queries** sec
 
 ![Migrating MySQL Blog Image 2](https://blog.yugabyte.com/wp-content/uploads/2021/06/Migrating-MySQL-Blog-Image-2.png)
 
-### How to use YSQL Loader command file
+### Use a YSQL Loader command file
 
 To load both schema and data from MySQL, use a file similar to the following:
 
@@ -184,7 +183,7 @@ WITH
   max parallel create index=1, schema only;
 ```
 
-### How to modify DDL using command file
+### Modify the DDL using a command file
 
 You can modify the DDL by performing the following steps:
 
@@ -223,7 +222,7 @@ BEFORE LOAD EXECUTE
   '/Users/myname/quicklisp/local-projects/pgloader/ddl.sql';
 ```
 
-## Validating migration
+## Validating the migration
 
 When YSQL Loader finishes the migration, you can see a summary of the migration steps, including the information on how long each step took and the number of rows inserted.
 
