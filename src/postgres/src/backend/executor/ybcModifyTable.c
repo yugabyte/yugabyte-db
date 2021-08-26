@@ -27,7 +27,7 @@
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
@@ -42,7 +42,7 @@
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_database.h"
-#include "catalog/ybc_catalog_version.h"
+#include "catalog/yb_catalog_version.h"
 #include "utils/catcache.h"
 #include "utils/inval.h"
 #include "utils/relcache.h"
@@ -53,7 +53,7 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 
 /*
  * Hack to ensure that the next CommandCounterIncrement() will call
@@ -158,7 +158,7 @@ Datum YBCGetYBTupleIdFromTuple(Relation rel,
 			Oid	type_id = (attnum > 0) ?
 					TupleDescAttr(tupleDesc, attnum - 1)->atttypid : InvalidOid;
 
-			next_attr->type_entity = YBCDataTypeFromOidMod(attnum, type_id);
+			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
 			next_attr->datum = heap_getattr(tuple, attnum, tupleDesc, &next_attr->is_null);
 		} else {
@@ -199,7 +199,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 {
 	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_stmt, yb_catalog_cache_version));
 
-	bool is_syscatalog_version_inc = YBCMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
+	bool is_syscatalog_version_inc = YbMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 
 	/* Execute the insert. */
 	HandleYBStatus(YBCPgDmlExecWriteOp(ybc_stmt, rows_affected_count));
@@ -491,7 +491,7 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 	for (AttrNumber attnum = 1; attnum <= nattrs; ++attnum)
 	{
 		Oid type_id = GetTypeId(attnum, tupdesc);
-		next_attr->type_entity = YBCDataTypeFromOidMod(attnum, type_id);
+		next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 		next_attr->collation_id = ybc_get_attcollation(tupdesc, attnum);
 		next_attr->attr_num = attnum;
 		next_attr->datum = values[attnum - 1];
