@@ -1475,3 +1475,64 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	uint16_t hashed_val = YBCCompoundHash(arg_buf, total_bytes);
 	PG_RETURN_UINT16(hashed_val);
 }
+
+static int yb_detail_sort_comparator(const void *a, const void *b)
+{
+    return strcmp(*(const char **) a, *(const char **) b);
+}
+
+char *yb_detail_sorted(char *input)
+{
+    char delimiter[2] = "\n";
+
+    char **lines = (char **)malloc(sizeof(char *));
+    // for the split, I do need char[size_t]
+    size_t size = strlen(input) + 1;
+    char str[size];
+    strncpy(str,input,size);
+    // split the string by delimiter
+    // and reject empty lines in a single pass:
+    int lc = 0;
+    char *token;
+    token = strtok(str, delimiter);
+    while (token != NULL)
+    {
+        if (strcmp(token, "") != 0)
+        {
+            lines = (char **)realloc(lines, lc+1 * sizeof(char *));
+            if (lines != NULL)
+            {
+                lines[lc] = malloc(sizeof(char *) * (strlen(token) + 1));
+                lines[lc] = token;
+                lc++;
+            }
+            else
+            {
+                free(lines);
+                return input;
+            }
+        }
+        token = strtok(NULL, delimiter);
+    }
+    free(token);
+    // if we have lines:
+    if (lc > 0)
+    {
+        // sort resulting lines:
+        qsort(lines, lc, sizeof (const char *), yb_detail_sort_comparator);
+        // merge sorted lines with the delimiter:
+        char *out = malloc(sizeof(char *) * (strlen(lines[0])+1));
+        strcpy(out, lines[0]);
+        for (int i=1; i<lc; i++)
+        {
+            size_t s = sizeof(char *)*(strlen(out)+strlen(lines[i])+2);
+            out = realloc(out, s);
+            strcat(out, delimiter);
+            strcat(out, lines[i]);
+        }
+        free(lines);
+        return out;
+    }
+    free(lines);
+    return input;
+}

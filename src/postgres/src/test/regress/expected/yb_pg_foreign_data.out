@@ -2221,9 +2221,8 @@ DROP TABLE temp_parted;
 DROP SCHEMA foreign_schema CASCADE;
 DROP ROLE regress_test_role;                                -- ERROR
 ERROR:  role "regress_test_role" cannot be dropped because some objects depend on it
-DETAIL:  privileges for foreign-data wrapper foo
-
-owner of user mapping for regress_test_role on server s6
+DETAIL:  owner of user mapping for regress_test_role on server s6
+privileges for foreign-data wrapper foo
 privileges for server s4
 DROP SERVER t1 CASCADE;
 NOTICE:  drop cascades to user mapping for public on server t1
@@ -2265,4 +2264,3 @@ SELECT * FROM pg_user_mapping;
  umuser | umserver | umoptions 
 --------+----------+-----------
 (0 rows)
-
