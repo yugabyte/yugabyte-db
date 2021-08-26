@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybctype.h
- *	  prototypes for ybctype.c.
+ * yb_type.h
+ *	  prototypes for yb_type.c.
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -15,13 +15,13 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/catalog/ybctype.h
+ * src/include/catalog/yb_type.h
  *
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCTYPE_H
-#define YBCTYPE_H
+#ifndef YB_TYPE_H
+#define YB_TYPE_H
 
 #include "access/htup.h"
 #include "catalog/dependency.h"
@@ -37,18 +37,17 @@
 #define YB_TEXTARRAYOID 1009 /* text[] */
 #define YB_ACLITEMARRAYOID 1034 /* aclitem[] */
 
-extern const YBCPgTypeEntity *YBCDataTypeFromName(TypeName *typeName);
-extern const YBCPgTypeEntity *YBCDataTypeFromOidMod(int attnum, Oid type_id);
+extern const YBCPgTypeEntity *YbDataTypeFromOidMod(int attnum, Oid type_id);
 
 /*
  * Returns true if we are allow the given type to be used for key columns such as primary key or
  * indexing key.
  */
-bool YBCDataTypeIsValidForKey(Oid type_id);
+bool YbDataTypeIsValidForKey(Oid type_id);
 
 /*
  * Array of all type entities.
  */
-void YBCGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
+void YbGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
 #endif

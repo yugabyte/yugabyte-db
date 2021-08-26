@@ -64,7 +64,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/schemapg.h"
 #include "catalog/storage.h"
-#include "catalog/ybc_catalog_version.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
 #include "commands/policy.h"
 #include "commands/trigger.h"
@@ -95,7 +95,7 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -4347,7 +4347,7 @@ RelationCacheInitializePhase3(void)
 	if (IsYugaByteEnabled())
 	{
 		YBCPgResetCatalogReadTime();
-		YBCGetMasterCatalogVersion(&yb_catalog_cache_version);
+		YbGetMasterCatalogVersion(&yb_catalog_cache_version);
 	}
 
 	/*
@@ -6264,7 +6264,7 @@ load_relcache_init_file(bool shared)
 		/* Else, still need to check with the master version to be sure. */
 		YBCPgResetCatalogReadTime();
 		uint64_t catalog_master_version = 0;
-		YBCGetMasterCatalogVersion(&catalog_master_version);
+		YbGetMasterCatalogVersion(&catalog_master_version);
 
 		/* File version does not match actual master version (i.e. too old) */
 		if (ybc_stored_cache_version != catalog_master_version)

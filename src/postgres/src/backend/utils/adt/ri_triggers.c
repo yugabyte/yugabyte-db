@@ -38,7 +38,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
@@ -295,7 +295,7 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, HeapTuple tup)
 			result = NULL;
 			break;
 		}
-		next_attr->type_entity = YBCDataTypeFromOidMod(fk_attnum, type_id);
+		next_attr->type_entity = YbDataTypeFromOidMod(fk_attnum, type_id);
 		next_attr->collation_id = TupleDescAttr(fk_tupdesc, fk_attnum - 1)->attcollation;
 		next_attr->datum = heap_getattr(tup, fk_attnum, fk_tupdesc, &next_attr->is_null);
 		YBSetupAttrCollationInfo(next_attr);

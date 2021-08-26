@@ -40,7 +40,7 @@
 #include "access/printtup.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
-#include "catalog/ybc_catalog_version.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/async.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
@@ -3691,7 +3691,7 @@ static void YBRefreshCache()
 	YBCPgResetCatalogReadTime();
 	/* Get the latest syscatalog version from the master */
 	uint64_t catalog_master_version = 0;
-	YBCGetMasterCatalogVersion(&catalog_master_version);
+	YbGetMasterCatalogVersion(&catalog_master_version);
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3753,7 +3753,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 */
 	YBCPgResetCatalogReadTime();
 	uint64_t catalog_master_version = 0;
-	YBCGetMasterCatalogVersion(&catalog_master_version);
+	YbGetMasterCatalogVersion(&catalog_master_version);
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;

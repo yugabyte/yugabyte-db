@@ -82,7 +82,7 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
-#include "access/ybcin.h"
+#include "access/yb_lsm.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
