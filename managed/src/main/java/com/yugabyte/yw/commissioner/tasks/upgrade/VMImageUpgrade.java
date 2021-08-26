@@ -98,8 +98,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
 
       List<NodeDetails> nodeList = Collections.singletonList(node);
-      createSetupServerTasks(nodeList, true)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      createSetupServerTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
       taskParams().rootCA = universeDetails.rootCA;
@@ -156,7 +155,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                 "No cluster available with UUID: " + node.placementUuid);
           }
           UserIntent userIntent = cluster.userIntent;
-          fillSetupParamsForNode(params, userIntent, node);
+          fillCreateParamsForNode(params, userIntent, node);
           params.numVolumes = numVolumes;
           params.machineImage = machineImage;
           params.bootDisksPerZone = this.replacementRootVolumes;
