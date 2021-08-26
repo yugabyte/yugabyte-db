@@ -1654,11 +1654,12 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
   return server_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
-void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tablet_ptrs) const {
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_ptrs) const {
   SharedLock<RWMutex> shared_lock(mutex_);
-  GetTabletPeersUnlocked(tablet_peers);
+  TabletPeers peers;
+  GetTabletPeersUnlocked(&peers);
   if (tablet_ptrs) {
-    for (const auto& peer : *tablet_peers) {
+    for (const auto& peer : peers) {
       if (!peer) continue;
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
@@ -1666,6 +1667,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
       }
     }
   }
+  return peers;
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
@@ -1693,12 +1695,6 @@ void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tab
   };
   tablet_ids->erase(std::remove_if(tablet_ids->begin(), tablet_ids->end(), filter),
                     tablet_ids->end());
-}
-
-TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers() const {
-  TabletPeers peers;
-  GetTabletPeers(&peers);
-  return peers;
 }
 
 void TSTabletManager::ApplyChange(const string& tablet_id,

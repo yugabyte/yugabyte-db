@@ -45,8 +45,7 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
     auto server = cluster->mini_tablet_server(i)->server();
     std::vector<std::shared_ptr<tablet::TabletPeer>> tablets;
     auto status = Wait([server, &tablets] {
-          tablets.clear();
-          server->tablet_manager()->GetTabletPeers(&tablets);
+          tablets = server->tablet_manager()->GetTabletPeers();
           for (const auto& peer : tablets) {
             if (peer->tablet() == nullptr) {
               return false;

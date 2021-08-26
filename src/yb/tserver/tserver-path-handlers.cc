@@ -397,8 +397,7 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
   std::stringstream *output = &resp->output;
   bool as_text = ContainsKey(req.parsed_args, "raw");
 
-  vector<std::shared_ptr<TabletPeer> > peers;
-  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
 
   string arg = FindWithDefault(req.parsed_args, "include_traces", "false");
   Operation::TraceType trace_type = ParseLeadingBoolValue(
@@ -540,8 +539,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
 void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
                                                 Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  vector<std::shared_ptr<TabletPeer>> peers;
-  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
   auto table_map = GetTablesInfo(peers);
   bool show_missing_size_footer = false;
 
@@ -592,8 +590,7 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  vector<std::shared_ptr<TabletPeer> > peers;
-  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
   std::sort(peers.begin(), peers.end(), &CompareByTabletId);
 
   *output << "<h1>Tablets</h1>\n";
@@ -768,8 +765,7 @@ void TabletServerPathHandlers::HandleHealthCheck(const Webserver::WebRequest& re
                                                  Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
-  vector<std::shared_ptr<TabletPeer> > tablet_peers;
-  tserver_->tablet_manager()->GetTabletPeers(&tablet_peers);
+  auto tablet_peers = tserver_->tablet_manager()->GetTabletPeers();
 
   jw.StartObject();
   jw.String("failed_tablets");

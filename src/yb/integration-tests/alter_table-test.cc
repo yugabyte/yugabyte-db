@@ -177,8 +177,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
   }
 
   std::shared_ptr<TabletPeer> LookupTabletPeer() {
-    vector<std::shared_ptr<TabletPeer> > peers;
-    cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers();
     return peers[0];
   }
 

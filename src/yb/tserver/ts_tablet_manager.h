@@ -253,9 +253,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   }
 
   // Get all of the tablets currently hosted on this server.
-  void GetTabletPeers(TabletPeers* tablet_peers,
-                      TabletPtrs* tablet_ptrs = nullptr) const;
-  TabletPeers GetTabletPeers() const;
+  TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 

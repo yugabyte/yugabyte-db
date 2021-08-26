@@ -1387,7 +1387,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   TSTabletManager::TabletPtrs tablet_ptrs;
 
   if (req->all_tablets()) {
-    server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
+    tablet_peers = server_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
   } else {
     for (const TabletId& id : req->tablet_ids()) {
       auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
@@ -1424,9 +1424,8 @@ void TabletServiceAdminImpl::CountIntents(
     const CountIntentsRequestPB* req,
     CountIntentsResponsePB* resp,
     rpc::RpcContext context) {
-  TabletPeers tablet_peers;
   TSTabletManager::TabletPtrs tablet_ptrs;
-  server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
+  TabletPeers tablet_peers = server_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
   int64_t total_intents = 0;
   // TODO: do this in parallel.
   // TODO: per-tablet intent counts.
@@ -2788,8 +2787,7 @@ void TabletServiceImpl::Publish(
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {
-  TabletPeers peers;
-  server_->tablet_manager()->GetTabletPeers(&peers);
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
@@ -2820,8 +2818,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
                                                    ListTabletsForTabletServerResponsePB* resp,
                                                    rpc::RpcContext context) {
   // Replicating logic from path-handlers.
-  TabletPeers peers;
-  server_->tablet_manager()->GetTabletPeers(&peers);
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
   for (const TabletPeerPtr& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
