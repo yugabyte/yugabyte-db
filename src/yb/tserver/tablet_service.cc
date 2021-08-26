@@ -2235,7 +2235,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       break;
     }
     if (!read_context->allow_retry) {
-      // The read time is specified, than we read as part of transaction. So we should restart
+      // If the read time is specified, then we read as part of a transaction. So we should restart
       // whole transaction. In this case we report restart time and abort reading.
       read_context->resp->Clear();
       auto restart_read_time = read_context->resp->mutable_restart_read_time();
