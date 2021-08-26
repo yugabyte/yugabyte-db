@@ -5,8 +5,8 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -51,7 +51,7 @@ public class TabletServerController extends AuthenticatedController {
     if (masterLeaderIPAddr.isEmpty()) {
       final String errMsg = "Could not find the master leader address in universe " + universeUUID;
       LOG.error(errMsg);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, errMsg);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
 
     JsonNode response;
@@ -63,8 +63,8 @@ public class TabletServerController extends AuthenticatedController {
       response = apiHelper.getRequest(masterLeaderUrl);
     } catch (Exception e) {
       LOG.error("Failed to get list of tablet servers in universe " + universeUUID, e);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return YWResults.withRawData(response);
+    return PlatformResults.withRawData(response);
   }
 }

@@ -3,7 +3,7 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static play.mvc.Http.Status.NOT_FOUND;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Transactional;
@@ -60,7 +60,7 @@ public class RuntimeConfigEntry extends Model {
   public static RuntimeConfigEntry getOrBadRequest(UUID scope, String path) {
     RuntimeConfigEntry runtimeConfigEntry = get(scope, path);
     if (runtimeConfigEntry == null)
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scope));
     return runtimeConfigEntry;
   }

@@ -17,7 +17,7 @@ package com.yugabyte.yw.controllers;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -26,7 +26,8 @@ import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
@@ -75,7 +76,7 @@ public class AlertController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     Alert alert = alertService.getOrBadRequest(alertUUID);
-    return YWResults.withData(alert);
+    return PlatformResults.withData(alert);
   }
 
   /** Lists alerts for given customer. */
@@ -89,7 +90,7 @@ public class AlertController extends AuthenticatedController {
 
     AlertFilter filter = AlertFilter.builder().customerUuid(customerUUID).build();
     List<Alert> alerts = alertService.list(filter);
-    return YWResults.withData(alerts);
+    return PlatformResults.withData(alerts);
   }
 
   @ApiOperation(value = "List active alerts", response = Alert.class, responseContainer = "List")
@@ -98,7 +99,7 @@ public class AlertController extends AuthenticatedController {
 
     AlertFilter filter = AlertFilter.builder().customerUuid(customerUUID).build();
     List<Alert> alerts = alertService.listNotResolved(filter);
-    return YWResults.withData(alerts);
+    return PlatformResults.withData(alerts);
   }
 
   @ApiOperation(value = "List alerts (paginated)", response = AlertPagedResponse.class)
@@ -118,7 +119,7 @@ public class AlertController extends AuthenticatedController {
 
     AlertPagedResponse alerts = alertService.pagedList(query);
 
-    return YWResults.withData(alerts);
+    return PlatformResults.withData(alerts);
   }
 
   @ApiOperation(value = "Acknowledge an alert", response = Alert.class)
@@ -129,7 +130,7 @@ public class AlertController extends AuthenticatedController {
     alertService.acknowledge(filter);
 
     Alert alert = alertService.getOrBadRequest(alertUUID);
-    return YWResults.withData(alert);
+    return PlatformResults.withData(alert);
   }
 
   @ApiOperation(
@@ -149,7 +150,7 @@ public class AlertController extends AuthenticatedController {
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
     alertService.acknowledge(filter);
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Get an alert configuration", response = AlertConfiguration.class)
@@ -158,7 +159,7 @@ public class AlertController extends AuthenticatedController {
 
     AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
 
-    return YWResults.withData(configuration);
+    return PlatformResults.withData(configuration);
   }
 
   @ApiOperation(
@@ -185,7 +186,7 @@ public class AlertController extends AuthenticatedController {
                     alertConfigurationService.createConfigurationTemplate(customer, template))
             .collect(Collectors.toList());
 
-    return YWResults.withData(templates);
+    return PlatformResults.withData(templates);
   }
 
   @ApiOperation(
@@ -209,7 +210,7 @@ public class AlertController extends AuthenticatedController {
 
     AlertConfigurationPagedResponse configurations = alertConfigurationService.pagedList(query);
 
-    return YWResults.withData(configurations);
+    return PlatformResults.withData(configurations);
   }
 
   @ApiOperation(
@@ -231,7 +232,7 @@ public class AlertController extends AuthenticatedController {
 
     List<AlertConfiguration> configurations = alertConfigurationService.list(filter);
 
-    return YWResults.withData(configurations);
+    return PlatformResults.withData(configurations);
   }
 
   @ApiOperation(value = "Create an alert configuration", response = AlertConfiguration.class)
@@ -247,13 +248,13 @@ public class AlertController extends AuthenticatedController {
     AlertConfiguration configuration = parseJson(AlertConfiguration.class);
 
     if (configuration.getUuid() != null) {
-      throw new YWServiceException(BAD_REQUEST, "Can't create configuration with uuid set");
+      throw new PlatformServiceException(BAD_REQUEST, "Can't create configuration with uuid set");
     }
 
     configuration = alertConfigurationService.save(configuration);
 
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.withData(configuration);
+    return PlatformResults.withData(configuration);
   }
 
   @ApiOperation(value = "Update an alert configuration", response = AlertConfiguration.class)
@@ -270,21 +271,22 @@ public class AlertController extends AuthenticatedController {
     AlertConfiguration configuration = parseJson(AlertConfiguration.class);
 
     if (configuration.getUuid() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Can't update configuration with missing uuid");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't update configuration with missing uuid");
     }
 
     if (!configuration.getUuid().equals(configurationUUID)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Configuration UUID from path should be consistent with body");
     }
 
     configuration = alertConfigurationService.save(configuration);
 
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.withData(configuration);
+    return PlatformResults.withData(configuration);
   }
 
-  @ApiOperation(value = "Delete an alert configuration", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Delete an alert configuration", response = YBPSuccess.class)
   public Result deleteAlertConfiguration(UUID customerUUID, UUID configurationUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -293,7 +295,7 @@ public class AlertController extends AuthenticatedController {
     alertConfigurationService.delete(configurationUUID);
 
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Create an alert channel", response = AlertChannel.class)
@@ -310,13 +312,13 @@ public class AlertController extends AuthenticatedController {
         new AlertChannel().setCustomerUUID(customerUUID).setName(data.name).setParams(data.params);
     alertChannelService.save(channel);
     auditService().createAuditEntryWithReqBody(ctx());
-    return YWResults.withData(channel);
+    return PlatformResults.withData(channel);
   }
 
   @ApiOperation(value = "Get an alert channel", response = AlertChannel.class)
   public Result getAlertChannel(UUID customerUUID, UUID alertChannelUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(
+    return PlatformResults.withData(
         CommonUtils.maskObject(
             alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID)));
   }
@@ -337,17 +339,17 @@ public class AlertController extends AuthenticatedController {
         .setParams(CommonUtils.unmaskObject(channel.getParams(), data.params));
     alertChannelService.save(channel);
     auditService().createAuditEntryWithReqBody(ctx());
-    return YWResults.withData(CommonUtils.maskObject(channel));
+    return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
-  @ApiOperation(value = "Delete an alert channel", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Delete an alert channel", response = YBPSuccess.class)
   public Result deleteAlertChannel(UUID customerUUID, UUID alertChannelUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
     alertChannelService.delete(customerUUID, alertChannelUUID);
     metricService.handleSourceRemoval(channel.getCustomerUUID(), alertChannelUUID);
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(
@@ -356,7 +358,7 @@ public class AlertController extends AuthenticatedController {
       responseContainer = "List")
   public Result listAlertChannels(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(
+    return PlatformResults.withData(
         alertChannelService
             .list(customerUUID)
             .stream()
@@ -383,13 +385,13 @@ public class AlertController extends AuthenticatedController {
             .setDefaultDestination(data.defaultDestination);
     alertDestinationService.save(destination);
     auditService().createAuditEntryWithReqBody(ctx());
-    return YWResults.withData(destination);
+    return PlatformResults.withData(destination);
   }
 
   @ApiOperation(value = "Get an alert destination", response = AlertDestination.class)
   public Result getAlertDestination(UUID customerUUID, UUID alertDestinationUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(
+    return PlatformResults.withData(
         alertDestinationService.getOrBadRequest(customerUUID, alertDestinationUUID));
   }
 
@@ -412,15 +414,15 @@ public class AlertController extends AuthenticatedController {
         .setChannelsList(alertChannelService.getOrBadRequest(customerUUID, data.channels));
     alertDestinationService.save(destination);
     auditService().createAuditEntryWithReqBody(ctx());
-    return YWResults.withData(destination);
+    return PlatformResults.withData(destination);
   }
 
-  @ApiOperation(value = "Delete an alert destination", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Delete an alert destination", response = YBPSuccess.class)
   public Result deleteAlertDestination(UUID customerUUID, UUID alertDestinationUUID) {
     Customer.getOrBadRequest(customerUUID);
     alertDestinationService.delete(customerUUID, alertDestinationUUID);
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(
@@ -429,7 +431,7 @@ public class AlertController extends AuthenticatedController {
       responseContainer = "List")
   public Result listAlertDestinations(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(alertDestinationService.listByCustomer(customerUUID));
+    return PlatformResults.withData(alertDestinationService.listByCustomer(customerUUID));
   }
 
   @VisibleForTesting

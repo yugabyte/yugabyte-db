@@ -5,8 +5,8 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.models.Users.Role;
 
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.util.UUID;
@@ -32,23 +32,22 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Inject ConfigHelper configHelper;
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject Config config;
 
   @Inject private PlaySessionStore playSessionStore;
 
   private Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
     Users user = null;
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
+    boolean useOAuth = config.getBoolean("yb.security.use_oauth");
     Http.Cookie cookieValue = ctx.request().cookie(COOKIE_PLAY_SESSION);
 
     if (useOAuth) {
       final PlayWebContext context = new PlayWebContext(ctx, playSessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       if (profileManager.isAuthenticated()) {
-        String emailAttr =
-            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
-        String email = "";
+        String emailAttr = config.getString("yb.security.oidcEmailAttribute");
+        String email;
         if (emailAttr.equals("")) {
           email = profileManager.get(true).get().getEmail();
         } else {
@@ -88,9 +87,7 @@ public class TokenAuthenticator extends Action.Simple {
                 "^.*/universes/%s/proxy/%s/(metrics|prometheus-metrics)$",
                 patternForUUID, patternForHost),
             path)
-        && !runtimeConfigFactory
-            .globalRuntimeConf()
-            .getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
+        && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
       return delegate.call(ctx);
     }
 
@@ -98,7 +95,7 @@ public class TokenAuthenticator extends Action.Simple {
       custUUID = UUID.fromString(matcher.group(1));
       endPoint = ((endPoint = matcher.group(2)) != null) ? endPoint : "";
     }
-    Customer cust = null;
+    Customer cust;
     Users user = getCurrentAuthenticatedUser(ctx);
 
     if (user != null) {
@@ -125,7 +122,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   public static boolean superAdminAuthentication(Http.Context ctx) {
     String token = fetchToken(ctx, true);
-    Users user = null;
+    Users user;
     if (token != null) {
       user = Users.authWithApiToken(token);
     } else {

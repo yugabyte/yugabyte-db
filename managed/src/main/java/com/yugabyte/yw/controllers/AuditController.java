@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -34,14 +34,14 @@ public class AuditController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     List<Audit> auditList = auditService().getAllUserEntries(user.uuid);
-    return YWResults.withData(auditList);
+    return PlatformResults.withData(auditList);
   }
 
   @ApiOperation(value = "Get audit info for a task", response = Audit.class)
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
-    return YWResults.withData(entry);
+    return PlatformResults.withData(entry);
   }
 
   /**
@@ -54,6 +54,6 @@ public class AuditController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
     Users user = Users.get(entry.getUserUUID());
-    return YWResults.withData(user);
+    return PlatformResults.withData(user);
   }
 }

@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricLabel;
@@ -56,7 +56,7 @@ public class MetricsController extends Controller {
       response.flush();
       response.close();
     } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
     return Results.status(OK, response.toString());

@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import java.util.ArrayList;
@@ -51,7 +51,7 @@ public class UniverseControllerRequestBinder {
       taskParams.clusters = clusters;
       return taskParams;
     } catch (JsonProcessingException exception) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "JsonProcessingException parsing request body: " + exception.getMessage());
     }
   }
@@ -65,7 +65,7 @@ public class UniverseControllerRequestBinder {
       taskParams.clusters = clusters;
       return taskParams;
     } catch (JsonProcessingException exception) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "JsonProcessingException parsing request body: " + exception.getMessage());
     }
   }
@@ -83,7 +83,7 @@ public class UniverseControllerRequestBinder {
     ArrayNode clustersJsonArray = (ArrayNode) formData.get("clusters");
     if (clustersJsonArray == null) {
       if (failIfNotPresent) {
-        throw new YWServiceException(BAD_REQUEST, "clusters: This field is required");
+        throw new PlatformServiceException(BAD_REQUEST, "clusters: This field is required");
       } else {
         return new ArrayList<>();
       }
@@ -96,7 +96,7 @@ public class UniverseControllerRequestBinder {
       ObjectNode userIntent = (ObjectNode) clusterJson.get("userIntent");
       if (userIntent == null) {
         if (failIfNotPresent) {
-          throw new YWServiceException(BAD_REQUEST, "userIntent: This field is required");
+          throw new PlatformServiceException(BAD_REQUEST, "userIntent: This field is required");
         } else {
           newClustersJsonArray.add(clusterJson);
           UniverseDefinitionTaskParams.Cluster cluster =

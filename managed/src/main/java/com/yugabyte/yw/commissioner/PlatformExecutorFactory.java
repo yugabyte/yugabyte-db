@@ -27,13 +27,13 @@ import play.inject.ApplicationLifecycle;
 /** For easy and configurable creation of executor that will shutdown on app shutdown. */
 @Slf4j
 @Singleton
-public class YBThreadPoolExecutorFactory {
+public class PlatformExecutorFactory {
 
   final Config config;
   final ApplicationLifecycle lifecycle;
 
   @Inject
-  public YBThreadPoolExecutorFactory(Config config, ApplicationLifecycle lifecycle) {
+  public PlatformExecutorFactory(Config config, ApplicationLifecycle lifecycle) {
     this.config = config;
     this.lifecycle = lifecycle;
   }

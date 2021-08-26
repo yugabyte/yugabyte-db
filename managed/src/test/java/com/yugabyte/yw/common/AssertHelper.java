@@ -15,7 +15,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.CONFLICT;;
+import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
@@ -25,7 +25,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.function.ThrowingRunnable;
 import play.libs.Json;
-import play.mvc.Result;
+import play.mvc.Result;;
 
 public class AssertHelper {
   public static void assertOk(Result result) {
@@ -139,20 +139,18 @@ public class AssertHelper {
 
   public static void assertYWSuccess(Result result, String expectedMessage) {
     assertOk(result);
-    YWResults.YWSuccess ywSuccess =
-        Json.fromJson(Json.parse(contentAsString(result)), YWResults.YWSuccess.class);
-    assertEquals(expectedMessage, ywSuccess.message);
+    YBPSuccess ybpSuccess = Json.fromJson(Json.parse(contentAsString(result)), YBPSuccess.class);
+    assertEquals(expectedMessage, ybpSuccess.message);
   }
 
   private static void assertYWSuccessNoMessage(Result result) {
     assertOk(result);
-    YWResults.YWSuccess ywSuccess =
-        Json.fromJson(Json.parse(contentAsString(result)), YWResults.YWSuccess.class);
-    assertNull(ywSuccess.message);
+    YBPSuccess ybpSuccess = Json.fromJson(Json.parse(contentAsString(result)), YBPSuccess.class);
+    assertNull(ybpSuccess.message);
   }
 
   public static Result assertYWSE(ThrowingRunnable runnable) {
-    return assertThrows(YWServiceException.class, runnable).getResult();
+    return assertThrows(PlatformServiceException.class, runnable).getResult();
   }
 
   public static Metric assertMetricValue(

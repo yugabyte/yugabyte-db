@@ -24,7 +24,7 @@ public class AlertChannelParams {
   // If null then template from the alert is used.
   public String textTemplate;
 
-  public void validate() throws YWValidateException {
+  public void validate() throws PlatformValidationException {
     // Nothing to check yet.
   }
 }
