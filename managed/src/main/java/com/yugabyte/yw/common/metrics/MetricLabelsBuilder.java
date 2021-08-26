@@ -11,7 +11,7 @@ package com.yugabyte.yw.common.metrics;
 
 import com.yugabyte.yw.models.AlertDefinitionLabel;
 import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertReceiver;
+import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MetricLabel;
 import com.yugabyte.yw.models.Universe;
@@ -24,9 +24,9 @@ public class MetricLabelsBuilder {
   public static String[] UNIVERSE_LABELS = {
     KnownAlertLabels.UNIVERSE_UUID.labelName(),
     KnownAlertLabels.UNIVERSE_NAME.labelName(),
-    KnownAlertLabels.TARGET_UUID.labelName(),
-    KnownAlertLabels.TARGET_NAME.labelName(),
-    KnownAlertLabels.TARGET_TYPE.labelName()
+    KnownAlertLabels.SOURCE_UUID.labelName(),
+    KnownAlertLabels.SOURCE_NAME.labelName(),
+    KnownAlertLabels.SOURCE_TYPE.labelName()
   };
 
   private final List<MetricLabel> labels = new ArrayList<>();
@@ -41,25 +41,25 @@ public class MetricLabelsBuilder {
     return this;
   }
 
-  public MetricLabelsBuilder appendTarget(Universe universe) {
+  public MetricLabelsBuilder appendSource(Universe universe) {
     appendUniverse(universe);
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_UUID, universe.universeUUID.toString()));
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_NAME, universe.name));
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_TYPE, "universe"));
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString()));
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_NAME, universe.name));
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_TYPE, "universe"));
     return this;
   }
 
-  public MetricLabelsBuilder appendTarget(Customer customer) {
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_UUID, customer.getUuid().toString()));
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_NAME, customer.name));
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_TYPE, "customer"));
+  public MetricLabelsBuilder appendSource(Customer customer) {
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_UUID, customer.getUuid().toString()));
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_NAME, customer.name));
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_TYPE, "customer"));
     return this;
   }
 
-  public MetricLabelsBuilder appendTarget(AlertReceiver receiver) {
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_UUID, receiver.getUuid().toString()));
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_NAME, receiver.getName()));
-    labels.add(new MetricLabel(KnownAlertLabels.TARGET_TYPE, "alert receiver"));
+  public MetricLabelsBuilder appendSource(AlertChannel channel) {
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_UUID, channel.getUuid().toString()));
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_NAME, channel.getName()));
+    labels.add(new MetricLabel(KnownAlertLabels.SOURCE_TYPE, "alert channel"));
     return this;
   }
 

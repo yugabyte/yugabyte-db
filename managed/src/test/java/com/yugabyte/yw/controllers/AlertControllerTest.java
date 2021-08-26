@@ -31,33 +31,33 @@ import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
-import com.yugabyte.yw.common.alerts.AlertReceiverParams;
-import com.yugabyte.yw.common.alerts.AlertReceiverService;
-import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
-import com.yugabyte.yw.common.alerts.AlertRouteService;
+import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import com.yugabyte.yw.common.alerts.AlertChannelParams;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
-import com.yugabyte.yw.forms.filters.AlertDefinitionGroupApiFilter;
-import com.yugabyte.yw.forms.filters.AlertDefinitionTemplateApiFilter;
-import com.yugabyte.yw.forms.paging.AlertDefinitionGroupPagedApiQuery;
+import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
+import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
+import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertDefinitionGroup.SortBy;
-import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
-import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
-import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertReceiver.TargetType;
-import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.AlertConfiguration.SortBy;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
+import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -68,7 +68,7 @@ import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import com.yugabyte.yw.models.paging.AlertDefinitionGroupPagedResponse;
+import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import java.io.IOException;
@@ -104,18 +104,18 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private SmtpData defaultSmtp = EmailFixtures.createSmtpData();
 
-  private int alertReceiverIndex;
+  private int alertChannelIndex;
 
-  private int alertRouteIndex;
+  private int alertDestinationIndex;
 
   private MetricService metricService;
   private AlertService alertService;
   private AlertDefinitionService alertDefinitionService;
-  private AlertDefinitionGroupService alertDefinitionGroupService;
-  private AlertReceiverService alertReceiverService;
-  private AlertRouteService alertRouteService;
+  private AlertConfigurationService alertConfigurationService;
+  private AlertChannelService alertChannelService;
+  private AlertDestinationService alertDestinationService;
 
-  private AlertDefinitionGroup alertDefinitionGroup;
+  private AlertConfiguration alertConfiguration;
   private AlertDefinition alertDefinition;
 
   @Before
@@ -129,17 +129,18 @@ public class AlertControllerTest extends FakeDBApplication {
     metricService = new MetricService();
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(
+    alertConfigurationService =
+        new AlertConfigurationService(
             alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertReceiverService = new AlertReceiverService();
-    alertRouteService = new AlertRouteService(alertReceiverService, alertDefinitionGroupService);
-    alertDefinitionGroup = ModelFactory.createAlertDefinitionGroup(customer, universe);
-    alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertDefinitionGroup);
+    alertChannelService = new AlertChannelService();
+    alertDestinationService =
+        new AlertDestinationService(alertChannelService, alertConfigurationService);
+    alertConfiguration = ModelFactory.createAlertConfiguration(customer, universe);
+    alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertConfiguration);
 
     controller.setMetricService(metricService);
     controller.setAlertService(alertService);
-    controller.setAlertDefinitionGroupService(alertDefinitionGroupService);
+    controller.setAlertConfigurationService(alertConfigurationService);
   }
 
   private void checkEmptyAnswer(String url) {
@@ -148,160 +149,157 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(contentAsString(result), equalTo("[]"));
   }
 
-  private AlertReceiverParams getAlertReceiverParamsForTests() {
-    AlertReceiverEmailParams arParams = new AlertReceiverEmailParams();
+  private AlertChannelParams getAlertChannelParamsForTests() {
+    AlertChannelEmailParams arParams = new AlertChannelEmailParams();
     arParams.recipients = Collections.singletonList("test@test.com");
     arParams.smtpData = defaultSmtp;
     return arParams;
   }
 
-  private ObjectNode getAlertReceiverJson() {
+  private ObjectNode getAlertChannelJson() {
     ObjectNode data = Json.newObject();
-    data.put("name", getAlertReceiverName());
-    data.put("params", Json.toJson(getAlertReceiverParamsForTests()));
+    data.put("name", getAlertChannelName());
+    data.put("params", Json.toJson(getAlertChannelParamsForTests()));
     return data;
   }
 
-  private AlertReceiver receiverFromJson(JsonNode json) {
+  private AlertChannel channelFromJson(JsonNode json) {
     ObjectMapper mapper = new ObjectMapper();
     try {
-      return mapper.treeToValue(json, AlertReceiver.class);
+      return mapper.treeToValue(json, AlertChannel.class);
     } catch (JsonProcessingException e) {
       fail("Bad json format.");
       return null;
     }
   }
 
-  private AlertReceiver createAlertReceiver() {
-    ObjectNode receiverFormDataJson = getAlertReceiverJson();
+  private AlertChannel createAlertChannel() {
+    ObjectNode channelFormDataJson = getAlertChannelJson();
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
-            "/api/customers/" + customer.getUuid() + "/alert_receivers",
+            "/api/customers/" + customer.getUuid() + "/alert_channels",
             authToken,
-            receiverFormDataJson);
+            channelFormDataJson);
     assertThat(result.status(), equalTo(OK));
-    return receiverFromJson(Json.parse(contentAsString(result)));
+    return channelFromJson(Json.parse(contentAsString(result)));
   }
 
   @Test
-  public void testCreateAndListAlertReceiver_OkResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
+  public void testCreateAndListAlertChannel_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
 
-    AlertReceiver createdReceiver = createAlertReceiver();
-    assertThat(createdReceiver.getUuid(), notNullValue());
+    AlertChannel createdChannel = createAlertChannel();
+    assertThat(createdChannel.getUuid(), notNullValue());
 
     assertThat(
-        AlertUtils.getJsonTypeName(createdReceiver.getParams()), equalTo(TargetType.Email.name()));
-    assertThat(createdReceiver.getParams(), equalTo(getAlertReceiverParamsForTests()));
+        AlertUtils.getJsonTypeName(createdChannel.getParams()), equalTo(ChannelType.Email.name()));
+    assertThat(createdChannel.getParams(), equalTo(getAlertChannelParamsForTests()));
 
     Result result =
         doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.getUuid() + "/alert_receivers", authToken);
+            "GET", "/api/customers/" + customer.getUuid() + "/alert_channels", authToken);
 
     assertThat(result.status(), equalTo(OK));
-    JsonNode listedReceivers = Json.parse(contentAsString(result));
-    assertThat(listedReceivers.size(), equalTo(1));
+    JsonNode listedChannels = Json.parse(contentAsString(result));
+    assertThat(listedChannels.size(), equalTo(1));
     assertThat(
-        receiverFromJson(listedReceivers.get(0)), equalTo(CommonUtils.maskObject(createdReceiver)));
+        channelFromJson(listedChannels.get(0)), equalTo(CommonUtils.maskObject(createdChannel)));
   }
 
   @Test
-  public void testCreateAlertReceiver_ErrorResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
+  public void testCreateAlertChannel_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
     ObjectNode data = Json.newObject();
     data.put("name", "name");
-    data.put("params", Json.toJson(new AlertReceiverEmailParams()));
+    data.put("params", Json.toJson(new AlertChannelEmailParams()));
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
-                    "/api/customers/" + customer.getUuid() + "/alert_receivers",
+                    "/api/customers/" + customer.getUuid() + "/alert_channels",
                     authToken,
                     data));
 
     AssertHelper.assertBadRequest(
         result, "Email parameters: only one of defaultRecipients and recipients[] should be set.");
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
   }
 
   @Test
-  public void testGetAlertReceiver_OkResult() {
-    AlertReceiver createdReceiver = createAlertReceiver();
-    assertThat(createdReceiver.getUuid(), notNullValue());
+  public void testGetAlertChannel_OkResult() {
+    AlertChannel createdChannel = createAlertChannel();
+    assertThat(createdChannel.getUuid(), notNullValue());
 
     Result result =
         doRequestWithAuthToken(
             "GET",
-            "/api/customers/"
-                + customer.getUuid()
-                + "/alert_receivers/"
-                + createdReceiver.getUuid(),
+            "/api/customers/" + customer.getUuid() + "/alert_channels/" + createdChannel.getUuid(),
             authToken);
     assertThat(result.status(), equalTo(OK));
 
-    AlertReceiver receiver = receiverFromJson(Json.parse(contentAsString(result)));
-    assertThat(receiver, notNullValue());
-    assertThat(receiver, equalTo(CommonUtils.maskObject(createdReceiver)));
+    AlertChannel channel = channelFromJson(Json.parse(contentAsString(result)));
+    assertThat(channel, notNullValue());
+    assertThat(channel, equalTo(CommonUtils.maskObject(createdChannel)));
   }
 
   @Test
-  public void testGetAlertReceiver_ErrorResult() {
+  public void testGetAlertChannel_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthToken(
                     "GET",
-                    "/api/customers/" + customer.getUuid() + "/alert_receivers/" + uuid.toString(),
+                    "/api/customers/" + customer.getUuid() + "/alert_channels/" + uuid.toString(),
                     authToken));
-    AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + uuid.toString());
+    AssertHelper.assertBadRequest(result, "Invalid Alert Channel UUID: " + uuid.toString());
   }
 
   @Test
-  public void testUpdateAlertReceiver_OkResult() {
-    AlertReceiver createdReceiver = createAlertReceiver();
-    assertThat(createdReceiver.getUuid(), notNullValue());
+  public void testUpdateAlertChannel_OkResult() {
+    AlertChannel createdChannel = createAlertChannel();
+    assertThat(createdChannel.getUuid(), notNullValue());
 
-    AlertReceiverEmailParams params = (AlertReceiverEmailParams) createdReceiver.getParams();
+    AlertChannelEmailParams params = (AlertChannelEmailParams) createdChannel.getParams();
     params.recipients = Collections.singletonList("new@test.com");
     params.smtpData.smtpPort = 1111;
-    createdReceiver.setParams(params);
+    createdChannel.setParams(params);
 
     ObjectNode data = Json.newObject();
-    data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
-        .put("name", createdReceiver.getName())
-        .put("params", Json.toJson(createdReceiver.getParams()));
+    data.put("alertChannelUUID", createdChannel.getUuid().toString())
+        .put("name", createdChannel.getName())
+        .put("params", Json.toJson(createdChannel.getParams()));
 
     Result result =
         doRequestWithAuthTokenAndBody(
             "PUT",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_receivers/"
-                + createdReceiver.getUuid().toString(),
+                + "/alert_channels/"
+                + createdChannel.getUuid().toString(),
             authToken,
             data);
     assertThat(result.status(), equalTo(OK));
 
-    AlertReceiver updatedReceiver = receiverFromJson(Json.parse(contentAsString(result)));
+    AlertChannel updatedChannel = channelFromJson(Json.parse(contentAsString(result)));
 
-    assertThat(updatedReceiver, notNullValue());
-    assertThat(updatedReceiver, equalTo(CommonUtils.maskObject(createdReceiver)));
+    assertThat(updatedChannel, notNullValue());
+    assertThat(updatedChannel, equalTo(CommonUtils.maskObject(createdChannel)));
   }
 
   @Test
-  public void testUpdateAlertReceiver_ErrorResult() {
-    AlertReceiver createdReceiver = createAlertReceiver();
-    assertThat(createdReceiver.getUuid(), notNullValue());
+  public void testUpdateAlertChannel_ErrorResult() {
+    AlertChannel createdChannel = createAlertChannel();
+    assertThat(createdChannel.getUuid(), notNullValue());
 
-    createdReceiver.setParams(new AlertReceiverSlackParams());
+    createdChannel.setParams(new AlertChannelSlackParams());
 
     ObjectNode data = Json.newObject();
-    data.put("alertReceiverUUID", createdReceiver.getUuid().toString())
-        .put("name", createdReceiver.getName())
-        .put("params", Json.toJson(createdReceiver.getParams()));
+    data.put("alertChannelUUID", createdChannel.getUuid().toString())
+        .put("name", createdChannel.getName())
+        .put("params", Json.toJson(createdChannel.getParams()));
 
     Result result =
         assertYWSE(
@@ -310,90 +308,90 @@ public class AlertControllerTest extends FakeDBApplication {
                     "PUT",
                     "/api/customers/"
                         + customer.getUuid()
-                        + "/alert_receivers/"
-                        + createdReceiver.getUuid().toString(),
+                        + "/alert_channels/"
+                        + createdChannel.getUuid().toString(),
                     authToken,
                     data));
     AssertHelper.assertBadRequest(
-        result, "Unable to create/update alert receiver: Slack parameters: username is empty.");
+        result, "Unable to create/update alert channel: Slack parameters: username is empty.");
   }
 
   @Test
-  public void testDeleteAlertReceiver_OkResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
+  public void testDeleteAlertChannel_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
 
-    AlertReceiver createdReceiver = createAlertReceiver();
-    assertThat(createdReceiver.getUuid(), notNullValue());
+    AlertChannel createdChannel = createAlertChannel();
+    assertThat(createdChannel.getUuid(), notNullValue());
 
-    Metric receiverStatus =
+    Metric channelStatus =
         metricService
             .buildMetricTemplate(
-                PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS,
+                PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS,
                 MetricService.DEFAULT_METRIC_EXPIRY_SEC)
             .setCustomerUUID(customer.getUuid())
-            .setTargetUuid(createdReceiver.getUuid())
-            .setLabels(MetricLabelsBuilder.create().appendTarget(createdReceiver).getMetricLabels())
+            .setSourceUuid(createdChannel.getUuid())
+            .setLabels(MetricLabelsBuilder.create().appendSource(createdChannel).getMetricLabels())
             .setValue(0.0)
             .setLabel(KnownAlertLabels.ERROR_MESSAGE, "Some error");
-    metricService.cleanAndSave(Collections.singletonList(receiverStatus));
+    metricService.cleanAndSave(Collections.singletonList(channelStatus));
 
     Result result =
         doRequestWithAuthToken(
             "DELETE",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_receivers/"
-                + createdReceiver.getUuid().toString(),
+                + "/alert_channels/"
+                + createdChannel.getUuid().toString(),
             authToken);
     assertThat(result.status(), equalTo(OK));
 
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
 
     AssertHelper.assertMetricValue(
         metricService,
         MetricKey.builder()
             .customerUuid(customer.getUuid())
-            .name(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS.getMetricName())
-            .targetUuid(createdReceiver.getUuid())
+            .name(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS.getMetricName())
+            .targetUuid(createdChannel.getUuid())
             .build(),
         null);
   }
 
   @Test
-  public void testDeleteAlertReceiver_ErrorResult() {
+  public void testDeleteAlertChannel_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
-                    "/api/customers/" + customer.getUuid() + "/alert_receivers/" + uuid.toString(),
+                    "/api/customers/" + customer.getUuid() + "/alert_channels/" + uuid.toString(),
                     authToken));
-    AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + uuid.toString());
+    AssertHelper.assertBadRequest(result, "Invalid Alert Channel UUID: " + uuid.toString());
   }
 
   @Test
-  public void testDeleteAlertReceiver_LastReceiverInRoute_ErrorResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_receivers");
+  public void testDeleteAlertChannel_LastChannelInDestination_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
 
-    AlertRoute firstRoute = createAlertRoute(false);
-    assertThat(firstRoute.getUuid(), notNullValue());
+    AlertDestination firstDestination = createAlertDestination(false);
+    assertThat(firstDestination.getUuid(), notNullValue());
 
-    AlertRoute secondRoute = createAlertRoute(false);
-    assertThat(secondRoute.getUuid(), notNullValue());
+    AlertDestination secondDestination = createAlertDestination(false);
+    assertThat(secondDestination.getUuid(), notNullValue());
 
-    // Updating second route to have the same routes.
-    List<AlertReceiver> receivers = firstRoute.getReceiversList();
-    secondRoute.setReceiversList(receivers);
+    // Updating second destination to have the same destinations.
+    List<AlertChannel> channels = firstDestination.getChannelsList();
+    secondDestination.setChannelsList(channels);
     Result result =
         doRequestWithAuthTokenAndBody(
             "PUT",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_routes/"
-                + secondRoute.getUuid().toString(),
+                + "/alert_destinations/"
+                + secondDestination.getUuid().toString(),
             authToken,
-            Json.toJson(secondRoute));
+            Json.toJson(secondDestination));
     assertThat(result.status(), is(OK));
 
     result =
@@ -401,8 +399,8 @@ public class AlertControllerTest extends FakeDBApplication {
             "DELETE",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_receivers/"
-                + receivers.get(0).getUuid().toString(),
+                + "/alert_channels/"
+                + channels.get(0).getUuid().toString(),
             authToken);
     assertThat(result.status(), is(OK));
 
@@ -413,196 +411,206 @@ public class AlertControllerTest extends FakeDBApplication {
                     "DELETE",
                     "/api/customers/"
                         + customer.getUuid()
-                        + "/alert_receivers/"
-                        + receivers.get(1).getUuid().toString(),
+                        + "/alert_channels/"
+                        + channels.get(1).getUuid().toString(),
                     authToken));
 
     AssertHelper.assertBadRequest(
         result,
         String.format(
-            "Unable to delete alert receiver: %s. 2 alert routes have it as a last receiver."
+            "Unable to delete alert channel: %s. 2 alert destinations have it as a last channel."
                 + " Examples: [%s, %s]",
-            receivers.get(1).getUuid(), firstRoute.getName(), secondRoute.getName()));
+            channels.get(1).getUuid(), firstDestination.getName(), secondDestination.getName()));
   }
 
-  private ObjectNode getAlertRouteJson(boolean isDefault) {
-    AlertReceiver receiver1 =
-        ModelFactory.createAlertReceiver(
+  private ObjectNode getAlertDestinationJson(boolean isDefault) {
+    AlertChannel channel1 =
+        ModelFactory.createAlertChannel(
             customer.getUuid(),
-            getAlertReceiverName(),
-            AlertUtils.createParamsInstance(TargetType.Email));
-    AlertReceiver receiver2 =
-        ModelFactory.createAlertReceiver(
+            getAlertChannelName(),
+            AlertUtils.createParamsInstance(ChannelType.Email));
+    AlertChannel channel2 =
+        ModelFactory.createAlertChannel(
             customer.getUuid(),
-            getAlertReceiverName(),
-            AlertUtils.createParamsInstance(TargetType.Slack));
+            getAlertChannelName(),
+            AlertUtils.createParamsInstance(ChannelType.Slack));
 
     ObjectNode data = Json.newObject();
-    data.put("name", getAlertRouteName())
-        .put("defaultRoute", Boolean.valueOf(isDefault))
-        .putArray("receivers")
-        .add(receiver1.getUuid().toString())
-        .add(receiver2.getUuid().toString());
+    data.put("name", getAlertDestinationName())
+        .put("defaultDestination", Boolean.valueOf(isDefault))
+        .putArray("channels")
+        .add(channel1.getUuid().toString())
+        .add(channel2.getUuid().toString());
     return data;
   }
 
-  private AlertRoute routeFromJson(JsonNode json) {
+  private AlertDestination destinationFromJson(JsonNode json) {
     ObjectMapper mapper = new ObjectMapper();
-    List<UUID> receiverUUIDs;
+    List<UUID> channelUUIDs;
     try {
-      receiverUUIDs =
-          Arrays.asList(mapper.readValue(json.get("receivers").traverse(), UUID[].class));
-      List<AlertReceiver> receivers =
-          receiverUUIDs
+      channelUUIDs = Arrays.asList(mapper.readValue(json.get("channels").traverse(), UUID[].class));
+      List<AlertChannel> channels =
+          channelUUIDs
               .stream()
-              .map(uuid -> alertReceiverService.getOrBadRequest(customer.getUuid(), uuid))
+              .map(uuid -> alertChannelService.getOrBadRequest(customer.getUuid(), uuid))
               .collect(Collectors.toList());
 
-      AlertRoute route = new AlertRoute();
-      route.setUuid(UUID.fromString(json.get("uuid").asText()));
-      route.setName(json.get("name").asText());
-      route.setCustomerUUID(UUID.fromString(json.get("customerUUID").asText()));
-      route.setReceiversList(receivers);
-      route.setDefaultRoute(json.get("defaultRoute").asBoolean());
-      return route;
+      AlertDestination destination = new AlertDestination();
+      destination.setUuid(UUID.fromString(json.get("uuid").asText()));
+      destination.setName(json.get("name").asText());
+      destination.setCustomerUUID(UUID.fromString(json.get("customerUUID").asText()));
+      destination.setChannelsList(channels);
+      destination.setDefaultDestination(json.get("defaultDestination").asBoolean());
+      return destination;
     } catch (IOException e) {
       return null;
     }
   }
 
-  private AlertRoute createAlertRoute(boolean isDefault) {
-    ObjectNode routeFormDataJson = getAlertRouteJson(isDefault);
+  private AlertDestination createAlertDestination(boolean isDefault) {
+    ObjectNode destinationFormDataJson = getAlertDestinationJson(isDefault);
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
-            "/api/customers/" + customer.getUuid() + "/alert_routes",
+            "/api/customers/" + customer.getUuid() + "/alert_destinations",
             authToken,
-            routeFormDataJson);
+            destinationFormDataJson);
     assertThat(result.status(), equalTo(OK));
-    return routeFromJson(Json.parse(contentAsString(result)));
+    return destinationFromJson(Json.parse(contentAsString(result)));
   }
 
   @Test
-  public void testCreateAlertRoute_OkResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+  public void testCreateAlertDestination_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
 
-    AlertRoute createdRoute = createAlertRoute(false);
-    assertThat(createdRoute.getUuid(), notNullValue());
+    AlertDestination createdDestination = createAlertDestination(false);
+    assertThat(createdDestination.getUuid(), notNullValue());
 
     Result result =
         doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.getUuid() + "/alert_routes", authToken);
+            "GET", "/api/customers/" + customer.getUuid() + "/alert_destinations", authToken);
     assertThat(result.status(), equalTo(OK));
-    JsonNode listedRoutes = Json.parse(contentAsString(result));
-    assertThat(listedRoutes.size(), equalTo(1));
-    assertThat(routeFromJson(listedRoutes.get(0)), equalTo(createdRoute));
+    JsonNode listedDestinations = Json.parse(contentAsString(result));
+    assertThat(listedDestinations.size(), equalTo(1));
+    assertThat(destinationFromJson(listedDestinations.get(0)), equalTo(createdDestination));
   }
 
   @Test
-  public void testCreateAlertRoute_ErrorResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+  public void testCreateAlertDestination_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
     ObjectNode data = Json.newObject();
-    String alertReceiverUUID = UUID.randomUUID().toString();
-    data.put("name", getAlertRouteName())
-        .put("defaultRoute", Boolean.FALSE)
-        .putArray("receivers")
-        .add(alertReceiverUUID);
+    String alertChannelUUID = UUID.randomUUID().toString();
+    data.put("name", getAlertDestinationName())
+        .put("defaultDestination", Boolean.FALSE)
+        .putArray("channels")
+        .add(alertChannelUUID);
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
-                    "/api/customers/" + customer.getUuid() + "/alert_routes",
+                    "/api/customers/" + customer.getUuid() + "/alert_destinations",
                     authToken,
                     data));
 
-    AssertHelper.assertBadRequest(result, "Invalid Alert Receiver UUID: " + alertReceiverUUID);
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+    AssertHelper.assertBadRequest(result, "Invalid Alert Channel UUID: " + alertChannelUUID);
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
   }
 
   @Test
-  public void testCreateAlertRouteWithDefaultChange() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+  public void testCreateAlertDestinationWithDefaultChange() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
 
-    AlertRoute firstRoute = createAlertRoute(true);
-    assertThat(firstRoute.getUuid(), notNullValue());
-    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(firstRoute));
+    AlertDestination firstDestination = createAlertDestination(true);
+    assertThat(firstDestination.getUuid(), notNullValue());
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
 
-    AlertRoute secondRoute = createAlertRoute(true);
-    assertThat(secondRoute.getUuid(), notNullValue());
-    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(secondRoute));
+    AlertDestination secondDestination = createAlertDestination(true);
+    assertThat(secondDestination.getUuid(), notNullValue());
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(secondDestination));
   }
 
   @Test
-  public void testGetAlertRoute_OkResult() {
-    AlertRoute createdRoute = createAlertRoute(false);
-    assertThat(createdRoute.getUuid(), notNullValue());
+  public void testGetAlertDestination_OkResult() {
+    AlertDestination createdDestination = createAlertDestination(false);
+    assertThat(createdDestination.getUuid(), notNullValue());
 
     Result result =
         doRequestWithAuthToken(
             "GET",
-            "/api/customers/" + customer.getUuid() + "/alert_routes/" + createdRoute.getUuid(),
+            "/api/customers/"
+                + customer.getUuid()
+                + "/alert_destinations/"
+                + createdDestination.getUuid(),
             authToken);
     assertThat(result.status(), equalTo(OK));
 
-    AlertRoute route = routeFromJson(Json.parse(contentAsString(result)));
-    assertThat(route, notNullValue());
-    assertThat(route, equalTo(createdRoute));
+    AlertDestination destination = destinationFromJson(Json.parse(contentAsString(result)));
+    assertThat(destination, notNullValue());
+    assertThat(destination, equalTo(createdDestination));
   }
 
   @Test
-  public void testGetAlertRoute_ErrorResult() {
+  public void testGetAlertDestination_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthToken(
                     "GET",
-                    "/api/customers/" + customer.getUuid() + "/alert_routes/" + uuid.toString(),
+                    "/api/customers/"
+                        + customer.getUuid()
+                        + "/alert_destinations/"
+                        + uuid.toString(),
                     authToken));
-    AssertHelper.assertBadRequest(result, "Invalid Alert Route UUID: " + uuid.toString());
+    AssertHelper.assertBadRequest(result, "Invalid Alert Destination UUID: " + uuid.toString());
   }
 
   @Test
-  public void testUpdateAlertRoute_AnotherDefaultRoute() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+  public void testUpdateAlertDestination_AnotherDefaultDestination() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
 
-    AlertRoute firstRoute = createAlertRoute(true);
-    assertThat(firstRoute.getUuid(), notNullValue());
-    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(firstRoute));
+    AlertDestination firstDestination = createAlertDestination(true);
+    assertThat(firstDestination.getUuid(), notNullValue());
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
 
-    AlertRoute secondRoute = createAlertRoute(false);
-    assertThat(secondRoute.getUuid(), notNullValue());
-    // To be sure the default route hasn't been changed.
-    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(firstRoute));
+    AlertDestination secondDestination = createAlertDestination(false);
+    assertThat(secondDestination.getUuid(), notNullValue());
+    // To be sure the default destination hasn't been changed.
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
 
-    secondRoute.setDefaultRoute(true);
+    secondDestination.setDefaultDestination(true);
 
     Result result =
         doRequestWithAuthTokenAndBody(
             "PUT",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_routes/"
-                + secondRoute.getUuid().toString(),
+                + "/alert_destinations/"
+                + secondDestination.getUuid().toString(),
             authToken,
-            Json.toJson(secondRoute));
+            Json.toJson(secondDestination));
     assertThat(result.status(), is(OK));
-    AlertRoute receivedRoute = routeFromJson(Json.parse(contentAsString(result)));
+    AlertDestination receivedDestination = destinationFromJson(Json.parse(contentAsString(result)));
 
-    assertThat(receivedRoute.isDefaultRoute(), is(true));
-    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(secondRoute));
+    assertThat(receivedDestination.isDefaultDestination(), is(true));
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(secondDestination));
   }
 
   @Test
-  public void testUpdateAlertRoute_ChangeDefaultFlag_ErrorResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+  public void testUpdateAlertDestination_ChangeDefaultFlag_ErrorResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
 
-    AlertRoute route = createAlertRoute(true);
-    assertThat(route.getUuid(), notNullValue());
-    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(route));
+    AlertDestination destination = createAlertDestination(true);
+    assertThat(destination.getUuid(), notNullValue());
+    assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
 
-    route.setDefaultRoute(false);
+    destination.setDefaultDestination(false);
     Result result =
         assertYWSE(
             () ->
@@ -610,96 +618,105 @@ public class AlertControllerTest extends FakeDBApplication {
                     "PUT",
                     "/api/customers/"
                         + customer.getUuid()
-                        + "/alert_routes/"
-                        + route.getUuid().toString(),
+                        + "/alert_destinations/"
+                        + destination.getUuid().toString(),
                     authToken,
-                    Json.toJson(route)));
+                    Json.toJson(destination)));
     AssertHelper.assertBadRequest(
         result,
-        "Can't set the alert route as non-default. Make another route as default at first.");
-    route.setDefaultRoute(true);
-    assertThat(alertRouteService.getDefaultRoute(customer.uuid), equalTo(route));
+        "Can't set the alert destination as non-default. Make another"
+            + " destination as default at first.");
+    destination.setDefaultDestination(true);
+    assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
   }
 
   @Test
-  public void testDeleteAlertRoute_OkResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+  public void testDeleteAlertDestination_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
 
-    AlertRoute createdRoute = createAlertRoute(false);
-    assertThat(createdRoute.getUuid(), notNullValue());
+    AlertDestination createdDestination = createAlertDestination(false);
+    assertThat(createdDestination.getUuid(), notNullValue());
 
     Result result =
         doRequestWithAuthToken(
             "DELETE",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_routes/"
-                + createdRoute.getUuid().toString(),
+                + "/alert_destinations/"
+                + createdDestination.getUuid().toString(),
             authToken);
     assertThat(result.status(), equalTo(OK));
 
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
   }
 
   @Test
-  public void testDeleteAlertRoute_InvalidUUID_ErrorResult() {
+  public void testDeleteAlertDestination_InvalidUUID_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
-                    "/api/customers/" + customer.getUuid() + "/alert_routes/" + uuid.toString(),
+                    "/api/customers/"
+                        + customer.getUuid()
+                        + "/alert_destinations/"
+                        + uuid.toString(),
                     authToken));
-    AssertHelper.assertBadRequest(result, "Invalid Alert Route UUID: " + uuid.toString());
+    AssertHelper.assertBadRequest(result, "Invalid Alert Destination UUID: " + uuid.toString());
   }
 
   @Test
-  public void testDeleteAlertRoute_DefaultRoute_ErrorResult() {
-    AlertRoute createdRoute = createAlertRoute(true);
-    String routeUUID = createdRoute.getUuid().toString();
+  public void testDeleteAlertDestination_DefaultDestination_ErrorResult() {
+    AlertDestination createdDestination = createAlertDestination(true);
+    String destinationUUID = createdDestination.getUuid().toString();
 
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
-                    "/api/customers/" + customer.getUuid() + "/alert_routes/" + routeUUID,
+                    "/api/customers/"
+                        + customer.getUuid()
+                        + "/alert_destinations/"
+                        + destinationUUID,
                     authToken));
     AssertHelper.assertBadRequest(
         result,
-        "Unable to delete default alert route "
-            + routeUUID
-            + ", make another route default at first.");
+        "Unable to delete default alert destination "
+            + destinationUUID
+            + ", make another destination default at first.");
   }
 
   @Test
-  public void testListAlertRoutes_OkResult() {
-    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_routes");
+  public void testListAlertDestinations_OkResult() {
+    checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_destinations");
 
-    AlertRoute createdRoute1 = createAlertRoute(false);
-    AlertRoute createdRoute2 = createAlertRoute(false);
+    AlertDestination createdDestination1 = createAlertDestination(false);
+    AlertDestination createdDestination2 = createAlertDestination(false);
 
     Result result =
         doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.getUuid() + "/alert_routes", authToken);
+            "GET", "/api/customers/" + customer.getUuid() + "/alert_destinations", authToken);
     assertThat(result.status(), equalTo(OK));
-    JsonNode listedRoutes = Json.parse(contentAsString(result));
-    assertThat(listedRoutes.size(), equalTo(2));
+    JsonNode listedDestinations = Json.parse(contentAsString(result));
+    assertThat(listedDestinations.size(), equalTo(2));
 
-    AlertRoute listedRoute1 = routeFromJson(listedRoutes.get(0));
-    AlertRoute listedRoute2 = routeFromJson(listedRoutes.get(1));
-    assertThat(listedRoute1, not(listedRoute2));
-    assertThat(listedRoute1, anyOf(equalTo(createdRoute1), equalTo(createdRoute2)));
-    assertThat(listedRoute2, anyOf(equalTo(createdRoute1), equalTo(createdRoute2)));
+    AlertDestination listedDestination1 = destinationFromJson(listedDestinations.get(0));
+    AlertDestination listedDestination2 = destinationFromJson(listedDestinations.get(1));
+    assertThat(listedDestination1, not(listedDestination2));
+    assertThat(
+        listedDestination1, anyOf(equalTo(createdDestination1), equalTo(createdDestination2)));
+    assertThat(
+        listedDestination2, anyOf(equalTo(createdDestination1), equalTo(createdDestination2)));
   }
 
-  private String getAlertReceiverName() {
-    return "Test AlertReceiver " + (alertReceiverIndex++);
+  private String getAlertChannelName() {
+    return "Test AlertChannel " + (alertChannelIndex++);
   }
 
-  private String getAlertRouteName() {
-    return "Test AlertRoute " + (alertRouteIndex++);
+  private String getAlertDestinationName() {
+    return "Test AlertDestination " + (alertDestinationIndex++);
   }
 
   @Test
@@ -832,28 +849,28 @@ public class AlertControllerTest extends FakeDBApplication {
 
   @Test
   public void testListTemplates() {
-    AlertDefinitionTemplateApiFilter apiFilter = new AlertDefinitionTemplateApiFilter();
+    AlertTemplateApiFilter apiFilter = new AlertTemplateApiFilter();
     apiFilter.setName(AlertTemplate.MEMORY_CONSUMPTION.getName());
 
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
-            "/api/customers/" + customer.getUuid() + "/alert_definition_templates",
+            "/api/customers/" + customer.getUuid() + "/alert_templates",
             authToken,
             Json.toJson(apiFilter));
     assertThat(result.status(), equalTo(OK));
     JsonNode templatesJson = Json.parse(contentAsString(result));
-    List<AlertDefinitionGroup> templates =
-        Arrays.asList(Json.fromJson(templatesJson, AlertDefinitionGroup[].class));
+    List<AlertConfiguration> templates =
+        Arrays.asList(Json.fromJson(templatesJson, AlertConfiguration[].class));
 
     assertThat(templates, hasSize(1));
-    AlertDefinitionGroup template = templates.get(0);
+    AlertConfiguration template = templates.get(0);
     assertThat(template.getName(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getName()));
     assertThat(template.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
     assertThat(
         template.getDescription(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDescription()));
     assertThat(template.getTargetType(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getTargetType()));
-    assertThat(template.getTarget(), equalTo(new AlertDefinitionGroupTarget().setAll(true)));
+    assertThat(template.getTarget(), equalTo(new AlertConfigurationTarget().setAll(true)));
     assertThat(
         template.getThresholdUnit(),
         equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDefaultThresholdUnit()));
@@ -861,9 +878,9 @@ public class AlertControllerTest extends FakeDBApplication {
         template.getThresholds(),
         equalTo(
             ImmutableMap.of(
-                AlertDefinitionGroup.Severity.SEVERE,
-                new AlertDefinitionGroupThreshold()
-                    .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
+                AlertConfiguration.Severity.SEVERE,
+                new AlertConfigurationThreshold()
+                    .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
                     .setThreshold(90D))));
     assertThat(
         template.getDurationSec(),
@@ -871,47 +888,51 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetGroupSuccess() {
+  public void testGetConfigurationSuccess() {
     Result result =
         doRequestWithAuthToken(
             "GET",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_definition_groups/"
-                + alertDefinitionGroup.getUuid(),
+                + "/alert_configurations/"
+                + alertConfiguration.getUuid(),
             authToken);
     assertThat(result.status(), equalTo(OK));
-    JsonNode groupJson = Json.parse(contentAsString(result));
-    AlertDefinitionGroup group = Json.fromJson(groupJson, AlertDefinitionGroup.class);
+    JsonNode configurationJson = Json.parse(contentAsString(result));
+    AlertConfiguration configuration = Json.fromJson(configurationJson, AlertConfiguration.class);
 
-    assertThat(group, equalTo(alertDefinitionGroup));
+    assertThat(configuration, equalTo(alertConfiguration));
   }
 
   @Test
-  public void testGetGroupFailure() {
+  public void testGetConfigurationFailure() {
     UUID uuid = UUID.randomUUID();
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthToken(
                     "GET",
-                    "/api/customers/" + customer.getUuid() + "/alert_definition_groups/" + uuid,
+                    "/api/customers/" + customer.getUuid() + "/alert_configurations/" + uuid,
                     authToken));
-    AssertHelper.assertBadRequest(result, "Invalid Alert Definition Group UUID: " + uuid);
+    AssertHelper.assertBadRequest(result, "Invalid Alert Configuration UUID: " + uuid);
   }
 
   @Test
-  public void testPageGroups() {
-    AlertDefinitionGroup group2 = ModelFactory.createAlertDefinitionGroup(customer, universe);
-    AlertDefinitionGroup group3 = ModelFactory.createAlertDefinitionGroup(customer, universe);
+  public void testPageConfigurations() {
+    AlertConfiguration configuration2 = ModelFactory.createAlertConfiguration(customer, universe);
+    AlertConfiguration configuration3 = ModelFactory.createAlertConfiguration(customer, universe);
 
-    group2.setCreateTime(Date.from(group2.getCreateTime().toInstant().minusSeconds(5))).save();
-    group3.setCreateTime(Date.from(group3.getCreateTime().toInstant().minusSeconds(10))).save();
+    configuration2
+        .setCreateTime(Date.from(configuration2.getCreateTime().toInstant().minusSeconds(5)))
+        .save();
+    configuration3
+        .setCreateTime(Date.from(configuration3.getCreateTime().toInstant().minusSeconds(10)))
+        .save();
 
-    AlertDefinitionGroupPagedApiQuery query = new AlertDefinitionGroupPagedApiQuery();
+    AlertConfigurationPagedApiQuery query = new AlertConfigurationPagedApiQuery();
     query.setSortBy(SortBy.createTime);
     query.setDirection(PagedQuery.SortDirection.DESC);
-    query.setFilter(new AlertDefinitionGroupApiFilter());
+    query.setFilter(new AlertConfigurationApiFilter());
     query.setLimit(2);
     query.setOffset(1);
     query.setNeedTotalCount(true);
@@ -919,129 +940,128 @@ public class AlertControllerTest extends FakeDBApplication {
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
-            "/api/customers/" + customer.getUuid() + "/alert_definition_groups/page",
+            "/api/customers/" + customer.getUuid() + "/alert_configurations/page",
             authToken,
             Json.toJson(query));
     assertThat(result.status(), equalTo(OK));
-    JsonNode groupsJson = Json.parse(contentAsString(result));
-    AlertDefinitionGroupPagedResponse groups =
-        Json.fromJson(groupsJson, AlertDefinitionGroupPagedResponse.class);
+    JsonNode configurationsJson = Json.parse(contentAsString(result));
+    AlertConfigurationPagedResponse configurations =
+        Json.fromJson(configurationsJson, AlertConfigurationPagedResponse.class);
 
-    assertThat(groups.isHasNext(), is(false));
-    assertThat(groups.isHasPrev(), is(true));
-    assertThat(groups.getTotalCount(), equalTo(3));
-    assertThat(groups.getEntities(), hasSize(2));
-    assertThat(groups.getEntities(), contains(group2, group3));
+    assertThat(configurations.isHasNext(), is(false));
+    assertThat(configurations.isHasPrev(), is(true));
+    assertThat(configurations.getTotalCount(), equalTo(3));
+    assertThat(configurations.getEntities(), hasSize(2));
+    assertThat(configurations.getEntities(), contains(configuration2, configuration3));
   }
 
   @Test
-  public void testListGroups() {
-    AlertDefinitionGroup group2 = ModelFactory.createAlertDefinitionGroup(customer, universe);
-    AlertDefinitionGroup group3 = ModelFactory.createAlertDefinitionGroup(customer, universe);
+  public void testListConfigurations() {
+    AlertConfiguration configuration2 = ModelFactory.createAlertConfiguration(customer, universe);
+    AlertConfiguration configuration3 = ModelFactory.createAlertConfiguration(customer, universe);
 
-    group3.setActive(false);
-    alertDefinitionGroupService.save(group3);
+    configuration3.setActive(false);
+    alertConfigurationService.save(configuration3);
 
-    AlertDefinitionGroupApiFilter filter = new AlertDefinitionGroupApiFilter();
+    AlertConfigurationApiFilter filter = new AlertConfigurationApiFilter();
     filter.setActive(true);
 
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
-            "/api/customers/" + customer.getUuid() + "/alert_definition_groups/list",
+            "/api/customers/" + customer.getUuid() + "/alert_configurations/list",
             authToken,
             Json.toJson(filter));
     assertThat(result.status(), equalTo(OK));
-    JsonNode groupsJson = Json.parse(contentAsString(result));
-    List<AlertDefinitionGroup> groups =
-        Arrays.asList(Json.fromJson(groupsJson, AlertDefinitionGroup[].class));
+    JsonNode configurationsJson = Json.parse(contentAsString(result));
+    List<AlertConfiguration> configurations =
+        Arrays.asList(Json.fromJson(configurationsJson, AlertConfiguration[].class));
 
-    assertThat(groups, hasSize(2));
-    assertThat(groups, containsInAnyOrder(alertDefinitionGroup, group2));
+    assertThat(configurations, hasSize(2));
+    assertThat(configurations, containsInAnyOrder(alertConfiguration, configuration2));
   }
 
   @Test
-  public void testCreateGroup() {
-    AlertRoute route = createAlertRoute(false);
-    alertDefinitionGroup.setUuid(null);
-    alertDefinitionGroup.setCreateTime(null);
-    alertDefinitionGroup.setRouteUUID(route.getUuid());
+  public void testCreateConfiguration() {
+    AlertDestination destination = createAlertDestination(false);
+    alertConfiguration.setUuid(null);
+    alertConfiguration.setCreateTime(null);
+    alertConfiguration.setDestinationUUID(destination.getUuid());
 
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
-            "/api/customers/" + customer.getUuid() + "/alert_definition_groups",
+            "/api/customers/" + customer.getUuid() + "/alert_configurations",
             authToken,
-            Json.toJson(alertDefinitionGroup));
+            Json.toJson(alertConfiguration));
     assertThat(result.status(), equalTo(OK));
-    JsonNode groupJson = Json.parse(contentAsString(result));
-    AlertDefinitionGroup group = Json.fromJson(groupJson, AlertDefinitionGroup.class);
+    JsonNode configurationJson = Json.parse(contentAsString(result));
+    AlertConfiguration configuration = Json.fromJson(configurationJson, AlertConfiguration.class);
 
-    assertThat(group.getUuid(), notNullValue());
-    assertThat(group.getCreateTime(), notNullValue());
-    assertThat(group.getCustomerUUID(), equalTo(customer.getUuid()));
-    assertThat(group.getName(), equalTo("alertDefinitionGroup"));
-    assertThat(group.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
-    assertThat(group.getDescription(), equalTo("alertDefinitionGroup description"));
-    assertThat(group.getTargetType(), equalTo(AlertDefinitionGroup.TargetType.UNIVERSE));
+    assertThat(configuration.getUuid(), notNullValue());
+    assertThat(configuration.getCreateTime(), notNullValue());
+    assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
+    assertThat(configuration.getName(), equalTo("alertConfiguration"));
+    assertThat(configuration.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
+    assertThat(configuration.getDescription(), equalTo("alertConfiguration description"));
+    assertThat(configuration.getTargetType(), equalTo(AlertConfiguration.TargetType.UNIVERSE));
     assertThat(
-        group.getTarget(),
+        configuration.getTarget(),
         equalTo(
-            new AlertDefinitionGroupTarget()
-                .setUuids(ImmutableSet.of(universe.getUniverseUUID()))));
-    assertThat(group.getThresholdUnit(), equalTo(Unit.PERCENT));
+            new AlertConfigurationTarget().setUuids(ImmutableSet.of(universe.getUniverseUUID()))));
+    assertThat(configuration.getThresholdUnit(), equalTo(Unit.PERCENT));
     assertThat(
-        group.getThresholds(),
+        configuration.getThresholds(),
         equalTo(
             ImmutableMap.of(
-                AlertDefinitionGroup.Severity.SEVERE,
-                new AlertDefinitionGroupThreshold()
-                    .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
+                AlertConfiguration.Severity.SEVERE,
+                new AlertConfigurationThreshold()
+                    .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
                     .setThreshold(1D))));
-    assertThat(group.getDurationSec(), equalTo(15));
-    assertThat(group.getRouteUUID(), equalTo(route.getUuid()));
+    assertThat(configuration.getDurationSec(), equalTo(15));
+    assertThat(configuration.getDestinationUUID(), equalTo(destination.getUuid()));
   }
 
   @Test
-  public void testCreateGroupFailure() {
-    alertDefinitionGroup.setUuid(null);
-    alertDefinitionGroup.setName(null);
+  public void testCreateConfigurationFailure() {
+    alertConfiguration.setUuid(null);
+    alertConfiguration.setName(null);
 
     Result result =
         assertYWSE(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
-                    "/api/customers/" + customer.getUuid() + "/alert_definition_groups",
+                    "/api/customers/" + customer.getUuid() + "/alert_configurations",
                     authToken,
-                    Json.toJson(alertDefinitionGroup)));
+                    Json.toJson(alertConfiguration)));
     assertBadRequest(result, "Name field is mandatory");
   }
 
   @Test
-  public void testUpdateGroup() {
-    AlertRoute route = createAlertRoute(false);
-    alertDefinitionGroup.setRouteUUID(route.getUuid());
+  public void testUpdateConfiguration() {
+    AlertDestination destination = createAlertDestination(false);
+    alertConfiguration.setDestinationUUID(destination.getUuid());
 
     Result result =
         doRequestWithAuthTokenAndBody(
             "PUT",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_definition_groups/"
-                + alertDefinitionGroup.getUuid(),
+                + "/alert_configurations/"
+                + alertConfiguration.getUuid(),
             authToken,
-            Json.toJson(alertDefinitionGroup));
+            Json.toJson(alertConfiguration));
     assertThat(result.status(), equalTo(OK));
-    JsonNode groupJson = Json.parse(contentAsString(result));
-    AlertDefinitionGroup group = Json.fromJson(groupJson, AlertDefinitionGroup.class);
+    JsonNode configurationJson = Json.parse(contentAsString(result));
+    AlertConfiguration configuration = Json.fromJson(configurationJson, AlertConfiguration.class);
 
-    assertThat(group.getRouteUUID(), equalTo(route.getUuid()));
+    assertThat(configuration.getDestinationUUID(), equalTo(destination.getUuid()));
   }
 
   @Test
-  public void testUpdateGroupFailure() {
-    alertDefinitionGroup.setTargetType(null);
+  public void testUpdateConfigurationFailure() {
+    alertConfiguration.setTargetType(null);
 
     Result result =
         assertYWSE(
@@ -1050,22 +1070,22 @@ public class AlertControllerTest extends FakeDBApplication {
                     "PUT",
                     "/api/customers/"
                         + customer.getUuid()
-                        + "/alert_definition_groups/"
-                        + alertDefinitionGroup.getUuid(),
+                        + "/alert_configurations/"
+                        + alertConfiguration.getUuid(),
                     authToken,
-                    Json.toJson(alertDefinitionGroup)));
+                    Json.toJson(alertConfiguration)));
     assertBadRequest(result, "Target type field is mandatory");
   }
 
   @Test
-  public void testDeleteGroup() {
+  public void testDeleteConfiguration() {
     Result result =
         doRequestWithAuthToken(
             "DELETE",
             "/api/customers/"
                 + customer.getUuid()
-                + "/alert_definition_groups/"
-                + alertDefinitionGroup.getUuid(),
+                + "/alert_configurations/"
+                + alertConfiguration.getUuid(),
             authToken);
     assertThat(result.status(), equalTo(OK));
   }
