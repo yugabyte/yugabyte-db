@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcin.h
- *	  prototypes for ybcin.c
+ * yb_lsm.h
+ *	  prototypes for yb_lsm.c
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -15,19 +15,19 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/access/ybcin.h
+ * src/include/access/yb_lsm.h
  *
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCIN_H
-#define YBCIN_H
+#ifndef YB_LSM_H
+#define YB_LSM_H
 
 #include "access/amapi.h"
 #include "nodes/execnodes.h"
 
 /*
- * external entry points for YugaByte indexes in ybcin.c
+ * external entry points for YugaByte indexes in yb_lsm.c
  */
 extern IndexBuildResult *ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo);
 extern void ybcinbuildempty(Relation index);
@@ -69,4 +69,4 @@ extern void ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 extern bool ybcingettuple(IndexScanDesc scan, ScanDirection dir);
 extern void ybcinendscan(IndexScanDesc scan);
 
-#endif							/* YBCIN_H */
+#endif							/* YB_LSM_H */

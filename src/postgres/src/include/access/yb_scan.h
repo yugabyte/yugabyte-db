@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcam.h
- *	  prototypes for ybc/ybcam.c
+ * yb_scan.h
+ *	  prototypes for yb_access/yb_scan.c
  *
  * Copyright (c) YugaByte, Inc.
  *
@@ -15,13 +15,13 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/executor/ybcam.h
+ * src/include/access/yb_scan.h
  *
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCAM_H
-#define YBCAM_H
+#ifndef YB_SCAN_H
+#define YB_SCAN_H
 
 #include "postgres.h"
 
@@ -203,4 +203,4 @@ YbSample ybBeginSample(Relation rel, int targrows);
 bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
 
-#endif							/* YBCAM_H */
+#endif							/* YB_SCAN_H */

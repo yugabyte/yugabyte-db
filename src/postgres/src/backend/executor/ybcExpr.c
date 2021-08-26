@@ -39,13 +39,13 @@
 
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 
 YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
 						  int attr_typid, int attr_collation,
 						  const YBCPgTypeAttrs *type_attrs) {
 	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(attr_num, attr_typid);
+	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, attr_typid);
 	YBCPgCollationInfo collation_info;
 	YBGetCollationInfo(attr_collation, type_entity, 0 /* datum */, true /* is_null */,
 					   &collation_info);
@@ -58,7 +58,7 @@ YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
 YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Oid collation_id,
 						 Datum datum, bool is_null) {
 	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, type_id);
+	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
 	YBCPgCollationInfo collation_info;
 	YBGetCollationInfo(collation_id, type_entity, datum, is_null, &collation_info);
 	HandleYBStatus(YBCPgNewConstant(ybc_stmt, type_entity,
@@ -70,7 +70,7 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Oid collation_id,
 
 YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatumKind kind) {
 	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, type_id);
+	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
 	HandleYBStatus(YBCPgNewConstantVirtual(ybc_stmt, type_entity, kind, &expr));
 	return expr;
 }
@@ -99,7 +99,7 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
                              int num_params)
 {
 	YBCPgExpr ybc_expr = NULL;
-	const YBCPgTypeEntity *type_ent = YBCDataTypeFromOidMod(InvalidAttrNumber, params[0].typid);
+	const YBCPgTypeEntity *type_ent = YbDataTypeFromOidMod(InvalidAttrNumber, params[0].typid);
 	YBCPgCollationInfo collation_info;
 	YBGetCollationInfo(params[0].collid, type_ent, 0 /* Datum */, true /* is_null */,
 					   &collation_info);

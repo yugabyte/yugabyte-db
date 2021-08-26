@@ -574,7 +574,7 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
     case YB_YQL_DATA_TYPE_DECIMAL:
       if (!is_null) {
         char* plaintext;
-        // Calls YBCDatumToDecimalText in ybctype.c
+        // Calls YBCDatumToDecimalText in yb_type.c
         type_entity_->datum_to_yb(datum, &plaintext, nullptr);
         util::Decimal yb_decimal(plaintext);
         ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());

@@ -221,7 +221,7 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "miscadmin.h"
@@ -1604,7 +1604,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			return;
 
 		/* Aggtranstype is a supported YB key type and is not INTERNAL or NUMERIC. */
-		if (!YBCDataTypeIsValidForKey(aggref->aggtranstype) ||
+		if (!YbDataTypeIsValidForKey(aggref->aggtranstype) ||
 			aggref->aggtranstype == INTERNALOID ||
 			aggref->aggtranstype == NUMERICOID)
 			return;
@@ -1655,7 +1655,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			 * we can safely perform postgres semantic compatible DocDB aggregate evaluation
 			 * otherwise.
 			 */
-			if (!YBCDataTypeIsValidForKey(type))
+			if (!YbDataTypeIsValidForKey(type))
 				return;
 		}
 	}

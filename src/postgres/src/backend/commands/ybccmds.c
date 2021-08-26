@@ -36,7 +36,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
 #include "commands/tablegroup.h"
@@ -157,7 +157,7 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 								 bool is_nulls_first)
 {
 	const AttrNumber attnum = att->attnum;
-	const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum,
+	const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum,
 															att->atttypid);
 	HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 											 NameStr(att->attname),
@@ -210,7 +210,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 							 &is_desc,
 							 &is_nulls_first);
 		const YBCPgTypeEntity *col_type =
-			YBCDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
+			YbDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
 		HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 												 "oid",
 												 ObjectIdAttributeNumber,
@@ -232,7 +232,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 				Form_pg_attribute att = TupleDescAttr(desc, i);
 				if (strcmp(NameStr(att->attname), index_elem->name) == 0)
 				{
-					if (!YBCDataTypeIsValidForKey(att->atttypid))
+					if (!YbDataTypeIsValidForKey(att->atttypid))
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("PRIMARY KEY containing column of type"
@@ -773,12 +773,12 @@ YBCCreateIndex(const char *indexName,
 		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
 		char                  *attname    = NameStr(att->attname);
 		AttrNumber            attnum      = att->attnum;
-		const YBCPgTypeEntity *col_type   = YBCDataTypeFromOidMod(attnum, att->atttypid);
+		const YBCPgTypeEntity *col_type   = YbDataTypeFromOidMod(attnum, att->atttypid);
 		const bool            is_key      = (i < indexInfo->ii_NumIndexKeyAttrs);
 
 		if (is_key)
 		{
-			if (!YBCDataTypeIsValidForKey(att->atttypid))
+			if (!YbDataTypeIsValidForKey(att->atttypid))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("INDEX on column of type '%s' not yet supported",
@@ -839,7 +839,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
 			typeOid = HeapTupleGetOid(typeTuple);
 			order = RelationGetNumberOfAttributes(rel) + *col;
-			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
+			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
 			HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
 													order, col_type));
