@@ -32,23 +32,24 @@ You configure Kafka Connect Sink as follows:
 
 - Download the TAR file using Confluent Platform, extract this file, and then set the  `CONFLUENT_HOME` and `PATH` environment variables, as follows:
 
-  ```shell
-  confluent-community-6.1.1.tar
+  ```sh
+  # assuming a filename of confluent-community-6.1.1.tar...
+
   tar -xvf confluent-community-6.1.1.tar
   cd confluent-6.1.1
-  export CONFLUENT_HOME=/Users/suranjan/confluent-6.1.1
+  export CONFLUENT_HOME=/Users/myusername/confluent-6.1.1
   export PATH=$PATH:$CONFLUENT_HOME/bin
   ```
 
 - Use the following command to start ZooKeeper, Kafka, Schema Registry, Kafka Connect REST API, and Kafka Connect:
 
-  ```shell
+  ```sh
   confluent local services start
   ```
 
   Expect the following output:
 
-  ```
+  ```output
   The local commands are intended for a single-node development environment only,
   NOT for production usage. https://docs.confluent.io/current/cli/index.html
   
@@ -69,13 +70,13 @@ You configure Kafka Connect Sink as follows:
 
 - After changing configuration, use the following command to stop Kafka Connect:
 
-  ```shell
+  ```sh
   confluent local services connect stop
   ```
 
   Expect the following output:
 
-  ```
+  ```output
   The local commands are intended for a single-node development environment only,
   NOT for production usage. https://docs.confluent.io/current/cli/index.html
   
@@ -88,9 +89,9 @@ You configure Kafka Connect Sink as follows:
 
 ## Building YugabyteDB Kafka Connect Sink
 
-You can build the required JAR files needed by Kafka Connect Sink by executing the followig commands:
+Run the following commands to build the JAR files needed by Kafka Connect Sink:
 
-```shell
+```sh
 git clone https://github.com/yugabyte/dsbulk.git
 cd dsbulk
 mvn clean install -DskipTests
@@ -98,7 +99,7 @@ mvn clean install -DskipTests
 
 The preceding command is used for the local installation.
 
-```shell
+```sh
 git clone https://github.com/yugabyte/messaging-connectors-commons.git
 cd messaging-connectors-commons
 mvn clean install -DskipTests
@@ -106,7 +107,7 @@ mvn clean install -DskipTests
 
 The preceding command is used for the local installation.
 
-```shell
+```sh
 git clone https://github.com/yugabyte/yb-kafka-sink.git
 cd yb-kafka-sink
 mvn clean package -DskipTests
@@ -114,7 +115,7 @@ mvn clean package -DskipTests
 
 Expect the following output:
 
-```
+```output
 [INFO] Replacing /home/centos/yb-kafka-sink/dist/target/kafka-connect-yugabytedb-sink-1.4.1-SNAPSHOT.jar with /home/centos/yb-kafka-sink/dist/target/kafka-connect-yugabytedb-sink-distribution-1.4.1-SNAPSHOT-shaded.jar
 ```
 
@@ -122,27 +123,27 @@ You can copy the `kafka-connect-yugabytedb-sink-1.4.1-SNAPSHOT.jar` into the Kaf
 
 The next step is to modify the `etc/schema-registry/connect-avro-distributed.properties` file to add `kafka-connect-yugabytedb-sink-1.4.1-SNAPSHOT.jar` to `plugin.path`. That is, the line containing `plugin.path` should contain the path to `kafka-connect-yugabytedb-sink-1.4.1-SNAPSHOT.jar`, as demonstrated by the following example:
 
-```
+```output
 ...
 plugin.path=/Users/me/confluent-6.1.1/etc/connectors/kafka-connect-yugabytedb-sink-1.4.1-SNAPSHOT.jar,share/java
 ```
 
 The next step is to start Kafka Connect again by executing the following command:
 
-```shell
+```sh
 confluent local services connect start
 //connect-distributed etc/schema-registry/connect-avro-distributed.properties
 ```
 
 To list the connectors plugin and verify if the connectors are loaded, execute the following command:
 
-```shell
+```sh
 confluent local services connect plugin
 ```
 
 The following is a sample output produced by the preceding command:
 
-```
+```nocopy.json
 {
   "class": "com.datastax.kafkaconnector.DseSinkConnector",
   "type": "sink",
@@ -171,7 +172,7 @@ You can verify the integration by producing a Record in Kafka.
 
 The following produces a record into the orders topic using the Avro producer:
 
-```
+```sh
 ./bin/kafka-avro-console-producer \
 --broker-list localhost:9092 --topic orders \
 --property
@@ -182,13 +183,13 @@ The console producer waits for input.
 
 The next step is to copy and paste the record, such as the following sample, into the terminal and press Enter:
 
-```properties
+```nocopy.json
 {"id": 999, "product": "foo", "quantity": 100, "price": 50}
 ```
 
 Use the Avro consumer to verify that the message is published to the topic, as follows:
 
-```
+```sh
 ./bin/kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic orders --from-beginning
 {"id":999,"product":"foo","quantity":100,"price":50.0}
 ```
@@ -199,43 +200,42 @@ You can configure the JDBC Sink connector as follows:
 
 - Create a file named `yb-jdbc-sink-connector.properties` with the following content:
 
-```properties
-{
-   "name": "yb-jdbc-sink",
-   "config": {
-    "connector.class": "com.yugabyte.jdbc.JdbcSinkConnector",
-    "tasks.max": "2",
-    "topics": "orders",
-    "connection.urls":"jdbc:postgresql://localhost:5433/yugabyte",
-    "connection.user":"yugabyte",
-    "connection.password":"yugabyte",
-    "mode":"UPSERT",
-    "auto.create":"true"
+  ```json
+  {
+    "name": "yb-jdbc-sink",
+    "config": {
+      "connector.class": "com.yugabyte.jdbc.JdbcSinkConnector",
+      "tasks.max": "2",
+      "topics": "orders",
+      "connection.urls":"jdbc:postgresql://localhost:5433/yugabyte",
+      "connection.user":"yugabyte",
+      "connection.password":"yugabyte",
+      "mode":"UPSERT",
+      "auto.create":"true"
+    }
   }
-}
-```
+  ```
 
 - Load the JDBC Sink by executing the following command:
 
-```shell
-curl -X POST -H "Content-Type: application/json" -d @/Users/me/confluent-6.1.1/etc/kafka/yb-jdbc-sink-quickstart.properties "localhost:8083/connectors"
-```
+  ```sh
+  curl -X POST -H "Content-Type: application/json" -d @/Users/me/confluent-6.1.1/etc/kafka/yb-jdbc-sink-quickstart.properties "localhost:8083/connectors"
+  ```
 
 - Query the YugabyteDB database to select all rows from the `orders` table, as follows:
 
+  ```sql
+  yugabyte=# select * from orders;
+  ```
 
-```sql
-yugabyte=# select * from orders;
-```
+  The following ouput demonstrates that the `orders` table was automatically created and that it contains the record:
 
-The following ouput demonstrates that the `orders` table was automatically created and that it contains the record:
-
-```
-id  | product | quantity | price
-----+---------+----------+-------
-999 | foo     | 100      |  50
-(1 row)
-```
+  ```output
+  id | product | quantity | price
+  ----+---------+----------+-------
+  999 | foo     | 100      |  50
+  (1 row)
+  ```
 
 ## Configuring the YCQL Sink Connector
 
@@ -243,59 +243,56 @@ You can configure the YCQL Sink connector as follows:
 
 - Create a file named `yb-cql-sink-connector.properties` with the following content:
 
-```properties
-{
-  "name": "example-cql-sink",
-  "config": {
-    "connector.class": "com.datastax.oss.kafka.sink.CassandraSinkConnector",
-    "tasks.max": "2",
-    "topics": "orders",
-    "contactPoints": "localhost",
-    "loadBalancing.localDc": "datacenter1",
-    "topic.orders.demo.orders.mapping": "id=value.id, product=value.product, quantity=value.quantity, price=value.price",
-    "topic.orders.demo.orders.consistencyLevel": "LOCAL_QUORUM"
+  ```json
+  {
+    "name": "example-cql-sink",
+    "config": {
+      "connector.class": "com.datastax.oss.kafka.sink.CassandraSinkConnector",
+      "tasks.max": "2",
+      "topics": "orders",
+      "contactPoints": "localhost",
+      "loadBalancing.localDc": "datacenter1",
+      "topic.orders.demo.orders.mapping": "id=value.id, product=value.product, quantity=value.quantity, price=value.price",
+      "topic.orders.demo.orders.consistencyLevel": "LOCAL_QUORUM"
+    }
   }
-}
-```
+  ```
 
 - In YugabyteDB, create a table with following schema:
 
-```sql
-ycqlsh> create table demo.orders(id int primary key, product varchar, quantity int, price int);
-```
+  ```sql
+  ycqlsh> create table demo.orders(id int primary key, product varchar, quantity int, price int);
+  ```
 
 - Load the connector by executing the following command:
 
-```shell
-curl -X POST -H "Content-Type: application/json" -d @/Users/me/development/play/confluent/confluent-6.0.1/yb-cql-sink-connector.properties "localhost:8083/connectors"
-```
+  ```sh
+  curl -X POST -H "Content-Type: application/json" -d @/Users/me/development/play/confluent/confluent-6.0.1/yb-cql-sink-connector.properties "localhost:8083/connectors"
+  ```
 
 - Query the YugabyteDB database to select all rows from the `orders` table, as follows:
 
-```sql
-ycqlsh> select * from demo.orders;
-```
+  ```sql
+  ycqlsh> select * from demo.orders;
+  ```
 
-Expect to see the following ouput:
+  Expect to see the following ouput:
 
-```
-id  | product | quantity | price
-----+---------+----------+-------
-999 | foo     | 100      |  50
-(1 row)
-```
+  ```output
+   id | product | quantity | price
+  ----+---------+----------+-------
+  999 | foo     | 100      |  50
+  (1 row)
+  ```
 
 ## Shutting Down the Cluster
 
 To shut down the YugabyteDB cluster, execute the following commands:
 
-```shell
+```sh
 confluent local services stop
 ```
 
-```shell
+```sh
 confluent local destroy
 ```
-
-
-

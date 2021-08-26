@@ -4,7 +4,7 @@ linkTitle: JDBC Smart Driver
 description: Smart JDBC driver for YSQL
 aliases:
 menu:
-  latest:
+  stable:
     identifier: smart-driver
     parent: integrations
     weight: 577
