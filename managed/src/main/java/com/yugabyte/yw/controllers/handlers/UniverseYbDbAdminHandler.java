@@ -16,7 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
@@ -66,7 +66,7 @@ public class UniverseYbDbAdminHandler {
   public void setDatabaseCredentials(
       Customer customer, Universe universe, DatabaseSecurityFormData dbCreds) {
     if (!customer.code.equals("cloud")) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer type.");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
     }
 
     dbCreds.validation();
@@ -82,7 +82,7 @@ public class UniverseYbDbAdminHandler {
 
   public void createUserInDB(Customer customer, Universe universe, DatabaseUserFormData data) {
     if (!customer.code.equals("cloud")) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer type.");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
     }
     data.validation();
 
@@ -98,13 +98,13 @@ public class UniverseYbDbAdminHandler {
       Universe universe, RunQueryFormData runQueryFormData) {
     String mode = appConfig.getString("yb.mode", "PLATFORM");
     if (!mode.equals("OSS")) {
-      throw new YWServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+      throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
 
     String securityLevel =
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
     if (!isCorrectOrigin() || securityLevel == null || !securityLevel.equals("insecure")) {
-      throw new YWServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
+      throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
 
     return ysqlQueryExecutor.executeQuery(universe, runQueryFormData);

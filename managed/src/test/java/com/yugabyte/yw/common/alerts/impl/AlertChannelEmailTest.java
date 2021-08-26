@@ -17,7 +17,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.SmtpData;
-import com.yugabyte.yw.common.alerts.YWNotificationException;
+import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
@@ -94,7 +94,7 @@ public class AlertChannelEmailTest extends FakeDBApplication {
       boolean defaultSmtpSettings,
       boolean initSmtpInConfig,
       boolean exceptionExpected)
-      throws MessagingException, YWNotificationException {
+      throws MessagingException, PlatformNotificationException {
 
     AlertChannel channel =
         createChannel(
@@ -103,7 +103,7 @@ public class AlertChannelEmailTest extends FakeDBApplication {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
     if (exceptionExpected) {
       assertThrows(
-          YWNotificationException.class,
+          PlatformNotificationException.class,
           () -> {
             are.sendNotification(defaultCustomer, alert, channel);
           });
@@ -128,7 +128,7 @@ public class AlertChannelEmailTest extends FakeDBApplication {
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
     assertThrows(
-        YWNotificationException.class,
+        PlatformNotificationException.class,
         () -> {
           are.sendNotification(defaultCustomer, alert, channel);
         });

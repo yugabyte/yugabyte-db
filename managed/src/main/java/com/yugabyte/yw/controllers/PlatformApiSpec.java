@@ -13,7 +13,7 @@ package com.yugabyte.yw.controllers;
 import play.mvc.Controller;
 import play.mvc.Result;
 
-public class YWApiSpec extends Controller {
+public class PlatformApiSpec extends Controller {
 
   public Result getStaticSwaggerSpec() {
     return ok(getClass().getResourceAsStream("/swagger.json"));

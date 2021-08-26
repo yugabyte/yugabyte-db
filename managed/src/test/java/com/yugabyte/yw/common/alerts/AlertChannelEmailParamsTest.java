@@ -37,7 +37,7 @@ public class AlertChannelEmailParamsTest {
       boolean setSmtpData,
       boolean useDefaultSmtp,
       @Nullable String expectedError)
-      throws YWValidateException {
+      throws PlatformValidationException {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
     params.recipients =
         destinations != null
@@ -47,9 +47,9 @@ public class AlertChannelEmailParamsTest {
     params.smtpData = setSmtpData ? new SmtpData() : null;
     params.defaultSmtpSettings = useDefaultSmtp;
     if (expectedError != null) {
-      YWValidateException ex =
+      PlatformValidationException ex =
           assertThrows(
-              YWValidateException.class,
+              PlatformValidationException.class,
               () -> {
                 params.validate();
               });

@@ -12,7 +12,7 @@ import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -46,7 +46,6 @@ public class CustomerTaskController extends AuthenticatedController {
   private static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
   private static final String YB_PREV_SOFTWARE_VERSION = "ybPrevSoftwareVersion";
 
-  protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
@@ -159,7 +158,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
-    return YWResults.withData(taskList);
+    return PlatformResults.withData(taskList);
   }
 
   @ApiOperation(
@@ -173,7 +172,7 @@ public class CustomerTaskController extends AuthenticatedController {
     for (List<CustomerTaskFormData> task : taskList.values()) {
       flattenList.addAll(task);
     }
-    return YWResults.withData(flattenList);
+    return PlatformResults.withData(flattenList);
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -182,7 +181,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList =
         fetchTasks(customerUUID, universe.universeUUID);
-    return YWResults.withData(taskList);
+    return PlatformResults.withData(taskList);
   }
 
   @ApiOperation(value = "Get a task's status", responseContainer = "Map", response = Object.class)
@@ -255,6 +254,6 @@ public class CustomerTaskController extends AuthenticatedController {
             + universe.name);
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
-    return YWResults.withData(new UniverseResp(universe, newTaskUUID));
+    return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
   }
 }

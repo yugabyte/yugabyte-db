@@ -15,7 +15,7 @@ import static org.junit.Assert.fail;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import java.util.ArrayList;
@@ -79,9 +79,9 @@ public class AlertChannelServiceTest extends FakeDBApplication {
 
     // Should raise an exception for random UUID.
     final UUID uuid = UUID.randomUUID();
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertChannelService.getOrBadRequest(defaultCustomerUuid, uuid);
             });
@@ -116,9 +116,9 @@ public class AlertChannelServiceTest extends FakeDBApplication {
     uuidsToCheck.add(channel2.getUuid());
     uuidsToCheck.add(uuid2);
 
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertChannelService.getOrBadRequest(defaultCustomerUuid, uuidsToCheck);
             });
@@ -165,13 +165,13 @@ public class AlertChannelServiceTest extends FakeDBApplication {
     try {
       alertChannelService.validate(channel);
       fail("YWValidateException is expected.");
-    } catch (YWValidateException e) {
+    } catch (PlatformValidationException e) {
       assertThat(e.getMessage(), is("Incorrect parameters in AlertChannel."));
     }
   }
 
   @Test
-  public void testValidateChannel_HappyPath() throws YWValidateException {
+  public void testValidateChannel_HappyPath() throws PlatformValidationException {
     alertChannelService.validate(
         ModelFactory.createEmailChannel(defaultCustomerUuid, CHANNEL_NAME));
   }
@@ -215,9 +215,9 @@ public class AlertChannelServiceTest extends FakeDBApplication {
     // Setting duplicate name.
     updatedChannel.setName(CHANNEL_NAME + " 2");
 
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertChannelService.save(updatedChannel);
             });
@@ -241,9 +241,9 @@ public class AlertChannelServiceTest extends FakeDBApplication {
             .setName(longName.toString())
             .setParams(AlertUtils.createParamsInstance(ChannelType.Slack));
 
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertChannelService.save(channel);
             });

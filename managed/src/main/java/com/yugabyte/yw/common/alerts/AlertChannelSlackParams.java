@@ -19,19 +19,19 @@ public class AlertChannelSlackParams extends AlertChannelParams {
 
   public String iconUrl;
 
-  public void validate() throws YWValidateException {
+  public void validate() throws PlatformValidationException {
     super.validate();
 
     if (StringUtils.isEmpty(username)) {
-      throw new YWValidateException("Slack parameters: username is empty.");
+      throw new PlatformValidationException("Slack parameters: username is empty.");
     }
 
     UrlValidator urlValidator = new UrlValidator();
     if (!urlValidator.isValid(webhookUrl)) {
-      throw new YWValidateException("Slack parameters: incorrect WebHook url.");
+      throw new PlatformValidationException("Slack parameters: incorrect WebHook url.");
     }
     if (StringUtils.isNotEmpty(iconUrl) && !urlValidator.isValid(iconUrl)) {
-      throw new YWValidateException("Slack parameters: incorrect icon url.");
+      throw new PlatformValidationException("Slack parameters: incorrect icon url.");
     }
   }
 }

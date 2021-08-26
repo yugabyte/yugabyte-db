@@ -5,7 +5,7 @@ package com.yugabyte.yw.models;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -432,7 +432,7 @@ public class CustomerTask extends Model {
   public static CustomerTask getOrBadRequest(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = get(customerUUID, taskUUID);
     if (customerTask == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
     }
     return customerTask;
   }

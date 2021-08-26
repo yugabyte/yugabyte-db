@@ -12,7 +12,7 @@ import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
 import io.ebean.ExpressionList;
@@ -120,7 +120,7 @@ public class CommonUtils {
       JsonNode updatedJson = CommonUtils.maskConfig(Json.toJson(object));
       return Json.fromJson(updatedJson, (Class<T>) object.getClass());
     } catch (Exception e) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Failed to parse " + object.getClass().getSimpleName() + " object: " + e.getMessage());
     }
@@ -133,7 +133,7 @@ public class CommonUtils {
           CommonUtils.unmaskConfig(Json.toJson(originalObject), Json.toJson(object));
       return Json.fromJson(updatedJson, (Class<T>) object.getClass());
     } catch (Exception e) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Failed to parse " + object.getClass().getSimpleName() + " object: " + e.getMessage());
     }
@@ -208,11 +208,11 @@ public class CommonUtils {
   /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
   public static void deepMerge(JsonNode node1, JsonNode node2) {
     if (node1 == null || node1.size() == 0 || node2 == null || node2.size() == 0) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot merge empty nodes.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot merge empty nodes.");
     }
 
     if (!node1.isObject() || !node2.isObject()) {
-      throw new YWServiceException(BAD_REQUEST, "Only ObjectNodes may be merged.");
+      throw new PlatformServiceException(BAD_REQUEST, "Only ObjectNodes may be merged.");
     }
 
     for (Iterator<String> fieldNames = node2.fieldNames(); fieldNames.hasNext(); ) {

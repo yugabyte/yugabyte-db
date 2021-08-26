@@ -11,7 +11,7 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -55,7 +55,7 @@ public class MetaMasterController extends Controller {
     for (NodeDetails node : universe.getMasters()) {
       masters.add(MasterNode.fromUniverseNode(node));
     }
-    return YWResults.withData(masters);
+    return PlatformResults.withData(masters);
   }
 
   @ApiOperation(value = "List a master node's addresses", response = String.class)
@@ -88,18 +88,18 @@ public class MetaMasterController extends Controller {
     // instead of the POD ip.
     String serviceIPPort = getKuberenetesServiceIPPort(type, universe);
     if (serviceIPPort != null) {
-      return YWResults.withData(serviceIPPort);
+      return PlatformResults.withData(serviceIPPort);
     }
 
     switch (type) {
       case MASTER:
-        return YWResults.withData(universe.getMasterAddresses());
+        return PlatformResults.withData(universe.getMasterAddresses());
       case YQLSERVER:
-        return YWResults.withData(universe.getYQLServerAddresses());
+        return PlatformResults.withData(universe.getYQLServerAddresses());
       case YSQLSERVER:
-        return YWResults.withData(universe.getYSQLServerAddresses());
+        return PlatformResults.withData(universe.getYSQLServerAddresses());
       case REDISSERVER:
-        return YWResults.withData(universe.getRedisServerAddresses());
+        return PlatformResults.withData(universe.getRedisServerAddresses());
       default:
         throw new IllegalArgumentException("Unexpected type " + type);
     }

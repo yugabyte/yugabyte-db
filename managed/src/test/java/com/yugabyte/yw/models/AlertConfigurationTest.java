@@ -15,7 +15,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -297,7 +297,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(
         () -> alertConfigurationService.save(configuration),
-        thrown(YWServiceException.class, expectedMessageGenerator.apply(configuration.getUuid())));
+        thrown(
+            PlatformServiceException.class,
+            expectedMessageGenerator.apply(configuration.getUuid())));
   }
 
   private AlertConfiguration createTestConfiguration() {

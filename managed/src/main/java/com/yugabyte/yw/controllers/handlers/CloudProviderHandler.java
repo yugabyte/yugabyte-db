@@ -36,8 +36,8 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.EditProviderRequest;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AccessKey;
@@ -96,7 +96,7 @@ public class CloudProviderHandler {
 
   public void delete(Customer customer, Provider provider) {
     if (customer.getUniversesForProvider(provider.uuid).size() > 0) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
 
     // TODO: move this to task framework
@@ -121,7 +121,7 @@ public class CloudProviderHandler {
       throws IOException {
     Provider existentProvider = Provider.get(customer.uuid, providerName, providerCode);
     if (existentProvider != null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, String.format("Provider with the name %s already exists", providerName));
     }
 
@@ -137,7 +137,7 @@ public class CloudProviderHandler {
           CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
           if (cloudAPI != null && !cloudAPI.isValidCreds(providerConfig, anyProviderRegion)) {
             provider.delete();
-            throw new YWServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
+            throw new PlatformServiceException(BAD_REQUEST, "Invalid AWS Credentials.");
           }
           if (hostedZoneId != null && hostedZoneId.length() != 0) {
             validateAndUpdateHostedZone(provider, hostedZoneId);
@@ -168,32 +168,32 @@ public class CloudProviderHandler {
       throws IOException {
     Common.CloudType providerCode = formData.code;
     if (!providerCode.equals(kubernetes)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
     }
 
     boolean hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
     if (formData.regionList.isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST, "Need regions in provider");
+      throw new PlatformServiceException(BAD_REQUEST, "Need regions in provider");
     }
     for (KubernetesProviderFormData.RegionData rd : formData.regionList) {
       if (rd.config != null) {
         if (rd.config.containsKey("KUBECONFIG_NAME")) {
           if (hasConfig) {
-            throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
+            throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
           } else {
             hasConfig = true;
           }
         }
       }
       if (rd.zoneList.isEmpty()) {
-        throw new YWServiceException(BAD_REQUEST, "No zone provided in region");
+        throw new PlatformServiceException(BAD_REQUEST, "No zone provided in region");
       }
       for (KubernetesProviderFormData.RegionData.ZoneData zd : rd.zoneList) {
         if (zd.config != null) {
           if (zd.config.containsKey("KUBECONFIG_NAME")) {
             if (hasConfig) {
-              throw new YWServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
+              throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
             }
           } else if (!hasConfig) {
             LOG.warn(
@@ -228,7 +228,7 @@ public class CloudProviderHandler {
       createKubernetesInstanceTypes(customer, provider);
     } catch (PersistenceException ex) {
       provider.delete();
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
       // TODO: make instance types more multi-tenant friendly...
     }
     return provider;
@@ -368,7 +368,7 @@ public class CloudProviderHandler {
         LOG.info(
             "No regions and zones found, check if the region and zone labels are present on the"
                 + " nodes. https://k8s.io/docs/reference/labels-annotations-taints/");
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "No region and zone information found.");
       }
 
@@ -376,7 +376,8 @@ public class CloudProviderHandler {
       String pullSecretName = appConfig.getString("yb.kubernetes.pullSecretName");
       if (storageClass == null || pullSecretName == null) {
         LOG.error("Required configuration keys from yb.kubernetes.* are missing.");
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Required configuration is missing.");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Required configuration is missing.");
       }
       String pullSecretContent = getKubernetesPullSecretContent(pullSecretName);
 
@@ -407,7 +408,7 @@ public class CloudProviderHandler {
 
       return formData;
     } catch (RuntimeException e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   } // Performs region and zone discovery based on
 
@@ -451,13 +452,14 @@ public class CloudProviderHandler {
             "The pull secret " + secretName + " is not present, provider won't have this field.");
         return null;
       }
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to fetch the pull secret.");
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to fetch the pull secret.");
     }
     JsonNode secretMetadata = pullSecretJson.get("metadata");
     if (secretMetadata == null) {
       LOG.error(
           "metadata of the pull secret " + secretName + " is missing. This should never happen.");
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Error while fetching the pull secret.");
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching the pull secret.");
     }
     ((ObjectNode) secretMetadata)
         .remove(
@@ -536,17 +538,17 @@ public class CloudProviderHandler {
     if (Provider.HostedZoneEnabledProviders.contains(provider.code)) {
       String hostedZoneId = editProviderReq.hostedZoneId;
       if (hostedZoneId == null || hostedZoneId.length() == 0) {
-        throw new YWServiceException(BAD_REQUEST, "Required field hosted zone id");
+        throw new PlatformServiceException(BAD_REQUEST, "Required field hosted zone id");
       }
       validateAndUpdateHostedZone(provider, hostedZoneId);
     } else if (provider.code.equals(kubernetes.toString())) {
       if (editProviderReq.config != null) {
         updateKubeConfig(provider, editProviderReq.config, true);
       } else {
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not parse config");
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not parse config");
       }
     } else {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Expected aws/k8s, but found providers with code: " + provider.code);
     }
   }
@@ -555,7 +557,7 @@ public class CloudProviderHandler {
     // TODO: do we have a good abstraction to inspect this AND know that it's an error outside?
     ShellResponse response = dnsManager.listDnsRecord(provider.uuid, hostedZoneId);
     if (response.code != 0) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
     }
     // The result returned from devops should be of the form
@@ -565,7 +567,7 @@ public class CloudProviderHandler {
     JsonNode hostedZoneData = Json.parse(response.message);
     hostedZoneData = hostedZoneData.get("name");
     if (hostedZoneData == null || hostedZoneData.asText().isEmpty()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
     }
     provider.updateHostedZone(hostedZoneId, hostedZoneData.asText());

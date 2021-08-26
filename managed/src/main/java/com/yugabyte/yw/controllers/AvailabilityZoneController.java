@@ -4,7 +4,8 @@ package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
@@ -44,7 +45,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
     List<AvailabilityZone> zoneList =
         AvailabilityZone.find.query().where().eq("region", region).findList();
-    return YWResults.withData(zoneList);
+    return PlatformResults.withData(zoneList);
   }
 
   /**
@@ -77,7 +78,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
       availabilityZones.put(az.code, az);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return YWResults.withData(availabilityZones);
+    return PlatformResults.withData(availabilityZones);
   }
 
   /**
@@ -90,7 +91,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "Delete an availability zone",
-      response = YWResults.YWSuccess.class,
+      response = YBPSuccess.class,
       nickname = "deleteAZ")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
@@ -98,6 +99,6 @@ public class AvailabilityZoneController extends AuthenticatedController {
     az.setActiveFlag(false);
     az.update();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 }

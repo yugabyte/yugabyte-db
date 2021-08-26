@@ -15,7 +15,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -234,7 +234,7 @@ public class Region extends Model {
   public static Region getOrBadRequest(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = get(customerUUID, providerUUID, regionUUID);
     if (region == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Provider/Region UUID");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Provider/Region UUID");
     }
     return region;
   }

@@ -16,8 +16,9 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.EditProviderRequest;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.forms.YWResults.YWSuccess;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -44,20 +45,20 @@ public class CloudProviderApiController extends AuthenticatedController {
       responseContainer = "List",
       nickname = "getListOfProviders")
   public Result list(UUID customerUUID) {
-    return YWResults.withData(Provider.getAll(customerUUID));
+    return PlatformResults.withData(Provider.getAll(customerUUID));
   }
 
   @ApiOperation(
       value = "Delete a cloud provider",
       notes = "This endpoint is used only for integration tests.",
       hidden = true,
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     cloudProviderHandler.delete(customer, provider);
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.withMessage("Deleted provider: " + providerUUID);
+    return YBPSuccess.withMessage("Deleted provider: " + providerUUID);
   }
 
   @ApiOperation(value = "Refresh pricing", notes = "Refresh provider pricing info")
@@ -65,7 +66,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
     auditService().createAuditEntry(ctx(), request());
-    return YWSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
+    return YBPSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
   }
 
   @ApiOperation(value = "Update a provider", response = Provider.class, nickname = "editProvider")
@@ -83,13 +84,10 @@ public class CloudProviderApiController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(request().body().asJson(), EditProviderRequest.class);
     cloudProviderHandler.editProvider(provider, editProviderReq);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(editProviderReq));
-    return YWResults.withData(provider);
+    return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(
-      value = "Create a provider",
-      response = YWResults.YWTask.class,
-      nickname = "createProviders")
+  @ApiOperation(value = "Create a provider", response = YBPTask.class, nickname = "createProviders")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateProviderRequest",
@@ -113,7 +111,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
     UUID taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
     auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
-    return new YWResults.YWTask(taskUUID, providerEbean.uuid).asResult();
+    return new YBPTask(taskUUID, providerEbean.uuid).asResult();
   }
 
   private static String getFirstRegionCode(Provider provider) {

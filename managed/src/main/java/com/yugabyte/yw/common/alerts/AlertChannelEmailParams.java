@@ -24,17 +24,17 @@ public class AlertChannelEmailParams extends AlertChannelParams {
   public SmtpData smtpData;
 
   @Override
-  public void validate() throws YWValidateException {
+  public void validate() throws PlatformValidationException {
     super.validate();
 
     boolean emptyRecipients = (recipients == null) || recipients.isEmpty();
     if (defaultRecipients == !emptyRecipients) {
-      throw new YWValidateException(
+      throw new PlatformValidationException(
           "Email parameters: only one of defaultRecipients and recipients[] should be set.");
     }
 
     if (defaultSmtpSettings == (smtpData != null)) {
-      throw new YWValidateException(
+      throw new PlatformValidationException(
           "Email parameters: only one of defaultSmtpSettings and smtpData should be set.");
     }
 
@@ -44,7 +44,7 @@ public class AlertChannelEmailParams extends AlertChannelParams {
       for (String email : recipients) {
         String emailOnly = EmailHelper.extractEmailAddress(email);
         if ((emailOnly == null) || !emailValidator.isValid(emailOnly)) {
-          throw new YWValidateException(
+          throw new PlatformValidationException(
               "Email parameters: destinations contain invalid email address " + email);
         }
       }

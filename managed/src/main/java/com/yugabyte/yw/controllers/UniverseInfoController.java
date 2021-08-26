@@ -15,11 +15,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.Universe;
@@ -71,7 +71,7 @@ public class UniverseInfoController extends AuthenticatedController {
 
     // Get alive status
     JsonNode result = universeInfoHandler.status(universe);
-    return YWResults.withRawData(result);
+    return PlatformResults.withRawData(result);
   }
 
   @ApiOperation(
@@ -83,7 +83,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = UniverseResourceDetails.class)
   public Result getUniverseResources(UUID customerUUID, UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    return YWResults.withData(
+    return PlatformResults.withData(
         universeInfoHandler.getUniverseResources(universe.getUniverseDetails()));
   }
 
@@ -95,7 +95,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    return YWResults.withData(
+    return PlatformResults.withData(
         UniverseResourceDetails.create(
             universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf()));
   }
@@ -107,7 +107,7 @@ public class UniverseInfoController extends AuthenticatedController {
       response = UniverseResourceDetails.class)
   public Result universeListCost(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    return YWResults.withData(universeInfoHandler.universeListCost(customer));
+    return PlatformResults.withData(universeInfoHandler.universeListCost(customer));
   }
 
   /**
@@ -127,7 +127,7 @@ public class UniverseInfoController extends AuthenticatedController {
 
     HostAndPort leaderMasterHostAndPort = universeInfoHandler.getMasterLeaderIP(universe);
     ObjectNode result = Json.newObject().put("privateIP", leaderMasterHostAndPort.getHost());
-    return YWResults.withRawData(result);
+    return PlatformResults.withRawData(result);
   }
 
   @ApiOperation(
@@ -139,7 +139,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     log.info("Live queries for customer {}, universe {}", customer.uuid, universe.universeUUID);
     JsonNode resultNode = universeInfoHandler.getLiveQuery(universe);
-    return YWResults.withRawData(resultNode);
+    return PlatformResults.withRawData(resultNode);
   }
 
   @ApiOperation(
@@ -168,7 +168,7 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    return YWResults.withRawData(universeInfoHandler.resetSlowQueries(universe));
+    return PlatformResults.withRawData(universeInfoHandler.resetSlowQueries(universe));
   }
 
   /**
@@ -189,7 +189,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
-    return YWResults.withData(detailsList);
+    return PlatformResults.withData(detailsList);
   }
 
   /**
@@ -225,7 +225,7 @@ public class UniverseInfoController extends AuthenticatedController {
     try {
       return new FileInputStream(file);
     } catch (FileNotFoundException e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 }

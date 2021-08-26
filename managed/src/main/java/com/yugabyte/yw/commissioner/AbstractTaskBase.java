@@ -53,7 +53,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final AlertConfigurationService alertConfigurationService;
   protected final YBClientService ybService;
   protected final TableManager tableManager;
-  private final YBThreadPoolExecutorFactory ybThreadPoolExecutorFactory;
+  private final PlatformExecutorFactory platformExecutorFactory;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -66,7 +66,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
     this.ybService = baseTaskDependencies.getYbService();
     this.tableManager = baseTaskDependencies.getTableManager();
-    this.ybThreadPoolExecutorFactory = baseTaskDependencies.getExecutorFactory();
+    this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
   }
 
   protected ITaskParams taskParams() {
@@ -101,7 +101,7 @@ public abstract class AbstractTaskBase implements ITask {
   public void createThreadpool() {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor = ybThreadPoolExecutorFactory.createExecutor("task", namedThreadFactory);
+    executor = platformExecutorFactory.createExecutor("task", namedThreadFactory);
   }
 
   @Override

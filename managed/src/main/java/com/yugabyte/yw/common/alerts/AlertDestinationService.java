@@ -12,7 +12,7 @@ package com.yugabyte.yw.common.alerts;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDestination;
@@ -47,7 +47,7 @@ public class AlertDestinationService {
   public void delete(UUID customerUUID, UUID destinationUUID) {
     AlertDestination destination = getOrBadRequest(customerUUID, destinationUUID);
     if (destination.isDefaultDestination()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Unable to delete default alert destination %s,"
@@ -59,7 +59,7 @@ public class AlertDestinationService {
         AlertConfigurationFilter.builder().destinationUuid(destination.getUuid()).build();
     List<AlertConfiguration> configurations = alertConfigurationService.list(configurationFilter);
     if (!configurations.isEmpty()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Unable to delete alert destination: "
               + destinationUUID
@@ -73,7 +73,7 @@ public class AlertDestinationService {
                   .collect(Collectors.toList()));
     }
     if (!destination.delete()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete alert destination: " + destinationUUID);
     }
     log.info("Deleted alert destination {} for customer {}", destinationUUID, customerUUID);
@@ -90,8 +90,8 @@ public class AlertDestinationService {
 
     try {
       validate(oldValue, destination);
-    } catch (YWValidateException e) {
-      throw new YWServiceException(
+    } catch (PlatformValidationException e) {
+      throw new PlatformServiceException(
           BAD_REQUEST, "Unable to create/update alert destination: " + e.getMessage());
     }
 
@@ -136,7 +136,7 @@ public class AlertDestinationService {
   public AlertDestination getOrBadRequest(UUID customerUUID, UUID destinationUUID) {
     AlertDestination alertDestination = get(customerUUID, destinationUUID);
     if (alertDestination == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Invalid Alert Destination UUID: " + destinationUUID);
     }
     return alertDestination;
@@ -183,31 +183,31 @@ public class AlertDestinationService {
   }
 
   private void validate(AlertDestination oldValue, AlertDestination destination)
-      throws YWValidateException {
+      throws PlatformValidationException {
     if (CollectionUtils.isEmpty(destination.getChannelsList())) {
-      throw new YWValidateException("Can't save alert destination without channels.");
+      throw new PlatformValidationException("Can't save alert destination without channels.");
     }
 
     if (StringUtils.isEmpty(destination.getName())) {
-      throw new YWValidateException("Name is mandatory.");
+      throw new PlatformValidationException("Name is mandatory.");
     }
 
     if (destination.getName().length() > AlertDestination.MAX_NAME_LENGTH / 4) {
-      throw new YWValidateException(
+      throw new PlatformValidationException(
           String.format("Name length (%d) is exceeded.", AlertChannel.MAX_NAME_LENGTH / 4));
     }
 
     if ((oldValue != null)
         && oldValue.isDefaultDestination()
         && !destination.isDefaultDestination()) {
-      throw new YWValidateException(
+      throw new PlatformValidationException(
           "Can't set the alert destination as non-default."
               + " Make another destination as default at first.");
     }
 
     AlertDestination valueWithSameName = get(destination.getCustomerUUID(), destination.getName());
     if ((valueWithSameName != null) && !destination.getUuid().equals(valueWithSameName.getUuid())) {
-      throw new YWValidateException("Alert destination with such name already exists.");
+      throw new PlatformValidationException("Alert destination with such name already exists.");
     }
   }
 }

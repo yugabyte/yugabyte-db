@@ -201,7 +201,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     expectedCommand.add("prometheus");
     when(shellProcessHandler.run(eq(expectedCommand), eq(new HashMap<>()), anyString()))
         .thenReturn(ShellResponse.create(1, "foobar"));
-    expectedException.expect(YWServiceException.class);
+    expectedException.expect(PlatformServiceException.class);
     expectedException.expectMessage("YBCloud command instance (template) failed to execute.");
     templateManager.createProvisionTemplate(accessKey, true, true, true, 9300, "prometheus");
   }

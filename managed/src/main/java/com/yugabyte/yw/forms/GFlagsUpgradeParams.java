@@ -4,7 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,13 +27,13 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
     super.verifyParams(universe);
 
     if (masterGFlags.isEmpty() && tserverGFlags.isEmpty()) {
-      throw new YWServiceException(Status.BAD_REQUEST, "gflags param is required.");
+      throw new PlatformServiceException(Status.BAD_REQUEST, "gflags param is required.");
     }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (masterGFlags.equals(userIntent.masterGFlags)
         && tserverGFlags.equals(userIntent.tserverGFlags)) {
-      throw new YWServiceException(Status.BAD_REQUEST, "No gflags to change.");
+      throw new PlatformServiceException(Status.BAD_REQUEST, "No gflags to change.");
     }
   }
 

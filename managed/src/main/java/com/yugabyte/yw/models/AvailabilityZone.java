@@ -7,7 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -116,7 +116,7 @@ public class AvailabilityZone extends Model {
       return az;
     } catch (Exception e) {
       LOG.error(e.getMessage());
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create zone: " + code);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to create zone: " + code);
     }
   }
 
@@ -132,7 +132,7 @@ public class AvailabilityZone extends Model {
     AvailabilityZone availabilityZone =
         AvailabilityZone.find.query().where().idEq(azUUID).eq("region_uuid", regionUUID).findOne();
     if (availabilityZone == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
     }
     return availabilityZone;
   }
@@ -156,7 +156,8 @@ public class AvailabilityZone extends Model {
     return maybeGet(zoneUuid)
         .orElseThrow(
             () ->
-                new YWServiceException(BAD_REQUEST, "Invalid AvailabilityZone UUID: " + zoneUuid));
+                new PlatformServiceException(
+                    BAD_REQUEST, "Invalid AvailabilityZone UUID: " + zoneUuid));
   }
 
   // TODO getOrNull should be replaced by maybeGet or getOrBadRequest

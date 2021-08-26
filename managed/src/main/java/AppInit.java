@@ -44,6 +44,7 @@ public class AppInit {
       TaskGarbageCollector taskGC,
       PlatformReplicationManager replicationManager)
       throws ReflectiveOperationException {
+    Json.mapper().setSerializationInclusion(Include.NON_NULL);
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
@@ -119,8 +120,6 @@ public class AppInit {
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
-
-      Json.mapper().setSerializationInclusion(Include.NON_NULL);
 
       Logger.info("AppInit completed");
     }

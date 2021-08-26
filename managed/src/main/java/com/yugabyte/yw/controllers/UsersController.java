@@ -7,11 +7,12 @@ import static com.yugabyte.yw.models.Users.Role;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.UserRegisterFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.Api;
@@ -51,7 +52,7 @@ public class UsersController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    return YWResults.withData(user);
+    return PlatformResults.withData(user);
   }
 
   /**
@@ -67,7 +68,7 @@ public class UsersController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
-    return YWResults.withData(users);
+    return PlatformResults.withData(users);
   }
 
   /**
@@ -96,7 +97,7 @@ public class UsersController extends AuthenticatedController {
         Users.create(formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID);
     updateFeatures(user);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
-    return YWResults.withData(user);
+    return PlatformResults.withData(user);
   }
 
   /**
@@ -108,19 +109,19 @@ public class UsersController extends AuthenticatedController {
       value = "Delete a user",
       nickname = "deleteUser",
       notes = "Deletes the specified user. Note that you can't delete a customer's primary user.",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID userUUID) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "User UUID %s does not belong to customer %s",
               userUUID.toString(), customerUUID.toString()));
     }
     if (user.getIsPrimary()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Cannot delete primary user %s for customer %s",
@@ -128,9 +129,9 @@ public class UsersController extends AuthenticatedController {
     }
     if (user.delete()) {
       auditService().createAuditEntry(ctx(), request());
-      return YWResults.YWSuccess.empty();
+      return YBPSuccess.empty();
     } else {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete user UUID: " + userUUID);
     }
   }
@@ -143,25 +144,25 @@ public class UsersController extends AuthenticatedController {
   @ApiOperation(
       value = "Change a user's role",
       nickname = "updateUserRole",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "User UUID %s does not belong to customer %s",
               userUUID.toString(), customerUUID.toString()));
     }
     if (Role.SuperAdmin == user.getRole()) {
-      throw new YWServiceException(BAD_REQUEST, "Can't change super admin role.");
+      throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
     }
     user.setRole(Role.valueOf(role));
     user.save();
     updateFeatures(user);
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   /**
@@ -172,7 +173,7 @@ public class UsersController extends AuthenticatedController {
   @ApiOperation(
       value = "Change a user's password",
       nickname = "updateUserPassword",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Users",
@@ -185,7 +186,7 @@ public class UsersController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
     if (!user.customerUUID.equals(customerUUID)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "User UUID %s does not belong to customer %s",
@@ -201,10 +202,10 @@ public class UsersController extends AuthenticatedController {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
         user.save();
-        return YWResults.YWSuccess.empty();
+        return YBPSuccess.empty();
       }
     }
-    throw new YWServiceException(BAD_REQUEST, "Invalid user credentials.");
+    throw new PlatformServiceException(BAD_REQUEST, "Invalid user credentials.");
   }
 
   private void updateFeatures(Users user) {

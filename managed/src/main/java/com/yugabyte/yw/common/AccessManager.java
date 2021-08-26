@@ -118,16 +118,16 @@ public class AccessManager extends DevopsBase {
     keyCode = Util.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
-      throw new YWServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
+      throw new PlatformServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
     }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
     if (!Files.exists(source)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Key file " + source.getFileName() + " not found.");
     }
     if (Files.exists(destination)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "File " + destination.getFileName() + " already exists.");
     }
 
@@ -146,7 +146,7 @@ public class AccessManager extends DevopsBase {
     }
     JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
     if (vaultResponse.has("error")) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Vault Creation failed with : " + vaultResponse.get("error").asText());
     }
@@ -259,7 +259,7 @@ public class AccessManager extends DevopsBase {
 
     JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
     if (response.has("error")) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Parsing of Region failed with : " + response.get("error").asText());
     }
@@ -270,7 +270,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.privateKey = response.get("private_key").asText();
       JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
       if (response.has("error")) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             "Vault Creation failed with : " + response.get("error").asText());
       }

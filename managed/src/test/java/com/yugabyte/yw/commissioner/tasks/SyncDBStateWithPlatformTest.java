@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
+import com.yugabyte.yw.commissioner.PlatformExecutorFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -40,7 +40,7 @@ public class SyncDBStateWithPlatformTest extends FakeDBApplication {
 
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
     when(baseTaskDependencies.getExecutorFactory())
-        .thenReturn(app.injector().instanceOf(YBThreadPoolExecutorFactory.class));
+        .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
 
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.universeUUID = universe.universeUUID;

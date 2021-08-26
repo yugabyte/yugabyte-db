@@ -28,7 +28,7 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.common.alerts.YWNotificationException;
+import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Alert;
@@ -169,11 +169,11 @@ public class AlertManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSendNotification_FailureMetric() throws YWNotificationException {
+  public void testSendNotification_FailureMetric() throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
-    doThrow(new YWNotificationException("test"))
+    doThrow(new PlatformNotificationException("test"))
         .when(emailChannel)
         .sendNotification(eq(defaultCustomer), captor.capture(), any());
     am.sendNotificationForState(alert, State.ACTIVE, report);
@@ -195,7 +195,7 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Test
   public void testSendNotification_AlertWoDefinition_SendEmailOldManner()
-      throws YWNotificationException {
+      throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     am.sendNotificationForState(alert, State.ACTIVE, report);
 
@@ -213,7 +213,7 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Test
   public void testSendNotification_TwoEmailDestinations()
-      throws MessagingException, YWNotificationException {
+      throws MessagingException, PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
     AlertChannel channel1 =
@@ -232,7 +232,7 @@ public class AlertManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDefaultDestination_IsUsed() throws YWNotificationException {
+  public void testDefaultDestination_IsUsed() throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
 
     am.sendNotificationForState(alert, State.ACTIVE, report);
@@ -246,7 +246,8 @@ public class AlertManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDefaultDestination_EmptyRecipientsAlertResolved() throws YWNotificationException {
+  public void testDefaultDestination_EmptyRecipientsAlertResolved()
+      throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.emptyList());
@@ -302,7 +303,7 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendNotifications_CountMatched(
       @Nullable State notifiedState, State currentState, int expectedCount)
-      throws YWNotificationException {
+      throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     alert
         .setState(currentState)
@@ -330,7 +331,7 @@ public class AlertManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSendNotificationForState_WithAnotherState() throws YWNotificationException {
+  public void testSendNotificationForState_WithAnotherState() throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     alert.setState(State.RESOLVED);
     alert.save();

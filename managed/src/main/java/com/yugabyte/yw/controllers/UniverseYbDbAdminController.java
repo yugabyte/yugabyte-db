@@ -10,17 +10,19 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
+import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -44,7 +46,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   @ApiOperation(
       value = "Set a universe's database credentials",
       nickname = "setDatabaseCredentials",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -61,7 +63,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   @ApiOperation(
       value = "Create a database user for a universe",
       nickname = "createUserInDB",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result createUserInDB(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -82,9 +84,9 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   @ApiOperation(
       value = "Run a shell command",
       notes = "This operation is no longer supported, for security reasons.",
-      response = YWResults.YWError.class)
+      response = YBPError.class)
   public Result runInShell(UUID customerUUID, UUID universeUUID) {
-    throw new YWServiceException(BAD_REQUEST, DEPRECATED);
+    throw new PlatformServiceException(BAD_REQUEST, DEPRECATED);
   }
 
   @ApiOperation(
@@ -100,6 +102,6 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
     JsonNode queryResult =
         universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get());
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return YWResults.withRawData(queryResult);
+    return PlatformResults.withRawData(queryResult);
   }
 }

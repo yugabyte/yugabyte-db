@@ -32,7 +32,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -413,7 +413,8 @@ public class BackupsControllerTest extends FakeDBApplication {
       throws IOException, InterruptedException, ExecutionException {
     defaultBackup.transitionState(BackupState.Completed);
     Result result =
-        assertThrows(YWServiceException.class, () -> stopBackup(null, defaultBackup.backupUUID))
+        assertThrows(
+                PlatformServiceException.class, () -> stopBackup(null, defaultBackup.backupUUID))
             .getResult();
     assertEquals(400, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -435,7 +436,8 @@ public class BackupsControllerTest extends FakeDBApplication {
 
     defaultBackup.setTaskUUID(taskUUID);
     Result result =
-        assertThrows(YWServiceException.class, () -> stopBackup(null, defaultBackup.backupUUID))
+        assertThrows(
+                PlatformServiceException.class, () -> stopBackup(null, defaultBackup.backupUUID))
             .getResult();
     taskInfo.save();
 

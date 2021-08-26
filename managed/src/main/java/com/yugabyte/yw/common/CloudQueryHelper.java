@@ -163,7 +163,7 @@ public class CloudQueryHelper extends DevopsBase {
 
     JsonNode regionVnet = result.get(region.code);
     if (regionVnet == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not get vnet for region: " + region.code);
     }
     return regionVnet.asText();

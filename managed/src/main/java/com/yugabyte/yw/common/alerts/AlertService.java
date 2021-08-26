@@ -16,7 +16,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.SortBy;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -93,18 +93,18 @@ public class AlertService {
 
   public Alert get(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Can't get alert by null uuid");
+      throw new PlatformServiceException(BAD_REQUEST, "Can't get alert by null uuid");
     }
     return list(AlertFilter.builder().uuid(uuid).build()).stream().findFirst().orElse(null);
   }
 
   public Alert getOrBadRequest(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
     }
     Alert alert = get(uuid);
     if (alert == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
     }
     return alert;
   }
@@ -205,35 +205,36 @@ public class AlertService {
 
   private void validate(Alert alert, Alert before) {
     if (alert.getCustomerUUID() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (alert.getSeverity() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Alert severity field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Alert severity field is mandatory");
     }
     if (StringUtils.isEmpty(alert.getMessage())) {
-      throw new YWServiceException(BAD_REQUEST, "Message field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Message field is mandatory");
     }
     if (before != null) {
       if (!alert.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change customer UUID for alert " + alert.getUuid());
       }
       if (before.getDefinitionUuid() != null
           && !alert.getDefinitionUuid().equals(before.getDefinitionUuid())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change definition for alert " + alert.getUuid());
       }
       if (before.getConfigurationUuid() != null
           && !alert.getConfigurationUuid().equals(before.getConfigurationUuid())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change configuration for alert " + alert.getUuid());
       }
       if (!alert.getCreateTime().equals(before.getCreateTime())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change create time for alert " + alert.getUuid());
       }
     } else if (!alert.isNew()) {
-      throw new YWServiceException(BAD_REQUEST, "Can't update missing alert " + alert.getUuid());
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't update missing alert " + alert.getUuid());
     }
   }
 }

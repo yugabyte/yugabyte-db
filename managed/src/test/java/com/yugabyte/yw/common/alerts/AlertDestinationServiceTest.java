@@ -12,7 +12,7 @@ import static org.junit.Assert.assertThrows;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertChannel;
@@ -82,9 +82,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
 
     // Should raise an exception for random UUID.
     final UUID uuid = UUID.randomUUID();
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertDestinationService.getOrBadRequest(customerUUID, uuid);
             });
@@ -116,7 +116,7 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
             .setCustomerUUID(customerUUID)
             .setName(ALERT_DESTINATION_NAME)
             .setChannelsList(Collections.singletonList(channel));
-    assertThrows(YWServiceException.class, () -> alertDestinationService.save(destination));
+    assertThrows(PlatformServiceException.class, () -> alertDestinationService.save(destination));
   }
 
   @Test
@@ -126,8 +126,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
             .setCustomerUUID(customerUUID)
             .setName(ALERT_DESTINATION_NAME)
             .setChannelsList(Collections.emptyList());
-    YWServiceException exception =
-        assertThrows(YWServiceException.class, () -> alertDestinationService.save(destination));
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class, () -> alertDestinationService.save(destination));
     assertThat(
         exception.getMessage(),
         equalTo(
@@ -170,9 +171,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
     defaultDestination = alertDestinationService.save(defaultDestination);
 
     final AlertDestination updatedDestination = defaultDestination.setDefaultDestination(false);
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class, () -> alertDestinationService.save(updatedDestination));
+            PlatformServiceException.class, () -> alertDestinationService.save(updatedDestination));
     assertThat(
         exception.getMessage(),
         equalTo(
@@ -218,9 +219,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
   public void testDelete_DefaultDestination_Fail() {
     AlertDestination defaultDestination =
         alertDestinationService.createDefaultDestination(customerUUID);
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertDestinationService.delete(customerUUID, defaultDestination.getUuid());
             });
@@ -244,9 +245,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
     configuration.setDestinationUUID(destination.getUuid());
     configuration.save();
 
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertDestinationService.delete(customerUUID, destination.getUuid());
             });
@@ -274,9 +275,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
     // Setting duplicate name.
     updatedDestination.setName(ALERT_DESTINATION_NAME + " 2");
 
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertDestinationService.save(updatedDestination);
             });
@@ -300,9 +301,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
             .setName(longName.toString())
             .setChannelsList(Collections.singletonList(channel));
 
-    YWServiceException exception =
+    PlatformServiceException exception =
         assertThrows(
-            YWServiceException.class,
+            PlatformServiceException.class,
             () -> {
               alertDestinationService.save(destination);
             });

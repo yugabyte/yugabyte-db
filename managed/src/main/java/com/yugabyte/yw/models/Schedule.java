@@ -7,7 +7,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Finder;
@@ -158,7 +158,7 @@ public class Schedule extends Model {
   public static Schedule getOrBadRequest(UUID scheduleUUID) {
     Schedule schedule = get(scheduleUUID);
     if (schedule == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Schedule UUID: " + scheduleUUID);
     }
     return schedule;
   }

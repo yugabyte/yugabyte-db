@@ -7,7 +7,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -301,7 +301,7 @@ public class UpgradeUniverseHandler {
     try {
       kubernetesManager.getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {
-      throw new YWServiceException(Status.BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(Status.BAD_REQUEST, e.getMessage());
     }
   }
 }

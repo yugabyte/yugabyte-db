@@ -16,7 +16,8 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.File;
@@ -61,7 +62,7 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(NOT_FOUND, "Could not find HA Config by cluster key");
       }
 
-      return YWResults.withData(config.get());
+      return PlatformResults.withData(config.get());
     } catch (Exception e) {
       LOG.error("Error retrieving HA config");
 
@@ -106,7 +107,7 @@ public class InternalHAController extends Controller {
           replicationManager.importPlatformInstances(
               config.get(), (ArrayNode) request().body().asJson());
 
-      return YWResults.withData(processedInstances);
+      return PlatformResults.withData(processedInstances);
     } catch (Exception e) {
       LOG.error("Error importing platform instances", e);
 
@@ -161,7 +162,7 @@ public class InternalHAController extends Controller {
     if (success) {
       // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
       replicationManager.cleanupReceivedBackups(leaderUrl);
-      return YWResults.YWSuccess.withMessage("File uploaded");
+      return YBPSuccess.withMessage("File uploaded");
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "failed to copy backup");
     }
@@ -204,7 +205,7 @@ public class InternalHAController extends Controller {
       // Demote the local instance.
       replicationManager.demoteLocalInstance(localInstance.get(), formData.leader_address);
 
-      return YWResults.withData(localInstance);
+      return PlatformResults.withData(localInstance);
     } catch (Exception e) {
       LOG.error("Error demoting platform instance", e);
 

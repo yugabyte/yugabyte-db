@@ -13,7 +13,7 @@ package com.yugabyte.yw.common.password;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
 
@@ -75,7 +75,7 @@ public class PasswordPolicyService {
     PasswordPolicyFormData effectivePolicy = getCustomerPolicy(customerUUID);
 
     if (StringUtils.isEmpty(password)) {
-      throw new YWServiceException(BAD_REQUEST, "Password shouldn't be empty.");
+      throw new PlatformServiceException(BAD_REQUEST, "Password shouldn't be empty.");
     }
 
     List<ValidationError> errors =
@@ -93,7 +93,7 @@ public class PasswordPolicyService {
               .flatMap(List::stream)
               .collect(Collectors.joining("; "));
 
-      throw new YWServiceException(BAD_REQUEST, fullMessage);
+      throw new PlatformServiceException(BAD_REQUEST, fullMessage);
     }
   }
 

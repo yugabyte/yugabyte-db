@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -163,7 +163,7 @@ public class Users extends Model {
   public static Users getOrBadRequest(UUID userUUID) {
     Users user = get(userUUID);
     if (user == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
     }
     return user;
   }

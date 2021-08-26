@@ -14,7 +14,7 @@ import static com.yugabyte.yw.controllers.TokenAuthenticator.API_TOKEN_HEADER;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.ApiKeyAuthDefinition;
@@ -86,7 +86,7 @@ public abstract class AbstractPlatformController extends Controller {
     try {
       return Json.fromJson(request().body().asJson(), expectedClass);
     } catch (Exception e) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Failed to parse " + expectedClass.getSimpleName() + " object: " + e.getMessage());
     }

@@ -14,5 +14,5 @@ public interface AlertChannelInterface {
    * @return An error if the action failed, or null otherwise.
    */
   void sendNotification(Customer customer, Alert alert, AlertChannel channel)
-      throws YWNotificationException;
+      throws PlatformNotificationException;
 }

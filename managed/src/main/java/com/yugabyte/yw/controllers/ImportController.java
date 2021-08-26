@@ -19,7 +19,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.ITask;
-import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
+import com.yugabyte.yw.commissioner.PlatformExecutorFactory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreatePrometheusSwamperConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasters;
@@ -28,9 +28,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.WaitForTServerHBs;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.ImportUniverseFormData.State;
@@ -40,7 +40,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -98,12 +98,12 @@ public class ImportController extends AuthenticatedController {
   @Inject ConfigHelper configHelper;
 
   @Inject
-  public ImportController(YBThreadPoolExecutorFactory ybThreadPoolExecutorFactory) {
+  public ImportController(PlatformExecutorFactory platformExecutorFactory) {
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
     log.trace("Starting Import Thread Pool.");
-    executor = ybThreadPoolExecutorFactory.createExecutor("import", namedThreadFactory);
+    executor = platformExecutorFactory.createExecutor("import", namedThreadFactory);
   }
 
   @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
@@ -140,9 +140,9 @@ public class ImportController extends AuthenticatedController {
         case IMPORTED_TSERVERS:
           return finishUniverseImport(importForm, customer, results);
         case FINISHED:
-          return YWResults.withData(results);
+          return PlatformResults.withData(results);
         default:
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Unknown current state: " + importForm.currentState.toString());
       }
     }
@@ -200,15 +200,15 @@ public class ImportController extends AuthenticatedController {
     String masterAddresses = importForm.masterAddresses;
 
     if (universeName == null || universeName.isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST, "Null or empty universe name.");
+      throw new PlatformServiceException(BAD_REQUEST, "Null or empty universe name.");
     }
 
     if (!Util.isValidUniverseNameFormat(universeName)) {
-      throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
+      throw new PlatformServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid master addresses list.");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid master addresses list.");
     }
 
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
@@ -218,7 +218,7 @@ public class ImportController extends AuthenticatedController {
     // ---------------------------------------------------------------------------------------------
     Map<String, Integer> userMasterIpPorts = getMastersList(masterAddresses);
     if (userMasterIpPorts == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Could not parse host:port from masterAddresseses: " + masterAddresses);
     }
 
@@ -253,7 +253,7 @@ public class ImportController extends AuthenticatedController {
             String.format(
                 "Providers for the customer: %s and type: %s" + " are not present",
                 customer.uuid, importForm.providerType);
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, results.error);
       }
 
       Region region = Region.getByCode(provider, importForm.regionCode);
@@ -268,7 +268,7 @@ public class ImportController extends AuthenticatedController {
     } catch (Exception e) {
       results.checks.put("create_db_entry", "FAILURE");
       results.error = e.getMessage();
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
     taskParams = universe.getUniverseDetails();
 
@@ -276,14 +276,14 @@ public class ImportController extends AuthenticatedController {
     // Verify the master processes are running on the master nodes.
     // ---------------------------------------------------------------------------------------------
     if (!verifyMastersRunning(taskParams, results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // ---------------------------------------------------------------------------------------------
     // Wait for the master leader election if needed.
     // ---------------------------------------------------------------------------------------------
     if (!verifyMasterLeaderExists(taskParams, results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     setImportedState(universe, ImportedState.MASTERS_ADDED);
@@ -293,7 +293,7 @@ public class ImportController extends AuthenticatedController {
     results.universeName = universeName;
     results.masterAddresses = masterAddresses;
 
-    return YWResults.withData(results);
+    return PlatformResults.withData(results);
   }
 
   private void setImportedState(Universe universe, ImportedState newState) {
@@ -312,7 +312,7 @@ public class ImportController extends AuthenticatedController {
     String masterAddresses = importForm.masterAddresses;
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
       results.error = "Valid universe uuid needs to be set instead of " + importForm.universeUUID;
-      throw new YWServiceException(BAD_REQUEST, Json.toJson(results));
+      throw new PlatformServiceException(BAD_REQUEST, Json.toJson(results));
     }
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
@@ -325,7 +325,7 @@ public class ImportController extends AuthenticatedController {
               + curState.name()
               + " expecteed "
               + ImportedState.MASTERS_ADDED.name();
-      throw new YWServiceException(BAD_REQUEST, Json.toJson(results));
+      throw new PlatformServiceException(BAD_REQUEST, Json.toJson(results));
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
@@ -338,7 +338,7 @@ public class ImportController extends AuthenticatedController {
     Map<String, Integer> tservers_list = getTServers(masterAddresses, results);
     if (tservers_list.isEmpty()) {
       results.error = "No tservers known to the master leader in " + masterAddresses;
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // Record the count of the tservers.
@@ -360,7 +360,7 @@ public class ImportController extends AuthenticatedController {
           String.format(
               "Providers for the customer: %s and type: %s" + " are not present",
               customer.uuid, importForm.providerType);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     Region region = Region.getByCode(provider, importForm.regionCode);
@@ -378,7 +378,7 @@ public class ImportController extends AuthenticatedController {
     checkTservers.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(checkTservers, "check_tservers_are_running", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, results.error);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, results.error);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -388,7 +388,7 @@ public class ImportController extends AuthenticatedController {
     waitForTserverHBs.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(waitForTserverHBs, "check_tserver_heartbeats", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     log.info("Verified " + tservers_list.size() + " tservers present and imported them.");
@@ -399,7 +399,7 @@ public class ImportController extends AuthenticatedController {
     results.masterAddresses = masterAddresses;
     results.universeName = importForm.universeName;
 
-    return YWResults.withData(results);
+    return PlatformResults.withData(results);
   }
 
   /**
@@ -411,7 +411,7 @@ public class ImportController extends AuthenticatedController {
       ImportUniverseFormData importForm, Customer customer, ImportUniverseResponseData results) {
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
       results.error = "Valid universe uuid needs to be set.";
-      throw new YWServiceException(BAD_REQUEST, results.error);
+      throw new PlatformServiceException(BAD_REQUEST, results.error);
     }
 
     Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
@@ -441,7 +441,7 @@ public class ImportController extends AuthenticatedController {
     createPrometheusSwamperConfig.initialize(taskParams);
     // Execute the task. If it fails, return an error.
     if (!executeITask(createPrometheusSwamperConfig, "create_prometheus_config", results)) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -489,7 +489,7 @@ public class ImportController extends AuthenticatedController {
 
     log.info("Completed " + universe.universeUUID + " import.");
 
-    return YWResults.withData(results);
+    return PlatformResults.withData(results);
   }
 
   /**

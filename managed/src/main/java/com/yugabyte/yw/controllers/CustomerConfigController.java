@@ -5,8 +5,9 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
@@ -46,35 +47,35 @@ public class CustomerConfigController extends AuthenticatedController {
     ObjectNode formData = (ObjectNode) request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
-      throw new YWServiceException(BAD_REQUEST, errorJson);
+      throw new PlatformServiceException(BAD_REQUEST, errorJson);
     }
 
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
-      throw new YWServiceException(BAD_REQUEST, errorJson);
+      throw new PlatformServiceException(BAD_REQUEST, errorJson);
     }
 
     String configName = formData.get("configName").textValue();
     CustomerConfig existentConfig = CustomerConfig.get(customerUUID, configName);
     if (existentConfig != null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           CONFLICT, String.format("Configuration %s already exists", configName));
     }
 
     CustomerConfig customerConfig = CustomerConfig.createWithFormData(customerUUID, formData);
     auditService().createAuditEntry(ctx(), request(), formData);
-    return YWResults.withData(customerConfig);
+    return PlatformResults.withData(customerConfig);
   }
 
   @ApiOperation(
       value = "Delete a customer configuration",
-      response = YWResults.YWSuccess.class,
+      response = YBPSuccess.class,
       nickname = "deleteCustomerConfig")
   public Result delete(UUID customerUUID, UUID configUUID) {
     CustomerConfig customerConfig = CustomerConfig.getOrBadRequest(customerUUID, configUUID);
     customerConfig.deleteOrThrow();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.withMessage("configUUID deleted");
+    return YBPSuccess.withMessage("configUUID deleted");
   }
 
   @ApiOperation(
@@ -83,7 +84,7 @@ public class CustomerConfigController extends AuthenticatedController {
       responseContainer = "List",
       nickname = "getListOfCustomerConfig")
   public Result list(UUID customerUUID) {
-    return YWResults.withData(CustomerConfig.getAll(customerUUID));
+    return PlatformResults.withData(CustomerConfig.getAll(customerUUID));
   }
 
   @ApiOperation(
@@ -102,14 +103,14 @@ public class CustomerConfigController extends AuthenticatedController {
     JsonNode formData = request().body().asJson();
     ObjectNode errorJson = configValidator.validateFormData(formData);
     if (errorJson.size() > 0) {
-      throw new YWServiceException(BAD_REQUEST, errorJson);
+      throw new PlatformServiceException(BAD_REQUEST, errorJson);
     }
 
     String configName = formData.get("configName").textValue();
     CustomerConfig existentConfig = CustomerConfig.get(customerUUID, configName);
     if (existentConfig != null
         && !StringUtils.equals(existentConfig.configUUID.toString(), configUUID.toString())) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           CONFLICT, String.format("Configuration %s already exists", configName));
     }
 
@@ -119,7 +120,7 @@ public class CustomerConfigController extends AuthenticatedController {
       if (!StringUtils.equals(
           data.get("BACKUP_LOCATION").textValue(),
           config.data.get("BACKUP_LOCATION").textValue())) {
-        throw new YWServiceException(BAD_REQUEST, "BACKUP_LOCATION field is read-only.");
+        throw new PlatformServiceException(BAD_REQUEST, "BACKUP_LOCATION field is read-only.");
       }
     }
 
@@ -128,7 +129,7 @@ public class CustomerConfigController extends AuthenticatedController {
 
     errorJson = configValidator.validateDataContent(formData);
     if (errorJson.size() > 0) {
-      throw new YWServiceException(BAD_REQUEST, errorJson);
+      throw new PlatformServiceException(BAD_REQUEST, errorJson);
     }
 
     config.data = Json.toJson(updatedData);
@@ -136,6 +137,6 @@ public class CustomerConfigController extends AuthenticatedController {
     config.name = formData.get("name").textValue();
     config.update();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.withData(config);
+    return PlatformResults.withData(config);
   }
 }

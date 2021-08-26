@@ -116,7 +116,8 @@ public class YsqlQueryExecutor {
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
     LOG.info("Creating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
     }
   }
 
@@ -132,7 +133,8 @@ public class YsqlQueryExecutor {
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
     LOG.info("Updating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
     }
   }
 }

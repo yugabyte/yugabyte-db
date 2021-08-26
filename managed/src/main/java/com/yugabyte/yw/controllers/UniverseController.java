@@ -6,7 +6,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -38,23 +39,20 @@ public class UniverseController extends AuthenticatedController {
     // Verify the customer is present.
     if (name != null) {
       LOG.info("Finding Universe with name {}.", name);
-      return YWResults.withData(universeCRUDHandler.findByName(name));
+      return PlatformResults.withData(universeCRUDHandler.findByName(name));
     }
-    return YWResults.withData(universeCRUDHandler.list(customer));
+    return PlatformResults.withData(universeCRUDHandler.list(customer));
   }
 
   @ApiOperation(value = "Get a universe", response = UniverseResp.class, nickname = "getUniverse")
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    return YWResults.withData(
+    return PlatformResults.withData(
         UniverseResp.create(universe, null, runtimeConfigFactory.globalRuntimeConf()));
   }
 
-  @ApiOperation(
-      value = "Delete a universe",
-      response = YWResults.YWTask.class,
-      nickname = "deleteUniverse")
+  @ApiOperation(value = "Delete a universe", response = YBPTask.class, nickname = "deleteUniverse")
   public Result destroy(
       UUID customerUUID,
       UUID universeUUID,
@@ -68,6 +66,6 @@ public class UniverseController extends AuthenticatedController {
         universeCRUDHandler.destroy(
             customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts);
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 }

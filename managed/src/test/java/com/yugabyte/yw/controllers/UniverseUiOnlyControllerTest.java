@@ -46,7 +46,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -1186,7 +1186,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
         assertThrows(
-                YWServiceException.class,
+                PlatformServiceException.class,
                 () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
             .getResult();
 

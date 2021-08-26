@@ -19,11 +19,12 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
-public class YWResults {
+public class PlatformResults {
 
   /**
    * @deprecated Ypu should not be using this method. This is only for legacy code that used raw
@@ -45,26 +46,37 @@ public class YWResults {
   }
 
   @ApiModel(description = "Generic error response from the Yugabyte Platform API")
-  public static class YWError {
+  public static class YBPError {
     @ApiModelProperty(value = "Always set to false to indicate failure", example = "false")
     public boolean success = false;
 
     @ApiModelProperty(
         value = "User visible unstructured error message",
-        example = "There was a problem creating the universe",
-        required = false)
+        example = "There was a problem creating the universe")
     public String error;
 
-    // for json deserialization
-    public YWError() {}
+    @ApiModelProperty(
+        value = "User visible error message as json object",
+        dataType = "Object",
+        example = "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }")
+    public JsonNode errorJson;
 
-    public YWError(String error) {
+    // for json deserialization
+    public YBPError() {}
+
+    public YBPError(String error) {
       this.error = error;
+    }
+
+    public YBPError(JsonNode errorJson) {
+      this.error = "See structured error message in errorJson field";
+      this.errorJson = errorJson;
     }
   }
 
+  // TODO: Replace with new YBPError(jsonNode)
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public static class YWStructuredError {
+  public static class YBPStructuredError {
     public boolean success = false;
 
     @ApiModelProperty(
@@ -75,9 +87,9 @@ public class YWResults {
     public JsonNode error;
 
     // for json deserialization
-    YWStructuredError() {}
+    YBPStructuredError() {}
 
-    public YWStructuredError(JsonNode err) {
+    public YBPStructuredError(JsonNode err) {
       error = err;
     }
   }
@@ -89,7 +101,7 @@ public class YWResults {
   }
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public static class YWSuccess extends OkResult {
+  public static class YBPSuccess extends OkResult {
 
     @ApiModelProperty(
         value = "API operation success",
@@ -101,25 +113,25 @@ public class YWResults {
         accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final String message;
 
-    YWSuccess() {
+    YBPSuccess() {
       this(true, null);
     }
 
-    YWSuccess(boolean success, String message) {
+    YBPSuccess(boolean success, String message) {
       this.success = success;
       this.message = message;
     }
 
     public static Result empty() {
-      return new YWSuccess().asResult();
+      return new YBPSuccess().asResult();
     }
 
     public static Result withMessage(String message) {
-      return new YWSuccess(true, message).asResult();
+      return new YBPSuccess(true, message).asResult();
     }
   }
 
-  public static class YWTask extends OkResult {
+  public static class YBPTask extends OkResult {
     @VisibleForTesting
     @ApiModelProperty(value = "Task UUID", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public UUID taskUUID;
@@ -131,24 +143,33 @@ public class YWResults {
     public UUID resourceUUID;
 
     // for json deserialization
-    public YWTask() {}
+    public YBPTask() {}
 
-    public YWTask(UUID taskUUID) {
+    public YBPTask(UUID taskUUID) {
       this(taskUUID, null);
     }
 
-    public YWTask(UUID taskUUID, UUID resourceUUID) {
+    public YBPTask(UUID taskUUID, UUID resourceUUID) {
       this.taskUUID = taskUUID;
       this.resourceUUID = resourceUUID;
     }
   }
 
-  public static class YWTasks extends OkResult {
-    // TODO Need to make it YWTask list w/o making ui unhappy.
+  public static class YBPTasks extends OkResult {
+    @ApiModelProperty(value = "UI_ONLY", hidden = true)
     public final List<UUID> taskUUID;
 
-    public YWTasks(List<UUID> taskUUID) {
-      this.taskUUID = taskUUID;
+    @ApiModelProperty(
+        value =
+            "List of YBTask objects each containing task uuid and uuid of "
+                + "resource (like backup, universe, provider) that the task mutated",
+        hidden = true)
+    public final List<YBPTask> ybpTaskList;
+
+    public YBPTasks(List<YBPTask> ybpTaskList) {
+      this.ybpTaskList = ybpTaskList;
+      this.taskUUID =
+          ybpTaskList.stream().map(ybTask -> ybTask.taskUUID).collect(Collectors.toList());
     }
   }
 }

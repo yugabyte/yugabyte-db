@@ -34,7 +34,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
@@ -97,13 +97,14 @@ public class AWSInitializer extends AbstractInitializer {
         }
         if (!pricingFileFound) {
           LOG.error("Failed to get region pricing file from {}", pricingFileName);
-          throw new YWServiceException(INTERNAL_SERVER_ERROR, "Failed to get region pricing file");
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Failed to get region pricing file");
         }
         ObjectMapper mapper = new ObjectMapper();
         regionJson = mapper.readTree(regionStream);
       } catch (IOException e) {
         LOG.error("Failed to parse region metadata from region {}", region.code);
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             "Failed to parse region metadata from region " + region.code + ". " + e.getMessage());
       }

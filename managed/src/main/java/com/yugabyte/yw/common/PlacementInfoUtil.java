@@ -2036,7 +2036,7 @@ public class PlacementInfoUtil {
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null
         && !userIntent.regionList.contains(userIntent.preferredRegion)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Preferred region " + userIntent.preferredRegion + " not in user region list.");
     }
@@ -2085,7 +2085,7 @@ public class PlacementInfoUtil {
     }
 
     if (allAzsInRegions.isEmpty()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "No AZ found across regions: " + userIntent.regionList);
     }
 
@@ -2112,7 +2112,7 @@ public class PlacementInfoUtil {
         }
       }
     } else {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
               "Number of zones=%d greater than RF=%d is not allowed",

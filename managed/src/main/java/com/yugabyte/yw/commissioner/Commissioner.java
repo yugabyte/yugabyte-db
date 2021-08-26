@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -49,10 +49,10 @@ public class Commissioner {
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
-      YBThreadPoolExecutorFactory ybThreadPoolExecutorFactory) {
+      PlatformExecutorFactory platformExecutorFactory) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
-    executor = ybThreadPoolExecutorFactory.createExecutor("commissioner", namedThreadFactory);
+    executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
     LOG.info("Started TaskProgressMonitor thread.");
@@ -90,7 +90,7 @@ public class Commissioner {
   public ObjectNode getStatusOrBadRequest(UUID taskUUID) {
     return mayGetStatus(taskUUID)
         .orElseThrow(
-            () -> new YWServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
+            () -> new PlatformServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
   public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
@@ -128,7 +128,7 @@ public class Commissioner {
       return taskInfo.getTaskDetails();
     } else {
       // TODO: push this down to TaskInfo
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);
     }
   }

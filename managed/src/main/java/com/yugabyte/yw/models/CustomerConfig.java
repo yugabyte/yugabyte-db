@@ -10,9 +10,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -154,7 +154,7 @@ public class CustomerConfig extends Model {
 
   public void deleteOrThrow() {
     if (!delete()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Customer Configuration could not be deleted.");
     }
   }
@@ -183,7 +183,7 @@ public class CustomerConfig extends Model {
   public static CustomerConfig getOrBadRequest(UUID customerUUID, UUID configUUID) {
     CustomerConfig storageConfig = get(customerUUID, configUUID);
     if (storageConfig == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid StorageConfig UUID: " + configUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid StorageConfig UUID: " + configUUID);
     }
     return storageConfig;
   }

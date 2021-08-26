@@ -14,7 +14,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -236,7 +236,7 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
     return provider;
   }
@@ -294,7 +294,7 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
-      throw new YWServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
     return provider;
   }
 

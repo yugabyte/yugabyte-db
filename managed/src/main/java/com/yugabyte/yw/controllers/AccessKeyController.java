@@ -3,15 +3,15 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
-import static com.yugabyte.yw.forms.YWResults.YWSuccess.withMessage;
+import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TemplateManager;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.AccessKeyFormData;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.forms.YWResults.YWSuccess;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -49,7 +49,7 @@ public class AccessKeyController extends AuthenticatedController {
     Provider.getOrBadRequest(customerUUID, providerUUID);
 
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
-    return YWResults.withData(accessKey);
+    return PlatformResults.withData(accessKey);
   }
 
   @ApiOperation(value = "List access keys for a specific provider", response = AccessKey.class)
@@ -59,7 +59,7 @@ public class AccessKeyController extends AuthenticatedController {
 
     List<AccessKey> accessKeys;
     accessKeys = AccessKey.getAll(providerUUID);
-    return YWResults.withData(accessKeys);
+    return PlatformResults.withData(accessKeys);
   }
 
   @ApiOperation(value = "Create an access key", response = AccessKey.class)
@@ -90,7 +90,7 @@ public class AccessKeyController extends AuthenticatedController {
       Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
       File uploadedFile = (File) filePart.getFile();
       if (keyType == null || uploadedFile == null) {
-        throw new YWServiceException(BAD_REQUEST, "keyType and keyFile params required.");
+        throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
       }
       accessKey =
           accessManager.uploadKeyFile(
@@ -104,7 +104,7 @@ public class AccessKeyController extends AuthenticatedController {
               skipProvisioning);
     } else if (keyContent != null && !keyContent.isEmpty()) {
       if (keyType == null) {
-        throw new YWServiceException(BAD_REQUEST, "keyType params required.");
+        throw new PlatformServiceException(BAD_REQUEST, "keyType params required.");
       }
       // Create temp file and fill with content
       Path tempFile = Files.createTempFile(keyCode, keyType.getExtension());
@@ -138,10 +138,10 @@ public class AccessKeyController extends AuthenticatedController {
           formData.get().nodeExporterUser);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return YWResults.withData(accessKey);
+    return PlatformResults.withData(accessKey);
   }
 
-  @ApiOperation(value = "Delete an access key", response = YWSuccess.class)
+  @ApiOperation(value = "Delete an access key", response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);

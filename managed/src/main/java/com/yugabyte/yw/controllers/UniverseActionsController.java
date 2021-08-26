@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -18,7 +20,9 @@ import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.ToggleTlsParams;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -28,7 +32,6 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Result;
-import static com.yugabyte.yw.forms.YWResults.YWSuccess.empty;
 
 @Api(
     value = "Universe management",
@@ -41,7 +44,7 @@ public class UniverseActionsController extends AuthenticatedController {
   @ApiOperation(
       value = "Configure alerts for a universe",
       nickname = "configureUniverseAlerts",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result configureAlerts(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -51,23 +54,20 @@ public class UniverseActionsController extends AuthenticatedController {
     return empty();
   }
 
-  @ApiOperation(
-      value = "Pause a universe",
-      nickname = "pauseUniverse",
-      response = YWResults.YWTask.class)
+  @ApiOperation(value = "Pause a universe", nickname = "pauseUniverse", response = YBPTask.class)
   public Result pause(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     UUID taskUUID = universeActionsHandler.pause(customer, universe);
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
   @ApiOperation(
       value = "Resume a paused universe",
       nickname = "resumeUniverse",
-      response = YWResults.YWTask.class)
+      response = YBPTask.class)
   public Result resume(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -75,7 +75,7 @@ public class UniverseActionsController extends AuthenticatedController {
     UUID taskUUID = universeActionsHandler.resume(customer, universe);
 
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return new YWResults.YWTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.universeUUID).asResult();
   }
 
   @ApiOperation(
@@ -97,7 +97,7 @@ public class UniverseActionsController extends AuthenticatedController {
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     UniverseResp resp =
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
-    return YWResults.withData(resp);
+    return PlatformResults.withData(resp);
   }
 
   @Deprecated
@@ -116,7 +116,7 @@ public class UniverseActionsController extends AuthenticatedController {
 
     UUID taskUUID = universeActionsHandler.toggleTls(customer, universe, requestParams);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData), taskUUID);
-    return YWResults.withData(
+    return PlatformResults.withData(
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
   }
 
@@ -129,7 +129,7 @@ public class UniverseActionsController extends AuthenticatedController {
       value = "Set a universe's backup flag",
       nickname = "setUniverseBackupFlag",
       tags = {"Universe management", "Backups"},
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result setBackupFlag(UUID customerUUID, UUID universeUUID, Boolean markActive) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -147,7 +147,7 @@ public class UniverseActionsController extends AuthenticatedController {
   @ApiOperation(
       value = "Flag a universe as Helm 3-compatible",
       nickname = "setUniverseHelm3Compatible",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result setHelm3Compatible(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -165,7 +165,7 @@ public class UniverseActionsController extends AuthenticatedController {
   @ApiOperation(
       value = "Reset universe version",
       nickname = "resetUniverseVersion",
-      response = YWResults.YWSuccess.class)
+      response = YBPSuccess.class)
   public Result resetVersion(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);

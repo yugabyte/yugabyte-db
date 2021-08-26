@@ -6,7 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -77,7 +77,7 @@ public class AccessKey extends Model {
 
   public void deleteOrThrow() {
     if (!super.delete()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Delete unsuccessfull for : " + this.idKey);
     }
   }
@@ -92,7 +92,7 @@ public class AccessKey extends Model {
   public static AccessKey getOrBadRequest(UUID providerUUID, String keyCode) {
     AccessKey accessKey = get(providerUUID, keyCode);
     if (accessKey == null) {
-      throw new YWServiceException(BAD_REQUEST, "KeyCode not found: " + keyCode);
+      throw new PlatformServiceException(BAD_REQUEST, "KeyCode not found: " + keyCode);
     }
     return accessKey;
   }

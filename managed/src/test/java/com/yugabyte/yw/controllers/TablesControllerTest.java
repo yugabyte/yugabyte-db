@@ -47,8 +47,8 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -711,7 +711,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     TablesController mockTablesController = spy(tablesController);
 
-    doThrow(new YWServiceException(BAD_REQUEST, "bad request"))
+    doThrow(new PlatformServiceException(BAD_REQUEST, "bad request"))
         .when(mockTablesController)
         .validateTables(any(), any());
     UUID uuid = UUID.randomUUID();

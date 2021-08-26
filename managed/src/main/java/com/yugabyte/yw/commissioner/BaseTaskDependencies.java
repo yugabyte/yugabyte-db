@@ -36,5 +36,5 @@ public class BaseTaskDependencies {
   private final AlertConfigurationService alertConfigurationService;
   private final YBClientService ybService;
   private final TableManager tableManager;
-  private final YBThreadPoolExecutorFactory executorFactory;
+  private final PlatformExecutorFactory executorFactory;
 }

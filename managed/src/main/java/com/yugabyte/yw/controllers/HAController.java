@@ -15,7 +15,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.HAConfigFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.util.Optional;
@@ -46,7 +46,7 @@ public class HAController extends AuthenticatedController {
 
       HighAvailabilityConfig config = HighAvailabilityConfig.create(formData.get().cluster_key);
 
-      return YWResults.withData(config);
+      return PlatformResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error creating HA config", e);
 
@@ -65,7 +65,7 @@ public class HAController extends AuthenticatedController {
         return Results.status(NOT_FOUND, jsonMsg);
       }
 
-      return YWResults.withData(config.get());
+      return PlatformResults.withData(config.get());
     } catch (Exception e) {
       LOG.error("Error retrieving HA config", e);
 
@@ -86,7 +86,7 @@ public class HAController extends AuthenticatedController {
       HighAvailabilityConfig.update(config.get(), formData.get().cluster_key);
       replicationManager.start();
 
-      return YWResults.withData(config);
+      return PlatformResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error updating cluster key", e);
 

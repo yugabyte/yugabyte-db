@@ -18,7 +18,7 @@ import play.libs.Json;
  * Here we will modify EBean server config at startup. EBeans framework will make sure that this
  * gets executed at start.
  */
-public class YWEBeanServerConfigStartup implements ServerConfigStartup {
+public class PlatformEBeanServerConfigStartup implements ServerConfigStartup {
   @Override
   public void onStart(ServerConfig serverConfig) {
     // Use same object mapper so that play.libs.Json and ebean's json serialization and

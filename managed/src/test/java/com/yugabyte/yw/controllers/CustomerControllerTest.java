@@ -38,7 +38,7 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -633,7 +633,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     expectedResponse.put("error", "Weird Data provided");
 
     when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap()))
-        .thenThrow(new YWServiceException(BAD_REQUEST, "Weird Data provided"));
+        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Weird Data provided"));
     Result result =
         routeWithYWErrHandler(
             fakeRequest("POST", baseRoute + customer.uuid + "/metrics")

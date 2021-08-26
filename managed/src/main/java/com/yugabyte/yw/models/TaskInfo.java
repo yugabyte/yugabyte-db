@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
@@ -215,7 +215,7 @@ public class TaskInfo extends Model {
   public static TaskInfo getOrBadRequest(UUID taskUUID) {
     TaskInfo taskInfo = get(taskUUID);
     if (taskInfo == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Task Info UUID: " + taskUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Task Info UUID: " + taskUUID);
     }
     return taskInfo;
   }

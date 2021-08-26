@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
-import com.yugabyte.yw.common.alerts.YWNotificationException;
+import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
@@ -27,7 +27,7 @@ public class AlertChannelEmail implements AlertChannelInterface {
 
   @Override
   public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
-      throws YWNotificationException {
+      throws PlatformNotificationException {
     log.debug("sendNotification {}", alert);
     AlertChannelEmailParams params = (AlertChannelEmailParams) channel.getParams();
     String title = AlertUtils.getNotificationTitle(alert, channel);
@@ -39,12 +39,12 @@ public class AlertChannelEmail implements AlertChannelInterface {
         params.defaultRecipients ? emailHelper.getDestinations(customer.uuid) : params.recipients;
 
     if (CollectionUtils.isEmpty(recipients)) {
-      throw new YWNotificationException(
+      throw new PlatformNotificationException(
           String.format("Error sending email for alert %s: No recipients found.", alert.getUuid()));
     }
 
     if (smtpData == null) {
-      throw new YWNotificationException(
+      throw new PlatformNotificationException(
           String.format(
               "Error sending email for alert %s: Invalid SMTP settings found.", alert.getUuid()));
     }
@@ -57,7 +57,7 @@ public class AlertChannelEmail implements AlertChannelInterface {
           smtpData,
           Collections.singletonMap("text/plain; charset=\"us-ascii\"", text));
     } catch (MessagingException e) {
-      throw new YWNotificationException(
+      throw new PlatformNotificationException(
           String.format("Error sending email for alert %s: %s", alert.getUuid(), e.getMessage()),
           e);
     }

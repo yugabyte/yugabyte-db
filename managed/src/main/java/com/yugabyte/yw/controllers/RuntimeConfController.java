@@ -12,14 +12,14 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -79,7 +79,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private Result buildCachedResult() {
-    return YWResults.withData(mutableKeys);
+    return PlatformResults.withData(mutableKeys);
   }
 
   private Set<String> buildMutableKeysSet() {
@@ -115,7 +115,7 @@ public class RuntimeConfController extends AuthenticatedController {
               + "specific overrides for current customer and one scope each for each universe and "
               + "provider.")
   public Result listScopes(UUID customerUUID) {
-    return YWResults.withData(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
+    return PlatformResults.withData(listScopesInternal(Customer.getOrBadRequest(customerUUID)));
   }
 
   @ApiOperation(
@@ -146,7 +146,7 @@ public class RuntimeConfController extends AuthenticatedController {
       }
     }
 
-    return YWResults.withData(scopedConfig);
+    return PlatformResults.withData(scopedConfig);
   }
 
   @ApiOperation(
@@ -155,12 +155,12 @@ public class RuntimeConfController extends AuthenticatedController {
       produces = "text/plain")
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
-      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
+      throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     Optional<ScopedConfig> scopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
 
     if (!scopedConfig.isPresent()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           NOT_FOUND, String.format("No scope %s  found for customer %s", scopeUUID, customerUUID));
     }
 
@@ -179,16 +179,16 @@ public class RuntimeConfController extends AuthenticatedController {
   public Result setKey(UUID customerUUID, UUID scopeUUID, String path) {
     String contentType = request().contentType().orElse("UNKNOWN");
     if (!contentType.equals("text/plain")) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           UNSUPPORTED_MEDIA_TYPE, "Accepts: text/plain but content-type: " + contentType);
     }
     String newValue = request().body().asText();
     if (newValue == null) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot set null value");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot set null value");
     }
 
     if (!mutableKeys.contains(path)) {
-      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
+      throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).setValue(path, newValue);
 
@@ -198,7 +198,7 @@ public class RuntimeConfController extends AuthenticatedController {
   @ApiOperation(value = "Delete a configuration key")
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
-      throw new YWServiceException(NOT_FOUND, "No mutable key found: " + path);
+      throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
     return ok();
@@ -208,7 +208,7 @@ public class RuntimeConfController extends AuthenticatedController {
       UUID customerUUID, UUID scopeUUID) {
     ScopedConfig scopedConfig = getScopedConfigOrFail(customerUUID, scopeUUID);
     if (!scopedConfig.mutableScope) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           FORBIDDEN,
           "Customer "
               + customerUUID
@@ -221,7 +221,7 @@ public class RuntimeConfController extends AuthenticatedController {
   private ScopedConfig getScopedConfigOrFail(UUID customerUUID, UUID scopeUUID) {
     Optional<ScopedConfig> optScopedConfig = getScopedConfigInternal(customerUUID, scopeUUID);
     if (!optScopedConfig.isPresent()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           NOT_FOUND, String.format("No scope %s found for customer %s", scopeUUID, customerUUID));
     }
     return optScopedConfig.get();

@@ -25,7 +25,7 @@ import org.mockito.runners.MockitoJUnitRunner;
 import org.mockito.stubbing.OngoingStubbing;
 
 @RunWith(MockitoJUnitRunner.class)
-public class YBMetricQueryComponentTest extends FakeDBApplication {
+public class PlatformMetricQueryComponentTest extends FakeDBApplication {
 
   @InjectMocks YBMetricQueryComponent ybMetricQueryComponent;
 

@@ -15,8 +15,8 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRI
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
@@ -36,11 +36,11 @@ public class AllowedActionsHelper {
     this.node = node;
   }
 
-  /** @throws YWServiceException if action not allowed on this node */
+  /** @throws PlatformServiceException if action not allowed on this node */
   public void allowedOrBadRequest(NodeActionType action) {
     String errMsg = nodeActionErrOrNull(action);
     if (errMsg != null) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, errMsg);
     }
   }
 

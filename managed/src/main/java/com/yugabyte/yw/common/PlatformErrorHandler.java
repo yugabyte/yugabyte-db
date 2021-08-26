@@ -27,11 +27,11 @@ import play.mvc.Http;
 import play.mvc.Result;
 
 @Singleton
-public final class YWErrorHandler extends DefaultHttpErrorHandler {
-  public static final Logger LOG = LoggerFactory.getLogger(YWErrorHandler.class);
+public final class PlatformErrorHandler extends DefaultHttpErrorHandler {
+  public static final Logger LOG = LoggerFactory.getLogger(PlatformErrorHandler.class);
 
   @Inject
-  public YWErrorHandler(
+  public PlatformErrorHandler(
       Config config,
       Environment environment,
       OptionalSourceMapper sourceMapper,
@@ -44,8 +44,8 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
   public CompletionStage<Result> onServerError(Http.RequestHeader request, Throwable exception) {
     LOG.debug("YWErrorHandler invoked {} ", exception.getMessage());
     for (Throwable cause : Throwables.getCausalChain(exception)) {
-      if (cause instanceof YWServiceException) {
-        return CompletableFuture.completedFuture(((YWServiceException) cause).getResult());
+      if (cause instanceof PlatformServiceException) {
+        return CompletableFuture.completedFuture(((PlatformServiceException) cause).getResult());
       }
     }
     return super.onServerError(request, exception);

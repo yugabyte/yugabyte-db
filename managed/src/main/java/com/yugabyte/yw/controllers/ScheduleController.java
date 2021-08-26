@@ -3,7 +3,8 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import io.swagger.annotations.Api;
@@ -31,12 +32,12 @@ public class ScheduleController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     List<Schedule> schedules = Schedule.getAllActiveByCustomerUUID(customerUUID);
-    return YWResults.withData(schedules);
+    return PlatformResults.withData(schedules);
   }
 
   @ApiOperation(
       value = "Delete a backup schedule",
-      response = YWResults.class,
+      response = PlatformResults.class,
       nickname = "deleteBackupSchedule")
   public Result delete(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
@@ -47,6 +48,6 @@ public class ScheduleController extends AuthenticatedController {
 
     ObjectNode responseJson = Json.newObject();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 }
