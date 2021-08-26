@@ -80,15 +80,12 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
     def __init__(self, base_command):
         super(GcpProvisionInstancesMethod, self).__init__(base_command)
 
-    def setup_create_method(self):
-        """Override to get the wiring to the proper method.
-        """
-        self.create_method = GcpCreateInstancesMethod(self.base_command)
-
     def add_extra_args(self):
         super(GcpProvisionInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--use_chrony", action="store_true",
                                  help="Whether to use chrony instead of NTP.")
+        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
+                                 default="scratch", help="Storage type for GCP instances.")
 
     def update_ansible_vars_with_args(self, args):
         super(GcpProvisionInstancesMethod, self).update_ansible_vars_with_args(args)

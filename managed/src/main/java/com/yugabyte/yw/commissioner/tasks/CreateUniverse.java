@@ -102,12 +102,17 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(taskParams().nodeDetailsSet)
+      createCreateServerTasks(taskParams().nodeDetailsSet)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
       createServerInfoTasks(taskParams().nodeDetailsSet)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Provision the required number of nodes in the appropriate locations.
+      // force reuse host since part of create universe flow
+      createSetupServerTasks(taskParams().nodeDetailsSet)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).

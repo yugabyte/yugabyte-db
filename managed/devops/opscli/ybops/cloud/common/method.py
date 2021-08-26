@@ -115,10 +115,6 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--private_key_file", default=default_key_pair)
         self.parser.add_argument("--volume_size", type=int, default=250,
                                  help="desired size (gb) of each volume mounted on instance")
-        self.parser.add_argument("--disk_iops", type=int, default=1000,
-                                 help="desired iops for aws v4 instance volumes")
-        self.parser.add_argument("--disk_throughput", type=int, default=125,
-                                 help="desired throughput for aws gp3 instance volumes")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
@@ -131,12 +127,14 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--instance_tags",
                                  required=False,
                                  help="Tags for instances being created.")
-        self.parser.add_argument("--vpcId", required=False,
-                                 help="name of the virtual network associated with the subnet")
         self.parser.add_argument("--systemd_services",
                                  action="store_true",
                                  default=False,
                                  help="check if systemd services is set")
+        self.parser.add_argument("--machine_image",
+                                 required=False,
+                                 help="The machine image (e.g. an AMI on AWS) to install, "
+                                      "this depends on the region.")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -276,7 +274,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
     any of the valid YugaByte ports.
     """
     INSTANCE_LOOKUP_RETRY_LIMIT = 120
-    DEFAULT_OS_NAME = "centos"
 
     def __init__(self, base_command):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
@@ -286,11 +283,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         """Setup the CLI options for creating instances.
         """
         super(CreateInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--machine_image",
-                                 required=False,
-                                 help="The machine image (e.g. an AMI on AWS) to install, "
-                                      "this depends on the region.")
-
         self.parser.add_argument("--assign_public_ip",
                                  action="store_true",
                                  default=False,
@@ -311,20 +303,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=True,
                                  help="Delete the root volume on VM termination")
 
-        self.parser.add_argument("--os_name",
-                                 required=False,
-                                 help="The os name to provision the universe in.",
-                                 default=self.DEFAULT_OS_NAME,
-                                 type=str.lower)
-
-        self.parser.add_argument("--disable_custom_ssh", action="store_true",
-                                 help="Disable running the ansible task for using custom SSH.")
-
         self.parser.add_argument("--boot_script", required=False,
                                  help="Custom boot script to execute on the instance.")
-
-        self.parser.add_argument("--install_python", action="store_true", default=False,
-                                 help="Flag to set if host OS needs python installed for Ansible.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -334,44 +314,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({
             "volume_type": args.volume_type
         })
-
-        self.run_ansible_create(args)
-        self.preprovision(args)
-
-    def run_ansible_create(self, args):
-        self.update_ansible_vars(args)
-        # TODO: this no longer needs to do anything...
-
-    def update_ansible_vars(self, args):
-        for arg_name in ["cloud_subnet",
-                         "machine_image",
-                         "instance_type",
-                         "num_volumes",
-                         "os_name"]:
-            arg_value = getattr(args, arg_name)
-            if arg_value is not None:
-                self.extra_vars[arg_name] = arg_value
-
-        # The reason we can't put network_name in the loop above is that the Ansible variable name
-        # ("network_name") is different from the ybcloud argument name ("network") in this case.
-        if args.network is not None:
-            self.extra_vars["network_name"] = args.network
-
-        self.extra_vars["assign_public_ip"] = "yes" if args.assign_public_ip else "no"
-        self.extra_vars["assign_static_public_ip"] = "yes" if args.assign_static_public_ip else "no"
         self.update_ansible_vars_with_args(args)
-
-    def preprovision(self, args):
-        if self.can_ssh:
-            self.update_ansible_vars(args)
-            host_info = self.wait_for_host(args)
-            ansible = self.cloud.setup_ansible(args)
-            if (args.install_python):
-                self.extra_vars["install_python"] = True
-            ansible.run("preprovision.yml", self.extra_vars, host_info)
-
-            if not args.disable_custom_ssh:
-                ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
+        self.run_ansible_create(args)
 
     def wait_for_host(self, args, default_port=True):
         logging.info("Waiting for instance {}".format(args.search_pattern))
@@ -403,35 +347,20 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
     This will create an instance, if needed, hence a reference to a Create method.
     """
+    DEFAULT_OS_NAME = "centos"
 
     def __init__(self, base_command):
         self.create_method = None
         super(ProvisionInstancesMethod, self).__init__(base_command, "provision")
 
-    def setup_create_method(self):
-        """Hook for subclasses to provide the specific Create method required (can be different
-        from cloud to cloud).
-        """
-        self.create_method = CreateInstancesMethod(self.base_command)
-
     def preprocess_args(self, args):
         super(ProvisionInstancesMethod, self).preprocess_args(args)
-        self.create_method.preprocess_args(args)
 
     def add_extra_args(self):
         """Override to be able to prepare the same arguments as a Create, as well as all the extra
         arguments specific to this class.
         """
-        # Generate the create method.
-        self.setup_create_method()
-        # Bind the parser of this extra method, to the one of the provision method so all new
-        # options are properly setup for provisioning.
-        self.create_method.parser = self.parser
-        # Actually call the Create method function for setting up extra options.
-        self.create_method.add_extra_args()
-        # Add extra options on top of the Create method ones.
-        self.parser.add_argument("--reprovision", action="store_true",
-                                 help="Run full reprovisioning on an existing host", default=False)
+        super(ProvisionInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--air_gap", action="store_true", help="Run airgapped install.")
         self.parser.add_argument("--reuse_host", action="store_true", default=False)
         self.parser.add_argument("--local_package_path",
@@ -444,19 +373,25 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--remote_package_path', default=None,
                                  help="Path to download thirdparty packages "
                                       "for itest. Only for AWS/onprem")
+        self.parser.add_argument("--os_name",
+                                 required=False,
+                                 help="The os name to provision the universe in.",
+                                 default=self.DEFAULT_OS_NAME,
+                                 type=str.lower)
+        self.parser.add_argument("--disable_custom_ssh", action="store_true",
+                                 help="Disable running the ansible task for using custom SSH.")
+        self.parser.add_argument("--install_python", action="store_true", default=False,
+                                 help="Flag to set if host OS needs python installed for Ansible.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
-        if host_info:
-            if not args.reuse_host:
-                raise YBOpsRuntimeError("Found host {} but was asked to not reuse host!".format(
-                    args.search_pattern))
-            else:
-                logging.info("Host {} already created.".format(args.search_pattern))
-        elif args.search_pattern != 'localhost':
-            self.create_method.callback(args)
-            host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find host {} to provision!".format(
+                args.search_pattern))
+
         self.update_ansible_vars_with_args(args)
+
+        self.preprovision(args)
 
         if host_info:
             self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
@@ -476,19 +411,67 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
 
-        if args.reprovision:
-            self.create_method.preprovision(args)
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
+
+    def update_ansible_vars(self, args):
+        for arg_name in ["cloud_subnet",
+                         "machine_image",
+                         "instance_type",
+                         "num_volumes",
+                         "os_name"]:
+            arg_value = getattr(args, arg_name)
+            if arg_value is not None:
+                self.extra_vars[arg_name] = arg_value
+
+        # The reason we can't put network_name in the loop above is that the Ansible variable name
+        # ("network_name") is different from the ybcloud argument name ("network") in this case.
+        if args.network is not None:
+            self.extra_vars["network_name"] = args.network
+
+    def wait_for_host(self, args, default_port=True):
+        logging.info("Waiting for instance {}".format(args.search_pattern))
+        host_lookup_count = 0
+        # Cache the result of the cloud call outside of the loop.
+        host_info = None
+        while True:
+            host_lookup_count += 1
+            if not host_info:
+                host_info = self.cloud.get_host_info(args)
+            if host_info:
+                self.extra_vars.update(
+                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
+                if wait_for_ssh(self.extra_vars["ssh_host"],
+                                self.extra_vars["ssh_port"],
+                                self.extra_vars["ssh_user"],
+                                args.private_key_file):
+                    return host_info
+            sys.stdout.write('.')
+            sys.stdout.flush()
+            time.sleep(1)
+            if host_lookup_count > self.INSTANCE_LOOKUP_RETRY_LIMIT:
+                raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
+                    args.search_pattern))
+
+    def preprovision(self, args):
+        self.update_ansible_vars(args)
+        host_info = self.wait_for_host(args)
+        ansible = self.cloud.setup_ansible(args)
+        if (args.install_python):
+            self.extra_vars["install_python"] = True
+        ansible.run("preprovision.yml", self.extra_vars, host_info)
+
+        if not args.disable_custom_ssh:
+            ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
 
 
 class CreateRootVolumesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(CreateRootVolumesMethod, self).__init__(base_command, "create_root_volumes")
-        self.provision_method = ProvisionInstancesMethod(self.base_command)
+        self.create_method = CreateInstancesMethod(self.base_command)
 
     def add_extra_args(self):
-        self.provision_method.parser = self.parser
-        self.provision_method.add_extra_args()
+        self.create_method.parser = self.parser
+        self.create_method.add_extra_args()
 
         self.parser.add_argument("--num_disks",
                                  required=False,
@@ -497,7 +480,7 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
 
     def preprocess_args(self, args):
         super(CreateRootVolumesMethod, self).preprocess_args(args)
-        self.provision_method.preprocess_args(args)
+        self.create_method.preprocess_args(args)
 
     def callback(self, args):
         args.search_pattern += "-{}".format(time.time()).replace('.', '-')

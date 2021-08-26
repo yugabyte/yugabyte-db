@@ -466,7 +466,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
               CreateRootVolumes.Params params = new CreateRootVolumes.Params();
               UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-              fillSetupParamsForNode(params, userIntent, node);
+              fillCreateParamsForNode(params, userIntent, node);
               params.numVolumes = numVolumes;
               params.machineImage = machineImage;
               params.bootDisksPerZone = replacementRootVolumes;
@@ -678,7 +678,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
       // Conditional Provisioning
-      createSetupServerTasks(nodeList, false, true /* isSystemdUpgrade */)
+      createSetupServerTasks(nodeList, true /* isSystemdUpgrade */)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       // Conditional Configuring
       createConfigureServerTasks(nodeList, false, false, false, true /* isSystemdUpgrade */)
@@ -786,8 +786,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<NodeDetails> nodeList = Collections.singletonList(node);
 
-        createSetupServerTasks(nodeList, true)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+        createSetupServerTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
         createConfigureServerTasks(nodeList, false /* isShell */, false, false)
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 

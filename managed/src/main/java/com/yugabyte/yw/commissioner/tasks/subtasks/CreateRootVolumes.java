@@ -18,7 +18,7 @@ public class CreateRootVolumes extends NodeTaskBase {
     super(baseTaskDependencies, nodeManager);
   }
 
-  public static class Params extends AnsibleSetupServer.Params {
+  public static class Params extends AnsibleCreateServer.Params {
     public int numVolumes;
     public String machineImage;
     public Map<UUID, List<String>> bootDisksPerZone;

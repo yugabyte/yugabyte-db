@@ -119,8 +119,9 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
 
   List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
-          TaskType.AnsibleSetupServer,
+          TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
@@ -132,6 +133,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
 
   List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -183,7 +185,7 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       iter++;
     }
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

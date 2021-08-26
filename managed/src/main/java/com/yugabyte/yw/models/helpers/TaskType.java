@@ -129,6 +129,8 @@ public enum TaskType {
 
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
 
+  AnsibleCreateServer("subtasks.AnsibleCreateServer"),
+
   PrecheckNode("subtasks.PrecheckNode"),
 
   AnsibleUpdateNodeInfo("subtasks.AnsibleUpdateNodeInfo"),

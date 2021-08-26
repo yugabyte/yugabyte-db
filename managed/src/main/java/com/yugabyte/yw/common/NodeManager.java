@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -77,6 +78,7 @@ public class NodeManager extends DevopsBase {
   // Currently we need to define the enum such that the lower case value matches the action
   public enum NodeCommandType {
     Provision,
+    Create,
     Configure,
     CronCheck,
     Destroy,
@@ -162,21 +164,25 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--private_key_file");
         subCommand.add(keyInfo.privateKey);
 
-        // We only need to include keyPair name for setup server call and if this is aws.
-        if (params instanceof AnsibleSetupServer.Params
+        // We only need to include keyPair name for create instance method and if this is aws.
+        if ((params instanceof AnsibleCreateServer.Params
+                || params instanceof AnsibleSetupServer.Params)
             && userIntent.providerType.equals(Common.CloudType.aws)) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
-          // Also we will add the security group information.
-          Region r = params.getRegion();
-          String customSecurityGroupId = r.getSecurityGroupId();
-          if (customSecurityGroupId != null) {
-            subCommand.add("--security_group_id");
-            subCommand.add(customSecurityGroupId);
+          // Also we will add the security group information for create
+          if (params instanceof AnsibleCreateServer.Params) {
+            Region r = params.getRegion();
+            String customSecurityGroupId = r.getSecurityGroupId();
+            if (customSecurityGroupId != null) {
+              subCommand.add("--security_group_id");
+              subCommand.add(customSecurityGroupId);
+            }
           }
         }
       }
-      if (params instanceof AnsibleSetupServer.Params
+      // security group is only used during Azure create instance method
+      if (params instanceof AnsibleCreateServer.Params
           && userIntent.providerType.equals(Common.CloudType.azu)) {
         Region r = params.getRegion();
         String customSecurityGroupId = r.getSecurityGroupId();
@@ -194,7 +200,9 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if ((type == NodeCommandType.Provision || type == NodeCommandType.Destroy)
+      if ((type == NodeCommandType.Provision
+              || type == NodeCommandType.Destroy
+              || type == NodeCommandType.Create)
           && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
@@ -876,12 +884,12 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
         // intentional fall-thru
-      case Provision:
+      case Create:
         {
-          if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
-            throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
+          if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
-          AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
+          AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
             commandArgs.add("--instance_type");
@@ -951,23 +959,6 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          if (taskParam.isSystemdUpgrade) {
-            // Cron to Systemd Upgrade
-            commandArgs.add("--reuse_host");
-            commandArgs.add("--tags");
-            commandArgs.add("systemd_upgrade");
-            commandArgs.add("--systemd_services");
-          } else if (taskParam.useSystemd) {
-            // Systemd for new universes
-            commandArgs.add("--systemd_services");
-          }
-
-          if (taskParam.useTimeSync
-              && (cloudType.equals(Common.CloudType.aws)
-                  || cloudType.equals(Common.CloudType.gcp))) {
-            commandArgs.add("--use_chrony");
-          }
-
           if (cloudType.equals(Common.CloudType.aws)) {
             if (taskParam.cmkArn != null) {
               commandArgs.add("--cmk_res_name");
@@ -977,11 +968,6 @@ public class NodeManager extends DevopsBase {
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
               commandArgs.add(taskParam.ipArnString);
-            }
-
-            if (!taskParam.remotePackagePath.isEmpty()) {
-              commandArgs.add("--remote_package_path");
-              commandArgs.add(taskParam.remotePackagePath);
             }
           }
           if (cloudType.equals(Common.CloudType.azu)) {
@@ -999,15 +985,6 @@ public class NodeManager extends DevopsBase {
             Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
             commandArgs.add("--instance_tags");
             commandArgs.add(Json.stringify(Json.toJson(useTags)));
-          }
-
-          // right now we only need explicit python installation for CentOS 8 graviton instances
-          if (taskParam.instanceType != null
-              && configHelper
-                  .getGravitonInstancePrefixList()
-                  .stream()
-                  .anyMatch(taskParam.instanceType::startsWith)) {
-            commandArgs.add("--install_python");
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1030,15 +1007,80 @@ public class NodeManager extends DevopsBase {
             }
           }
 
+          break;
+        }
+      case Provision:
+        {
+          if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
+          }
+          AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
+          Common.CloudType cloudType = userIntent.providerType;
+
+          // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws)) {
+            commandArgs.add("--instance_type");
+            commandArgs.add(taskParam.instanceType);
+          }
+
+          // gcp uses machine_image for ansible preprovision.yml
+          if (cloudType.equals(Common.CloudType.gcp)) {
+            String ybImage =
+                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+            if (ybImage != null && !ybImage.isEmpty()) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+          }
+
+          if (taskParam.isSystemdUpgrade) {
+            // Cron to Systemd Upgrade
+            commandArgs.add("--reuse_host");
+            commandArgs.add("--tags");
+            commandArgs.add("systemd_upgrade");
+            commandArgs.add("--systemd_services");
+          } else if (taskParam.useSystemd) {
+            // Systemd for new universes
+            commandArgs.add("--systemd_services");
+          }
+
+          if (taskParam.useTimeSync
+              && (cloudType.equals(Common.CloudType.aws)
+                  || cloudType.equals(Common.CloudType.gcp))) {
+            commandArgs.add("--use_chrony");
+          }
+
+          if (cloudType.equals(Common.CloudType.aws)) {
+            if (!taskParam.remotePackagePath.isEmpty()) {
+              commandArgs.add("--remote_package_path");
+              commandArgs.add(taskParam.remotePackagePath);
+            }
+          }
+
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+            DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
+            // Need volume_type in GCP provision to determine correct device names for mounting
+            if (deviceInfo.storageType != null && cloudType.equals(Common.CloudType.gcp)) {
+              commandArgs.add("--volume_type");
+              commandArgs.add(deviceInfo.storageType.toString().toLowerCase());
+            }
+          }
+
           String localPackagePath = getThirdpartyPackagePath();
           if (localPackagePath != null) {
             commandArgs.add("--local_package_path");
             commandArgs.add(localPackagePath);
           }
 
-          if (taskParam.reprovision) {
-            commandArgs.add("--reuse_host");
-            commandArgs.add("--reprovision");
+          // right now we only need explicit python installation for CentOS 8 graviton instances
+          if (taskParam.instanceType != null
+              && configHelper
+                  .getGravitonInstancePrefixList()
+                  .stream()
+                  .anyMatch(taskParam.instanceType::startsWith)) {
+            commandArgs.add("--install_python");
           }
 
           break;

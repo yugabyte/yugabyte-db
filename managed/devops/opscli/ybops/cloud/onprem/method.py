@@ -43,6 +43,7 @@ class OnPremCreateInstancesMethod(CreateInstancesMethod):
         # step purely to validate that we can access the host.
         #
         # TODO: do we still want/need to change to the custom ssh port?
+        self.update_ansible_vars_with_args(args)
         self.wait_for_host(args)
 
 
@@ -53,11 +54,6 @@ class OnPremProvisionInstancesMethod(ProvisionInstancesMethod):
 
     def __init__(self, base_command):
         super(OnPremProvisionInstancesMethod, self).__init__(base_command)
-
-    def setup_create_method(self):
-        """Override to get the wiring to the proper method.
-        """
-        self.create_method = OnPremCreateInstancesMethod(self.base_command)
 
     def callback(self, args):
         # For onprem, we are always using pre-existing hosts!

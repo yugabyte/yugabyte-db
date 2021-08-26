@@ -53,6 +53,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  default="premium_lrs", help="Volume type for Azure instances.")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="Azure comma delimited security group IDs.")
+        self.parser.add_argument("--vpcId", required=False,
+                                 help="name of the virtual network associated with the subnet")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)
@@ -61,16 +63,12 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
         super(AzureCreateInstancesMethod, self).callback(args)
 
     def run_ansible_create(self, args):
-        self.update_ansible_vars(args)
         self.cloud.create_or_update_instance(args, self.extra_vars["ssh_user"])
 
 
 class AzureProvisionInstancesMethod(ProvisionInstancesMethod):
     def __init__(self, base_command):
         super(AzureProvisionInstancesMethod, self).__init__(base_command)
-
-    def setup_create_method(self):
-        self.create_method = AzureCreateInstancesMethod(self.base_command)
 
     def add_extra_args(self):
         super(AzureProvisionInstancesMethod, self).add_extra_args()

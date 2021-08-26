@@ -126,9 +126,11 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // First spawn an instance for Decommissioned node.
         if (wasDecommissioned) {
-          createSetupServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          createCreateServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
           createServerInfoTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+          createSetupServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
         }
 
         // Re-install software.
