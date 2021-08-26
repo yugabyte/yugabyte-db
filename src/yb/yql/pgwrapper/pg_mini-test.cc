@@ -583,21 +583,21 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
 
   thread_holder.AddThreadFunctor([this, &kTableName, &stop = thread_holder.stop_flag(), &key] {
     SetFlagOnExit set_flag(&stop);
-    auto conn = ASSERT_RESULT(Connect());
+    auto connection = ASSERT_RESULT(Connect());
 
     auto se = ScopeExit([&key] {
       LOG(INFO) << "Total keys: " << key;
     });
 
     while (!stop.load(std::memory_order_acquire) && key < kBatchSize * kTotalBatches) {
-      ASSERT_OK(conn.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
+      ASSERT_OK(connection.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
       for (int j = 0; j != kBatchSize; ++j) {
-        conn.CopyStartRow(2);
-        conn.CopyPutInt32(++key);
-        conn.CopyPutString(RandomHumanReadableString(kValueSize));
+        connection.CopyStartRow(2);
+        connection.CopyPutInt32(++key);
+        connection.CopyPutString(RandomHumanReadableString(kValueSize));
       }
 
-      ASSERT_OK(conn.CopyEnd());
+      ASSERT_OK(connection.CopyEnd());
     }
   });
 
@@ -1531,9 +1531,9 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
   std::atomic<int> post_insert_reads{0};
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &post_insert_reads] {
-    auto conn = ASSERT_RESULT(Connect());
+    auto connection = ASSERT_RESULT(Connect());
     while (!stop.load(std::memory_order_acquire)) {
-      auto res = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT SUM(a) FROM t"));
+      auto res = ASSERT_RESULT(connection.FetchValue<int64_t>("SELECT SUM(a) FROM t"));
 
       // We should see zero or full sum only.
       if (res) {

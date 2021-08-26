@@ -92,12 +92,12 @@ struct MiniClusterOptions {
   rocksdb::Env* ts_rocksdb_env = nullptr;
 
   // Directory in which to store data.
-  // Default: "", which auto-generates a unique path for this cluster.
+  // Default: empty string, which auto-generates a unique path for this cluster.
   // The default may only be used from a gtest unit test.
-  std::string data_root;
+  std::string data_root{};
 
   // Cluster id used to create fs path when we create tests with multiple clusters.
-  std::string cluster_id = "";
+  std::string cluster_id{};
 };
 
 // An in-process cluster with a MiniMaster and a configurable

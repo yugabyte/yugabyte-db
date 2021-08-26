@@ -225,7 +225,7 @@ Status ReadableLogSegment::Init() {
   return Status::OK();
 }
 
-const int64_t ReadableLogSegment::readable_up_to() const {
+int64_t ReadableLogSegment::readable_up_to() const {
   return readable_to_offset_.Load();
 }
 
