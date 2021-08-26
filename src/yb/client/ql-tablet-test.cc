@@ -13,11 +13,11 @@
 //
 //
 
-#include <boost/optional/optional.hpp>
-#include <boost/optional/optional_io.hpp>
-
 #include <shared_mutex>
 #include <thread>
+
+#include <boost/optional/optional.hpp>
+#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -576,8 +576,7 @@ void DoStepDowns(MiniCluster* cluster) {
 
 void VerifyLogIndicies(MiniCluster* cluster) {
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
 
     for (const auto& peer : peers) {
       int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
@@ -678,8 +677,8 @@ TEST_F(QLTabletTest, WaitFlush) {
   std::vector<tablet::TabletPeerPtr> peers;
 
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> tserver_peers;
-    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&tserver_peers);
+    auto tserver_peers =
+        cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(tserver_peers.size(), 1);
     peers.push_back(tserver_peers.front());
   }
@@ -760,8 +759,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
   std::this_thread::sleep_for(kSleepTime);
 
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(1, peers.size());
     auto& peer = *peers[0];
     auto op_id = peer.log()->GetLatestEntryOpId();
