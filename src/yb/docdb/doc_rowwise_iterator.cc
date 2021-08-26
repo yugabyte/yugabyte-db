@@ -643,6 +643,10 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
 
     VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data->key);
+    if (debug_dump_) {
+      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data->key)
+                << ", " << key_data->key.ToDebugHexString();
+    }
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
     // outside the previous doc_key). Ensure the iterator is pushed forward/backward indeed. We

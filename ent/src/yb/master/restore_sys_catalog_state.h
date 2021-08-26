@@ -53,11 +53,11 @@ class RestoreSysCatalogState {
       docdb::DocWriteBatch* pg_catalog_write_batch, const yb::HybridTime& write_time,
       const yb::OpId& op_id, tablet::Tablet* tablet);
 
-  CHECKED_STATUS PatchPgVersionTable(const tablet::Tablet* tablet,
-                                     docdb::DocWriteBatch* write_batch);
-
-  CHECKED_STATUS ProcessPgCatalogRestores(const tablet::Tablet* tablet,
-                                          docdb::DocWriteBatch* write_batch);
+  CHECKED_STATUS ProcessPgCatalogRestores(
+      const Schema& pg_yb_catalog_version_schema,
+      const docdb::DocDB& restoring_db,
+      const docdb::DocDB& existing_db,
+      docdb::DocWriteBatch* write_batch);
 
   Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
 
