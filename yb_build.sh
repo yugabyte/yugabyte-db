@@ -294,6 +294,7 @@ print_report() {
       if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
         print_report_line "%s" "C/C++ compiler" "$YB_COMPILER_TYPE"
       fi
+      print_report_line "%s" "Build architecture" "$(uname -m)"
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
       if using_linuxbrew; then
@@ -342,6 +343,7 @@ create_build_descriptor_file() {
 
     cat >"$build_descriptor_path" <<-EOT
 build_type: "$build_type"
+build_arch: "$(uname -m)"
 cmake_build_type: "${cmake_build_type:-undefined}"
 build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
