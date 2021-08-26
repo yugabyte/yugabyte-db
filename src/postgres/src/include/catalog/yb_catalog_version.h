@@ -1,17 +1,17 @@
 /*-------------------------------------------------------------------------
  *
- * ybc_catalog_version.h
+ * yb_catalog_version.h
  *	  utility functions related to the ysql catalog version table.
  *
  * Portions Copyright (c) YugaByte, Inc.
  *
- * src/include/catalog/ybc_catalog_version.h
+ * src/include/catalog/yb_catalog_version.h
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef YBC_CATALOG_VERSION_H
-#define YBC_CATALOG_VERSION_H
+#ifndef YB_CATALOG_VERSION_H
+#define YB_CATALOG_VERSION_H
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
@@ -24,27 +24,27 @@
  * TODO: Once cluster/initdb upgrade is supported (#2272) we should use it
  * to upgrade old cluster and remove the now-obsolete protobuf-based paths.
  */
-typedef enum YBCatalogVersionType
+typedef enum YbCatalogVersionType
 {
 	CATALOG_VERSION_UNSET,           /* Not yet set. */
 	CATALOG_VERSION_PROTOBUF_ENTRY,  /* Old protobuf-based version. */
 	CATALOG_VERSION_CATALOG_TABLE,   /* New table-based version. */
-} YBCatalogVersionType;
+} YbCatalogVersionType;
 
-extern YBCatalogVersionType yb_catalog_version_type;
+extern YbCatalogVersionType yb_catalog_version_type;
 
-extern void YBCSetCatalogVersionType();
+extern void YbSetCatalogVersionType();
 
 /* The latest catalog version from the master leader. */
-extern void YBCGetMasterCatalogVersion(uint64_t *version);
+extern void YbGetMasterCatalogVersion(uint64_t *version);
 
 /* The catalog version caches by the local tserver. */
-extern bool YBCGetLocalTserverCatalogVersion(uint64_t *version);
+extern bool YbGetLocalTserverCatalogVersion(uint64_t *version);
 
 /* Send a request to increment the master catalog version. */
-extern bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
+extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
 
 /* Annotate an DML request if it changes the catalog data (if needed). */
-bool YBCMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation rel);
+bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation rel);
 
-#endif							/* YBC_CATALOG_VERSION_H */
+#endif							/* YB_CATALOG_VERSION_H */

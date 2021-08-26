@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcam.c
+ * yb_scan.c
  *	  YugaByte catalog scan API.
  *	  This is used to access data from YugaByte's system catalog tables.
  *
@@ -16,7 +16,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/backend/executor/ybcam.c
+ * src/backend/access/yb_access/yb_scan.c
  *
  *--------------------------------------------------------------------------------------------------
  */

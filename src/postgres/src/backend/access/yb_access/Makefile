@@ -1,17 +1,17 @@
 #-------------------------------------------------------------------------
 #
 # Makefile--
-#    Makefile for access/ybcam
+#    Makefile for access/yb_access
 #
 # IDENTIFICATION
-#    src/backend/access/ybc/Makefile
+#    src/backend/access/yb_access/Makefile
 #
 #-------------------------------------------------------------------------
 
-subdir = src/backend/access/ybc
+subdir = src/backend/access/yb_access
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = ybcam.o ybcin.o
+OBJS = yb_scan.o yb_lsm.o
 
 include $(top_srcdir)/src/backend/common.mk

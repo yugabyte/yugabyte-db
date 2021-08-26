@@ -20,7 +20,7 @@
 
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "common/int.h"
 #include "executor/execExpr.h"
 #include "executor/executor.h"
@@ -71,7 +71,7 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count)
 {
 	PG_SETUP_ERROR_REPORTING();
 
-	YBCGetTypeTable(type_table, count);
+	YbGetTypeTable(type_table, count);
 
 	return PG_STATUS_OK;
 }

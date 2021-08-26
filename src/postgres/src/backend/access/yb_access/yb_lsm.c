@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------------------
  *
- * ybcin.c
+ * yb_lsm.c
  *	  Implementation of YugaByte indexes.
  *
  * Copyright (c) YugaByte, Inc.
@@ -15,7 +15,7 @@
  * or implied.  See the License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/backend/access/ybc/ybcin.c
+ * src/backend/access/yb_access/yb_lsm.c
  *
  * TODO: currently this file contains skeleton index access methods. They will be implemented in
  * coming revisions.
@@ -29,8 +29,8 @@
 #include "access/reloptions.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
-#include "access/ybcam.h"
-#include "access/ybcin.h"
+#include "access/yb_scan.h"
+#include "access/yb_lsm.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
 #include "commands/ybccmds.h"

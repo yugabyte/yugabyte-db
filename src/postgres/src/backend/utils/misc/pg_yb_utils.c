@@ -41,12 +41,12 @@
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
-#include "catalog/ybc_catalog_version.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
 #include "funcapi.h"
 
 #include "pg_yb_utils.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -456,7 +456,7 @@ YBInitPostgresBackend(
 	{
 		const YBCPgTypeEntity *type_table;
 		int count;
-		YBCGetTypeTable(&type_table, &count);
+		YbGetTypeTable(&type_table, &count);
 		YBCPgCallbacks callbacks;
 		callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
@@ -949,7 +949,7 @@ YBDecrementDdlNestingLevel(bool success,
 		bool increment_done = false;
 		if (success && is_catalog_version_increment)
 		{
-			increment_done = YBCIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
+			increment_done = YbIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
 		}
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(success));
@@ -1333,7 +1333,7 @@ YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
 	YBCPgAttrValueDescriptor* last_attr = descr->attrs + descr->nattrs - 1;
 	last_attr->attr_num = YBUniqueIdxKeySuffixAttributeNumber;
-	last_attr->type_entity = YBCDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
+	last_attr->type_entity = YbDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
 	last_attr->collation_id = InvalidOid;
 	last_attr->is_null = true;
 }
@@ -1441,7 +1441,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 
 		size_t typesize;
 		const YBCPgTypeEntity *typeentity =
-				 YBCDataTypeFromOidMod(InvalidAttrNumber, argtype);
+				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
 		YBCStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity, 
 							PG_ARGISNULL(i), &typesize);
 		if (unlikely(!YBCStatusIsOK(status))) 
@@ -1467,7 +1467,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	{
 		Oid	argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
 		const YBCPgTypeEntity *typeentity =
-				 YBCDataTypeFromOidMod(InvalidAttrNumber, argtype);
+				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
 		size_t written;
 		YBCStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity, 
 							PG_ARGISNULL(i), arg_buf_pos, &written);

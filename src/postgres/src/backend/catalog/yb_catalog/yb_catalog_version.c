@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * ybc_catalog_version.c
+ * yb_catalog_version.c
  *	  utility functions related to the ysql catalog version table.
  *
  * Portions Copyright (c) YugaByte, Inc.
@@ -19,7 +19,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/schemapg.h"
-#include "catalog/ybc_catalog_version.h"
+#include "catalog/yb_catalog_version.h"
 #include "executor/ybcExpr.h"
 #include "executor/ybcModifyTable.h"
 #include "nodes/makefuncs.h"
@@ -30,21 +30,23 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-YBCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
+YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
 
-static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_version] = {Schema_pg_yb_catalog_version};
+static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_version] = {
+	Schema_pg_yb_catalog_version
+};
 
-static YBCatalogVersionType YBCGetCatalogVersionType();
-static void YBCGetMasterCatalogVersionFromTable(uint64_t *version);
-static bool IsSystemCatalogChange(Relation rel);
+static YbCatalogVersionType YbGetCatalogVersionType();
+static void YbGetMasterCatalogVersionFromTable(uint64_t *version);
+static bool YbIsSystemCatalogChange(Relation rel);
 
 /* Retrieve Catalog Version */
 
-void YBCGetMasterCatalogVersion(uint64_t *version)
+void YbGetMasterCatalogVersion(uint64_t *version)
 {
-	switch (YBCGetCatalogVersionType()) {
+	switch (YbGetCatalogVersionType()) {
 		case CATALOG_VERSION_CATALOG_TABLE:
-			YBCGetMasterCatalogVersionFromTable(version);
+			YbGetMasterCatalogVersionFromTable(version);
 			return;
 		case CATALOG_VERSION_PROTOBUF_ENTRY:
 		    /* deprecated (kept for compatibility with old clusters). */
@@ -61,9 +63,9 @@ void YBCGetMasterCatalogVersion(uint64_t *version)
 
 /* Modify Catalog Version */
 
-bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
+bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 {
-	if (YBCGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE) {
+	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE) {
 		return false;
 	}
 
@@ -72,7 +74,10 @@ bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
 	// template1.
-	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid, YBCatalogVersionRelationId, false /* is_single_row_txn */, &update_stmt));
+	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid,
+								  YBCatalogVersionRelationId,
+								  false /* is_single_row_txn */,
+								  &update_stmt));
 	/* Construct HeapTuple */
 	Datum		values[3];
 	bool		nulls[3];
@@ -162,8 +167,8 @@ bool YBCIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	return true;
 }
 
-bool YBCMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation rel) {
-	if (YBCGetCatalogVersionType() != CATALOG_VERSION_PROTOBUF_ENTRY)
+bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation rel) {
+	if (YbGetCatalogVersionType() != CATALOG_VERSION_PROTOBUF_ENTRY)
 	{
 		/*
 		 * Nothing to do -- only need to maintain this for the (old)
@@ -172,7 +177,7 @@ bool YBCMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation
 		return false;
 	}
 
-	bool is_syscatalog_change = IsSystemCatalogChange(rel);
+	bool is_syscatalog_change = YbIsSystemCatalogChange(rel);
 	bool modifies_row = false;
 	HandleYBStatus(YBCPgDmlModifiesRow(ybc_stmt, &modifies_row));
 
@@ -196,7 +201,7 @@ bool YBCMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation
 }
 
 /* Local utility methods. */
-YBCatalogVersionType YBCGetCatalogVersionType() {
+YbCatalogVersionType YbGetCatalogVersionType() {
 
 	if (yb_catalog_version_type == CATALOG_VERSION_UNSET)
 	{
@@ -224,13 +229,13 @@ YBCatalogVersionType YBCGetCatalogVersionType() {
  * Check if operation changes a system table, ignore changes during
  * initialization (bootstrap mode).
  */
-bool IsSystemCatalogChange(Relation rel)
+bool YbIsSystemCatalogChange(Relation rel)
 {
 	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
 }
 
 
-void YBCGetMasterCatalogVersionFromTable(uint64_t *version) {
+void YbGetMasterCatalogVersionFromTable(uint64_t *version) {
 
 	*version = 0; // unset;
 

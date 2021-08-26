@@ -54,13 +54,13 @@
 /*  YB includes. */
 #include "commands/dbcommands.h"
 #include "catalog/pg_operator.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 #include "executor/ybcExpr.h"
 #include "executor/ybc_fdw.h"
 
@@ -393,7 +393,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			const YBCPgTypeEntity *type_entity;
 
 			/* Get type entity for the operator from the aggref. */
-			type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
+			type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
 
 			/* Create operator. */
 			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, aggref->aggcollid, &op_handle));
