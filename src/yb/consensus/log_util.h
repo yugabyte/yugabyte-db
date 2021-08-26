@@ -246,30 +246,30 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     return footer_;
   }
 
-  const std::shared_ptr<RandomAccessFile> readable_file() const {
+  std::shared_ptr<RandomAccessFile> readable_file() const {
     return readable_file_;
   }
 
-  const std::shared_ptr<RandomAccessFile> readable_file_checkpoint() const {
+  std::shared_ptr<RandomAccessFile> readable_file_checkpoint() const {
     return readable_file_checkpoint_;
   }
 
-  const int64_t file_size() const {
+  int64_t file_size() const {
     return file_size_.Load();
   }
 
-  const int64_t first_entry_offset() const {
+  int64_t first_entry_offset() const {
     return first_entry_offset_;
   }
 
-  const int64_t get_header_size() const {
+  int64_t get_header_size() const {
     return readable_file_->GetEncryptionHeaderSize();
   }
 
   // Returns the full size of the file, if the segment is closed and has
   // a footer, or the offset where the last written, non corrupt entry
   // ends.
-  const int64_t readable_up_to() const;
+  int64_t readable_up_to() const;
 
  private:
   friend class RefCountedThreadSafe<ReadableLogSegment>;
@@ -433,11 +433,11 @@ class WritableLogSegment {
     return path_;
   }
 
-  const int64_t first_entry_offset() const {
+  int64_t first_entry_offset() const {
     return first_entry_offset_;
   }
 
-  const int64_t written_offset() const {
+  int64_t written_offset() const {
     return written_offset_;
   }
 

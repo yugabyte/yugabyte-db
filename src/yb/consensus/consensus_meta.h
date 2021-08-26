@@ -95,7 +95,7 @@ class ConsensusMetadata {
   static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
 
   // Accessors for current term.
-  const int64_t current_term() const;
+  int64_t current_term() const;
   void set_current_term(int64_t term);
 
   // Accessors for voted_for.

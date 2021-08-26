@@ -407,7 +407,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
 }
 
-const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
+consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   CHECK(consensus_) << "consensus is null";
   return consensus_->CommittedConfig();
 }
@@ -719,7 +719,7 @@ Status TabletPeer::RunLogGC() {
   return log_->GC(min_log_index, &num_gced);
 }
 
-const TabletDataState TabletPeer::data_state() const {
+TabletDataState TabletPeer::data_state() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return meta_->tablet_data_state();
 }

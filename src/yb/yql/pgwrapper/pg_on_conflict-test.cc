@@ -223,7 +223,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), &processed, &helper] {
       SetFlagOnExit set_flag_on_exit(&stop);
-      auto conn = ASSERT_RESULT(Connect());
+      auto connection = ASSERT_RESULT(Connect());
       char value[2] = "0";
       while (!stop.load(std::memory_order_acquire)) {
         int batch_size = RandomUniformInt(2, kMaxBatchSize);
@@ -231,12 +231,12 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
         transaction_info.batch_size = batch_size;
         bool ok = false;
         if (batch_size != 1) {
-          ASSERT_OK(conn.Execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+          ASSERT_OK(connection.Execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
         }
-        auto se = ScopeExit([&conn, batch_size, &ok, &processed, &helper, &transaction_info] {
+        auto se = ScopeExit([&connection, batch_size, &ok, &processed, &helper, &transaction_info] {
           if (batch_size != 1) {
             if (ok) {
-              auto status = conn.Execute("COMMIT");
+              auto status = connection.Execute("COMMIT");
               if (status.ok()) {
                 ++processed;
                 helper.Committed(std::move(transaction_info));
@@ -248,7 +248,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
                 ASSERT_OK(status);
               }
             }
-            ASSERT_OK(conn.Execute("ROLLBACK"));
+            ASSERT_OK(connection.Execute("ROLLBACK"));
           } else if (ok) {
             // To re-enable this we need to decrease the lower bound of batch_size to 1.
             ++processed;
@@ -263,12 +263,12 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
           current_batch.append_char = key_and_appended_char.second;
           if (key_and_appended_char.second) {
             value[0] = key_and_appended_char.second;
-            status = conn.ExecuteFormat(
+            status = connection.ExecuteFormat(
                 "INSERT INTO test (k, v) VALUES ($0, '$1') ON CONFLICT (K) DO "
                 "UPDATE SET v = CONCAT(test.v, '$1')",
                 key_and_appended_char.first, value);
           } else {
-            auto result = conn.FetchFormat(
+            auto result = connection.FetchFormat(
                 "SELECT v FROM test WHERE k = $0", key_and_appended_char.first);
             if (!result.ok()) {
               status = result.status();
@@ -390,12 +390,12 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
   for (int i = 0; i != kWriters; ++i) {
     thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
       SetFlagOnExit set_flag_on_exit(&stop);
-      auto conn = ASSERT_RESULT(Connect());
+      auto connection = ASSERT_RESULT(Connect());
       char value[2] = "0";
       while (!stop.load(std::memory_order_acquire)) {
         int key = RandomUniformInt(1, kKeys);
         value[0] = RandomUniformInt('A', 'Z');
-        auto status = conn.ExecuteFormat(
+        auto status = connection.ExecuteFormat(
             "INSERT INTO test (k, v) VALUES ($0, '$1') ON CONFLICT (K) DO "
             "UPDATE SET v = CONCAT(test.v, '$1')",
             key, value);
@@ -420,7 +420,8 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(ValidSessionAfterTxnCommitConfl
   ASSERT_OK(extra_conn.Execute("INSERT INTO test VALUES(1)"));
   ASSERT_NOK(conn.Execute("COMMIT"));
   // Check connection is in valid state after failed COMMIT
-  auto value = ASSERT_RESULT(GetInt32(ASSERT_RESULT(conn.Fetch("SELECT * FROM test")).get(), 0, 0));
+  auto result_ptr = ASSERT_RESULT(conn.Fetch("SELECT * FROM test"));
+  auto value = ASSERT_RESULT(GetInt32(result_ptr.get(), 0, 0));
   ASSERT_EQ(value, 1);
 }
 

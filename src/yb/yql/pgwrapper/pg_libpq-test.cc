@@ -249,9 +249,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
     SCOPED_TRACE(iteration_title);
     LOG(INFO) << iteration_title;
 
-    auto status = conn.Execute("DELETE FROM t");
-    if (!status.ok()) {
-      ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
+    auto s = conn.Execute("DELETE FROM t");
+    if (!s.ok()) {
+      ASSERT_STR_CONTAINS(s.ToString(), kTryAgain);
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
@@ -264,12 +264,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
     for (int i = 0; i != kColors; ++i) {
       int32_t color = i;
       threads.emplace_back([this, color, kKeys, &complete] {
-        auto conn = ASSERT_RESULT(Connect());
+        auto connection = ASSERT_RESULT(Connect());
 
-        ASSERT_OK(conn.Execute("BEGIN"));
-        ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        ASSERT_OK(connection.Execute("BEGIN"));
+        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
 
-        auto res = conn.Fetch("SELECT * FROM t");
+        auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
           auto msg = res.status().message().ToBuffer();
           ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
@@ -280,13 +280,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto lines = PQntuples(res->get());
         ASSERT_EQ(kKeys, lines);
-        for (int i = 0; i != lines; ++i) {
-          if (ASSERT_RESULT(GetInt32(res->get(), i, 1)) == color) {
+        for (int j = 0; j != lines; ++j) {
+          if (ASSERT_RESULT(GetInt32(res->get(), j, 1)) == color) {
             continue;
           }
 
-          auto key = ASSERT_RESULT(GetInt32(res->get(), i, 0));
-          auto status = conn.ExecuteFormat("UPDATE t SET color = $1 WHERE key = $0", key, color);
+          auto key = ASSERT_RESULT(GetInt32(res->get(), j, 0));
+          auto status = connection.ExecuteFormat(
+              "UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
             // Missing metadata means that transaction was aborted and cleaned.
@@ -296,7 +297,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
           }
         }
 
-        auto status = conn.Execute("COMMIT");
+        auto status = connection.Execute("COMMIT");
         if (!status.ok()) {
           auto msg = status.message().ToBuffer();
           ASSERT_TRUE(msg.find("Operation expired") != std::string::npos) << status;
@@ -648,15 +649,16 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   thread_holder.AddThreadFunctor(
       [this, &counter, &reads, &writes, isolation, &stop_flag = thread_holder.stop_flag()]() {
     SetFlagOnExit set_flag_on_exit(&stop_flag);
-    auto conn = ASSERT_RESULT(Connect());
+    auto connection = ASSERT_RESULT(Connect());
     auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
         auto lower_bound = reads.load() * kRequiredWrites < writes.load() * kRequiredReads
             ? 1.0 - 1.0 / (1ULL << failures_in_row) : 0.0;
-        ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0", lower_bound));
+        ASSERT_OK(connection.ExecuteFormat(
+            "SET yb_transaction_priority_lower_bound = $0", lower_bound));
       }
-      auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
+      auto sum = ReadSumBalance(&connection, kAccounts, isolation, &counter);
       if (!sum.ok()) {
         // Do not overflow long when doing bitshift above.
         failures_in_row = std::min(failures_in_row + 1, 63);
@@ -843,14 +845,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
 
   for (int i = 0; i != kThreads; ++i) {
     holder.AddThread([this, i, &stop = holder.stop_flag(), &written] {
-      auto conn = ASSERT_RESULT(Connect());
+      auto connection = ASSERT_RESULT(Connect());
       int key = 0;
 
       while (!stop.load(std::memory_order_acquire)) {
         if (RandomUniformBool()) {
           int a = i * 1000000 + key;
           int b = key;
-          ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (a, b) VALUES ($0, $1)", a, b));
+          ASSERT_OK(connection.ExecuteFormat("INSERT INTO t (a, b) VALUES ($0, $1)", a, b));
           written[i].store(++key, std::memory_order_release);
         } else {
           int writer_index = RandomUniformInt(0, kThreads - 1);
@@ -860,7 +862,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
           }
           int read_key = num_written - 1;
           int b = read_key;
-          int read_a = ASSERT_RESULT(conn.FetchValue<int32_t>(
+          int read_a = ASSERT_RESULT(connection.FetchValue<int32_t>(
               Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
           ASSERT_EQ(read_a % 1000000, read_key);
         }
@@ -2150,8 +2152,8 @@ TEST_F_EX(PgLibPqTest,
   // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
   // server.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ExternalTabletServer* pg_ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(pg_ts->GetDataDir(), "pg_data",
+    ExternalTabletServer* ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(ts->GetDataDir(), "pg_data",
                                                 "postmaster.pid");
 
     LOG(INFO) << "pg_pid_file: " << pg_pid_file;

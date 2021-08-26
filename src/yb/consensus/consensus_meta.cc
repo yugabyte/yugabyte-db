@@ -113,7 +113,7 @@ Status ConsensusMetadata::DeleteOnDiskData(FsManager* fs_manager, const string& 
   return Status::OK();
 }
 
-const int64_t ConsensusMetadata::current_term() const {
+int64_t ConsensusMetadata::current_term() const {
   DCHECK(pb_.has_current_term());
   return pb_.current_term();
 }

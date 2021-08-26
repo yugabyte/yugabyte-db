@@ -96,22 +96,22 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 // RocksDB's Status types.
 
 #define ASSERT_OK(status) do { \
-    auto&& _s = (status); \
-    if (_s.ok()) { \
+    auto&& _assert_status = (status); \
+    if (_assert_status.ok()) { \
       SUCCEED(); \
     } else { \
-      FAIL() << "Bad status: " << StatusToString(_s);  \
+      FAIL() << "Bad status: " << StatusToString(_assert_status);  \
     } \
   } while (0)
 
 #define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
 
 #define ASSERT_OK_PREPEND(status, msg) do { \
-  auto&& _s = (status); \
-  if (_s.ok()) { \
+  auto&& _assert_status = (status); \
+  if (_assert_status.ok()) { \
     SUCCEED(); \
   } else { \
-    FAIL() << (msg) << " - status: " << StatusToString(_s);  \
+    FAIL() << (msg) << " - status: " << StatusToString(_assert_status);  \
   } \
 } while (0)
 
@@ -133,9 +133,9 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 // Like the above, but doesn't record successful
 // tests.
 #define ASSERT_OK_FAST(status) do {      \
-    auto&& _s = (status); \
-    if (!_s.ok()) { \
-      FAIL() << "Bad status: " << StatusToString(_s);  \
+    auto&& _assert_status = (status); \
+    if (!_assert_status.ok()) { \
+      FAIL() << "Bad status: " << StatusToString(_assert_status);  \
     } \
   } while (0)
 

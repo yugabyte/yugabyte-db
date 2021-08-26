@@ -221,7 +221,7 @@ Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) 
                   Slice() /* msg2 */,
                   PgsqlError(GetSqlState(result.get())));
   }
-  return std::move(result);
+  return result;
 }
 
 Result<PGResultPtr> PGConn::Fetch(const std::string& command) {

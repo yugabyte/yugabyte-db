@@ -67,7 +67,7 @@ class Value {
 
   const PrimitiveValue& primitive_value() const { return primitive_value_; }
 
-  const uint64_t merge_flags() const { return merge_flags_; }
+  uint64_t merge_flags() const { return merge_flags_; }
 
   const DocHybridTime& intent_doc_ht() const { return intent_doc_ht_; }
 
