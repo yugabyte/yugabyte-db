@@ -1568,10 +1568,14 @@ Status CatalogManager::RestoreSysCatalog(
   docdb::DocWriteBatch write_batch(
       tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
 
-  // Patch the pg_yb_catalog_version table.
-  RETURN_NOT_OK(state.PatchPgVersionTable(tablet, &write_batch));
-  // Restore the pg_catalog tables.
-  RETURN_NOT_OK(state.ProcessPgCatalogRestores(tablet, &write_batch));
+  if (FLAGS_enable_ysql) {
+    // Restore the pg_catalog tables.
+    const auto* meta = tablet->metadata();
+    const auto& pg_yb_catalog_version_schema =
+        VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema;
+    RETURN_NOT_OK(state.ProcessPgCatalogRestores(
+        pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch));
+  }
   // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
 
