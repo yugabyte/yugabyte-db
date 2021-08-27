@@ -36,7 +36,7 @@ To get the driver from Maven, add the following lines to your Maven project:
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.2.7-5-beta.1</version>
+  <version>42.2.7-5-beta.5</version>
 </dependency>
 ```
 
@@ -68,7 +68,7 @@ To build the driver locally, follow this procedure:
    <dependency>
        <groupId>com.yugabyte</groupId>
        <artifactId>jdbc-yugabytedb</artifactId>
-       <version>42.2.7-yb-5-beta.1</version>
+       <version>42.2.7-yb-5-beta.5</version>
    </dependency> 
    ```
 
@@ -76,7 +76,7 @@ To build the driver locally, follow this procedure:
 
 **Cluster-aware** load balancing is performed using the `load-balance` connection property, which is disabled by default. You can enable it by setting its value to `true`.
 
-**Topology-aware** load balancing additionally requires the `topology-keys` connection property, which accepts a comma-separated list of geolocation values. You can specify a geolocation as cloud:region:zone.
+**Topology-aware** load balancing additionally requires the `topology-keys` connection property, which accepts a comma-separated list of geolocation values. You can specify a geolocation as region:zone
 
 To use the Smart Driver, do the following:
 
@@ -92,7 +92,7 @@ To use the Smart Driver, do the following:
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
   ```java
-  String yburl = "jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1:region1:zone1,cloud1:region1.zone2";
+  String yburl = "jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=region1:zone1,region1.zone2";
   DriverManager.getConnection(yburl);
   ```
 
@@ -104,7 +104,7 @@ To use the Smart Driver, do the following:
   ds.setUrl(jdbcUrl);
   ds.setLoadBalance("true");
   // Set topology keys to enable topology-aware distribution
-  ds.setTopologyKeys("cloud1.region1.zone1,cloud1.region2.zone2");
+  ds.setTopologyKeys("region1.zone1,region2.zone2");
   // Provide more end points to prevent first connection failure 
   // if an initial contact point is not available 
   ds.setAdditionalEndpoints("127.0.0.2:5433,127.0.0.3:5433");
@@ -128,7 +128,7 @@ To use the Smart Driver, do the following:
   String additionalEndpoints = "127.0.0.2:5433,127.0.0.3:5433,127.0.0.4:5433,127.0.0.5:5433";
   poolProperties.setProperty("dataSource.additionalEndpoints", additionalEndpoints);
   // Load balance between specific geo-locations using topology keys
-  String geoLocations = "cloud1.region1.zone1,cloud1.region2.zone2";
+  String geoLocations = "region1.zone1,region2.zone2";
   poolProperties.setProperty("dataSource.topologyKeys", geoLocations);
   
   poolProperties.setProperty("poolName", name);
