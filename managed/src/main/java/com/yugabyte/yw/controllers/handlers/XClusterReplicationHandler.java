@@ -11,7 +11,7 @@ package com.yugabyte.yw.controllers.handlers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterReplicationFormData;
 import com.yugabyte.yw.forms.XClusterReplicationTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -267,7 +267,7 @@ public class XClusterReplicationHandler {
               ? Collections.emptyList()
               : NetUtil.parseStringsAsPB(String.join(",", formData.sourceMasterAddressesToChange));
     } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
 
     return params;

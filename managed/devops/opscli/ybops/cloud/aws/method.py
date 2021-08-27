@@ -60,6 +60,10 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="Spot price for each instance (if desired)")
         self.parser.add_argument("--cmk_res_name", help="CMK arn to enable encrypted EBS volumes.")
         self.parser.add_argument("--iam_profile_arn", help="ARN string for IAM instance profile")
+        self.parser.add_argument("--disk_iops", type=int, default=1000,
+                                 help="desired iops for aws v4 instance volumes")
+        self.parser.add_argument("--disk_throughput", type=int, default=125,
+                                 help="desired throughput for aws gp3 instance volumes")
 
     def preprocess_args(self, args):
         super(AwsCreateInstancesMethod, self).preprocess_args(args)
@@ -95,8 +99,6 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
         super(AwsCreateInstancesMethod, self).callback(args)
 
     def run_ansible_create(self, args):
-        # TODO: do we need this?
-        self.update_ansible_vars(args)
         self.cloud.create_instance(args)
 
 
@@ -107,35 +109,32 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
     def __init__(self, base_command):
         super(AwsProvisionInstancesMethod, self).__init__(base_command)
 
-    def setup_create_method(self):
-        """Override to get the wiring to the proper method.
-        """
-        self.create_method = AwsCreateInstancesMethod(self.base_command)
-
     def add_extra_args(self):
         super(AwsProvisionInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--use_chrony", action="store_true",
                                  help="Whether to use chrony instead of NTP.")
+        self.parser.add_argument("--key_pair_name", default=os.environ.get("YB_EC2_KEY_PAIR_NAME"),
+                                 help="AWS Key Pair name")
 
     def update_ansible_vars_with_args(self, args):
         super(AwsProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
         self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
-        self.extra_vars["cmk_res_name"] = args.cmk_res_name
+        self.extra_vars.update({"aws_key_pair_name": args.key_pair_name})
 
 
 class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
     def __init__(self, base_command):
         super(AwsCreateRootVolumesMethod, self).__init__(base_command)
-        self.provision_method = AwsProvisionInstancesMethod(base_command)
+        self.create_method = AwsCreateInstancesMethod(base_command)
 
     def create_master_volume(self, args):
         args.auto_delete_boot_disk = False
         args.num_volumes = 0
         args.instance_tags = None
 
-        self.provision_method.create_method.run_ansible_create(args)
+        self.create_method.run_ansible_create(args)
         host_info = self.cloud.get_host_info(args)
 
         self.delete_instance(args, host_info["id"])

@@ -47,7 +47,8 @@ public class YcqlQueryExecutor {
         executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
     LOG.info("Creating YCQL user, result: " + ycqlResponse.toString());
     if (ycqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
     }
   }
 
@@ -67,7 +68,8 @@ public class YcqlQueryExecutor {
         executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlCurrAdminPassword);
     LOG.info("Updating YCQL user, result: " + ycqlResponse.toString());
     if (ycqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
     }
   }
 

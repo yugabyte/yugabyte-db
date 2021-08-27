@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -159,7 +159,8 @@ public class InstanceType extends Model {
   public static InstanceType getOrBadRequest(UUID providerUuid, String instanceTypeCode) {
     InstanceType instanceType = InstanceType.get(providerUuid, instanceTypeCode);
     if (instanceType == null) {
-      throw new YWServiceException(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
     }
     return instanceType;
   }

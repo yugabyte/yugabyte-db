@@ -737,40 +737,39 @@ Status QLValue::Deserialize(
   return STATUS(InternalError, "unsupported type");
 }
 
-string QLValue::ToString() const {
+string QLValue::ToValueString(const QuotesType quotes_type) const {
   if (IsNull()) {
     return "null";
   }
 
   switch (type()) {
-    case InternalType::kInt8Value: return "int8:" + to_string(int8_value());
-    case InternalType::kInt16Value: return "int16:" + to_string(int16_value());
-    case InternalType::kInt32Value: return "int32:" + to_string(int32_value());
-    case InternalType::kInt64Value: return "int64:" + to_string(int64_value());
-    case InternalType::kUint32Value: return "uint32:" + to_string(uint32_value());
-    case InternalType::kUint64Value: return "uint64:" + to_string(uint64_value());
-    case InternalType::kFloatValue: return "float:" + to_string(float_value());
-    case InternalType::kDoubleValue: return "double:" + to_string(double_value());
+    case InternalType::kInt8Value: return to_string(int8_value());
+    case InternalType::kInt16Value: return to_string(int16_value());
+    case InternalType::kInt32Value: return to_string(int32_value());
+    case InternalType::kInt64Value: return to_string(int64_value());
+    case InternalType::kUint32Value: return to_string(uint32_value());
+    case InternalType::kUint64Value: return to_string(uint64_value());
+    case InternalType::kFloatValue: return to_string(float_value());
+    case InternalType::kDoubleValue: return to_string(double_value());
     case InternalType::kDecimalValue:
-      return "decimal: " + util::DecimalFromComparable(decimal_value()).ToString();
-    case InternalType::kVarintValue:
-      return "varint: " + varint_value().ToString();
-    case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
-    case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
-    case InternalType::kDateValue: return "date:" + to_string(date_value());
-    case InternalType::kTimeValue: return "time:" + to_string(time_value());
-    case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
-    case InternalType::kJsonbValue: return "jsonb:" + FormatBytesAsStr(jsonb_value());
-    case InternalType::kUuidValue: return "uuid:" + uuid_value().ToString();
-    case InternalType::kTimeuuidValue: return "timeuuid:" + timeuuid_value().ToString();
-    case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
-    case InternalType::kBinaryValue: return "binary:0x" + b2a_hex(binary_value());
+      return util::DecimalFromComparable(decimal_value()).ToString();
+    case InternalType::kVarintValue: return varint_value().ToString();
+    case InternalType::kStringValue: return FormatBytesAsStr(string_value(), quotes_type);
+    case InternalType::kTimestampValue: return timestamp_value().ToFormattedString();
+    case InternalType::kDateValue: return to_string(date_value());
+    case InternalType::kTimeValue: return to_string(time_value());
+    case InternalType::kInetaddressValue: return inetaddress_value().ToString();
+    case InternalType::kJsonbValue: return FormatBytesAsStr(jsonb_value(), quotes_type);
+    case InternalType::kUuidValue: return uuid_value().ToString();
+    case InternalType::kTimeuuidValue: return timeuuid_value().ToString();
+    case InternalType::kBoolValue: return (bool_value() ? "true" : "false");
+    case InternalType::kBinaryValue: return "0x" + b2a_hex(binary_value());
 
     case InternalType::kMapValue: {
       std::stringstream ss;
       QLMapValuePB map = map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
-      ss << "map:{";
+      ss << "{";
       for (int i = 0; i < map.keys_size(); i++) {
         if (i > 0) {
           ss << ", ";
@@ -784,7 +783,7 @@ string QLValue::ToString() const {
     case InternalType::kSetValue: {
       std::stringstream ss;
       QLSeqValuePB set = set_value();
-      ss << "set:{";
+      ss << "{";
       for (int i = 0; i < set.elems_size(); i++) {
         if (i > 0) {
           ss << ", ";
@@ -797,7 +796,7 @@ string QLValue::ToString() const {
     case InternalType::kListValue: {
       std::stringstream ss;
       QLSeqValuePB list = list_value();
-      ss << "list:[";
+      ss << "[";
       for (int i = 0; i < list.elems_size(); i++) {
         if (i > 0) {
           ss << ", ";
@@ -835,6 +834,49 @@ string QLValue::ToString() const {
 
   LOG(FATAL) << "Internal error: unknown or unsupported type " << type();
   return "unknown";
+}
+
+string QLValue::ToString() const {
+  if (IsNull()) {
+    return "null";
+  }
+
+  std::string res;
+  switch (type()) {
+    case InternalType::kInt8Value: res = "int8:"; break;
+    case InternalType::kInt16Value: res = "int16:"; break;
+    case InternalType::kInt32Value: res = "int32:"; break;
+    case InternalType::kInt64Value: res = "int64:"; break;
+    case InternalType::kUint32Value: res = "uint32:"; break;
+    case InternalType::kUint64Value: res = "uint64:"; break;
+    case InternalType::kFloatValue: res = "float:"; break;
+    case InternalType::kDoubleValue: res = "double:"; break;
+    case InternalType::kDecimalValue: res = "decimal: "; break;
+    case InternalType::kVarintValue: res = "varint: "; break;
+    case InternalType::kStringValue: res = "string:"; break;
+    case InternalType::kTimestampValue: res = "timestamp:"; break;
+    case InternalType::kDateValue: res = "date:"; break;
+    case InternalType::kTimeValue: res = "time:"; break;
+    case InternalType::kInetaddressValue: res = "inetaddress:"; break;
+    case InternalType::kJsonbValue: res = "jsonb:"; break;
+    case InternalType::kUuidValue: res = "uuid:"; break;
+    case InternalType::kTimeuuidValue: res = "timeuuid:"; break;
+    case InternalType::kBoolValue: res = "bool:"; break;
+    case InternalType::kBinaryValue: res = "binary:0x"; break;
+    case InternalType::kMapValue: res = "map:"; break;
+    case InternalType::kSetValue: res = "set:"; break;
+    case InternalType::kListValue: res = "list:"; break;
+    case InternalType::kFrozenValue: res = "frozen:"; break;
+    case InternalType::kVirtualValue: res = ""; break;
+
+    case InternalType::VALUE_NOT_SET:
+      LOG(FATAL) << "Internal error: value should not be null";
+      return "null";
+    default:
+      LOG(FATAL) << "Internal error: unknown or unsupported type " << type();
+      return "unknown";
+  }
+  return res + ToValueString();
 }
 
 //----------------------------------- QLValuePB operators --------------------------------

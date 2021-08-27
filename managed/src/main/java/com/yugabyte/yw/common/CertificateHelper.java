@@ -43,12 +43,16 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import org.apache.commons.validator.routines.InetAddressValidator;
+import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
@@ -197,7 +201,7 @@ public class CertificateHelper {
 
       CertificateInfo cert = CertificateInfo.get(rootCA);
       if (cert.privateKey == null) {
-        throw new YWServiceException(BAD_REQUEST, "Keyfile cannot be null!");
+        throw new PlatformServiceException(BAD_REQUEST, "Keyfile cannot be null!");
       }
       // The first entry will be the certificate that needs to sign the necessary certificate.
       X509Certificate cer =
@@ -210,7 +214,7 @@ public class CertificateHelper {
       } catch (Exception e) {
         LOG.error(
             "Unable to create client CA for username {} using root CA {}", username, rootCA, e);
-        throw new YWServiceException(BAD_REQUEST, "Could not create client cert.");
+        throw new PlatformServiceException(BAD_REQUEST, "Could not create client cert.");
       }
 
       X500Name clientCertSubject = new X500Name(String.format("CN=%s", username));
@@ -247,6 +251,15 @@ public class CertificateHelper {
           false,
           clientCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
       clientCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
+
+      InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
+      if (ipAddressValidator.isValid(username)) {
+        List<GeneralName> altNames = new ArrayList<>();
+        altNames.add(new GeneralName(GeneralName.iPAddress, username));
+        GeneralNames subjectAltNames =
+            GeneralNames.getInstance(new DERSequence(altNames.toArray(new GeneralName[] {})));
+        clientCertBuilder.addExtension(Extension.subjectAlternativeName, false, subjectAltNames);
+      }
 
       X509CertificateHolder clientCertHolder = clientCertBuilder.build(csrContentSigner);
       X509Certificate clientCert =
@@ -291,7 +304,7 @@ public class CertificateHelper {
         | NoSuchProviderException
         | SignatureException e) {
       LOG.error("Unable to create client CA for username {} using root CA {}", username, rootCA, e);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Could not create client cert.");
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not create client cert.");
     }
   }
 
@@ -327,7 +340,7 @@ public class CertificateHelper {
     LOG.debug("uploadRootCA: Label: {}, customerUUID: {}", label, customerUUID.toString());
     try {
       if (certContent == null) {
-        throw new YWServiceException(BAD_REQUEST, "Certfile can't be null");
+        throw new PlatformServiceException(BAD_REQUEST, "Certfile can't be null");
       }
       UUID rootCA_UUID = UUID.randomUUID();
       String keyPath = null;
@@ -421,7 +434,7 @@ public class CertificateHelper {
           }
         default:
           {
-            throw new YWServiceException(BAD_REQUEST, "certType should be valid.");
+            throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");
           }
       }
       LOG.info(
@@ -439,7 +452,7 @@ public class CertificateHelper {
           "uploadRootCA: Could not generate checksum for cert {} for customer {}",
           label,
           customerUUID.toString());
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "uploadRootCA: Checksum generation failed.");
     }
   }
@@ -687,7 +700,7 @@ public class CertificateHelper {
                   .anyMatch(potentialRootCert -> verifyCertValidity(cert, potentialRootCert))) {
                 X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
                 RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
-                throw new YWServiceException(
+                throw new PlatformServiceException(
                     BAD_REQUEST,
                     "Certificate with CN = "
                         + cn.getFirst().getValue()
@@ -708,7 +721,7 @@ public class CertificateHelper {
     } catch (Exception e) {
       X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
       RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Certificate with CN = " + cn.getFirst().getValue() + " has invalid start/end dates.");
     }
@@ -739,14 +752,14 @@ public class CertificateHelper {
                   X500Name x500Name =
                       new X500Name(x509Certificate.getSubjectX500Principal().getName());
                   RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
-                  throw new YWServiceException(
+                  throw new PlatformServiceException(
                       BAD_REQUEST,
                       "Certificate with CN = "
                           + cn.getFirst().getValue()
                           + "should be the first entry in the file.");
                 }
               });
-      throw new YWServiceException(BAD_REQUEST, "Certificate and key don't match.");
+      throw new PlatformServiceException(BAD_REQUEST, "Certificate and key don't match.");
     }
     return true;
   }

@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -50,10 +50,10 @@ public abstract class AbstractTaskBase implements ITask {
   protected final ConfigHelper configHelper;
   protected final RuntimeConfigFactory runtimeConfigFactory;
   protected final MetricService metricService;
-  protected final AlertDefinitionGroupService alertDefinitionGroupService;
+  protected final AlertConfigurationService alertConfigurationService;
   protected final YBClientService ybService;
   protected final TableManager tableManager;
-  private final YBThreadPoolExecutorFactory ybThreadPoolExecutorFactory;
+  private final PlatformExecutorFactory platformExecutorFactory;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -63,10 +63,10 @@ public abstract class AbstractTaskBase implements ITask {
     this.configHelper = baseTaskDependencies.getConfigHelper();
     this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
     this.metricService = baseTaskDependencies.getMetricService();
-    this.alertDefinitionGroupService = baseTaskDependencies.getAlertDefinitionGroupService();
+    this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
     this.ybService = baseTaskDependencies.getYbService();
     this.tableManager = baseTaskDependencies.getTableManager();
-    this.ybThreadPoolExecutorFactory = baseTaskDependencies.getExecutorFactory();
+    this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
   }
 
   protected ITaskParams taskParams() {
@@ -101,7 +101,7 @@ public abstract class AbstractTaskBase implements ITask {
   public void createThreadpool() {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor = ybThreadPoolExecutorFactory.createExecutor("task", namedThreadFactory);
+    executor = platformExecutorFactory.createExecutor("task", namedThreadFactory);
   }
 
   @Override

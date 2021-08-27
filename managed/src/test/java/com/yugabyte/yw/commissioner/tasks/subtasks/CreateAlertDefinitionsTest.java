@@ -7,18 +7,18 @@ import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
+import com.yugabyte.yw.commissioner.PlatformExecutorFactory;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
@@ -40,8 +40,8 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
   private final AlertService alertService = new AlertService();
   private final AlertDefinitionService alertDefinitionService =
       new AlertDefinitionService(alertService);
-  private final AlertDefinitionGroupService alertDefinitionGroupService =
-      new AlertDefinitionGroupService(alertDefinitionService, runtimeConfigFactory);
+  private final AlertConfigurationService alertConfigurationService =
+      new AlertConfigurationService(alertDefinitionService, runtimeConfigFactory);
 
   private Customer customer;
 
@@ -52,21 +52,20 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
   @Before
   public void setUp() {
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
-    when(baseTaskDependencies.getAlertDefinitionGroupService())
-        .thenReturn(alertDefinitionGroupService);
+    when(baseTaskDependencies.getAlertConfigurationService()).thenReturn(alertConfigurationService);
     when(baseTaskDependencies.getExecutorFactory())
-        .thenReturn(app.injector().instanceOf(YBThreadPoolExecutorFactory.class));
+        .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
 
     customer = ModelFactory.testCustomer();
     u = ModelFactory.createUniverse(customer.getCustomerId());
 
     for (AlertTemplate template : AlertTemplate.values()) {
-      ModelFactory.createAlertDefinitionGroup(
+      ModelFactory.createAlertConfiguration(
           customer,
           u,
           g ->
               g.setTarget(
-                  new AlertDefinitionGroupTarget().setAll(template.isCreateForNewCustomer())));
+                  new AlertConfigurationTarget().setAll(template.isCreateForNewCustomer())));
       if (template.isCreateForNewCustomer()) {
         plannedDefinitions++;
       }

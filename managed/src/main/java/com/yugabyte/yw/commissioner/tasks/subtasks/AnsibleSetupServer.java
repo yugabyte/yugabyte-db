@@ -36,21 +36,10 @@ public class AnsibleSetupServer extends NodeTaskBase {
     // The VPC into which the node is to be provisioned.
     public String subnetId;
 
-    public boolean assignPublicIP = true;
-    public boolean assignStaticPublicIP = false;
-
     // For AWS, this will dictate if we use the Time Sync Service.
     public boolean useTimeSync = false;
 
-    // If this is set to the universe's AWS KMS CMK arn, AWS EBS volume
-    // encryption will be enabled
-    public String cmkArn;
-
-    // If set, we will use this Amazon Resource Name of the user's
-    // instance profile instead of an access key id and secret
-    public String ipArnString;
     public String machineImage;
-    public boolean reprovision;
 
     // Systemd vs Cron Option (Default: Cron)
     public boolean useSystemd = false;

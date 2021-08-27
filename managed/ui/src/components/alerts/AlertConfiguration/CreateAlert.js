@@ -36,7 +36,7 @@ const CreateAlert = (props) => {
     updateAlertConfig
   } = props;
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
-  const [alertDestionation, setAlertDesionation] = useState([]);
+  const [alertDestination, setAlertDestination] = useState([]);
   const [currentMetric, setCurrentMetric] = useState('PERCENT');
 
   useEffect(() => {
@@ -46,7 +46,7 @@ const CreateAlert = (props) => {
           {destination.name}
         </option>
       ));
-      setAlertDesionation([<option key="i" />, ...res]);
+      setAlertDestination([<option key="i" />, ...res]);
     });
   }, [alertDestinations]);
 
@@ -102,7 +102,7 @@ const CreateAlert = (props) => {
       createTime: values.type === 'update' ? initialValues.createTime : null,
       name: values['ALERT_CONFIGURATION_NAME'],
       description: values['ALERT_CONFIGURATION_DESCRIPTION'],
-      targetType: !enablePlatformAlert ? 'UNIVERSE' : 'CUSTOMER',
+      targetType: !enablePlatformAlert ? 'UNIVERSE' : 'PLATFORM',
       target: !enablePlatformAlert
         ? {
           all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
@@ -114,8 +114,7 @@ const CreateAlert = (props) => {
       template: values['ALERT_METRICS_CONDITION'] || 'REPLICATION_LAG',
       durationSec: values['ALERT_METRICS_DURATION'],
       active: true,
-      routeUUID: values['ALERT_DESTINATION_LIST'],
-      defaultRoute: true
+      destinationUUID: values['ALERT_DESTINATION_LIST']
     };
 
     // setting up the thresshold unit.
@@ -247,7 +246,7 @@ const CreateAlert = (props) => {
             <Field
               name="ALERT_DESTINATION_LIST"
               component={YBSelectWithLabel}
-              options={alertDestionation}
+              options={alertDestination}
               validate={required}
             />
           </Col>

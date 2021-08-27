@@ -80,7 +80,7 @@ public class MetricTest extends FakeDBApplication {
             .customerUuid(customer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
             .targetUuid(universe.getUniverseUUID())
-            .targetLabels("node_name:node1")
+            .sourceLabels("node_name:node1")
             .build();
     Metric metric = metricService.get(key);
 
@@ -154,10 +154,10 @@ public class MetricTest extends FakeDBApplication {
     assertThat(metric.getType(), equalTo(Metric.Type.GAUGE));
     assertThat(metric.getName(), equalTo(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName()));
     assertThat(metric.getValue(), equalTo(value));
-    assertThat(metric.getLabelValue(KnownAlertLabels.TARGET_TYPE), equalTo("universe"));
-    assertThat(metric.getLabelValue(KnownAlertLabels.TARGET_NAME), equalTo(universe.name));
+    assertThat(metric.getLabelValue(KnownAlertLabels.SOURCE_TYPE), equalTo("universe"));
+    assertThat(metric.getLabelValue(KnownAlertLabels.SOURCE_NAME), equalTo(universe.name));
     assertThat(
-        metric.getLabelValue(KnownAlertLabels.TARGET_UUID),
+        metric.getLabelValue(KnownAlertLabels.SOURCE_UUID),
         equalTo(universe.getUniverseUUID().toString()));
     assertThat(metric.getLabelValue(KnownAlertLabels.UNIVERSE_NAME), equalTo(universe.name));
     assertThat(

@@ -10,9 +10,9 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.CertificateParams;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -275,10 +275,10 @@ public class CertificateInfo extends Model {
   public static CertificateInfo getOrBadRequest(UUID certUUID, UUID customerUUID) {
     CertificateInfo certificateInfo = get(certUUID);
     if (certificateInfo == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Cert ID: " + certUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Cert ID: " + certUUID);
     }
     if (!certificateInfo.customerUUID.equals(customerUUID)) {
-      throw new YWServiceException(BAD_REQUEST, "Certificate doesn't belong to customer");
+      throw new PlatformServiceException(BAD_REQUEST, "Certificate doesn't belong to customer");
     }
     return certificateInfo;
   }
@@ -286,7 +286,7 @@ public class CertificateInfo extends Model {
   public static CertificateInfo getOrBadRequest(UUID certUUID) {
     CertificateInfo certificateInfo = get(certUUID);
     if (certificateInfo == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Cert ID: " + certUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Cert ID: " + certUUID);
     }
     return certificateInfo;
   }
@@ -298,7 +298,7 @@ public class CertificateInfo extends Model {
   public static CertificateInfo getOrBadRequest(String label) {
     CertificateInfo certificateInfo = get(label);
     if (certificateInfo == null) {
-      throw new YWServiceException(BAD_REQUEST, "No Certificate with Label: " + label);
+      throw new PlatformServiceException(BAD_REQUEST, "No Certificate with Label: " + label);
     }
     return certificateInfo;
   }
@@ -422,20 +422,21 @@ public class CertificateInfo extends Model {
       if (certificate.delete()) {
         LOG.info("Successfully deleted the certificate:" + certUUID);
       } else {
-        throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");
       }
     } else {
-      throw new YWServiceException(BAD_REQUEST, "The certificate is in use.");
+      throw new PlatformServiceException(BAD_REQUEST, "The certificate is in use.");
     }
   }
 
   private void checkEditable(UUID certUUID, UUID customerUUID) {
     CertificateInfo certInfo = getOrBadRequest(certUUID, customerUUID);
     if (certInfo.certType == CertificateInfo.Type.SelfSigned) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot edit self-signed cert.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot edit self-signed cert.");
     }
     if (certInfo.customCertInfo != null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
     }
   }

@@ -445,7 +445,8 @@ public class Util {
 
   public static Process getProcessOrBadRequest(UUID uuid) {
     if (processMap.get(uuid) == null) {
-      throw new YWServiceException(BAD_REQUEST, "The process you want to stop is not in progress.");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The process you want to stop is not in progress.");
     }
     return processMap.get(uuid);
   }
@@ -523,5 +524,10 @@ public class Util {
     } catch (ParseException e) {
       throw e;
     }
+  }
+
+  public static String unixTimeToDateString(long unixTimestampMs, String dateFormat) {
+    SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+    return formatter.format(new Date(unixTimestampMs));
   }
 }

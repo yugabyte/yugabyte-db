@@ -10,8 +10,8 @@
 package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertDefinitionGroup.Severity;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.Arrays;
@@ -33,12 +33,12 @@ public class AlertFilter {
   UUID customerUuid;
   Set<Alert.State> states;
   Set<UUID> definitionUuids;
-  UUID groupUuid;
-  Set<AlertDefinitionGroup.Severity> severities;
-  Set<AlertDefinitionGroup.TargetType> groupTypes;
+  UUID configurationUuid;
+  Set<AlertConfiguration.Severity> severities;
+  Set<AlertConfiguration.TargetType> configurationTypes;
   AlertLabel label;
   Boolean notificationPending;
-  String targetName;
+  String sourceName;
   Date resolvedDateBefore;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
@@ -63,20 +63,20 @@ public class AlertFilter {
     if (definitionUuids != null) {
       result.definitionUuids(definitionUuids);
     }
-    if (groupUuid != null) {
-      result.groupUuid(groupUuid);
+    if (configurationUuid != null) {
+      result.configurationUuid(configurationUuid);
     }
     if (severities != null) {
       result.severities(severities);
     }
-    if (groupTypes != null) {
-      result.groupTypes(groupTypes);
+    if (configurationTypes != null) {
+      result.configurationTypes(configurationTypes);
     }
     if (notificationPending != null) {
       result.notificationPending(notificationPending);
     }
-    if (targetName != null) {
-      result.targetName(targetName);
+    if (sourceName != null) {
+      result.sourceName(sourceName);
     }
     if (resolvedDateBefore != null) {
       result.resolvedDateBefore(resolvedDateBefore);
@@ -89,8 +89,8 @@ public class AlertFilter {
     Set<UUID> excludeUuids = new HashSet<>();
     Set<Alert.State> states = EnumSet.noneOf(Alert.State.class);
     Set<UUID> definitionUuids = new HashSet<>();
-    Set<AlertDefinitionGroup.Severity> severities = new HashSet<>();
-    Set<AlertDefinitionGroup.TargetType> groupTypes = new HashSet<>();
+    Set<AlertConfiguration.Severity> severities = new HashSet<>();
+    Set<AlertConfiguration.TargetType> configurationTypes = new HashSet<>();
 
     public AlertFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
@@ -162,13 +162,15 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder groupType(@NonNull AlertDefinitionGroup.TargetType... groupTypes) {
-      this.groupTypes.addAll(Arrays.asList(groupTypes));
+    public AlertFilterBuilder configurationType(
+        @NonNull AlertConfiguration.TargetType... configurationType) {
+      this.configurationTypes.addAll(Arrays.asList(configurationType));
       return this;
     }
 
-    public AlertFilterBuilder groupTypes(@NonNull Set<AlertDefinitionGroup.TargetType> groupTypes) {
-      this.groupTypes.addAll(groupTypes);
+    public AlertFilterBuilder configurationTypes(
+        @NonNull Set<AlertConfiguration.TargetType> configurationTypes) {
+      this.configurationTypes.addAll(configurationTypes);
       return this;
     }
 
@@ -177,8 +179,8 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder targetName(@NonNull String targetName) {
-      this.targetName = targetName;
+    public AlertFilterBuilder sourceName(@NonNull String sourceName) {
+      this.sourceName = sourceName;
       return this;
     }
 

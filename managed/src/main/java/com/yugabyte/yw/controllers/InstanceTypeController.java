@@ -16,8 +16,9 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.forms.YWResults.YWError;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -68,14 +69,14 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "List a provider's instance types",
-      response = YWResults.class,
+      response = PlatformResults.class,
       responseContainer = "List",
       nickname = "listOfInstanceType")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
           message = "If there was a server or database issue when listing the instance types",
-          response = YWError.class))
+          response = YBPError.class))
   public Result list(UUID customerUUID, UUID providerUUID, List<String> zoneCodes) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -128,7 +129,7 @@ public class InstanceTypeController extends AuthenticatedController {
               "Num instanceTypes excluded {} because they were not offered in selected AZs.",
               instanceTypesMap.size() - filteredInstanceTypes.size());
 
-          return YWResults.withData(filteredInstanceTypes);
+          return PlatformResults.withData(filteredInstanceTypes);
         } catch (Exception exception) {
           LOG.warn(
               "There was an error {} talking to {} cloud API or filtering instance types "
@@ -141,7 +142,7 @@ public class InstanceTypeController extends AuthenticatedController {
         LOG.info("No Cloud API defined for {}. Skipping filtering by zone.", provider.code);
       }
     }
-    return YWResults.withData(instanceTypesMap.values());
+    return PlatformResults.withData(instanceTypesMap.values());
   }
 
   /**
@@ -174,7 +175,7 @@ public class InstanceTypeController extends AuthenticatedController {
             formData.get().memSizeGB,
             formData.get().instanceTypeDetails);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.rawData()));
-    return YWResults.withData(it);
+    return PlatformResults.withData(it);
   }
 
   /**
@@ -187,7 +188,7 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "Delete an instance type",
-      response = YWResults.YWSuccess.class,
+      response = YBPSuccess.class,
       nickname = "deleteInstanceType")
   public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -195,7 +196,7 @@ public class InstanceTypeController extends AuthenticatedController {
     instanceType.setActive(false);
     instanceType.save();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   /**
@@ -218,7 +219,7 @@ public class InstanceTypeController extends AuthenticatedController {
     if (!provider.code.equals(onprem.toString())) {
       instanceType.instanceTypeDetails.setDefaultMountPaths();
     }
-    return YWResults.withData(instanceType);
+    return PlatformResults.withData(instanceType);
   }
 
   /**
@@ -231,7 +232,7 @@ public class InstanceTypeController extends AuthenticatedController {
       response = StorageType.class,
       responseContainer = "List")
   public Result getEBSTypes() {
-    return YWResults.withData(
+    return PlatformResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
             .filter(name -> name.getCloudType().equals(Common.CloudType.aws))
             .toArray());
@@ -248,7 +249,7 @@ public class InstanceTypeController extends AuthenticatedController {
       responseContainer = "List")
   public Result getGCPTypes() {
 
-    return YWResults.withData(
+    return PlatformResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
             .filter(name -> name.getCloudType().equals(Common.CloudType.gcp))
             .toArray());
@@ -264,7 +265,7 @@ public class InstanceTypeController extends AuthenticatedController {
       response = StorageType.class,
       responseContainer = "List")
   public Result getAZUTypes() {
-    return YWResults.withData(
+    return PlatformResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
             .filter(name -> name.getCloudType().equals(Common.CloudType.azu))
             .toArray());

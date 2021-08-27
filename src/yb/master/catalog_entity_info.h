@@ -349,7 +349,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
   }
 
   // Return the table's type.
-  const TableType table_type() const {
+  TableType table_type() const {
     return pb.table_type();
   }
 
