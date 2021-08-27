@@ -31,24 +31,14 @@ PG_MODULE_MAGIC;
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
 
 #define _snprintf(_str_dst, _str_src, _len, _max_len)\
-do                                                   \
-{                                                    \
-	int i;                                           \
-	for(i = 0; i < _len && i < _max_len; i++)        \
-	{\
-		_str_dst[i] = _str_src[i];                   \
-	}\
-}while(0)
+  memcpy((void *)_str_dst, _str_src, _len < _max_len ? _len : _max_len)
 
 #define _snprintf2(_str_dst, _str_src, _len1, _len2)\
 do                                                      \
 {                                                       \
-	int i,j;                                            \
+	int i;                                            \
 	for(i = 0; i < _len1; i++)                        \
-		for(j = 0; j < _len2; j++)        \
-		{                                               \
-			_str_dst[i][j] = _str_src[i][j];                  \
-		}                                               \
+		strlcpy((char *)_str_dst[i], _str_src[i], _len2); \
 }while(0)
 
 /*---- Initicalization Function Declarations ----*/
@@ -1196,7 +1186,8 @@ pgss_update_entry(pgssEntry *entry,
 		if (reset)
 			memset(&entry->counters, 0, sizeof(Counters));
 
-		_snprintf(e->counters.info.comments, comments, comments_len, COMMENTS_LEN);
+		if (comments_len > 0)
+			_snprintf(e->counters.info.comments, comments, comments_len + 1, COMMENTS_LEN);
 		e->counters.state = kind;
 		if (kind == PGSS_PLAN)
 		{
@@ -1248,8 +1239,11 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.resp_calls[index]++;
 		}
 
-		_snprintf(e->counters.planinfo.plan_text, plan_info->plan_text, plan_text_len, PLAN_TEXT_LEN);
-		_snprintf(e->counters.info.application_name, application_name, application_name_len, APPLICATIONNAME_LEN);
+		if (plan_text_len > 0)
+			_snprintf(e->counters.planinfo.plan_text, plan_info->plan_text, plan_text_len + 1, PLAN_TEXT_LEN);
+
+		if (application_name_len > 0)
+			_snprintf(e->counters.info.application_name, application_name, application_name_len + 1, APPLICATIONNAME_LEN);
 
 		e->counters.info.num_relations = num_relations;
 		_snprintf2(e->counters.info.relations, relations, num_relations,  REL_LEN);
