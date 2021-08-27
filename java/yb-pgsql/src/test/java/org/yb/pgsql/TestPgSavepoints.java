@@ -136,6 +136,61 @@ public class TestPgSavepoints extends BasePgSQLTest {
   }
 
   @Test
+  public void testStackedSavepoints() throws Exception {
+    createTable();
+
+    try (Connection conn = getConnectionBuilder()
+                                .withAutoCommit(AutoCommit.DISABLED)
+                                .connect()) {
+      Statement statement = conn.createStatement();
+      statement.execute("INSERT INTO t VALUES (1, 2)");
+      statement.execute("SAVEPOINT a");
+      statement.execute("INSERT INTO t VALUES (3, 4)");
+      statement.execute("SAVEPOINT a");
+      statement.execute("INSERT INTO t VALUES (5, 6)");
+
+      // At this point we should have all three values
+      assertEquals(OptionalInt.of(2), getSingleValue(conn, 1));
+      assertEquals(OptionalInt.of(4), getSingleValue(conn, 3));
+      assertEquals(OptionalInt.of(6), getSingleValue(conn, 5));
+
+      statement.execute("ROLLBACK TO a");
+      // At this point we rolled back to the second savepoint and should have only two of the values
+      assertEquals(OptionalInt.of(2), getSingleValue(conn, 1));
+      assertEquals(OptionalInt.of(4), getSingleValue(conn, 3));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 5));
+
+
+      statement.execute("INSERT INTO t VALUES (5, 6)");
+      statement.execute("RELEASE a");
+      // After releasing a, future references to "a" should now refer to the first savepoint. So
+      // rolling back to a at this point should leave us with only the first row still in the db.
+      statement.execute("ROLLBACK TO a");
+      assertEquals(OptionalInt.of(2), getSingleValue(conn, 1));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 3));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 5));
+
+      // At this point, the first savepoint named "a" should still be referenceable, and we ought to
+      // still roll back to it. So inserting a new row, and then rolling back to a, should again
+      // leave us with only the first row visible
+      statement.execute("INSERT INTO t VALUES (5, 6)");
+      statement.execute("INSERT INTO t VALUES (7, 8)");
+      statement.execute("ROLLBACK TO a");
+      assertEquals(OptionalInt.of(2), getSingleValue(conn, 1));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 3));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 5));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 7));
+
+      conn.commit();
+      // We should have only committed the first inserted value.
+      assertEquals(OptionalInt.of(2), getSingleValue(conn, 1));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 3));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 5));
+      assertEquals(OptionalInt.empty(), getSingleValue(conn, 7));
+    }
+  }
+
+  @Test
   public void testSavepointCommitWithAbort() throws Exception {
     createTable();
 
