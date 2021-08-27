@@ -1,1 +1,1 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v2.4-20210708224609-07d0f55429-x86_64-macos/yugabyte-db-thirdparty-v2.4-20210708224609-07d0f55429-x86_64-macos.tar.gz
+https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v2.4-20210618024928-07d3e67e54-x86_64-macos/yugabyte-db-thirdparty-v2.4-20210618024928-07d3e67e54-x86_64-macos.tar.gz
