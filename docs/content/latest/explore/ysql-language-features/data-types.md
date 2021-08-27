@@ -36,7 +36,7 @@ CREATE TABLE char_types (
 );
 ```
 
-Insert the followingn rows into the table:
+Insert the following rows into the table:
 
 ```sql
 INSERT INTO char_types (a, b, c) VALUES (
