@@ -1,1 +1,1 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v2.6-20210708220833-0f2e584010-centos7-devtoolset-9/yugabyte-db-thirdparty-v2.6-20210708220833-0f2e584010-centos7-devtoolset-9.tar.gz
+https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v2.6-20210619214344-32ba1cdc59-centos7-devtoolset-9/yugabyte-db-thirdparty-v2.6-20210619214344-32ba1cdc59-centos7-devtoolset-9.tar.gz
