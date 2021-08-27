@@ -105,7 +105,6 @@ function mapStateToProps(state, ownProps) {
   let certificates = [];
   const allCertificates = state.customer.userCertificates;
   if (getPromiseState(allCertificates).isSuccess()) {
-    const rootCert = allCertificates.data.find((item) => item.uuid === initialValues.tlsCertificate);
     // show custom certs with same root cert only
     certificates = allCertificates.data.filter(
       (item) => item.certType === 'CustomCertHostPath'
