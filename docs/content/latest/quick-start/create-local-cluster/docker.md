@@ -57,7 +57,12 @@ $ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042
  --daemon=false
 ```
 
-As per the above docker run command, the data stored in YugabyteDB is not persistent across container restarts. If you want to make YugabyteDB persist data across restarts then you have to add the volume mount option to the docker run command as shown below.
+As per the above docker run command, the data stored in YugabyteDB is not persistent across container restarts. If you want to make YugabyteDB persist data across restarts then you have to add the volume mount option to the docker run command.
+Before proceeding with that, verify on your local machine that a `~/yb_data` directory exists, and is owned by your user. If not, create it:
+
+```sh
+$ mkdir ~/yb_data
+```
 
 ```sh
 $ docker run -d --name yugabyte \
