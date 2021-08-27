@@ -310,8 +310,6 @@ typedef struct pgssSharedState
 	uint64			prev_bucket_usec;
 	uint64			bucket_entry[MAX_BUCKETS];
 	int64			query_buf_size_bucket;
-	char			relations[REL_LST][REL_LEN];
-	int				num_relations;							/*  Number of relation in the query */
 	char			bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
 } pgssSharedState;
 
