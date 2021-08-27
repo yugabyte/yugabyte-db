@@ -74,7 +74,7 @@ An in-built function called ‘yb_servers’ will be added in Yugabyte. The purp
 
 _Connection property:_
 
-A new property is being added: _load-balance-hosts_
+A new property is being added: _load-balance_
 
 It expects **true/false** as its possible values. It is _false_ by default in which case it will not attempt to distribute connection load to all available servers.
 
@@ -90,7 +90,7 @@ _How does it work:_
 An additional property _topology-keys_ is added to indicate only servers belonging to the locations indicated by the topology keys would be considered for establishing connections
 It expects a _comma_separated_geo_locations_ as it's value(s).
 
-For example: topology-keys=cloud1.region1.zone1,cloud1.region1.zone2
+For example: topology-keys=region1.zone1,region1.zone2
 
 ### Shard Awareness
 
