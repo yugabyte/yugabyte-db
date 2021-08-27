@@ -61,6 +61,8 @@
 #include "tcop/utility.h"
 #include "utils/datum.h"
 
+#include "lib/stringinfo.h"
+
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 uint64_t YBGetActiveCatalogCacheVersion() {
@@ -1476,63 +1478,129 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT16(hashed_val);
 }
 
+/*---------------------------------------------------------------------------*/
+/* Deterministic DETAIL order                                                */
+/*---------------------------------------------------------------------------*/
+
 static int yb_detail_sort_comparator(const void *a, const void *b)
 {
-    return strcmp(*(const char **) a, *(const char **) b);
+	return strcmp(*(const char **) a, *(const char **) b);
+}
+
+static int default_detail_store_capacity = 10;
+
+typedef struct {
+	char ** lines;
+	int capacity;
+	int length;
+} DetailStore;
+
+void initDetailStore(DetailStore *v)
+{
+	v->capacity = default_detail_store_capacity;
+	v->lines = (char **)malloc(sizeof(char *) * v->capacity);
+	v->length = 0;
+}
+int resizeDetailStore(DetailStore *v)
+{
+	if (v->length == v->capacity)
+	{
+		int new_capacity = v->capacity + default_detail_store_capacity;
+		char **new_lines = (char **)realloc(v->lines, new_capacity * sizeof(char *));
+		if (new_lines)
+		{
+			v->capacity = new_capacity;
+			v->lines = new_lines;
+			return 1; // resizing OK
+		}
+		return 0; // failed resizing
+	}
+	return 1; // nothing to do, success
+}
+int appendToDetailStore(DetailStore *v, char * line)
+{
+	if (resizeDetailStore(v) > 0)
+	{
+		v->lines[v->length++] = line;
+		return 1;
+	}
+	return 0;
+}
+char * detailStoreGetAt(DetailStore *v, int index)
+{
+	if (index >= 0 && index < v->length)
+		return v->lines[index];
+	return NULL;
+}
+int detailStoreLength(DetailStore *v)
+{
+	return v->length;
+}
+char ** detailStoreSorted(DetailStore *v)
+{
+	qsort(v->lines, v->length,
+		sizeof (const char *), yb_detail_sort_comparator);
+	return v->lines;
+}
+void detailStoreFree(DetailStore *v)
+{
+	free(v->lines);
 }
 
 char *yb_detail_sorted(char *input)
 {
-    char delimiter[2] = "\n";
-
-    char **lines = (char **)malloc(sizeof(char *));
-    // for the split, I do need char[size_t]
-    size_t size = strlen(input) + 1;
-    char str[size];
-    strncpy(str,input,size);
-    // split the string by delimiter
-    // and reject empty lines in a single pass:
-    int lc = 0;
-    char *token;
-    token = strtok(str, delimiter);
-    while (token != NULL)
-    {
-        if (strcmp(token, "") != 0)
-        {
-            lines = (char **)realloc(lines, lc+1 * sizeof(char *));
-            if (lines != NULL)
-            {
-                lines[lc] = malloc(sizeof(char *) * (strlen(token) + 1));
-                lines[lc] = token;
-                lc++;
-            }
-            else
-            {
-                free(lines);
-                return input;
-            }
-        }
-        token = strtok(NULL, delimiter);
-    }
-    free(token);
-    // if we have lines:
-    if (lc > 0)
-    {
-        // sort resulting lines:
-        qsort(lines, lc, sizeof (const char *), yb_detail_sort_comparator);
-        // merge sorted lines with the delimiter:
-        char *out = malloc(sizeof(char *) * (strlen(lines[0])+1));
-        strcpy(out, lines[0]);
-        for (int i=1; i<lc; i++)
-        {
-            size_t s = sizeof(char *)*(strlen(out)+strlen(lines[i])+2);
-            out = realloc(out, s);
-            strcat(out, delimiter);
-            strcat(out, lines[i]);
-        }
-        free(lines);
-        return out;
-    }
-    free(lines);
-    return input;
+	if (input == NULL)
+		return input;
+	// this delimiter is hard coded in backend/catalog/pg_shdepend.c,
+	// inside of the storeObjectDescription function:
+	char delimiter[2] = "\n";
+	// init stringinfo used for concatenation of the output:
+	StringInfoData s;
+	initStringInfo(&s);
+	// init store used for collecting non-empty lines:
+	DetailStore store;
+	initDetailStore(&store);
+	// split the string by delimiter:
+	char *token;
+	token = strtok(input, delimiter);
+	while (token != NULL)
+	{
+		// reject empty lines:
+		if (strcmp(token, "") != 0)
+		{
+			if (appendToDetailStore(&store, token) == 0)
+			{
+				elog(ERROR,
+					"failed appending '%s' to deterministic detail order",
+					token);
+				// if append failed, return early:
+				detailStoreFree(&store);
+				resetStringInfo(&s);
+				appendStringInfoString(&s, input);
+				return s.data;
+			}
+		}
+		token = strtok(NULL, delimiter);
+	}
+	// if we have lines:
+	int nItems = detailStoreLength(&store);
+	if (nItems == 0)
+	{
+		// put the original input in:
+		appendStringInfoString(&s, input);
+	}
+	else
+	{
+		char ** sortedLines = detailStoreSorted(&store);
+		for (int i=0; i<nItems; i++)
+		{
+			if (sortedLines[i] != NULL) {
+				if (i > 0)
+					appendStringInfoString(&s, delimiter);
+				appendStringInfoString(&s, sortedLines[i]);
+			}
+		}
+	}
+	detailStoreFree(&store);
+	return s.data;
 }
