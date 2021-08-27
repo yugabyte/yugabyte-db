@@ -57,9 +57,9 @@
     float: left;
   }
 
-  h2 {
+  h5 {
     margin-left: 0;
-    margin-top: 5px;
+    margin-top: 15px;
   }
   .react-bs-table-container {
     .react-bs-container-header {
@@ -105,8 +105,17 @@
     font-weight: 500;
     cursor: pointer;
   }
+  .react-bs-table-pagination{
+    .dropdown{
+      max-width: 60px;
+      display: flex;
+    }
+  }
 }
 .row {
   margin-left: 0;
   margin-right: 0;
+}
+.hide-field {
+  display: none
 }
