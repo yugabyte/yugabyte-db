@@ -31,7 +31,7 @@ Creating a cluster with placement_info
 Creating a cluster with custom flags
   yb-ctl start \\
     --master_flags 'flag1=value,flag2=value,flag3=value' \\
-    --tserver_flags 'flag1=value,flag2=value,flag3=value'
+    --tserver_flags 'flag1=value,"flag2=complex=,=,=,value",flag3=value'
 
 Destroying a cluster
   yb-ctl destroy
