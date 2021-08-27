@@ -50,7 +50,7 @@ public class YWResults {
     public boolean success = false;
 
     @ApiModelProperty(
-        value = "User visible unstructured error message",
+        value = "User-visible unstructured error message",
         example = "There was a problem creating the universe",
         required = false)
     public String error;
@@ -68,7 +68,7 @@ public class YWResults {
     public boolean success = false;
 
     @ApiModelProperty(
-        value = "User visible error message as json object",
+        value = "User visible error message as JSON object",
         dataType = "Object",
         example = "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
         required = false)
@@ -92,7 +92,7 @@ public class YWResults {
   public static class YWSuccess extends OkResult {
 
     @ApiModelProperty(
-        value = "API operation success",
+        value = "API operation status. A value of true indicates the operation was successful.",
         accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final boolean success;
 

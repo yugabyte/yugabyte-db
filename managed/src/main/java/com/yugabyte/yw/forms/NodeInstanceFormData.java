@@ -41,7 +41,7 @@ public class NodeInstanceFormData {
     @ApiModelProperty(value = "Node instance name", example = "Mumbai instance", required = true)
     public String instanceName;
 
-    @ApiModelProperty(value = "Node instance name", example = "India node")
+    @ApiModelProperty(value = "Node name", example = "India node")
     public String nodeName;
   }
 }
