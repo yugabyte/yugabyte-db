@@ -35,9 +35,9 @@ const CreateAlert = (props) => {
     alertDestinations,
     updateAlertConfig
   } = props;
-  const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
+  const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(initialValues.ALERT_TARGET_TYPE==='allUniverses');
   const [alertDestination, setAlertDestination] = useState([]);
-  const [currentMetric, setCurrentMetric] = useState('PERCENT');
+  const [currentMetric, setCurrentMetric] = useState({thresholdUnit: initialValues.thresholdUnit,template: initialValues.ALERT_METRICS_CONDITION});
 
   useEffect(() => {
     alertDestinations().then((res) => {
@@ -46,7 +46,7 @@ const CreateAlert = (props) => {
           {destination.name}
         </option>
       ));
-      setAlertDestination([<option key="i" />, ...res]);
+      setAlertDestination([<option key="i" value=''>Select Destination</option>, ...res]);
     });
   }, [alertDestinations]);
 
@@ -54,7 +54,7 @@ const CreateAlert = (props) => {
    * Constant option for metrics condition.
    */
   const alertMetricsConditionList = [
-    <option key="default" value={null} />,
+    <option key="default" value={null}>Select Metric</option>,
     ...metricsData.map((metric, i) => {
       return (
         <option key={i} value={metric.template}>
@@ -86,7 +86,25 @@ const CreateAlert = (props) => {
    */
   const handleMetricConditionChange = (value) => {
     const metric = metricsData.find((metric) => metric.template === value);
-    setCurrentMetric(metric.thresholdUnit);
+    setCurrentMetric(metric);
+    if (metric && metric.template === initialValues.ALERT_METRICS_CONDITION) {
+      props.updateField(
+        'alertConfigForm',
+        'ALERT_METRICS_CONDITION_POLICY',
+        initialValues.ALERT_METRICS_CONDITION_POLICY
+      );
+    } else {
+      const conditions = [];
+      // Setting up the threshold values.
+      Object.keys(metric.thresholds).forEach((policy) => {
+        conditions.push({
+          _SEVERITY: policy,
+          _CONDITION: metric.thresholds[policy].condition,
+          _THRESHOLD: metric.thresholds[policy].threshold
+        });
+      });
+      props.updateField('alertConfigForm', 'ALERT_METRICS_CONDITION_POLICY', conditions);
+    }
   };
 
   /**
@@ -126,7 +144,7 @@ const CreateAlert = (props) => {
         payload.thresholdUnit = 'MILLISECOND';
         break;
       default:
-        payload.thresholdUnit = 'MILLISECOND';
+        payload.thresholdUnit = currentMetric.thresholdUnit;
     }
 
     // Setting up the universe uuids.
@@ -198,7 +216,8 @@ const CreateAlert = (props) => {
                 options={alertUniverseList}
                 hideSelectedOptions={false}
                 isMulti={true}
-                isDisabled={isAllUniversesDisabled}
+                validate={!isAllUniversesDisabled && required}
+                className={isAllUniversesDisabled ? 'hide-field' : ''}
               />
             </Col>
           </Row>
@@ -210,10 +229,11 @@ const CreateAlert = (props) => {
           </Col>
           <Row>
             <Col md={6}>
-              <div className="form-item-custom-label">Metrics</div>
+              <div className="form-item-custom-label">Metric</div>
               <Field
                 name="ALERT_METRICS_CONDITION"
                 component={YBSelectWithLabel}
+                validate={required}
                 options={alertMetricsConditionList}
                 onInputChanged={handleMetricConditionChange}
               />
@@ -242,12 +262,11 @@ const CreateAlert = (props) => {
         </Row>
         <Row className="actionBtnsMargin">
           <Col md={6}>
-            <div className="form-item-custom-label">Destinations</div>
+            <div className="form-item-custom-label">Destination</div>
             <Field
               name="ALERT_DESTINATION_LIST"
               component={YBSelectWithLabel}
               options={alertDestination}
-              validate={required}
             />
           </Col>
         </Row>
