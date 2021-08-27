@@ -40,6 +40,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/map-util.h"
@@ -247,6 +248,7 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
 
   footer_.set_num_entries(read_entries.entries.size());
 
+  uint64_t latest_ht = 0;
   // Rebuild the min/max replicate index (by scanning)
   for (const auto& entry : read_entries.entries) {
     if (entry->has_replicate()) {
@@ -260,12 +262,17 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
           index > footer_.max_replicate_index()) {
         footer_.set_max_replicate_index(index);
       }
+      latest_ht = std::max(latest_ht, entry->replicate().hybrid_time());
     }
   }
 
   DCHECK(footer_.IsInitialized());
   DCHECK_EQ(read_entries.entries.size(), footer_.num_entries());
   footer_was_rebuilt_ = true;
+
+  if (latest_ht > 0) {
+    footer_.set_close_timestamp_micros(yb::HybridTime(latest_ht).GetPhysicalValueMicros());
+  }
 
   readable_to_offset_.Store(read_entries.end_offset);
 

@@ -140,6 +140,9 @@ DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
             "for the opId to apply to the local log. i.e. WaitForSafeOpIdToApply "
             "becomes a noop.");
 
+DEFINE_test_flag(bool, simulate_abrupt_server_restart, false,
+                 "If true, don't properly close the log segment.");
+
 // TaskStream flags.
 // We have to make the queue length really long.
 // TODO: Create new flags log_taskstream_queue_max_size and log_taskstream_queue_max_wait_ms
@@ -1228,6 +1231,9 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 }
 
 Status Log::Close() {
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_abrupt_server_restart)) {
+    return Status::OK();
+  }
   // Allocation pool is used from appender pool, so we should shutdown appender first.
   appender_->Shutdown();
   allocation_token_.reset();
