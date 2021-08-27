@@ -1,0 +1,62 @@
+name: ppg11-test
+on: [push]
+
+jobs:
+  build:
+    name: ppg11-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone pg_stat_monitor repository
+        uses: actions/checkout@v2
+        with:
+          path: 'src/pg_stat_monitor'
+
+      - name: Delete old postgresql files
+        run: |
+          sudo apt-get update
+          sudo apt purge postgresql-client-common postgresql-common postgresql postgresql*
+          sudo rm -rf /var/lib/postgresql/
+          sudo rm -rf /var/log/postgresql/
+          sudo rm -rf /etc/postgresql/
+          sudo rm -rf /usr/lib/postgresql
+          sudo rm -rf /usr/include/postgresql
+          sudo rm -rf /usr/share/postgresql
+          sudo rm -rf /etc/postgresql
+          sudo rm -f /usr/bin/pg_config
+
+      - name: Install percona-release script
+        run: |
+          sudo apt-get install gnupg2 wget -y
+          sudo wget https://repo.percona.com/apt/pool/testing/p/percona-release/percona-release_1.0-27.generic_all.deb
+          sudo dpkg -i percona-release_1.0-27.generic_all.deb
+
+      - name: Install Percona Distribution Postgresql 11
+        run: |
+          sudo percona-release setup ppg-11
+          sudo apt-get update -y
+          sudo apt-get install -y   percona-postgresql  percona-postgresql-11 percona-postgresql-all percona-postgresql-client-11 percona-postgresql-client-common percona-postgresql-common percona-postgresql-contrib percona-postgresql-server-dev-all
+          sudo chown -R postgres:postgres src/
+
+      - name: Build pg_stat_monitor
+        run: |
+          sudo make USE_PGXS=1
+          sudo make USE_PGXS=1 install
+        working-directory: src/pg_stat_monitor/
+
+      - name: Start pg_stat_monitor_tests
+        run: |
+          sudo service postgresql stop
+          echo "shared_preload_libraries = 'pg_stat_monitor'" | sudo tee -a /etc/postgresql/11/main/postgresql.conf
+          sudo service postgresql start
+          sudo -u postgres bash -c 'make installcheck USE_PGXS=1'
+        working-directory: src/pg_stat_monitor/
+
+      - name: Report on test fail
+        uses: actions/upload-artifact@v2
+        if: ${{ failure() }}
+        with:
+          name: Regressions diff and postgresql log
+          path: |
+            src/pg_stat_monitor/regression.diffs
+            src/pg_stat_monitor/logfile
+          retention-days: 1
