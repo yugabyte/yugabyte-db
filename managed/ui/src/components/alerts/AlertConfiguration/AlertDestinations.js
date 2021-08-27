@@ -15,9 +15,9 @@ import { AlertDestinationDetails } from './AlertDestinationDetails';
 /**
  * This is the header for YB Panel Item.
  */
-const header = (onAddAlertDestination) => (
+const header = (destinationCount,onAddAlertDestination) => (
   <>
-    <h2 className="table-container-title pull-left">Alert Destinations</h2>
+    <h5 className="table-container-title pull-left">{`${destinationCount} Alert Destinations`}</h5>
     <FlexContainer className="pull-right">
       <FlexShrink>
         <Button
@@ -45,7 +45,7 @@ export const AlertDestinations = (props) => {
     showDetailsModal,
     getAlertChannels
   } = props;
-  const [options, setOptions] = useState({ noDataText: 'Loading...' });
+  const [options, setOptions] = useState({ noDataText: 'Loading...', sortName: 'name', sortOrder: 'asc' });
 
   const setRsponseObject = () => {
     const result = new Map();
@@ -194,13 +194,14 @@ export const AlertDestinations = (props) => {
   return (
     <>
       <YBPanelItem
-        header={header(onAddAlertDestination)}
+        header={header(alertDestination.length, onAddAlertDestination)}
         body={
           <>
             <BootstrapTable
               className="backup-list-table middle-aligned-table"
               data={alertDestination}
               options={options}
+              pagination
             >
               <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
               <TableHeaderColumn
