@@ -13,6 +13,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
@@ -34,6 +35,8 @@ public abstract class DevopsBase {
   protected abstract String getCommandType();
 
   @Inject ShellProcessHandler shellProcessHandler;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   protected JsonNode parseShellResponse(ShellResponse response, String command) {
     if (response.code == 0) {
@@ -66,7 +69,8 @@ public abstract class DevopsBase {
       String command,
       List<String> commandArgs,
       List<String> cloudArgs) {
-    return execCommand(regionUUID, providerUUID, null, command, commandArgs, cloudArgs);
+    return execCommand(
+        regionUUID, providerUUID, null /*cloudType*/, command, commandArgs, cloudArgs);
   }
 
   protected ShellResponse execCommand(
@@ -76,9 +80,23 @@ public abstract class DevopsBase {
       String command,
       List<String> commandArgs,
       List<String> cloudArgs) {
+    return execCommand(regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, null);
+  }
+
+  protected ShellResponse execCommand(
+      UUID regionUUID,
+      UUID providerUUID,
+      Common.CloudType cloudType,
+      String command,
+      List<String> commandArgs,
+      List<String> cloudArgs,
+      Map<String, String> envVars) {
     List<String> commandList = new ArrayList<>();
     commandList.add(YBCLOUD_SCRIPT);
     Map<String, String> extraVars = new HashMap<>();
+    if (envVars != null) {
+      extraVars.putAll(envVars);
+    }
     Region region = null;
     if (regionUUID != null) {
       region = Region.get(regionUUID);
@@ -89,11 +107,11 @@ public abstract class DevopsBase {
       commandList.add(region.provider.code);
       commandList.add("--region");
       commandList.add(region.code);
-      extraVars = region.provider.getConfig();
+      extraVars.putAll(region.provider.getConfig());
     } else if (providerUUID != null) {
       provider = Provider.get(providerUUID);
       commandList.add(provider.code);
-      extraVars = provider.getConfig();
+      extraVars.putAll(provider.getConfig());
     } else if (cloudType != null) {
       commandList.add(cloudType.toString());
     } else {
