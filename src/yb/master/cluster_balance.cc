@@ -124,7 +124,7 @@ DEFINE_bool(load_balancer_count_move_as_add, true,
             "Should we enable state change to count add server triggered by load move as just an "
             "add instead of both an add and remove.");
 
-DEFINE_bool(load_balancer_drive_aware, true,
+DEFINE_bool(load_balancer_drive_aware, false,
             "When LB decides to move a tablet from server A to B, on the target LB "
             "should select the tablet to move from most loaded drive.");
 

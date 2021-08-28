@@ -200,6 +200,7 @@ class LoadBalancerMiniClusterTestWithoutData : public LoadBalancerMiniClusterTes
 class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_drive_aware) = true;
     emu_env = new StatEmuEnv();
     ts_env_.reset(emu_env);
     ts_rocksdb_env_ = std::make_unique<rocksdb::EnvWrapper>(rocksdb::Env::Default());
