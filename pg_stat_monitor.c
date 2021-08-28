@@ -31,24 +31,14 @@ PG_MODULE_MAGIC;
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
 
 #define _snprintf(_str_dst, _str_src, _len, _max_len)\
-do                                                   \
-{                                                    \
-	int i;                                           \
-	for(i = 0; i < _len && i < _max_len; i++)        \
-	{\
-		_str_dst[i] = _str_src[i];                   \
-	}\
-}while(0)
+  memcpy((void *)_str_dst, _str_src, _len < _max_len ? _len : _max_len)
 
 #define _snprintf2(_str_dst, _str_src, _len1, _len2)\
 do                                                      \
 {                                                       \
-	int i,j;                                            \
+	int i;                                            \
 	for(i = 0; i < _len1; i++)                        \
-		for(j = 0; j < _len2; j++)        \
-		{                                               \
-			_str_dst[i][j] = _str_src[i][j];                  \
-		}                                               \
+		strlcpy((char *)_str_dst[i], _str_src[i], _len2); \
 }while(0)
 
 /*---- Initicalization Function Declarations ----*/
@@ -66,7 +56,8 @@ static int plan_nested_level = 0;
 /* The array to store outer layer query id*/
 uint64 *nested_queryids;
 
-FILE *qfile;
+static char relations[REL_LST][REL_LEN];
+static int num_relations;							/*  Number of relation in the query */
 static bool system_init = false;
 static struct rusage  rusage_start;
 static struct rusage  rusage_end;
@@ -645,7 +636,6 @@ static void
 pgss_ExecutorEnd(QueryDesc *queryDesc)
 {
 	uint64             queryId       = queryDesc->plannedstmt->queryId;
-	pgssSharedState    *pgss         = pgsm_get_ss();
     SysInfo            sys_info;
 	PlanInfo           plan_info;
 
@@ -693,7 +683,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		prev_ExecutorEnd(queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
-	pgss->num_relations = 0;
+	num_relations = 0;
 }
 
 #ifdef BENCHMARK
@@ -713,13 +703,11 @@ static bool
 pgss_ExecutorCheckPerms(List *rt, bool abort)
 {
 	ListCell		*lr = NULL;
-	pgssSharedState *pgss = pgsm_get_ss();
 	int				i = 0;
 	int				j = 0;
 	Oid				list_oid[20];
 
-	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-	pgss->num_relations = 0;
+	num_relations = 0;
 
 	foreach(lr, rt)
     {
@@ -744,14 +732,13 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 				namespace_name = get_namespace_name(get_rel_namespace(rte->relid));
 				relation_name = get_rel_name(rte->relid);
 				if (rte->relkind == 'v')
-					snprintf(pgss->relations[i++], REL_LEN, "%s.%s*", namespace_name, relation_name);
+					snprintf(relations[i++], REL_LEN, "%s.%s*", namespace_name, relation_name);
 				else
-					snprintf(pgss->relations[i++], REL_LEN, "%s.%s", namespace_name, relation_name);
+					snprintf(relations[i++], REL_LEN, "%s.%s", namespace_name, relation_name);
 			}
 		}
 	}
-	pgss->num_relations = i;
-	LWLockRelease(pgss->lock);
+	num_relations = i;
 
     if (prev_ExecutorCheckPerms_hook)
         return prev_ExecutorCheckPerms_hook(rt, abort);
@@ -1184,7 +1171,6 @@ pgss_update_entry(pgssEntry *entry,
 	int                 index;
 	char			    application_name[APPLICATIONNAME_LEN];
 	int				    application_name_len = pg_get_application_name(application_name);
-	pgssSharedState     *pgss = pgsm_get_ss();
 	double              old_mean;
 	int             	message_len = error_info ? strlen (error_info->message) : 0;
 	int             	comments_len = comments ? strlen (comments) : 0;
@@ -1200,7 +1186,8 @@ pgss_update_entry(pgssEntry *entry,
 		if (reset)
 			memset(&entry->counters, 0, sizeof(Counters));
 
-		_snprintf(e->counters.info.comments, comments, comments_len, COMMENTS_LEN);
+		if (comments_len > 0)
+			_snprintf(e->counters.info.comments, comments, comments_len + 1, COMMENTS_LEN);
 		e->counters.state = kind;
 		if (kind == PGSS_PLAN)
 		{
@@ -1252,11 +1239,14 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.resp_calls[index]++;
 		}
 
-		_snprintf(e->counters.planinfo.plan_text, plan_info->plan_text, plan_text_len, PLAN_TEXT_LEN);
-		_snprintf(e->counters.info.application_name, application_name, application_name_len, APPLICATIONNAME_LEN);
+		if (plan_text_len > 0)
+			_snprintf(e->counters.planinfo.plan_text, plan_info->plan_text, plan_text_len + 1, PLAN_TEXT_LEN);
 
-		e->counters.info.num_relations = pgss->num_relations;
-		_snprintf2(e->counters.info.relations, pgss->relations, pgss->num_relations,  REL_LEN);
+		if (application_name_len > 0)
+			_snprintf(e->counters.info.application_name, application_name, application_name_len + 1, APPLICATIONNAME_LEN);
+
+		e->counters.info.num_relations = num_relations;
+		_snprintf2(e->counters.info.relations, relations, num_relations,  REL_LEN);
 
 		e->counters.info.cmd_type = cmd_type;
 
