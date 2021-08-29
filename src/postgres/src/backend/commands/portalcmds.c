@@ -293,12 +293,21 @@ PortalCleanup(Portal portal)
 
 			/* We must make the portal's resource owner current */
 			saveResourceOwner = CurrentResourceOwner;
-			if (portal->resowner)
-				CurrentResourceOwner = portal->resowner;
+			PG_TRY();
+			{
+				if (portal->resowner)
+					CurrentResourceOwner = portal->resowner;
 
-			ExecutorFinish(queryDesc);
-			ExecutorEnd(queryDesc);
-			FreeQueryDesc(queryDesc);
+				ExecutorFinish(queryDesc);
+				ExecutorEnd(queryDesc);
+				FreeQueryDesc(queryDesc);
+			}
+			PG_CATCH();
+			{
+				CurrentResourceOwner = saveResourceOwner;
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			CurrentResourceOwner = saveResourceOwner;
 		}
