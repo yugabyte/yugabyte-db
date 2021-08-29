@@ -4294,13 +4294,26 @@ yb_attempt_to_restart_on_error(int attempt,
 			yb_restart_portal(restart_data->portal_name);
 		}
 		YBRestoreOutputBufferPosition();
+
+		/*
+		 * The txn might or might not have performed writes. Reset the state in
+		 * either case to avoid checking/tracking if a write could have been
+		 * performed.
+		 */
+		YBCRestartWriteTransaction();
+
 		if (YBCIsRestartReadError(edata->yb_txn_errcode))
 		{
 			YBCRestartTransaction(false /* force_restart */);
 		}
 		else
 		{
-			YBCRestartWriteTransaction();
+			/*
+			 * Recreate the YB state for the transaction. This call preserves the
+			 * priority of the current YB transaction so that when we retry, we re-use
+			 * the same priority.
+			 */
+			YBCRecreateTransaction();
 			pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
 		}
 	} else {
