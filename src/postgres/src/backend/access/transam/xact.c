@@ -2073,13 +2073,6 @@ YBCRestartWriteTransaction()
 	 */
 	AfterTriggerEndXact(false /* isCommit */);
 	AfterTriggerBeginXact();
-
-	/*
-	 * Recreate the YB state for the transaction. This call preserves the
-	 * priority of the current YB transaction so that when we retry, we re-use
-	 * the same priority.
-	 */
-	YBCRecreateTransaction();
 }
 
 /*
