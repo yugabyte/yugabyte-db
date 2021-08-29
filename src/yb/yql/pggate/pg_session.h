@@ -51,6 +51,10 @@ struct BufferableOperation {
   // Postgres's relation id. Required to resolve constraint name in case
   // operation will fail with PGSQL_STATUS_DUPLICATE_KEY_ERROR.
   PgObjectId relation_id;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(operation, relation_id);
+  }
 };
 
 typedef std::vector<BufferableOperation> PgsqlOpBuffer;

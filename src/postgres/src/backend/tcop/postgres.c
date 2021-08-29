@@ -3964,7 +3964,8 @@ YBIsDmlCommandTag(const char *command_tag)
 static bool
 yb_is_restart_possible(const ErrorData* edata,
 					   int attempt,
-					   const YBQueryRestartData* restart_data)
+					   const YBQueryRestartData* restart_data,
+						 bool* retries_exhausted)
 {
 	if (!IsYugaByteEnabled())
 	{
@@ -3988,6 +3989,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of write restart attempts (%d)",
 			          attempt);
+		*retries_exhausted = true;
 		return false;
 	}
 
@@ -3996,13 +3998,15 @@ yb_is_restart_possible(const ErrorData* edata,
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of read restart attempts (%d)",
 			          attempt);
+		*retries_exhausted = true;
 		return false;
 	}
 
 	if (YBIsDataSent())
 	{
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, data was already sent");
+			elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
+								edata->yb_txn_errcode);
 		return false;
 	}
 
@@ -4031,7 +4035,7 @@ yb_is_restart_possible(const ErrorData* edata,
 
 	/*
 	 * If we're executing a prepared statement, we're interested in the command
-	 * tag of the underlying statment.
+	 * tag of the underlying statement.
 	 */
 	if (strncmp(command_tag, "EXECUTE", 7) == 0)
 	{
@@ -4051,12 +4055,14 @@ yb_is_restart_possible(const ErrorData* edata,
 	bool is_read = strncmp(command_tag, "SELECT", 6) == 0;
 	bool is_dml  = YBIsDmlCommandTag(command_tag);
 
-	if (!(is_read_restart_error && is_read) && !(is_conflict_error && is_dml))
+	if (!(is_read || is_dml))
 	{
+		// As of now, we only support retries with SELECT/UPDATE/INSERT/DELETE. There are other
+		// statements that might result in a kReadRestart/kConflict like CREATE INDEX. We don't retry
+		// those as of now.
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, is read?: %d, is dml? %d, "
-			          "is read restart error? %d, is conflict error? %d",
-			          is_read, is_dml, is_read_restart_error, is_conflict_error);
+			elog(LOG,
+					 "Restart isn't possible because statement isn't one of SELECT/UPDATE/INSERT/DELETE");
 		return false;
 	}
 
@@ -4272,12 +4278,13 @@ yb_attempt_to_restart_on_error(int attempt,
 	 */
 	MemoryContext error_context = MemoryContextSwitchTo(exec_context);
 	ErrorData*    edata         = CopyErrorData();
+	bool					retries_exhausted = false;
 
-	if (yb_is_restart_possible(edata, attempt, restart_data)) {
+	if (yb_is_restart_possible(edata, attempt, restart_data, &retries_exhausted)) {
 		if (yb_debug_log_internal_restarts)
 		{
 			ereport(LOG,
-			        (errmsg("Restarting statement due to read-restart error:"
+							(errmsg("Restarting statement due to kReadRestart/kConflict error:"
 			                "\nQuery: %s\nError: %s\nAttempt No: %d",
 			                restart_data->query_string,
 			                edata->message,
@@ -4288,8 +4295,7 @@ yb_attempt_to_restart_on_error(int attempt,
 		 * flow continue
 		 */
 		FlushErrorState();
-		/* restart read error occurrs after portal snapshot is pushed */
-		PopActiveSnapshot();
+
 		if (restart_data->portal_name) {
 			yb_restart_portal(restart_data->portal_name);
 		}
@@ -4306,7 +4312,7 @@ yb_attempt_to_restart_on_error(int attempt,
 		{
 			YBCRestartTransaction(false /* force_restart */);
 		}
-		else
+		else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 		{
 			/*
 			 * Recreate the YB state for the transaction. This call preserves the
@@ -4316,8 +4322,21 @@ yb_attempt_to_restart_on_error(int attempt,
 			YBCRecreateTransaction();
 			pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
 		}
+		else
+		{
+			/*
+			 * We shouldn't really be able to reach here. If yb_is_restart_possible()
+			 * was true, the error should have been either of kReadRestart/kConflict
+			 */
+			MemoryContextSwitchTo(error_context);
+			PG_RE_THROW();
+		}
 	} else {
 		/* if we shouldn't restart - propagate the error */
+		if (retries_exhausted) {
+			edata->message = psprintf("%s. %s", "All transparent retries exhausted", edata->message);
+			ReThrowError(edata);
+		}
 		MemoryContextSwitchTo(error_context);
 		PG_RE_THROW();
 	}

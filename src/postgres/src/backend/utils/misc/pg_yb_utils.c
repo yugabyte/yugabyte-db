@@ -1316,6 +1316,10 @@ void YBResetOperationsBuffering() {
 	YBCPgResetOperationsBuffering();
 }
 
+void YBFlushBufferedOperations() {
+	HandleYBStatus(YBCPgFlushBufferedOperations());
+}
+
 bool YBReadFromFollowersEnabled() {
   return yb_read_from_followers;
 }
