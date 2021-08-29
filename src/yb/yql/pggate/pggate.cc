@@ -998,6 +998,10 @@ void PgApiImpl::ResetOperationsBuffering() {
   pg_session_->ResetOperationsBuffering();
 }
 
+Status PgApiImpl::FlushBufferedOperations() {
+  return pg_session_->FlushBufferedOperations();
+}
+
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
   switch (handle->stmt_op()) {
     case StmtOp::STMT_INSERT:
