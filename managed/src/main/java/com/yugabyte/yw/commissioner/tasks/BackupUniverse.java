@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -99,65 +100,78 @@ public class BackupUniverse extends UniverseTaskBase {
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-      if (universe.getUniverseDetails().backupInProgress) {
-        throw new RuntimeException("A backup for this universe is already in progress.");
-      }
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      UserTaskDetails.SubTaskGroupType groupType;
+      // Update universe 'backupInProgress' flag to true or throw an exception if universe is
+      // already having a backup in progress.
       if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-        groupType = UserTaskDetails.SubTaskGroupType.CreatingTableBackup;
-        createEncryptedUniverseKeyBackupTask().setSubTaskGroupType(groupType);
-        updateBackupState(true);
-        unlockUniverseForUpdate();
-      } else if (taskParams().actionType == BackupTableParams.ActionType.RESTORE) {
-        groupType = UserTaskDetails.SubTaskGroupType.RestoringTableBackup;
-
-        // Handle case of backup being encrypted at rest
-        if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
-          // Download universe keys backup file for encryption at rest
-          BackupTableParams restoreKeysParams = new BackupTableParams();
-          restoreKeysParams.storageLocation = taskParams().storageLocation;
-          restoreKeysParams.universeUUID = taskParams().universeUUID;
-          restoreKeysParams.storageConfigUUID = taskParams().storageConfigUUID;
-          restoreKeysParams.kmsConfigUUID = taskParams().kmsConfigUUID;
-          restoreKeysParams.restoreTimeStamp = taskParams().restoreTimeStamp;
-          restoreKeysParams.actionType = BackupTableParams.ActionType.RESTORE_KEYS;
-          createTableBackupTask(restoreKeysParams).setSubTaskGroupType(groupType);
-
-          // Restore universe keys backup file for encryption at rest
-          createEncryptedUniverseKeyRestoreTask(taskParams()).setSubTaskGroupType(groupType);
-        }
-      } else {
-        throw new RuntimeException("Invalid backup action type: " + taskParams().actionType);
+        lockedUpdateBackupState(taskParams().universeUUID, this, true);
       }
+      try {
+        UserTaskDetails.SubTaskGroupType groupType;
+        if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
+          groupType = UserTaskDetails.SubTaskGroupType.CreatingTableBackup;
+          createEncryptedUniverseKeyBackupTask().setSubTaskGroupType(groupType);
+          unlockUniverseForUpdate();
+        } else if (taskParams().actionType == BackupTableParams.ActionType.RESTORE) {
+          groupType = UserTaskDetails.SubTaskGroupType.RestoringTableBackup;
 
-      createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
+          // Handle case of backup being encrypted at rest
+          if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
+            // Download universe keys backup file for encryption at rest
+            BackupTableParams restoreKeysParams = new BackupTableParams();
+            restoreKeysParams.storageLocation = taskParams().storageLocation;
+            restoreKeysParams.universeUUID = taskParams().universeUUID;
+            restoreKeysParams.storageConfigUUID = taskParams().storageConfigUUID;
+            restoreKeysParams.kmsConfigUUID = taskParams().kmsConfigUUID;
+            restoreKeysParams.restoreTimeStamp = taskParams().restoreTimeStamp;
+            restoreKeysParams.actionType = BackupTableParams.ActionType.RESTORE_KEYS;
+            createTableBackupTask(restoreKeysParams).setSubTaskGroupType(groupType);
 
-      // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+            // Restore universe keys backup file for encryption at rest
+            createEncryptedUniverseKeyRestoreTask(taskParams()).setSubTaskGroupType(groupType);
+          }
+        } else {
+          throw new RuntimeException("Invalid backup action type: " + taskParams().actionType);
+        }
 
-      Set<String> tableNames =
-          taskParams()
-              .getTableNames()
-              .stream()
-              .map(tableName -> taskParams().getKeyspace() + ":" + tableName)
-              .collect(Collectors.toSet());
+        createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
 
-      taskInfo = String.join(",", tableNames);
+        Backup backup = Backup.create(taskParams().customerUuid, taskParams());
+        backup.setTaskUUID(userTaskUUID);
 
-      // Run all the tasks.
-      subTaskGroupQueue.run();
+        // Marks the update of this universe as a success only if all the tasks before it succeeded.
 
-      BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-      metricService.setOkStatusMetric(
-          buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
-      if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
-        unlockUniverseForUpdate();
+        createMarkUniverseUpdateSuccessTasks()
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+        Set<String> tableNames =
+            taskParams()
+                .getTableNames()
+                .stream()
+                .map(tableName -> taskParams().getKeyspace() + ":" + tableName)
+                .collect(Collectors.toSet());
+
+        taskInfo = String.join(",", tableNames);
+
+        // Run all the tasks.
+        subTaskGroupQueue.run();
+
+        BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        metricService.setOkStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
+          unlockUniverseForUpdate();
+        }
+      } catch (Throwable t) {
+        throw t;
+      } finally {
+        if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
+          lockedUpdateBackupState(taskParams().universeUUID, this, false);
+        }
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
@@ -169,10 +183,6 @@ public class BackupUniverse extends UniverseTaskBase {
       // errors out.
       unlockUniverseForUpdate();
       throw t;
-    } finally {
-      if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
-        updateBackupState(false);
-      }
     }
 
     log.info("Finished {} task.", getName());
@@ -185,6 +195,7 @@ public class BackupUniverse extends UniverseTaskBase {
     JsonNode params = schedule.getTaskParams();
     BackupTableParams taskParams = Json.fromJson(params, BackupTableParams.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.customerUuid = customerUUID;
     Universe universe = Universe.maybeGet(taskParams.universeUUID).orElse(null);
     if (universe == null) {
       schedule.stopSchedule();
@@ -209,7 +220,6 @@ public class BackupUniverse extends UniverseTaskBase {
           "in a locked/paused state or has backup running");
       return;
     }
-    Backup backup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     log.info(
@@ -217,7 +227,6 @@ public class BackupUniverse extends UniverseTaskBase {
         taskParams.tableUUID,
         taskParams.getTableName(),
         taskUUID);
-    backup.setTaskUUID(taskUUID);
     CustomerTask.create(
         customer,
         taskParams.universeUUID,
