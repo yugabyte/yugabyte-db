@@ -47,6 +47,16 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   }
 
   @Test
+  public void withFillFactor() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE public.pgbench_accounts (aid integer NOT NULL," +
+        "filler character(84)) WITH (fillfactor='100', user_catalog_table=false)");
+
+      stmt.execute("ALTER TABLE public.pgbench_accounts add constraint pkey primary key(aid)");
+    }
+  }
+
+  @Test
   public void duplicates() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int, v int)");
