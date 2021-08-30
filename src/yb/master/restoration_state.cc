@@ -22,10 +22,24 @@
 namespace yb {
 namespace master {
 
+namespace {
+
+std::string MakeRestorationStateLogPrefix(
+    const TxnSnapshotRestorationId& restoration_id, SnapshotState* snapshot) {
+  if (snapshot->schedule_id()) {
+    return Format("Restoration[$0/$1/$2]: ",
+                  restoration_id, snapshot->id(), snapshot->schedule_id());
+  }
+  return Format("Restoration[$0/$1]: ", restoration_id, snapshot->id());
+}
+
+} // namespace
+
 RestorationState::RestorationState(
     SnapshotCoordinatorContext* context, const TxnSnapshotRestorationId& restoration_id,
     SnapshotState* snapshot)
-    : StateWithTablets(context, SysSnapshotEntryPB::RESTORING),
+    : StateWithTablets(context, SysSnapshotEntryPB::RESTORING,
+                       MakeRestorationStateLogPrefix(restoration_id, snapshot)),
       restoration_id_(restoration_id), snapshot_id_(snapshot->id()) {
   InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
 }

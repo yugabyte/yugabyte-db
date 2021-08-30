@@ -90,6 +90,7 @@ class SnapshotState : public StateWithTablets {
 
  private:
   bool IsTerminalFailure(const Status& status) override;
+  CHECKED_STATUS CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;
@@ -98,7 +99,7 @@ class SnapshotState : public StateWithTablets {
   // When snapshot is taken as a part of snapshot schedule schedule_id_ will contain this
   // schedule id. Otherwise it will be nil.
   SnapshotScheduleId schedule_id_;
-  int version_;
+  int64_t version_;
   bool delete_started_ = false;
 };
 
