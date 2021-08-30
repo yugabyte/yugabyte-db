@@ -113,16 +113,13 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
       AddStringField("current_snapshot_id",
                      SnapshotIdToString(resp.current_snapshot_id()),
                      &document, &document.GetAllocator());
-
     } else {
       cout << "Current snapshot id: " << SnapshotIdToString(resp.current_snapshot_id()) << endl;
     }
   }
 
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
-  if (json) {
-    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
-  } else {
+  if (!json) {
     if (resp.snapshots_size()) {
       cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << endl;
     } else {
@@ -135,9 +132,17 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
     if (json) {
       AddStringField(
           "id", SnapshotIdToString(snapshot.id()), &json_snapshot, &document.GetAllocator());
+      const auto& entry = snapshot.entry();
       AddStringField(
-          "state", SysSnapshotEntryPB::State_Name(snapshot.entry().state()), &json_snapshot,
+          "state", SysSnapshotEntryPB::State_Name(entry.state()), &json_snapshot,
           &document.GetAllocator());
+      AddStringField(
+          "snapshot_time", HybridTimeToString(HybridTime::FromPB(entry.snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
+      AddStringField(
+          "previous_snapshot_time",
+          HybridTimeToString(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
     } else {
       cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
     }
@@ -186,6 +191,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   }));
 
   if (json) {
+    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
     std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
     return Status::OK();
   }
@@ -436,7 +442,9 @@ Result<rapidjson::Document> ClusterAdminClient::DeleteSnapshotSchedule(
 }
 
 bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
-  return HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
+  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
+          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
+         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
          HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
 }
 
