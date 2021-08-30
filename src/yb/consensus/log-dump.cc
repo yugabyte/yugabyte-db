@@ -226,8 +226,7 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
 
 Status DumpSegment(const string &segment_path) {
   Env *env = Env::Default();
-  scoped_refptr<ReadableLogSegment> segment;
-  RETURN_NOT_OK(ReadableLogSegment::Open(env, segment_path, &segment));
+  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
   RETURN_NOT_OK(PrintSegment(segment));
 
   return Status::OK();
@@ -248,8 +247,7 @@ Status FilterLogSegment(const string& segment_path) {
   output_wal_dir = VERIFY_RESULT(env->Canonicalize(output_wal_dir));
   LOG(INFO) << "Created directory " << output_wal_dir;
 
-  scoped_refptr<ReadableLogSegment> segment;
-  RETURN_NOT_OK(ReadableLogSegment::Open(env, segment_path, &segment));
+  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
   Schema tablet_schema;
   const auto& segment_header = segment->header();
 

@@ -95,7 +95,8 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
   tserver::FlushTabletsRequestPB req;
   req.set_dest_uuid(permanent_uuid_);
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-  req.set_is_compaction(is_compaction_);
+  req.set_operation(is_compaction_ ? tserver::FlushTabletsRequestPB::COMPACT
+                                   : tserver::FlushTabletsRequestPB::FLUSH);
 
   for (const TabletId& id : tablet_ids_) {
     req.add_tablet_ids(id);

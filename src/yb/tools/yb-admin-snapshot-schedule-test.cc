@@ -346,7 +346,7 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
       controller.set_timeout(30s);
       RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
 
-      req.set_is_compaction(true);
+      req.set_operation(tserver::FlushTabletsRequestPB::COMPACT);
       controller.Reset();
       RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
     }
