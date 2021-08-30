@@ -549,6 +549,7 @@ class YBBackup:
     def __init__(self):
         self.leader_master_ip = ''
         self.ysql_ip = ''
+        self.live_tserver_ip = ''
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
         self.k8s_namespace_to_cfg = {}
@@ -841,6 +842,12 @@ class YBBackup:
     def needs_change_user(self):
         return self.args.ssh_user != self.args.remote_user
 
+    def get_main_host_ip(self):
+        if self.is_k8s():
+            return self.get_live_tserver_ip()
+        else:
+            return self.get_leader_master_ip()
+
     def get_leader_master_ip(self):
         if not self.leader_master_ip:
             all_masters = self.args.masters.split(",")
@@ -862,13 +869,33 @@ class YBBackup:
 
         return self.leader_master_ip
 
+    def get_live_tserver_ip(self):
+        if not self.live_tserver_ip:
+            output = self.run_yb_admin(['list_all_tablet_servers'])
+            for line in output.splitlines():
+                if LEADING_UUID_RE.match(line):
+                    fields = split_by_space(line)
+                    ip_port = fields[1]
+                    state = fields[3]
+                    (ip, port) = ip_port.split(':')
+                    if state == 'ALIVE':
+                        self.live_tserver_ip = ip
+                        break
+
+        if not self.live_tserver_ip:
+            raise BackupException("Cannot get alive TS:\n{}".format(output))
+
+        return self.live_tserver_ip
+
     def get_ysql_ip(self):
         if not self.ysql_ip:
             output = ""
             if self.args.ysql_enable_auth:
                 # Note that this requires YSQL commands to be run on the master leader.
+                # In case of k8s, we get live tserver, since master pod does not have
+                # pgsql unix socket.
                 socket_fds = self.run_ssh_cmd(
-                    "ls /tmp/.yb.*/.s.PGSQL.*", self.get_leader_master_ip()).strip().split()
+                        "ls /tmp/.yb.*/.s.PGSQL.*", self.get_main_host_ip()).strip().split()
                 if len(socket_fds):
                     self.ysql_ip = os.path.dirname(socket_fds[0])
                 else:
@@ -877,23 +904,14 @@ class YBBackup:
                 self.ysql_ip = self.args.ysql_host
             else:
                 # Get first ALIVE TS.
-                output = self.run_yb_admin(['list_all_tablet_servers'])
-                for line in output.splitlines():
-                    if LEADING_UUID_RE.match(line):
-                        fields = split_by_space(line)
-                        ip_port = fields[1]
-                        state = fields[3]
-                        (ip, port) = ip_port.split(':')
-                        if state == 'ALIVE':
-                            self.ysql_ip = ip
-                            break
+                self.ysql_ip = self.get_live_tserver_ip()
 
             if not self.ysql_ip:
                 raise BackupException("Cannot get alive TS:\n{}".format(output))
 
         return self.ysql_ip
 
-    def run_tool(self, local_tool, remote_tool, std_args, cmd_line_args, env_vars={}):
+    def run_tool(self, local_tool, remote_tool, std_args, cmd_line_args, run_ip=None, env_vars={}):
         """
         Runs the utility from the configured location.
         :param cmd_line_args: command-line arguments to the tool
@@ -908,14 +926,18 @@ class YBBackup:
             return self.run_program([local_tool] + std_args + cmd_line_args,
                                     env=env_vars, num_retry=10)
         else:
+            if run_ip:
+                run_at_location = run_ip
+            else:
+                run_at_location = self.get_leader_master_ip()
             # Using remote tool binary on leader master server.
             return self.run_ssh_cmd(
                 [remote_tool] + std_args + cmd_line_args,
-                self.get_leader_master_ip(),
+                run_at_location,
                 num_ssh_retry=10,
                 env_vars=env_vars)
 
-    def run_yb_admin(self, cmd_line_args):
+    def run_yb_admin(self, cmd_line_args, run_ip=None):
         """
         Runs the yb-admin utility from the configured location.
         :param cmd_line_args: command-line arguments to yb-admin
@@ -929,7 +951,8 @@ class YBBackup:
             cmd_line_args = cert_flag + cmd_line_args
 
         return self.run_tool(self.args.local_yb_admin_binary, self.args.remote_yb_admin_binary,
-                             ['--master_addresses', self.args.masters], cmd_line_args)
+                             ['--master_addresses', self.args.masters],
+                             cmd_line_args, run_ip=run_ip)
 
     def get_ysql_dump_std_args(self):
         args = ['--host=' + self.get_ysql_ip()]
@@ -951,12 +974,15 @@ class YBBackup:
                             'FLAGS_use_node_to_node_encryption': 'true'
                         }
 
+        run_at_ip = None
+        if self.is_k8s():
+            run_at_ip = self.get_live_tserver_ip()
         # If --ysql_enable_auth is passed, connect with ysql through the remote socket.
         local_binary = None if self.args.ysql_enable_auth else self.args.local_ysql_dump_binary
 
         return self.run_tool(local_binary, self.args.remote_ysql_dump_binary,
                              self.get_ysql_dump_std_args() + ['--masters=' + self.args.masters],
-                             cmd_line_args, env_vars=certs_env)
+                             cmd_line_args, run_ip=run_at_ip, env_vars=certs_env)
 
     def run_ysql_shell(self, cmd_line_args):
         """
@@ -964,9 +990,12 @@ class YBBackup:
         :param cmd_line_args: command-line arguments to ysql shell
         :return: the standard output of ysql shell
         """
+        run_at_ip = None
+        if self.is_k8s():
+            run_at_ip = self.get_live_tserver_ip()
 
         return self.run_tool(self.args.local_ysql_shell_binary, self.args.remote_ysql_shell_binary,
-                             self.get_ysql_dump_std_args(), cmd_line_args)
+                             self.get_ysql_dump_std_args(), cmd_line_args, run_ip=run_at_ip)
 
     def create_snapshot(self):
         """
@@ -1704,7 +1733,7 @@ class YBBackup:
             self.run_program(
                 self.storage.upload_file_cmd(src_path, dest_path))
         else:
-            server_ip = self.get_leader_master_ip()
+            server_ip = self.get_main_host_ip()
 
             logging.info('Creating check-sum for %s on tablet server %s' % (
                          src_path, server_ip))
@@ -1751,7 +1780,7 @@ class YBBackup:
         if self.args.local_yb_admin_binary:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
-            self.create_remote_tmp_dir(self.get_leader_master_ip())
+            self.create_remote_tmp_dir(self.get_main_host_ip())
 
         is_ysql = self.is_ysql_keyspace()
         if is_ysql:
@@ -1817,7 +1846,8 @@ class YBBackup:
 
         metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
         logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
-        self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path])
+        self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path],
+                          run_ip=self.get_main_host_ip())
         self.upload_metadata_and_checksum(metadata_path,
                                           os.path.join(snapshot_filepath, METADATA_FILE_NAME))
 
@@ -1898,11 +1928,13 @@ class YBBackup:
                 compare_checksums_cmd(checksum_downloaded,
                                       checksum_path(target_path))).strip()
         else:
-            server_ip = self.get_leader_master_ip()
-            checksum_downloaded = checksum_path_downloaded(target_path)
-            self.run_ssh_cmd(
-                self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
-                server_ip)
+            server_ip = self.get_main_host_ip()
+
+            if not self.args.disable_checksums:
+                checksum_downloaded = checksum_path_downloaded(target_path)
+                self.run_ssh_cmd(
+                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
+                    server_ip)
             self.run_ssh_cmd(
                 self.storage.download_file_cmd(src_path, target_path),
                 server_ip)
@@ -1929,7 +1961,7 @@ class YBBackup:
         if self.args.local_yb_admin_binary:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
-            self.create_remote_tmp_dir(self.get_leader_master_ip())
+            self.create_remote_tmp_dir(self.get_main_host_ip())
 
         src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
         metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
@@ -1963,7 +1995,7 @@ class YBBackup:
             if self.args.local_yb_admin_binary:
                 old_db_name = self.run_program(cmd).strip()
             else:
-                old_db_name = self.run_ssh_cmd(cmd, self.get_leader_master_ip()).strip()
+                old_db_name = self.run_ssh_cmd(cmd, self.get_main_host_ip()).strip()
 
             new_db_name = keyspace_name(self.args.keyspace[0])
             logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
@@ -1973,7 +2005,7 @@ class YBBackup:
             if self.args.local_yb_admin_binary:
                 self.run_program(cmd)
             else:
-                self.run_ssh_cmd(cmd, self.get_leader_master_ip())
+                self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
         self.run_ysql_shell(['--echo-all', '--file=' + dump_file_path])
 
@@ -1992,7 +2024,7 @@ class YBBackup:
         if self.args.table:
             yb_admin_args += [' '.join(self.args.table)]
 
-        output = self.run_yb_admin(yb_admin_args)
+        output = self.run_yb_admin(yb_admin_args, run_ip=self.get_main_host_ip())
 
         snapshot_metadata = {}
         snapshot_metadata['keyspace_name'] = []
