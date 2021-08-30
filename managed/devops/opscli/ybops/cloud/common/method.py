@@ -786,7 +786,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     logging.info(
                         "Variables to download {} directly on the remote host added."
                         .format(args.package))
-                if args.gcs_remote_download:
+                elif args.gcs_remote_download:
                     gcs_credentials_json = args.gcs_credentials_json or \
                                            os.getenv('GCS_CREDENTIALS_JSON')
 
