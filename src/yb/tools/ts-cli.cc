@@ -501,7 +501,8 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
     req.set_all_tablets(true);
   }
   req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
-  req.set_is_compaction(is_compaction);
+  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
+                                  : tserver::FlushTabletsRequestPB::FLUSH);
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK_PREPEND(ts_admin_proxy_->FlushTablets(req, &resp, &rpc),
                         "FlushTablets() failed");

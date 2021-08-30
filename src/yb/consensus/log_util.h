@@ -165,9 +165,7 @@ struct FirstEntryMetadata {
 class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
  public:
   // Factory method to construct a ReadableLogSegment from a file on the FS.
-  static CHECKED_STATUS Open(Env* env,
-                     const std::string& path,
-                     scoped_refptr<ReadableLogSegment>* segment);
+  static Result<scoped_refptr<ReadableLogSegment>> Open(Env* env, const std::string& path);
 
   // Build a readable segment to read entries from the provided path.
   ReadableLogSegment(std::string path,
@@ -189,8 +187,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   // Initialize the ReadableLogSegment.
   // This initializer will parse the log segment header and footer.
-  // Note: This returns Status and may fail.
-  CHECKED_STATUS Init();
+  // Returns false if it is empty segment, that could be ignored.
+  Result<bool> Init();
 
   // Reads all entries of the provided segment.
   //
@@ -222,10 +220,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     return path_;
   }
 
-  const LogSegmentHeaderPB& header() const {
-    DCHECK(header_.IsInitialized());
-    return header_;
-  }
+  const LogSegmentHeaderPB& header() const;
 
   // Indicates whether this segment has a footer.
   //
@@ -293,7 +288,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   CHECKED_STATUS ReadFileSize();
 
-  CHECKED_STATUS ReadHeader();
+  Result<bool> ReadHeader();
 
   CHECKED_STATUS ReadHeaderMagicAndHeaderLength(uint32_t *len);
 
