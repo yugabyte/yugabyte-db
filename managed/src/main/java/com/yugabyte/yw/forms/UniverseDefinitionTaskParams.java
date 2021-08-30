@@ -64,7 +64,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public List<Cluster> clusters = new LinkedList<>();
 
   // This is set during configure to figure out which cluster type is intended to be modified.
-  public ClusterType currentClusterType;
+  @ApiModelProperty public ClusterType currentClusterType;
 
   public ClusterType getCurrentClusterType() {
     return currentClusterType == null ? ClusterType.PRIMARY : currentClusterType;
@@ -72,59 +72,60 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // This should be a globally unique name - it is a combination of the customer id and the universe
   // id. This is used as the prefix of node names in the universe.
-  public String nodePrefix = null;
+  @ApiModelProperty public String nodePrefix = null;
 
   // The UUID of the rootCA to be used to generate node certificates and facilitate TLS
   // communication between database nodes.
-  public UUID rootCA = null;
+  @ApiModelProperty public UUID rootCA = null;
 
   // The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS
   // communication between server and client.
-  public UUID clientRootCA = null;
+  @ApiModelProperty public UUID clientRootCA = null;
 
   // This flag represents whether user has chosen to use same certificates for node to node and
   // client to server communication.
   // Default is set to true to ensure backward compatability
-  public boolean rootAndClientRootCASame = true;
+  @ApiModelProperty public boolean rootAndClientRootCASame = true;
 
   // This flag represents whether user has chosen to provide placement info
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path
-  public boolean userAZSelected = false;
+  @ApiModelProperty public boolean userAZSelected = false;
 
   // Set to true if resetting Universe form (in EDIT mode), false otherwise.
-  public boolean resetAZConfig = false;
+  @ApiModelProperty public boolean resetAZConfig = false;
 
   // TODO: Add a version number to prevent stale updates.
   // Set to true when an create/edit/destroy intent on the universe is started.
-  public boolean updateInProgress = false;
+  @ApiModelProperty public boolean updateInProgress = false;
 
-  public boolean backupInProgress = false;
+  @ApiModelProperty public boolean backupInProgress = false;
 
   // This tracks the if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
-  public boolean updateSucceeded = true;
+  @ApiModelProperty public boolean updateSucceeded = true;
 
   // This tracks whether the universe is in the paused state or not.
-  public boolean universePaused = false;
+  @ApiModelProperty public boolean universePaused = false;
 
   // The next cluster index to be used when a new read-only cluster is added.
-  public int nextClusterIndex = 1;
+  @ApiModelProperty public int nextClusterIndex = 1;
 
   // Flag to mark if the universe was created with insecure connections allowed.
   // Ideally should be false since we would never want to allow insecure connections,
   // but defaults to true since we want universes created through pre-TLS YW to be
   // unaffected.
-  public boolean allowInsecure = true;
+  @ApiModelProperty public boolean allowInsecure = true;
 
   // Flag to check whether the txn_table_wait_ts_count gflag has to be set
   // while creating the universe or not. By default it should be false as we
   // should not set this flag for operations other than create universe.
-  public boolean setTxnTableWaitCountFlag = false;
+  @ApiModelProperty public boolean setTxnTableWaitCountFlag = false;
 
   // Development flag to download package from s3 bucket.
-  public String itestS3PackagePath = "";
-  public String remotePackagePath = "";
+  @ApiModelProperty public String itestS3PackagePath = "";
+
+  @ApiModelProperty public String remotePackagePath = "";
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -136,7 +137,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   // State of the imported universe.
-  public ImportedState importedState = ImportedState.NONE;
+  @ApiModelProperty public ImportedState importedState = ImportedState.NONE;
 
   /** Type of operations that can be performed on the universe. */
   public enum Capability {
@@ -145,7 +146,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   // Capability of the universe.
-  public Capability capability = Capability.EDITS_ALLOWED;
+  @ApiModelProperty public Capability capability = Capability.EDITS_ALLOWED;
 
   /** Types of Clusters that can make up a universe. */
   public enum ClusterType {
@@ -308,42 +309,43 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   /** The user defined intent for the universe. */
   public static class UserIntent {
-    @Constraints.Required()
     // Nice name for the universe.
-    public String universeName;
+    @Constraints.Required() @ApiModelProperty public String universeName;
 
     // TODO: https://github.com/yugabyte/yugabyte-db/issues/8190
     // The cloud provider UUID.
-    public String provider;
+    @ApiModelProperty public String provider;
 
     // The cloud provider type as an enum. This is set in the middleware from the provider UUID
     // field above.
-    public CloudType providerType = CloudType.unknown;
+    @ApiModelProperty public CloudType providerType = CloudType.unknown;
 
     // The replication factor.
     @Constraints.Min(1)
+    @ApiModelProperty
     public int replicationFactor = 3;
 
     // The list of regions that the user wants to place data replicas into.
-    public List<UUID> regionList;
+    @ApiModelProperty public List<UUID> regionList;
 
     // The regions that the user wants to nominate as the preferred region. This makes sense only
     // for a multi-region setup.
-    public UUID preferredRegion;
+    @ApiModelProperty public UUID preferredRegion;
 
     // Cloud Instance Type that the user wants
-    @Constraints.Required() public String instanceType;
+    @Constraints.Required() @ApiModelProperty public String instanceType;
 
     // The number of nodes to provision. These include ones for both masters and tservers.
     @Constraints.Min(1)
+    @ApiModelProperty
     public int numNodes;
 
     // The software version of YB to install.
-    @Constraints.Required() public String ybSoftwareVersion;
+    @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;
 
-    @Constraints.Required() public String accessKeyCode;
+    @Constraints.Required() @ApiModelProperty public String accessKeyCode;
 
-    public DeviceInfo deviceInfo;
+    @ApiModelProperty public DeviceInfo deviceInfo;
 
     @ApiModelProperty(notes = "default: true")
     public boolean assignPublicIP = true;
@@ -376,7 +378,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(notes = "default: NONE")
     public ExposingServiceState enableExposingService = ExposingServiceState.NONE;
 
-    public String awsArnString;
+    @ApiModelProperty public String awsArnString;
 
     // When this is set to true, YW will setup the universe to communicate by way of hostnames
     // instead of ip addresses. These hostnames will have been provided during on-prem provider
@@ -388,11 +390,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
-    public Map<String, String> masterGFlags = new HashMap<>();
-    public Map<String, String> tserverGFlags = new HashMap<>();
+    @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
+    @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Instance tags (used for AWS only).
-    public Map<String, String> instanceTags = new HashMap<>();
+    @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
 
     @Override
     public String toString() {
