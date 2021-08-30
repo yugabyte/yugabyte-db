@@ -138,8 +138,8 @@ void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suf
 void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  const std::string index_name = "ttt_idx";
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", index_name));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  const auto index_name = "ttt_idx";
   ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", index_name, kTableName));
 
   // Verify that retain_delete_markers was set properly in the index table schema.
