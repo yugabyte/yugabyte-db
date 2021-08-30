@@ -138,6 +138,11 @@ message MasterErrorPB {
     REACHED_SPLIT_LIMIT = 36;
 
     SPLIT_OR_BACKFILL_IN_PROGRESS = 37;
+
+    // Error in case a tablet-level operation was attempted on a tablet which is not running.
+    TABLET_NOT_RUNNING = 38;
+
+    TABLE_NOT_RUNNING = 39;
   }
 
   // The error code.
