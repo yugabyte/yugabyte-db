@@ -56,8 +56,8 @@ export default class AddCertificateForm extends Component {
 
   placeholderObject = {
     rootCACert: '/opt/yugabyte/keys/cert1/ca.crt',
-    nodeCertPath: '/opt/yugabyte/keys/cert1/node.key',
-    nodeCertPrivate: '/opt/yugabyte/keys/cert1/node.crt',
+    nodeCertPath: '/opt/yugabyte/keys/cert1/node.crt',
+    nodeCertPrivate: '/opt/yugabyte/keys/cert1/node.key',
     clientCertPath: '/opt/yugabyte/yugaware/data/cert1/client.crt',
     clientKeyPath: '/opt/yugabyte/yugaware/data/cert1/client.key'
   };
