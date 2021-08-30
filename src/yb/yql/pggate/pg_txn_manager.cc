@@ -49,7 +49,7 @@ uint64_t txn_priority_regular_upper_bound = yb::kRegularTxnUpperBound;
 uint64_t txn_priority_regular_lower_bound = yb::kRegularTxnLowerBound;
 
 // Converts double value in range 0..1 to uint64_t value in range [minValue, maxValue]
-uint64_t ConvertBound(double value, uint64_t minValue, uint64_t maxValue) {
+uint64_t ConvertBound(long double value, uint64_t minValue, uint64_t maxValue) {
   if (value <= 0.0) {
     return minValue;
   }
@@ -58,8 +58,7 @@ uint64_t ConvertBound(double value, uint64_t minValue, uint64_t maxValue) {
     return maxValue;
   }
 
-  // Have to cast to double to avoid a warning on implicit cast that changes the value.
-  return minValue + value * static_cast<double>(maxValue - minValue);
+  return minValue + value * (maxValue - minValue);
 }
 
 uint64_t ConvertRegularPriorityTxnBound(double value) {
