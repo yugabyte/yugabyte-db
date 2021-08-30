@@ -721,11 +721,11 @@ class PrometheusWriter {
 
   CHECKED_STATUS FlushAggregatedValues(const uint32_t& num_tables, string priority_regex) {
     uint32_t counter = 0;
+    const auto& p_regex = std::regex(priority_regex);
     for (const auto& entry : per_table_values_) {
       const auto& attrs = per_table_attributes_[entry.first];
       for (const auto& metric_entry : entry.second) {
-        if (std::regex_match(metric_entry.first, std::regex(priority_regex))
-            || counter < num_tables) {
+        if (counter < num_tables || std::regex_match(metric_entry.first, p_regex)) {
           RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
         }
       }
