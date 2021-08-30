@@ -176,10 +176,12 @@ Status LogReader::Init(const string& tablet_wal_path) {
     }
 
     string fqp = JoinPathSegments(tablet_wal_path, potential_log_file);
-    scoped_refptr<ReadableLogSegment> segment;
-    RETURN_NOT_OK_PREPEND(ReadableLogSegment::Open(env_, fqp, &segment),
-                          Format("Unable to open readable log segment: $0", fqp));
-    DCHECK(segment);
+    auto segment = VERIFY_RESULT_PREPEND(ReadableLogSegment::Open(env_, fqp),
+                                         Format("Unable to open readable log segment: $0", fqp));
+    if (!segment) {
+      LOG_WITH_PREFIX(INFO) << "Log segment w/o header: " << fqp << ", skipping";
+      continue;
+    }
     CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();
 
     if (!segment->HasFooter()) {

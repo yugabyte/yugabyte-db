@@ -712,9 +712,16 @@ Status TabletPeer::RunLogGC() {
   }
   auto s = reset_cdc_min_replicated_index_if_stale();
   if (!s.ok()) {
-    LOG(WARNING) << "Unable to reset cdc min replicated index " << s;
+    LOG_WITH_PREFIX(WARNING) << "Unable to reset cdc min replicated index " << s;
   }
-  int64_t min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  int64_t min_log_index;
+  if (VLOG_IS_ON(2)) {
+    std::string details;
+    min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex(&details));
+    LOG_WITH_PREFIX(INFO) << __func__ << ": " << details;
+  } else {
+     min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  }
   int32_t num_gced = 0;
   return log_->GC(min_log_index, &num_gced);
 }
