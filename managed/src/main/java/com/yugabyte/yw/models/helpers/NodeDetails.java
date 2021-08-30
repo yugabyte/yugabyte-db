@@ -20,7 +20,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /** Represents all the details of a cloud node that are of interest. */
-@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonIgnoreProperties(
+    // Ignore auto-generated boolean properties: https://stackoverflow.com/questions/32270422
+    value = {"master", "tserver", "redisServer", "yqlServer", "ysqlServer"},
+    ignoreUnknown = true)
 @ApiModel(description = "Node details")
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
