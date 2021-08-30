@@ -138,7 +138,8 @@ void TabletInfo::SetReplicaLocations(
 
 CHECKED_STATUS TabletInfo::CheckRunning() const {
   if (!table()->is_running()) {
-    return STATUS_FORMAT(Expired, "Table is not running: $0", table()->ToStringWithState());
+    return STATUS_EC_FORMAT(Expired, MasterError(MasterErrorPB::TABLE_NOT_RUNNING),
+                            "Table is not running: $0", table()->ToStringWithState());
   }
 
   return Status::OK();
