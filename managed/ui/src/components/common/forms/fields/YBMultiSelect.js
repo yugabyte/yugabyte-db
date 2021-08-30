@@ -57,7 +57,7 @@ export class YBNewMultiSelect extends Component {
         borderRadius: 7,
         boxShadow: 'inset 0 1px 1px rgba(0, 0, 0, .075)',
         fontSize: '14px',
-        height: 42
+        minHeight: 42
       }),
       placeholder: (provided) => ({
         ...provided,
