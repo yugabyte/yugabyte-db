@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/). 
+A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/). 
 
 The representation of a general graph requires an explicit, distinct, representation of the nodes and the edges. Of course, a hierarchy can be represented in this way. But because of how it's restricted, it allows a simpler representation in a SQL database where only the nodes are explicitly represented, in a single table, and where the edges are inferred using a self-referential foreign key:
 
@@ -20,7 +20,7 @@ The representation of a general graph requires an explicit, distinct, representa
 
 This is referred to as a one-to-many recursive relationship, or one-to-many "pig's ear", in the jargon of entity-relationship modeling. The ultimate, unique, root of the hierarchy has the _"parent ID"_ set to `NULL`.
 
-The SQL that this section presents uses the simpler representation. But the section  [Using a recursive CTE to traverse graphs of all kinds](..//traversing-general-graphs/) shows, for completeness, that the general SQL that you need to follow edges in a general graph works when the general representation happens to describe a hierarchy. See the section [Finding the paths in a rooted tree](../traversing-general-graphs/rooted-tree/).
+The SQL that this section presents uses the simpler representation. But the section  [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/) shows, for completeness, that the general SQL that you need to follow edges in a general graph works when the general representation happens to describe a hierarchy. See the section [Finding the paths in a rooted tree](../traversing-general-graphs/rooted-tree/).
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}
 
