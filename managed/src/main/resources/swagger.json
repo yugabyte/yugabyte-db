@@ -3077,7 +3077,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "isAffinitized", "name", "numNodesInAZ", "replicationFactor", "subnet", "uuid" ],
       "type" : "object"
     },
     "PlacementCloud" : {
@@ -3096,7 +3095,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "code", "regionList", "uuid" ],
       "type" : "object"
     },
     "PlacementInfo" : {
@@ -3130,7 +3128,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "azList", "code", "name", "uuid" ],
       "type" : "object"
     },
     "PlatformResults" : {
@@ -3869,7 +3866,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
+      "required" : [ "clusters" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParamsResp" : {
@@ -4011,7 +4008,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
+      "required" : [ "clusters" ],
       "type" : "object"
     },
     "UniverseResourceDetails" : {
@@ -4232,7 +4229,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "accessKeyCode", "awsArnString", "deviceInfo", "instanceTags", "instanceType", "masterGFlags", "numNodes", "preferredRegion", "provider", "providerType", "regionList", "replicationFactor", "tserverGFlags", "universeName", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "UserRegistrationData" : {

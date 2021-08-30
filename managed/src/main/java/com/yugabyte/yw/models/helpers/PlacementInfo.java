@@ -3,6 +3,8 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -16,11 +18,11 @@ import java.util.UUID;
 public class PlacementInfo {
   public static class PlacementCloud {
     // The cloud provider id.
-    public UUID uuid;
+    @ApiModelProperty public UUID uuid;
     // The cloud provider code.
-    public String code;
+    @ApiModelProperty public String code;
     // The list of region in this cloud we want to place data in.
-    public List<PlacementRegion> regionList = new ArrayList<PlacementRegion>();
+    @ApiModelProperty public List<PlacementRegion> regionList = new ArrayList<PlacementRegion>();
 
     @Override
     public String toString() {
@@ -34,13 +36,13 @@ public class PlacementInfo {
 
   public static class PlacementRegion {
     // The region provider id.
-    public UUID uuid;
+    @ApiModelProperty public UUID uuid;
     // The actual provider given region code.
-    public String code;
+    @ApiModelProperty public String code;
     // The region name.
-    public String name;
+    @ApiModelProperty public String name;
     // The list of AZs inside this region into which we want to place data.
-    public List<PlacementAZ> azList = new ArrayList<PlacementAZ>();
+    @ApiModelProperty public List<PlacementAZ> azList = new ArrayList<PlacementAZ>();
 
     @Override
     public String toString() {
@@ -52,20 +54,23 @@ public class PlacementInfo {
     }
   }
 
-  @JsonIgnoreProperties(ignoreUnknown = true)
+  @JsonIgnoreProperties(
+      // Ignore auto-generated boolean properties: https://stackoverflow.com/questions/32270422
+      value = {"affinitized"},
+      ignoreUnknown = true)
   public static class PlacementAZ {
     // The AZ provider id.
-    public UUID uuid;
+    @ApiModelProperty public UUID uuid;
     // The AZ name.
-    public String name;
+    @ApiModelProperty public String name;
     // The minimum number of copies of data we should place into this AZ.
-    public int replicationFactor;
+    @ApiModelProperty public int replicationFactor;
     // The subnet in the AZ.
-    public String subnet;
+    @ApiModelProperty public String subnet;
     // Number of nodes in each Az.
-    public int numNodesInAZ;
+    @ApiModelProperty public int numNodesInAZ;
     // Is this an affinitized zone.
-    public boolean isAffinitized;
+    @ApiModelProperty public boolean isAffinitized;
 
     @Override
     public String toString() {
