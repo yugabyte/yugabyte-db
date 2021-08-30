@@ -25,12 +25,12 @@ Creating a cluster with replication factor 5
   yb-ctl --rf 5 start
 
 Creating a cluster with placement_info
-  yb-ctl start
-  --placement_info "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3"
+  yb-ctl start --placement_info "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3"
 
-Creating a cluster with custom_flags
-  yb-ctl start --master_flags "flag1=value,flag2=value,flag3=value"
-  --tserver_flags "flag1=value,flag2=value,flag3=value"
+Creating a cluster with custom flags
+  yb-ctl start \\
+    --master_flags 'flag1=value,flag2=value,flag3=value' \\
+    --tserver_flags 'flag1=value,"flag2=complex=,=,=,value",flag3=value'
 
 Destroying a cluster
   yb-ctl destroy
