@@ -52,10 +52,9 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     backupTableParams.actionType = actionType;
     backupTableParams.enableVerboseLogs = enableVerboseLogs;
+    backupTableParams.customerUuid = defaultCustomer.uuid;
     try {
-      Backup backup = Backup.create(defaultCustomer.uuid, backupTableParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
-      backup.setTaskUUID(taskUUID);
       CustomerTask.create(
           defaultCustomer,
           defaultUniverse.universeUUID,

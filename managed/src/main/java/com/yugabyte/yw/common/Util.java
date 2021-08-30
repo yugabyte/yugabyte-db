@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -527,5 +528,19 @@ public class Util {
   public static String unixTimeToDateString(long unixTimestampMs, String dateFormat) {
     SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
     return formatter.format(new Date(unixTimestampMs));
+  }
+
+  // Update the Universe's 'backupInProgress' flag to new state in synchronized manner to avoid
+  // race condition.
+  public static synchronized void lockedUpdateBackupState(
+      UUID universeUUID, UniverseTaskBase backupTask, boolean newState) {
+    if (Universe.getOrBadRequest(universeUUID).getUniverseDetails().backupInProgress == newState) {
+      if (newState) {
+        throw new RuntimeException("A backup for this universe is already in progress.");
+      } else {
+        return;
+      }
+    }
+    backupTask.updateBackupState(newState);
   }
 }
