@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.concurrent;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class MultiKeyLock<T> extends KeyLock<T> {
@@ -22,12 +23,22 @@ public class MultiKeyLock<T> extends KeyLock<T> {
   }
 
   public void acquireLocks(Collection<T> keys) {
-    List<T> sortedKeys = keys.stream().sorted(comparator).distinct().collect(Collectors.toList());
+    List<T> sortedKeys =
+        keys.stream()
+            .filter(Objects::nonNull)
+            .sorted(comparator)
+            .distinct()
+            .collect(Collectors.toList());
     sortedKeys.forEach(this::acquireLock);
   }
 
   public void releaseLocks(Collection<T> keys) {
-    List<T> sortedKeys = keys.stream().sorted(comparator).distinct().collect(Collectors.toList());
+    List<T> sortedKeys =
+        keys.stream()
+            .filter(Objects::nonNull)
+            .sorted(comparator)
+            .distinct()
+            .collect(Collectors.toList());
     sortedKeys.forEach(this::releaseLock);
   }
 }

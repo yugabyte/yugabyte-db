@@ -5,8 +5,7 @@
   "description": "Best alert ever",
   "targetType": "UNIVERSE",
   "target": {
-    "all": true,
-    "uuids": null
+    "all": true
   },
   "thresholds": {
     "SEVERE": {
