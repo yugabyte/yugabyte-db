@@ -97,7 +97,7 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
 class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
     def __init__(self, base_command):
         super(GcpCreateRootVolumesMethod, self).__init__(base_command)
-        self.provision_method = GcpProvisionInstancesMethod(base_command)
+        self.create_method = GcpCreateInstancesMethod(base_command)
 
     def create_master_volume(self, args):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
