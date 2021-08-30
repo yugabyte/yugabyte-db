@@ -1107,7 +1107,7 @@ TEST_F(YbAdminSnapshotScheduleTest, DropKeyspaceAndSchedule) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
-  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, kInterval * 4));
 
   auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
 
@@ -1120,8 +1120,19 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
     ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'value')"));
     Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
     ASSERT_OK(conn.ExecuteQuery("CREATE UNIQUE INDEX test_table_idx ON test_table (value)"));
+    std::this_thread::sleep_for(kInterval * 2);
     ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
   }
+
+  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
+  std::string id = ASSERT_RESULT(Get(snapshots[0], "id")).get().GetString();
+  ASSERT_OK(WaitFor([this, &id]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
+    auto current_id = VERIFY_RESULT(Get(snapshots[0], "id")).get().GetString();
+    return current_id != id;
+  }, kInterval * 3, "Wait first snapshot to be deleted"));
 }
 
 }  // namespace tools

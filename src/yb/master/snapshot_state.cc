@@ -40,10 +40,24 @@ Result<docdb::KeyBytes> EncodedSnapshotKey(
   return EncodedKey(SysRowEntry::SNAPSHOT, id.AsSlice(), context);
 }
 
+namespace {
+
+std::string MakeSnapshotStateLogPrefix(
+    const TxnSnapshotId& id, const std::string& schedule_id_str) {
+  auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+  if (schedule_id) {
+    return Format("Snapshot[$0/$1]: ", id, schedule_id);
+  }
+  return Format("Snapshot[$0]: ", id);
+}
+
+} // namespace
+
 SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const tserver::TabletSnapshotOpRequestPB& request)
-    : StateWithTablets(context, SysSnapshotEntryPB::CREATING),
+    : StateWithTablets(context, SysSnapshotEntryPB::CREATING,
+                       MakeSnapshotStateLogPrefix(id, request.schedule_id())),
       id_(id), snapshot_hybrid_time_(request.snapshot_hybrid_time()),
       previous_snapshot_hybrid_time_(HybridTime::FromPB(request.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(request.schedule_id())), version_(1) {
@@ -55,7 +69,8 @@ SnapshotState::SnapshotState(
 SnapshotState::SnapshotState(
     SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
     const SysSnapshotEntryPB& entry)
-    : StateWithTablets(context, entry.state()),
+    : StateWithTablets(context, entry.state(),
+                       MakeSnapshotStateLogPrefix(id, entry.schedule_id())),
       id_(id), snapshot_hybrid_time_(entry.snapshot_hybrid_time()),
       previous_snapshot_hybrid_time_(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
       schedule_id_(TryFullyDecodeSnapshotScheduleId(entry.schedule_id())),
@@ -184,6 +199,17 @@ Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(
     .snapshot_dir = VERIFY_RESULT(operation.GetSnapshotDir()),
     .schedule_id = schedule_id_,
   };
+}
+
+Status SnapshotState::CheckDoneStatus(const Status& status) {
+  if (initial_state() != SysSnapshotEntryPB::DELETING) {
+    return status;
+  }
+  MasterError error(status);
+  if (error == MasterErrorPB::TABLET_NOT_RUNNING || error == MasterErrorPB::TABLE_NOT_RUNNING) {
+    return Status::OK();
+  }
+  return status;
 }
 
 } // namespace master
