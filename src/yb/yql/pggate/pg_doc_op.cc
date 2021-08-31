@@ -144,10 +144,7 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session,
                  const PgTableDesc::ScopedRefPtr& table_desc,
                  const PgObjectId& relation_id)
-    : pg_session_(pg_session),  table_desc_(table_desc), relation_id_(relation_id) {
-  exec_params_.limit_count = FLAGS_ysql_prefetch_limit;
-  exec_params_.limit_offset = 0;
-  exec_params_.limit_use_default = true;
+    : pg_session_(pg_session), table_desc_(table_desc), relation_id_(relation_id) {
 }
 
 PgDocOp::~PgDocOp() {
@@ -896,7 +893,7 @@ Status PgDocReadOp::ProcessResponseReadStates() {
 void PgDocReadOp::SetRequestPrefetchLimit() {
   // Predict the maximum prefetch-limit using the associated gflags.
   PgsqlReadRequestPB *req = template_op_->mutable_request();
-  int predicted_limit = FLAGS_ysql_prefetch_limit;
+  auto predicted_limit = FLAGS_ysql_prefetch_limit;
   if (!req->is_forward_scan()) {
     // Backward scan is slower than forward scan, so predicted limit is a smaller number.
     predicted_limit = predicted_limit * FLAGS_ysql_backward_prefetch_scale_factor;
@@ -909,13 +906,19 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
   }
 
   // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
-  int64_t limit_count = exec_params_.limit_count + exec_params_.limit_offset;
+  auto limit = exec_params_.limit_count + exec_params_.limit_offset;
   suppress_next_result_prefetching_ = true;
-  if (exec_params_.limit_use_default || limit_count > predicted_limit) {
-    limit_count = predicted_limit;
+  if (exec_params_.limit_use_default || limit > predicted_limit) {
+    limit = predicted_limit;
     suppress_next_result_prefetching_ = false;
   }
-  req->set_limit(limit_count);
+  VLOG(3) << __func__
+          << " exec_params_.limit_count=" << exec_params_.limit_count
+          << " exec_params_.limit_offset=" << exec_params_.limit_offset
+          << " exec_params_.limit_use_default=" << exec_params_.limit_use_default
+          << " predicted_limit=" << predicted_limit
+          << " limit=" << limit;
+  req->set_limit(limit);
 }
 
 void PgDocReadOp::SetRowMark() {
