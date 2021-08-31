@@ -26,6 +26,7 @@
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/util/flag_tags.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
@@ -93,6 +94,7 @@ DECLARE_int32(client_read_write_timeout_ms);
 DEFINE_bool(ycql_use_ldap, false, "Use LDAP for user logins");
 DEFINE_string(ycql_ldap_users_to_skip_csv, "", "Users that are authenticated via the local password"
   " check instead of LDAP (if ycql_use_ldap=true). This is a comma separated list");
+TAG_FLAG(ycql_ldap_users_to_skip_csv, sensitive_info);
 DEFINE_string(ycql_ldap_server, "", "LDAP server of the form <scheme>://<ip>:<port>");
 DEFINE_bool(ycql_ldap_tls, false, "Connect to LDAP server using TLS encryption.");
 
@@ -106,8 +108,10 @@ DEFINE_string(ycql_ldap_user_suffix, "", "String used for appending the user nam
 DEFINE_string(ycql_ldap_base_dn, "", "Specifies the base directory to begin the user name search");
 DEFINE_string(ycql_ldap_bind_dn, "", "Specifies the username to perform the initial search when "
   "doing search + bind authentication");
+TAG_FLAG(ycql_ldap_bind_dn, sensitive_info);
 DEFINE_string(ycql_ldap_bind_passwd, "", "Password for username being used to perform the initial "
   "search when doing search + bind authentication");
+TAG_FLAG(ycql_ldap_bind_passwd, sensitive_info);
 DEFINE_string(ycql_ldap_search_attribute, "", "Attribute to match against the username in the "
   "search when doing search + bind authentication. If no attribute is specified, the uid attribute "
   "is used.");

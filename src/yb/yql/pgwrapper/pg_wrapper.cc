@@ -75,6 +75,7 @@ DEFINE_string(ysql_pg_conf_csv, "",
               "CSV formatted line represented list of postgres setting assignments");
 DEFINE_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
+TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
 
 DEFINE_string(ysql_pg_conf, "",
               "Deprecated, use the `ysql_pg_conf_csv` flag instead. " \
@@ -82,6 +83,7 @@ DEFINE_string(ysql_pg_conf, "",
 DEFINE_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
+TAG_FLAG(ysql_hba_conf, sensitive_info);
 
 using std::vector;
 using std::string;
