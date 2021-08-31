@@ -32,13 +32,13 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Entity
-@ApiModel(description = "Users associated customers.")
+@ApiModel(description = "A user associated with a customer")
 public class Users extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
   // A globally unique UUID for the Users.
 
-  /** These are the various states of the task and taskgroup. */
+  /** These are the available user roles */
   public enum Role {
     @EnumValue("Admin")
     Admin,
@@ -70,11 +70,11 @@ public class Users extends Model {
 
   @Id
   @Column(nullable = false, unique = true)
-  @ApiModelProperty(value = "User uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
   public UUID uuid = UUID.randomUUID();
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   public void setCustomerUuid(UUID id) {
@@ -84,7 +84,10 @@ public class Users extends Model {
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
-  @ApiModelProperty(value = "User email id", example = "username1@example.com", required = true)
+  @ApiModelProperty(
+      value = "User email address",
+      example = "username1@example.com",
+      required = true)
   public String email;
 
   public String getEmail() {
@@ -93,7 +96,9 @@ public class Users extends Model {
 
   @JsonIgnore
   @Column(length = 256, nullable = false)
-  @ApiModelProperty(value = "User password id", example = "password")
+  @ApiModelProperty(
+      value = "User password hash",
+      example = "$2y$10$ABccHWa1DO2VhcF1Ea2L7eOBZRhktsJWbFaB/aEjLfpaplDBIJ8K6")
   public String passwordHash;
 
   public void setPassword(String password) {
@@ -103,7 +108,7 @@ public class Users extends Model {
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
-      value = "Creation time",
+      value = "User creation date",
       example = "2021-06-17 15:00:05",
       accessMode = READ_ONLY)
   public Date creationDate;
@@ -111,7 +116,10 @@ public class Users extends Model {
   private String authToken;
 
   @Column(nullable = true)
-  @ApiModelProperty(value = "Token issued date", example = "1624255408795", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "API token creation date",
+      example = "1624255408795",
+      accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
   @JsonIgnore
@@ -126,7 +134,9 @@ public class Users extends Model {
   // The role of the user.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "User role")
+  @ApiModelProperty(
+      value = "User role",
+      allowableValues = "Admin, BackupAdmin, ReadOnly, SuperAdmin")
   private Role role;
 
   public Role getRole() {
@@ -138,7 +148,7 @@ public class Users extends Model {
   }
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "User is primary user or not")
+  @ApiModelProperty(value = "True if the user is the primary user")
   private boolean isPrimary;
 
   public boolean getIsPrimary() {

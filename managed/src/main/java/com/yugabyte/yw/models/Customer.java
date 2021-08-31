@@ -33,13 +33,13 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Entity
-@ApiModel(description = "Customers features and Universe UUID.")
+@ApiModel(description = "Customer information, including associated universes")
 public class Customer extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   public UUID uuid = UUID.randomUUID();
 
   public void setUuid(UUID uuid) {
@@ -56,10 +56,10 @@ public class Customer extends Model {
   // Use IDENTITY strategy because `customer.id` is a `bigserial` type; not a sequence.
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  @ApiModelProperty(value = "Customer id", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer ID", accessMode = READ_ONLY)
   private Long id;
 
-  @ApiModelProperty(value = "Customer id", accessMode = READ_ONLY, example = "1")
+  @ApiModelProperty(value = "Customer ID", accessMode = READ_ONLY, example = "1")
   public Long getCustomerId() {
     return id;
   }

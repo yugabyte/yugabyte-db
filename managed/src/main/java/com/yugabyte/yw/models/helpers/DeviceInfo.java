@@ -13,7 +13,7 @@ import io.swagger.annotations.ApiModelProperty;
 public class DeviceInfo {
 
   // The size of each volume in each instance (if specified).
-  @ApiModelProperty(value = "he size of each volume in each instance")
+  @ApiModelProperty(value = "The size of each volume in each instance")
   public Integer volumeSize;
 
   // Number of volumes to be mounted on this instance at the default path (if specified).
@@ -21,7 +21,7 @@ public class DeviceInfo {
   public Integer numVolumes;
 
   // Desired Iops for the volumes mounted on this instance (if specified).
-  @ApiModelProperty(value = "Desired iops for the volumes mounted on this instance")
+  @ApiModelProperty(value = "Desired IOPS for the volumes mounted on this instance")
   public Integer diskIops;
 
   // Desired throughput for the volumes mounted on this instance (if specified).
@@ -29,15 +29,15 @@ public class DeviceInfo {
   public Integer throughput;
 
   // Name of storage class (if specified)
-  @ApiModelProperty(value = "Name of storage class")
+  @ApiModelProperty(value = "Name of the storage class")
   public String storageClass = "";
 
   // Comma separated list of mount points for the devices in each instance (if specified).
-  @ApiModelProperty(value = "Comma separated list of mount points for the devices in each instance")
+  @ApiModelProperty(value = "Comma-separated list of mount points for the devices in each instance")
   public String mountPoints;
 
   // The type of storage used for this instance (null if instance volume type is not EBS).
-  @ApiModelProperty(value = "The type of storage used for this instance")
+  @ApiModelProperty(value = "Storage type used for this instance")
   public PublicCloudConstants.StorageType storageType;
 
   public String toString() {
