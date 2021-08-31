@@ -1486,118 +1486,75 @@ static int yb_detail_sort_comparator(const void *a, const void *b)
 	return strcmp(*(const char **) a, *(const char **) b);
 }
 
-static int default_detail_store_capacity = 10;
-
 typedef struct {
 	char **lines;
-	int capacity;
 	int length;
-} DetailStore;
+} DetailSorter;
 
-void initDetailStore(DetailStore *v)
+void detailSorterFromList(DetailSorter *v, List *litems, int capacity)
 {
-	v->capacity = default_detail_store_capacity;
-	v->lines = (char **)malloc(sizeof(char *) * v->capacity);
+	v->lines = (char **)palloc(sizeof(char *) * capacity);
 	v->length = 0;
-}
-
-int resizeDetailStore(DetailStore *v)
-{
-	if (v->length == v->capacity)
+	ListCell *lc;
+	foreach (lc, litems)
 	{
-		int new_capacity = v->capacity + default_detail_store_capacity;
-		char **new_lines = (char **)realloc(v->lines, new_capacity * sizeof(char *));
-		if (new_lines)
-		{
-			v->capacity = new_capacity;
-			v->lines = new_lines;
-			return 1; // resizing OK
-		}
-		return 0; // failed resizing
+		v->lines[v->length++] = (char *)lfirst(lc);
 	}
-	return 1; // nothing to do, success
 }
 
-int appendToDetailStore(DetailStore *v, char *line)
-{
-	if (resizeDetailStore(v) > 0)
-	{
-		v->lines[v->length++] = line;
-		return 1;
-	}
-	return 0;
-}
-
-char * detailStoreGetAt(DetailStore *v, int index)
-{
-	if (index >= 0 && index < v->length)
-		return v->lines[index];
-	return NULL;
-}
-
-int detailStoreLength(DetailStore *v)
-{
-	return v->length;
-}
-
-char **detailStoreSorted(DetailStore *v)
+char **detailSorterLinesSorted(DetailSorter *v)
 {
 	qsort(v->lines, v->length,
 		sizeof (const char *), yb_detail_sort_comparator);
 	return v->lines;
 }
 
-void detailStoreFree(DetailStore *v)
+void detailSorterFree(DetailSorter *v)
 {
-	free(v->lines);
+	pfree(v->lines);
 }
 
 char *yb_detail_sorted(char *input)
 {
 	if (input == NULL)
 		return input;
+
 	// this delimiter is hard coded in backend/catalog/pg_shdepend.c,
 	// inside of the storeObjectDescription function:
 	char delimiter[2] = "\n";
+
 	// init stringinfo used for concatenation of the output:
 	StringInfoData s;
 	initStringInfo(&s);
-	// init store used for collecting non-empty lines:
-	DetailStore store;
-	initDetailStore(&store);
-	// split the string by delimiter:
+
+	// this list stores the non-empty tokens, extra counter to know how many:
+	List *line_store = NIL;
+	int line_count = 0;
+
 	char *token;
 	token = strtok(input, delimiter);
 	while (token != NULL)
 	{
-		// reject empty lines:
 		if (strcmp(token, "") != 0)
 		{
-			if (appendToDetailStore(&store, token) == 0)
-			{
-				elog(ERROR,
-					"failed appending '%s' to deterministic detail order",
-					token);
-				// if append failed, return early:
-				detailStoreFree(&store);
-				resetStringInfo(&s);
-				appendStringInfoString(&s, input);
-				return s.data;
-			}
+			line_store = lappend(line_store, token);
+			line_count++;
 		}
 		token = strtok(NULL, delimiter);
 	}
-	// if we have lines:
-	int nItems = detailStoreLength(&store);
-	if (nItems == 0)
+
+	DetailSorter sorter;
+	detailSorterFromList(&sorter, line_store, line_count);
+
+	if (line_count == 0)
 	{
 		// put the original input in:
 		appendStringInfoString(&s, input);
 	}
 	else
 	{
-		char ** sortedLines = detailStoreSorted(&store);
-		for (int i=0; i<nItems; i++)
+		char ** sortedLines = detailSorterLinesSorted(&sorter);
+		for (int i=0; i<line_count; i++)
 		{
 			if (sortedLines[i] != NULL) {
 				if (i > 0)
@@ -1606,6 +1563,9 @@ char *yb_detail_sorted(char *input)
 			}
 		}
 	}
-	detailStoreFree(&store);
+
+	detailSorterFree(&sorter);
+	list_free(line_store);
+
 	return s.data;
 }
