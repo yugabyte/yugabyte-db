@@ -20,7 +20,7 @@ isTocNested: true
 ## Overview
 Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
 
-### Results at a glance ( Amazon Web Services )
+### Results at a glance (Amazon Web Services)
 | Warehouses| TPMC | Efficiency (approx) | Cluster Details
 -------------|-----------|------------|------------|
 10    | 127      | 98.75%   | 3 nodes of type `c5d.large` (2 vCPUs)
@@ -28,17 +28,18 @@ Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/t
 1000  | 12563.07 | 97.90%   | 3 nodes of type `c5d.4xlarge` (16 vCPUs)
 10000 | 125163.2 | 97.35%   | 30 nodes of type `c5d.4xlarge` (16 vCPUs)
 
-All the nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for `30 minutes` after the loading of the data.
+All the nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for 30 minutes after the loading of the data.
 
-### Results at a glance ( Microsoft Azure )
-| Warehouses| TPMC | Efficiency (approx) | Cluster Details
--------------|-----------|------------|------------|
-50    | 639.4 | 99.44%   | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks
-100   | 1,271.37 | 98.86%   | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks
-1000  | 12,523.97 | 97.39%   | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks
-2000  | 25,407.43 | 98.78%   | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks
+### Results at a glance (Microsoft Azure)
 
-All the nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for `30 minutes` after the loading of the data.
+| Warehouses | TPMC | Efficiency (approx) | Cluster details |
+| :--------- | :--- | :-----------------: | :-------------- |
+| 50 | 639.4 | 99.44% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
+| 100 | 1,271.37 | 98.86% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
+| 1000 | 12,523.97 | 97.39% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
+| 2000 | 25,407.43 | 98.78% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
+
+All nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster, and was deployed in the same zone as the DB cluster. Each test was run for 30 minutes after the loading of the data.
 
 ## 1. Prerequisites
 
@@ -73,16 +74,13 @@ Other options like username, password, port, etc. can be changed using the confi
 <password></password>
 ```
 
-## 3. Best Practices
+## 3. Best practices
 
-<b>Latest TPCC Code</b><br/>
-Use the latest enhancements of the Yugabyte TPCC application `git clone`.
+**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application `git clone`.
 
-<b>Pre-Compacting Tables</b><br/>
-Pre-compact tables using the compact_table command in the yb-admin utility. 
+**Pre-compacting tables:** Pre-compact tables with the yb-admin utility's `compact_table` command.
 
-<b>Warming the Database</b><br/>
-Make use of the --warmup-time-secs flag when calling the execute phase of the TPCC benchmark.
+**Warming the database:** Use the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
 
 ## 4. Run the TPC-C benchmark
 
