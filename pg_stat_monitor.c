@@ -1477,7 +1477,8 @@ pgss_store(uint64 queryid,
 	int    			application_name_len = pg_get_application_name(application_name);
 	bool 			reset = false;
 	uint64 			bucketid;
-	uint64 			userid = GetUserId();
+    uint64          userid;
+    int             con;
 	uint64 			dbid = MyDatabaseId;
 	uint64 			ip = pg_get_client_addr();
 	uint64			planid = plan_info ? plan_info->planid: 0;
@@ -1488,6 +1489,9 @@ pgss_store(uint64 queryid,
 		return;
 
 	Assert(query != NULL);
+	GetUserIdAndSecContext((unsigned int *)&userid, &con);
+    if (userid == 0)
+      return;
 
 	comments = extract_query_comments(query);
 
