@@ -162,6 +162,8 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::ListCDCStreamsRequestPB;
 using yb::master::ListCDCStreamsResponsePB;
+using yb::master::UpdateCDCStreamRequestPB;
+using yb::master::UpdateCDCStreamResponsePB;
 using yb::master::TSInfoPB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
@@ -1358,7 +1360,8 @@ Status YBClient::DeleteUDType(const std::string& namespace_name,
 
 Result<CDCStreamId> YBClient::CreateCDCStream(
     const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options) {
+    const std::unordered_map<std::string, std::string>& options,
+    const master::SysCDCStreamEntryPB::State& initial_state) {
   // Setting up request.
   CreateCDCStreamRequestPB req;
   req.set_table_id(table_id);
@@ -1368,6 +1371,7 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
     new_option->set_key(option.first);
     new_option->set_value(option.second);
   }
+  req.set_initial_state(initial_state);
 
   CreateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateCDCStream);
@@ -1442,6 +1446,22 @@ Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id) {
 void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
+}
+
+Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
+                                 const master::SysCDCStreamEntryPB& new_entry) {
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  // Setting up request.
+  UpdateCDCStreamRequestPB req;
+  req.set_stream_id(stream_id);
+  req.mutable_entry()->CopyFrom(new_entry);
+
+  UpdateCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, UpdateCDCStream);
+  return Status::OK();
 }
 
 void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {

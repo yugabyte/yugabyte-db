@@ -515,6 +515,8 @@ message SysRedisConfigEntryPB {
 // The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
 message SysCDCStreamEntryPB {
   enum State {
+    // Used to mark a stream that has been bootstrapped, but hasn't started streaming yet.
+    INITIATED = 3;
     ACTIVE = 0;
     DELETING = 1;
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
@@ -1917,6 +1919,7 @@ message UDTypeInfoPB {
 message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   repeated CDCStreamOptionsPB options = 3;
+  optional SysCDCStreamEntryPB.State initial_state = 4;
 }
 
 // Options for CDC stream. This will include details such as:
@@ -1961,6 +1964,15 @@ message GetCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   optional CDCStreamInfoPB stream = 2;
+}
+
+message UpdateCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional SysCDCStreamEntryPB entry = 2;
+}
+
+message UpdateCDCStreamResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 message CDCStreamInfoPB {
@@ -2205,6 +2217,8 @@ service MasterService {
   rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
+  rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
+      returns (UpdateCDCStreamResponsePB);
 
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);

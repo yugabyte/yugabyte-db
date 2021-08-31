@@ -1097,7 +1097,9 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
     options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
     options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
 
-    auto result = async_client_init_->client()->CreateCDCStream(table_id, options);
+    // Mark this stream as being bootstrapped, to help in finding dangling streams.
+    auto result = async_client_init_->client()->CreateCDCStream(
+        table_id, options, master::SysCDCStreamEntryPB::INITIATED);
     RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
                                CDCErrorPB::INTERNAL_ERROR, context);
     const std::string& bootstrap_id = *result;

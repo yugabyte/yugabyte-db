@@ -52,6 +52,7 @@ using master::ListSnapshotsResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
 using master::MasterBackupServiceProxy;
+using master::SysCDCStreamEntryPB;
 using master::SysSnapshotEntryPB;
 using rpc::RpcController;
 
@@ -734,6 +735,58 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidBootstr
   // Verify that error message has relevant information.
   ASSERT_TRUE(error_msg.find(
       "Could not find CDC stream: stream_id: \"fake-bootstrap-id\"") != string::npos);
+}
+
+TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
+  const int kStreamUuidLength = 32;
+  client::TableHandle producer_cluster_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table);
+
+  string output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
+                                                        "list_cdc_streams"));
+  // First check that the table and bootstrap status are not present.
+  ASSERT_EQ(output.find(producer_cluster_table->id()), string::npos);
+  ASSERT_EQ(output.find(SysCDCStreamEntryPB::State_Name(SysCDCStreamEntryPB::INITIATED)),
+            string::npos);
+
+  // Bootstrap the producer.
+  output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
+                                                 "bootstrap_cdc_producer",
+                                                 producer_cluster_table->id()));
+  // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
+  string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+
+  // Check list_cdc_streams again for the table and the status INITIATED.
+  auto VerifyListCdcStreams = [&] (const string& table_id,
+                                   SysCDCStreamEntryPB::State status) -> Status {
+    string output = VERIFY_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
+                                                          "list_cdc_streams"));
+    EXPECT_NE(output.find(table_id), string::npos);
+    EXPECT_NE(output.find(SysCDCStreamEntryPB::State_Name(status)), string::npos);
+    return Status::OK();
+  };
+  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::INITIATED);
+
+  // Setup universe replication using the bootstrap_id
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_cluster_table->id(),
+                                bootstrap_id));
+
+
+  // Check list_cdc_streams again for the table and the status ACTIVE.
+  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::ACTIVE);
+
+  // Try restarting the producer to ensure that the status persists.
+  ASSERT_OK(producer_cluster_->RestartSync());
+  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::ACTIVE);
+
+  // Delete this universe so shutdown can proceed.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
 class XClusterAlterUniverseAdminCliTest : public XClusterAdminCliTest {

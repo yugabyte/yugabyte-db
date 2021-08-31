@@ -524,8 +524,11 @@ class YBClient {
   // CDC Stream related methods.
 
   // Create a new CDC stream.
-  Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
-                                      const std::unordered_map<std::string, std::string>& options);
+  Result<CDCStreamId> CreateCDCStream(
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      const master::SysCDCStreamEntryPB::State& initial_state =
+          master::SysCDCStreamEntryPB::ACTIVE);
 
   void CreateCDCStream(const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
@@ -550,6 +553,10 @@ class YBClient {
                     StdStatusCallback callback);
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
+  // Update a CDC stream's options.
+  CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
+                                 const master::SysCDCStreamEntryPB& new_entry);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
