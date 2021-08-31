@@ -278,7 +278,7 @@ typedef struct PgExecParameters {
 #ifdef __cplusplus
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
-  bool limit_use_default = false;
+  bool limit_use_default = true;
   int rowmark = -1;
   char *bfinstr = NULL;
   uint64_t read_time = 0;
