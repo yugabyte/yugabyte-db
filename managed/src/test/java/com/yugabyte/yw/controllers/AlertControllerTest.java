@@ -33,7 +33,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverParams;
 import com.yugabyte.yw.common.alerts.AlertReceiverService;
@@ -41,9 +40,10 @@ import com.yugabyte.yw.common.alerts.AlertReceiverSlackParams;
 import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertDefinitionGroupApiFilter;
 import com.yugabyte.yw.forms.filters.AlertDefinitionTemplateApiFilter;
@@ -797,6 +797,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
     JsonNode alertsJson = Json.parse(contentAsString(result));
     Alert acknowledged = Json.fromJson(alertsJson, Alert.class);
+    if (!alertsJson.has("nextNotificationTime")) {
+      acknowledged.setNextNotificationTime(null);
+    }
 
     initial.setState(Alert.State.ACKNOWLEDGED);
     initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());
