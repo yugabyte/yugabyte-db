@@ -1498,7 +1498,10 @@ void detailSorterFromList(DetailSorter *v, List *litems, int capacity)
 	ListCell *lc;
 	foreach (lc, litems)
 	{
-		v->lines[v->length++] = (char *)lfirst(lc);
+		if (v->length < capacity)
+		{
+			v->lines[v->length++] = (char *)lfirst(lc);
+		}
 	}
 }
 
