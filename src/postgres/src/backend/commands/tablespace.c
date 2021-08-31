@@ -556,7 +556,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	{
 		if (IsYugaByteEnabled() && detail != NULL)
 		{
-			detail = yb_detail_sorted(detail);
+			detail = YBDetailSorted(detail);
 		}
 		ereport(ERROR,
 				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),

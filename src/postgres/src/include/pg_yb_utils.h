@@ -461,6 +461,6 @@ bool IsYBSupportedLibcLocale(const char *localebuf);
 
 void YBTestFailDdlIfRequested();
 
-char *yb_detail_sorted(char *input);
+char *YBDetailSorted(char *input);
 
 #endif /* PG_YB_UTILS_H */

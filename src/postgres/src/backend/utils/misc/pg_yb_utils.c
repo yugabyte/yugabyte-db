@@ -1491,7 +1491,7 @@ typedef struct {
 	int length;
 } DetailSorter;
 
-void detailSorterFromList(DetailSorter *v, List *litems, int capacity)
+void detail_sorter_from_list(DetailSorter *v, List *litems, int capacity)
 {
 	v->lines = (char **)palloc(sizeof(char *) * capacity);
 	v->length = 0;
@@ -1505,19 +1505,19 @@ void detailSorterFromList(DetailSorter *v, List *litems, int capacity)
 	}
 }
 
-char **detailSorterLinesSorted(DetailSorter *v)
+char **detail_sorter_lines_sorted(DetailSorter *v)
 {
 	qsort(v->lines, v->length,
 		sizeof (const char *), yb_detail_sort_comparator);
 	return v->lines;
 }
 
-void detailSorterFree(DetailSorter *v)
+void detail_sorter_free(DetailSorter *v)
 {
 	pfree(v->lines);
 }
 
-char *yb_detail_sorted(char *input)
+char *YBDetailSorted(char *input)
 {
 	if (input == NULL)
 		return input;
@@ -1547,7 +1547,7 @@ char *yb_detail_sorted(char *input)
 	}
 
 	DetailSorter sorter;
-	detailSorterFromList(&sorter, line_store, line_count);
+	detail_sorter_from_list(&sorter, line_store, line_count);
 
 	if (line_count == 0)
 	{
@@ -1556,7 +1556,7 @@ char *yb_detail_sorted(char *input)
 	}
 	else
 	{
-		char ** sortedLines = detailSorterLinesSorted(&sorter);
+		char **sortedLines = detail_sorter_lines_sorted(&sorter);
 		for (int i=0; i<line_count; i++)
 		{
 			if (sortedLines[i] != NULL) {
@@ -1567,7 +1567,7 @@ char *yb_detail_sorted(char *input)
 		}
 	}
 
-	detailSorterFree(&sorter);
+	detail_sorter_free(&sorter);
 	list_free(line_store);
 
 	return s.data;
