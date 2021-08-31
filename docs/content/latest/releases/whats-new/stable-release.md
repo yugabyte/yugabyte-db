@@ -19,6 +19,8 @@ Included here are the release notes for all releases in the v2.6 stable release 
 
 ## v2.6.0.0 - July 7, 2021
 
+**Build:** `2.6.0.0-b69`
+
 ### Downloads
 
 <a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.0.0-darwin.tar.gz">
