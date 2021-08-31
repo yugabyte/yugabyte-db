@@ -62,12 +62,12 @@ docker pull yugabytedb/yugabyte:2.9.0.0-b4
 #### Yugabyte Platform
 
 
-#### Core Database
+#### Database
 
 
 ### Bug Fixes
 
-#### Core Database
+#### Database
 
 
 ### Known Issues
@@ -76,7 +76,7 @@ docker pull yugabytedb/yugabyte:2.9.0.0-b4
 
 N/A
 
-#### Core Database
+#### Database
 
 N/A
 
