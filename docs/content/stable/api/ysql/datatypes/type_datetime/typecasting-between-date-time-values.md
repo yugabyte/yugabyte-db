@@ -333,7 +333,7 @@ select (
   )::text;
 ```
 
-The result is _true_. See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+The result is _true_. See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### plain _timestamp_ to _text_
 
@@ -455,7 +455,7 @@ select
 
 The result is _true_.
 
-Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](..//timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### _timestamptz_ to _text_
 
