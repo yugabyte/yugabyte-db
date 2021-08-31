@@ -369,7 +369,7 @@ $body$;
 ```
 The general syntax for the literal for a multidimensional array that specifies the lower and upper index bounds along each dimension is described in [Multidimensional array of `int` values](../../literals/array-of-primitive-values/#multidimensional-array-of-int-values).
 
-For the specification of the behavior `unnest()` when its actual argument is a multidimensional array see [Multidimensional array_agg() and unnest() — first overloads](..//array-agg-unnest/#multidimensional-array-agg-and-unnest-first-overloads).
+For the specification of the behavior `unnest()` when its actual argument is a multidimensional array see [Multidimensional array_agg() and unnest() — first overloads](../array-agg-unnest/#multidimensional-array-agg-and-unnest-first-overloads).
 
 ### Using inequality comparisons
 
