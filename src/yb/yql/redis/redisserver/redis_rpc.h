@@ -76,9 +76,9 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
     return rpc::RpcConnectionPB::OPEN;
   }
 
-  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
-                                              const IoVecs& bytes_to_process,
-                                              rpc::ReadBufferFull read_buffer_full) override;
+  Result<rpc::ProcessCallsResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                               const IoVecs& bytes_to_process,
+                                               rpc::ReadBufferFull read_buffer_full) override;
 
   rpc::StreamReadBuffer& ReadBuffer() override {
     return read_buffer_;
