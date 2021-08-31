@@ -1489,7 +1489,7 @@ static int yb_detail_sort_comparator(const void *a, const void *b)
 static int default_detail_store_capacity = 10;
 
 typedef struct {
-	char ** lines;
+	char **lines;
 	int capacity;
 	int length;
 } DetailStore;
@@ -1500,6 +1500,7 @@ void initDetailStore(DetailStore *v)
 	v->lines = (char **)malloc(sizeof(char *) * v->capacity);
 	v->length = 0;
 }
+
 int resizeDetailStore(DetailStore *v)
 {
 	if (v->length == v->capacity)
@@ -1516,7 +1517,8 @@ int resizeDetailStore(DetailStore *v)
 	}
 	return 1; // nothing to do, success
 }
-int appendToDetailStore(DetailStore *v, char * line)
+
+int appendToDetailStore(DetailStore *v, char *line)
 {
 	if (resizeDetailStore(v) > 0)
 	{
@@ -1525,22 +1527,26 @@ int appendToDetailStore(DetailStore *v, char * line)
 	}
 	return 0;
 }
+
 char * detailStoreGetAt(DetailStore *v, int index)
 {
 	if (index >= 0 && index < v->length)
 		return v->lines[index];
 	return NULL;
 }
+
 int detailStoreLength(DetailStore *v)
 {
 	return v->length;
 }
-char ** detailStoreSorted(DetailStore *v)
+
+char **detailStoreSorted(DetailStore *v)
 {
 	qsort(v->lines, v->length,
 		sizeof (const char *), yb_detail_sort_comparator);
 	return v->lines;
 }
+
 void detailStoreFree(DetailStore *v)
 {
 	free(v->lines);
