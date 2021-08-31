@@ -13,22 +13,22 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertChannelManager;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.PlatformValidationException;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
@@ -61,6 +61,12 @@ public class AlertManager {
   private final AlertChannelManager channelsManager;
   private final AlertService alertService;
   private final MetricService metricService;
+
+  private enum SendNotificationResult {
+    FAILED_TO_RESCHEDULE,
+    SUCCEEDED,
+    FAILED_NO_RESCHEDULE
+  }
 
   @Inject
   public AlertManager(
@@ -109,12 +115,17 @@ public class AlertManager {
 
   @VisibleForTesting
   boolean sendNotificationForState(Alert alert, State state, AlertNotificationReport report) {
-    boolean result = false;
+    SendNotificationResult result = SendNotificationResult.FAILED_TO_RESCHEDULE;
     try {
       result = sendNotification(alert, state, report);
+      if (result == SendNotificationResult.FAILED_NO_RESCHEDULE) {
+        // Failed, no reschedule is required.
+        report.failAttempt();
+        return false;
+      }
 
       alert.setNotificationAttemptTime(new Date());
-      if (!result) {
+      if (result == SendNotificationResult.FAILED_TO_RESCHEDULE) {
         alert.setNotificationsFailed(alert.getNotificationsFailed() + 1);
         // For now using fixed delay before the notification repeat. Later the behavior
         // can be adjusted using an amount of failed attempts (using progressive value).
@@ -140,7 +151,7 @@ public class AlertManager {
       report.failAttempt();
       log.error("Error while sending notification for alert {}", alert.getUuid(), e);
     }
-    return result;
+    return result == SendNotificationResult.SUCCEEDED;
   }
 
   public void sendNotifications() {
@@ -183,7 +194,7 @@ public class AlertManager {
     }
   }
 
-  private boolean sendNotification(
+  private SendNotificationResult sendNotification(
       Alert alert, State stateToNotify, AlertNotificationReport report) {
     Customer customer = Customer.get(alert.getCustomerUUID());
 
@@ -204,7 +215,7 @@ public class AlertManager {
         metricService.setStatusMetric(
             MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s), there is no default destination specified.");
-        return false;
+        return SendNotificationResult.FAILED_TO_RESCHEDULE;
       }
 
       List<AlertChannel> defaultChannels = defaultDestination.getChannelsList();
@@ -217,7 +228,7 @@ public class AlertManager {
             MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s) using default destination, "
                 + "there are no recipients configured in the customer's profile.");
-        return false;
+        return SendNotificationResult.FAILED_TO_RESCHEDULE;
       }
 
       log.debug(
@@ -232,6 +243,10 @@ public class AlertManager {
     // Not going to save the alert, only to use with another state for the
     // notification.
     Alert tempAlert = alertService.get(alert.getUuid());
+    if (tempAlert == null) {
+      // The alert was not found. Most probably it is removed during the processing.
+      return SendNotificationResult.FAILED_NO_RESCHEDULE;
+    }
     tempAlert.setState(stateToNotify);
 
     for (AlertChannel channel : channels) {
@@ -267,7 +282,9 @@ public class AlertManager {
       }
     }
 
-    return atLeastOneSucceeded;
+    return atLeastOneSucceeded
+        ? SendNotificationResult.SUCCEEDED
+        : SendNotificationResult.FAILED_TO_RESCHEDULE;
   }
 
   @VisibleForTesting
