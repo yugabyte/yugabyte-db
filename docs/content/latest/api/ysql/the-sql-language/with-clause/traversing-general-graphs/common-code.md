@@ -151,7 +151,7 @@ You'll use the procedure _["create_path_table()"](#cr-cr-path-table-sql)_ to cre
 - _"raw_paths"_. This is the target table for the paths that each of the code examples for the various kinds of graph generates.
 - _"shortest_paths"_. This is the target table for the paths produced by procedure _["restrict_to_shortest_paths()"](#cr-restrict-to-shortest-paths-sql)_.
 - _"unq_containing_paths"_. This is the target table for the paths produced by procedure _["restrict_to_unq_containing_paths()"](#cr-restrict-to-unq-containing-paths-sql)_.
-- _"temp_paths"_, and _"working_paths"_. These tables are used by the approach that uses direct SQL, issued from a PL/pgsql stored procedure, that implements what the recursive CTE does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
+- _"temp_paths"_, and _"previous_paths"_. These tables are used by the approach that uses direct SQL, issued from a PL/pgsql stored procedure, that implements what the recursive CTE does rather than an actual `WITH` clause. See the section [How to implement early path pruning](../undirected-cyclic-graph/#how-to-implement-early-path-pruning).
 
 First create the _"raw_paths"_ table and optionally add a column and create a trigger on the table so that the outcome of each successive repeat of the code that implements the _recursive term_ can be traced to help the developer see how the code works. (It has this effect only for the implementation of the _"find_paths()"_ procedure that implements early-path-pruning.) 
 
@@ -204,7 +204,7 @@ Now create the other tables:
 call create_path_table('shortest_paths',        false);
 call create_path_table('unq_containing_paths',  false);
 call create_path_table('temp_paths',            true);
-call create_path_table('working_paths',         true);
+call create_path_table('previous_paths',        true);
 
 create unique index shortest_paths_start_terminal_unq on shortest_paths(start(path), terminal(path));
 ```
