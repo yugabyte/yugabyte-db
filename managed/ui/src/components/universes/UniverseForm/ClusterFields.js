@@ -2021,13 +2021,13 @@ export default class ClusterFields extends Component {
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
-                {this.props.type !== 'Edit' && selectTlsCert}
+                {selectTlsCert}
                 {assignPublicIP}
                 {useTimeSync}
                 {enableYSQL}
                 {enableYEDIS}
-                {this.props.type !== 'Edit' && enableNodeToNodeEncrypt}
-                {this.props.type !== 'Edit' && enableClientToNodeEncrypt}
+                {enableNodeToNodeEncrypt}
+                {enableClientToNodeEncrypt}
                 {enableEncryptionAtRest}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput} type="hidden" />
               </div>
