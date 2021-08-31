@@ -18,8 +18,8 @@ export default class YBFormInput extends Component {
       event.target.value = trimString(event.target.value);
       field.onChange(event);
       field.onBlur(event);
-      if (isDefinedNotNull(onBlur)) onBlur(this.props, event);
     }
+    if (isDefinedNotNull(onBlur)) onBlur(event);
   }
 
   render() {
