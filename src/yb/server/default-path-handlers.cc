@@ -50,6 +50,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
@@ -154,7 +155,20 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
   Tags tags(as_text);
   (*output) << tags.header << "Command-line Flags" << tags.end_header;
-  (*output) << tags.pre_tag << CommandlineFlagsIntoString() << tags.end_pre_tag;
+  (*output) << tags.pre_tag;
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+  for (const auto& flag_info : flag_infos) {
+    (*output) << "--" << flag_info.name << "=";
+    std::unordered_set<string> tags;
+    GetFlagTags(flag_info.name, &tags);
+    if (PREDICT_FALSE(ContainsKey(tags, "sensitive_info"))) {
+      (*output) << "****" << endl;
+    } else {
+      (*output) << flag_info.current_value << endl;
+    }
+  }
+  (*output) << tags.end_pre_tag;
 }
 
 // Registered to handle "/status", and simply returns empty JSON.

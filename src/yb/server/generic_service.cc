@@ -109,9 +109,10 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");
   } else {
+    bool is_sensitive = ContainsKey(tags, "sensitive_info");
     LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: "
-              << req->flag() << " from '" << old_val << "' to '"
-              << req->value() << "'";
+              << req->flag() << " from '" << (is_sensitive ? "***" : old_val)
+              << "' to '" << (is_sensitive ? "***" : req->value()) << "'";
     resp->set_result(SetFlagResponsePB::SUCCESS);
     resp->set_msg(ret);
   }
