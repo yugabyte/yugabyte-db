@@ -132,6 +132,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                               GetCDCStreamResponsePB* resp,
                               rpc::RpcContext* rpc);
 
+  // Update a CDC stream.
+  CHECKED_STATUS UpdateCDCStream(const UpdateCDCStreamRequestPB* req,
+                                 UpdateCDCStreamResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
   // Delete CDC streams for a table.
   CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) override;
   CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
@@ -358,9 +363,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                             std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                             const std::string& universe_id,
                             const TableId& table,
+                            std::shared_ptr<CDCRpcTasks> cdc_rpc,
                             const Status& s);
   void AddCDCStreamToUniverseAndInitConsumer(const std::string& universe_id, const TableId& table,
-                                             const Result<CDCStreamId>& stream_id);
+                                             const Result<CDCStreamId>& stream_id,
+                                             std::function<void()> on_success_cb = nullptr);
 
   void MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> info);
   void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
