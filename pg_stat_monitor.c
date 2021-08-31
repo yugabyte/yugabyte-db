@@ -1489,11 +1489,12 @@ pgss_store(uint64 queryid,
 		return;
 
 	Assert(query != NULL);
-	GetUserIdAndSecContext((unsigned int *)&userid, &con);
-    if (userid == 0)
-      return;
+	if (kind == PGSS_ERROR)
+        GetUserIdAndSecContext((unsigned int *)&userid, &con);
+    else
+     userid =  GetUserId();
 
-	comments = extract_query_comments(query);
+    comments = extract_query_comments(query);
 
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])

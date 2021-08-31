@@ -9,6 +9,6 @@ BEGIN
 RAISE WARNING 'warning message';
 END $$;
 
-SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLATE "C";
+SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLATE "C",elevel;
 SELECT pg_stat_monitor_reset();
 DROP EXTENSION pg_stat_monitor;
