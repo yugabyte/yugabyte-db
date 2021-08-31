@@ -194,14 +194,16 @@ public class EmailHelper {
     List<String> destinations = new ArrayList<>();
     String ybEmail = getYbEmail(customer);
     CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-    CustomerRegisterFormData.AlertingData alertingData =
-        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-    if (alertingData.sendAlertsToYb && !StringUtils.isEmpty(ybEmail)) {
-      destinations.add(ybEmail);
-    }
+    if (config != null) {
+      CustomerRegisterFormData.AlertingData alertingData =
+          Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
+      if (alertingData.sendAlertsToYb && !StringUtils.isEmpty(ybEmail)) {
+        destinations.add(ybEmail);
+      }
 
-    if (!StringUtils.isEmpty(alertingData.alertingEmail)) {
-      destinations.add(alertingData.alertingEmail);
+      if (!StringUtils.isEmpty(alertingData.alertingEmail)) {
+        destinations.add(alertingData.alertingEmail);
+      }
     }
     return destinations;
   }

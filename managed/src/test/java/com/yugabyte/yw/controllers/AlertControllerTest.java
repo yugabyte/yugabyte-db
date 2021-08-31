@@ -31,32 +31,32 @@ import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertConfigurationThreshold;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertConfiguration.SortBy;
-import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.SortBy;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
+import com.yugabyte.yw.models.AlertConfigurationThreshold;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
@@ -814,6 +814,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
     JsonNode alertsJson = Json.parse(contentAsString(result));
     Alert acknowledged = Json.fromJson(alertsJson, Alert.class);
+    if (!alertsJson.has("nextNotificationTime")) {
+      acknowledged.setNextNotificationTime(null);
+    }
 
     initial.setState(Alert.State.ACKNOWLEDGED);
     initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());

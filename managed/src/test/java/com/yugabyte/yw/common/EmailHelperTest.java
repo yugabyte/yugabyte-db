@@ -164,6 +164,12 @@ public class EmailHelperTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetDestinations_NoAlertConfiguration_EmptyList() {
+    List<String> destinations = emailHelper.getDestinations(defaultCustomer.uuid);
+    assertEquals(0, destinations.size());
+  }
+
+  @Test
   public void testGetSmtpData_NoDbConfig() {
     SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.uuid);
     assertEquals(YB_DEFAULT_EMAIL, smtpData.emailFrom);
