@@ -22,6 +22,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
@@ -39,15 +40,14 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -113,11 +113,11 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
-  @Mock Config mockConfig;
-
   @Mock ConfigHelper mockConfigHelper;
 
   @InjectMocks NodeManager nodeManager;
+
+  @Mock Config mockConfig;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "host-n1:7100,host-n2:7100,host-n3:7100";
@@ -429,8 +429,10 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+
     when(mockConfig.hasPath(NodeManager.BOOT_SCRIPT_PATH)).thenReturn(false);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
+    when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(mockConfigHelper.getGravitonInstancePrefixList()).thenReturn(ImmutableList.of("m6g."));
     new File(TestHelper.TMP_PATH).mkdirs();
     createTempFile("ca.crt", "test-cert");
@@ -476,6 +478,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(createParams.instanceType);
           expectedCommand.add("--cloud_subnet");
           expectedCommand.add(createParams.subnetId);
+          if (createParams.secondarySubnetId != null) {
+            expectedCommand.add("--cloud_subnet_secondary");
+            expectedCommand.add(createParams.secondarySubnetId);
+          }
           String ybImage = testData.region.ybImage;
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
@@ -898,8 +904,7 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -909,8 +914,7 @@ public class NodeManagerTest extends FakeDBApplication {
     expectedCommand.addAll(nodeCommand(cmdType, params, t));
 
     nodeManager.nodeCommand(cmdType, params);
-    verify(shellProcessHandler, times(1))
-        .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
   }
 
   @Test
@@ -962,6 +966,28 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
+    }
+  }
+
+  @Test
+  public void testCreateNodeCommandSecondarySubnet() {
+    for (TestData t : testData) {
+      when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      params.secondarySubnetId = "testSubnet";
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
     }
@@ -987,8 +1013,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
 
     File file = new File(packagePath);
@@ -1000,7 +1025,8 @@ public class NodeManagerTest extends FakeDBApplication {
     int iteration = 0;
     for (TestData t : testData) {
       for (boolean useTimeSync : ImmutableList.of(true, false)) {
-        // Bump up the iteration, for use in the verify call and getting the correct capture.
+        // Bump up the iteration, for use in the verify call and getting the correct
+        // capture.
         ++iteration;
         AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
         buildValidParams(
@@ -1039,14 +1065,14 @@ public class NodeManagerTest extends FakeDBApplication {
         setInstanceTags(params);
       }
 
-      ArrayList<String> expectedCommandArrayList = new ArrayList();
+      ArrayList<String> expectedCommandArrayList = new ArrayList<>();
       expectedCommandArrayList.addAll(t.baseCommand);
       expectedCommandArrayList.addAll(
           nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommandArrayList), eq(t.region.provider.getConfig()), anyString());
+          .run(eq(expectedCommandArrayList), anyMap(), anyString());
     }
   }
 
@@ -1109,8 +1135,8 @@ public class NodeManagerTest extends FakeDBApplication {
         accessKeyCommands.add(userIntent.accessKeyCode);
         // String customSecurityGroupId = t.region.getSecurityGroupId();
         // if (customSecurityGroupId != null) {
-        //   accessKeyCommands.add("--security_group_id");
-        //   accessKeyCommands.add(customSecurityGroupId);
+        // accessKeyCommands.add("--security_group_id");
+        // accessKeyCommands.add(customSecurityGroupId);
         // }
       }
       accessKeyCommands.add("--custom_ssh_port");
@@ -1124,8 +1150,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommands);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1175,8 +1200,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1202,8 +1226,7 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.removeIf(stringPredicate);
       }
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1227,8 +1250,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
 
     File file = new File(packagePath);
@@ -1248,13 +1270,13 @@ public class NodeManagerTest extends FakeDBApplication {
         setInstanceTags(params);
       }
 
-      ArrayList<String> expectedCommandArrayList = new ArrayList();
+      ArrayList<String> expectedCommandArrayList = new ArrayList<>();
       expectedCommandArrayList.addAll(t.baseCommand);
       expectedCommandArrayList.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
       verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommandArrayList), eq(t.region.provider.getConfig()), anyString());
+          .run(eq(expectedCommandArrayList), anyMap(), anyString());
     }
   }
 
@@ -1322,8 +1344,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommands);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1357,8 +1378,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1380,8 +1400,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1437,8 +1456,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1461,8 +1479,7 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1535,8 +1552,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1563,8 +1579,7 @@ public class NodeManagerTest extends FakeDBApplication {
           nodeCommand(NodeManager.NodeCommandType.Configure, params, t, userIntent));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1659,8 +1674,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1682,8 +1696,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1733,8 +1746,7 @@ public class NodeManagerTest extends FakeDBApplication {
         List<String> expectedCommand = new ArrayList<>(t.baseCommand);
         expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-        verify(shellProcessHandler, times(1))
-            .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+        verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
       }
     }
   }
@@ -1835,8 +1847,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1855,8 +1866,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -1876,7 +1886,7 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1))
           .run(
               captor.capture(),
-              eq(t.region.provider.getConfig()),
+              anyMap(),
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
@@ -1911,7 +1921,7 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1))
           .run(
               captor.capture(),
-              eq(t.region.provider.getConfig()),
+              anyMap(),
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
@@ -1945,7 +1955,7 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1))
           .run(
               captor.capture(),
-              eq(t.region.provider.getConfig()),
+              anyMap(),
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
@@ -1984,7 +1994,7 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1))
           .run(
               captor.capture(),
-              eq(t.region.provider.getConfig()),
+              anyMap(),
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
@@ -2013,8 +2023,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2051,8 +2060,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2069,8 +2077,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2107,8 +2114,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Control, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2143,8 +2149,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2162,8 +2167,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2182,8 +2186,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Tags, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Tags, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2223,8 +2226,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Disk_Update, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Disk_Update, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2243,8 +2245,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2264,8 +2265,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2305,8 +2305,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
       testGFlagsInCommand(expectedCommand, params.isMaster, isMasterInShellMode);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2456,7 +2455,7 @@ public class NodeManagerTest extends FakeDBApplication {
         verify(shellProcessHandler, times(1))
             .run(
                 captor.capture(),
-                eq(data.region.provider.getConfig()),
+                anyMap(),
                 eq(
                     String.format(
                         "bin/ybcloud.sh %s --region %s instance configure %s",
@@ -2500,8 +2499,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = data.baseCommand;
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2532,8 +2530,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = data.baseCommand;
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2714,8 +2711,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = data.baseCommand;
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
@@ -2760,7 +2756,7 @@ public class NodeManagerTest extends FakeDBApplication {
         verify(shellProcessHandler, times(1))
             .run(
                 captor.capture(),
-                eq(data.region.provider.getConfig()),
+                anyMap(),
                 eq(
                     String.format(
                         "bin/ybcloud.sh %s --region %s instance configure %s",

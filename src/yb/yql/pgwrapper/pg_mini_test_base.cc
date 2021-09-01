@@ -33,7 +33,9 @@ namespace yb {
 namespace pgwrapper {
 
 void PgMiniTestBase::DoTearDown() {
-  pg_supervisor_->Stop();
+  if (pg_supervisor_) {
+    pg_supervisor_->Stop();
+  }
   YBMiniClusterTestBase::DoTearDown();
 }
 

@@ -96,6 +96,33 @@ typedef enum PgDataType {
   YB_YQL_DATA_TYPE_UINT64 = 103
 } YBCPgDataType;
 
+// Datatypes that are internally designated to be unsupported.
+// (See similar QL_UNSUPPORTED_TYPES_IN_SWITCH.)
+#define YB_PG_UNSUPPORTED_TYPES_IN_SWITCH \
+  case YB_YQL_DATA_TYPE_NOT_SUPPORTED: \
+  case YB_YQL_DATA_TYPE_UNKNOWN_DATA
+
+// Datatypes that are not used in YSQL.
+// (See similar QL_INVALID_TYPES_IN_SWITCH.)
+#define YB_PG_INVALID_TYPES_IN_SWITCH \
+  case YB_YQL_DATA_TYPE_NULL_VALUE_TYPE: \
+  case YB_YQL_DATA_TYPE_VARINT: \
+  case YB_YQL_DATA_TYPE_INET: \
+  case YB_YQL_DATA_TYPE_LIST: \
+  case YB_YQL_DATA_TYPE_MAP: \
+  case YB_YQL_DATA_TYPE_SET: \
+  case YB_YQL_DATA_TYPE_UUID: \
+  case YB_YQL_DATA_TYPE_TIMEUUID: \
+  case YB_YQL_DATA_TYPE_TUPLE: \
+  case YB_YQL_DATA_TYPE_TYPEARGS: \
+  case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE: \
+  case YB_YQL_DATA_TYPE_FROZEN: \
+  case YB_YQL_DATA_TYPE_DATE: \
+  case YB_YQL_DATA_TYPE_TIME: \
+  case YB_YQL_DATA_TYPE_JSONB: \
+  case YB_YQL_DATA_TYPE_UINT8: \
+  case YB_YQL_DATA_TYPE_UINT16
+
 // Datatype representation:
 // Definition of a datatype is divided into two different sections.
 // - YBCPgTypeEntity is used to keep static information of a datatype.

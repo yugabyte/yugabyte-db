@@ -40,6 +40,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/map-util.h"
@@ -146,17 +147,18 @@ LogOptions::LogOptions()
       env(Env::Default()) {
 }
 
-Status ReadableLogSegment::Open(Env* env,
-                                const string& path,
-                                scoped_refptr<ReadableLogSegment>* segment) {
+Result<scoped_refptr<ReadableLogSegment>> ReadableLogSegment::Open(
+    Env* env, const std::string& path) {
   VLOG(1) << "Parsing wal segment: " << path;
   shared_ptr<RandomAccessFile> readable_file;
   RETURN_NOT_OK_PREPEND(env_util::OpenFileForRandom(env, path, &readable_file),
                         "Unable to open file for reading");
 
-  segment->reset(new ReadableLogSegment(path, readable_file));
-  RETURN_NOT_OK_PREPEND((*segment)->Init(), "Unable to initialize segment");
-  return Status::OK();
+  auto segment = make_scoped_refptr<ReadableLogSegment>(path, readable_file);
+  if (!VERIFY_RESULT_PREPEND(segment->Init(), "Unable to initialize segment")) {
+    return nullptr;
+  }
+  return segment;
 }
 
 ReadableLogSegment::ReadableLogSegment(
@@ -205,12 +207,14 @@ Status ReadableLogSegment::Init(const LogSegmentHeaderPB& header,
   return Status::OK();
 }
 
-Status ReadableLogSegment::Init() {
+Result<bool> ReadableLogSegment::Init() {
   DCHECK(!IsInitialized()) << "Can only call Init() once";
 
   RETURN_NOT_OK(ReadFileSize());
 
-  RETURN_NOT_OK(ReadHeader());
+  if (!VERIFY_RESULT(ReadHeader())) {
+    return false;
+  }
 
   Status s = ReadFooter();
   if (!s.ok()) {
@@ -222,7 +226,7 @@ Status ReadableLogSegment::Init() {
 
   readable_to_offset_.Store(file_size());
 
-  return Status::OK();
+  return true;
 }
 
 int64_t ReadableLogSegment::readable_up_to() const {
@@ -244,6 +248,7 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
 
   footer_.set_num_entries(read_entries.entries.size());
 
+  uint64_t latest_ht = 0;
   // Rebuild the min/max replicate index (by scanning)
   for (const auto& entry : read_entries.entries) {
     if (entry->has_replicate()) {
@@ -257,12 +262,17 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
           index > footer_.max_replicate_index()) {
         footer_.set_max_replicate_index(index);
       }
+      latest_ht = std::max(latest_ht, entry->replicate().hybrid_time());
     }
   }
 
   DCHECK(footer_.IsInitialized());
   DCHECK_EQ(read_entries.entries.size(), footer_.num_entries());
   footer_was_rebuilt_ = true;
+
+  if (latest_ht > 0) {
+    footer_.set_close_timestamp_micros(yb::HybridTime(latest_ht).GetPhysicalValueMicros());
+  }
 
   readable_to_offset_.Store(read_entries.end_offset);
 
@@ -284,7 +294,7 @@ Status ReadableLogSegment::ReadFileSize() {
   return Status::OK();
 }
 
-Status ReadableLogSegment::ReadHeader() {
+Result<bool> ReadableLogSegment::ReadHeader() {
   uint32_t header_size;
   RETURN_NOT_OK(ReadHeaderMagicAndHeaderLength(&header_size));
   if (header_size == 0) {
@@ -293,7 +303,7 @@ Status ReadableLogSegment::ReadHeader() {
     // case, 'is_initialized_' remains set to false and return
     // Status::OK() early. LogReader ignores segments where
     // IsInitialized() returns false.
-    return Status::OK();
+    return false;
   }
 
   if (header_size > kLogSegmentMaxHeaderOrFooterSize) {
@@ -321,7 +331,7 @@ Status ReadableLogSegment::ReadHeader() {
   header_.CopyFrom(header);
   first_entry_offset_ = header_size + kLogSegmentHeaderMagicAndHeaderLength;
 
-  return Status::OK();
+  return true;
 }
 
 
@@ -788,6 +798,11 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
   return Status::OK();
 }
 
+const LogSegmentHeaderPB& ReadableLogSegment::header() const {
+  DCHECK(header_.IsInitialized());
+  return header_;
+}
+
 WritableLogSegment::WritableLogSegment(string path,
                                        shared_ptr<WritableFile> writable_file)
     : path_(std::move(path)),
@@ -955,5 +970,6 @@ Status ModifyDurableWriteFlagIfNotODirect() {
   }
   return Status::OK();
 }
+
 }  // namespace log
 }  // namespace yb

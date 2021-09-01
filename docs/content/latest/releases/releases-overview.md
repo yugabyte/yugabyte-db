@@ -48,8 +48,9 @@ For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.7](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | May 5, 2021 | n/a | n/a |
+| [v2.9](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | August 26, 2021 | n/a | n/a |
 | [v2.6](../whats-new/stable-release) ![CURRENT STABLE](/images/releases/current-stable.png) | July 5, 2021 | July 5, 2022 | Jan 5, 2023 |
+| [v2.7](../whats-new/latest-release) | May 5, 2021 | n/a | n/a |
 | [v2.5](../earlier-releases/v2.5) | Nov 12, 2020 | n/a | n/a |
 | [v2.4](../earlier-releases/v2.4) | Jan 22, 2021 | Jan 22, 2022 | Jul 21, 2022 |
 | [v2.3](../earlier-releases/v2.3.0) | Sep 08, 2020 | n/a | n/a |
@@ -68,9 +69,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.7 | May 2021 |
-| v2.6 (stable) | July 2021 |
-| v2.9 | mid-July 2021 |
+| v2.9 | August 2021 |
 | v2.8 (stable) | mid-September 2021 |
 | v2.11 | mid-November 2021 |
 
@@ -81,6 +80,6 @@ To ensure that your production go-live uses the most up-to-date stable release, 
 | Production go-live  | Recommended release series |
 | :------------------ | :------------------------- |
 | < 3 months          | v2.6 (current stable)      |
-| > 3 months          | v2.7 (latest)              |
+| > 3 months          | v2.9 (latest)              |
 
 If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the current stable release series, based on the latest release series you used for development and testing, will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.

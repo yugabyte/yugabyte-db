@@ -213,20 +213,20 @@ Status FsTool::ListSegmentsInDir(const string& segments_dir) {
 
 Status FsTool::PrintLogSegmentHeader(const string& path,
                                      int indent) {
-  scoped_refptr<ReadableLogSegment> segment;
-  Status s = ReadableLogSegment::Open(fs_manager_->env(),
-                                      path,
-                                      &segment);
-
-  if (s.IsUninitialized()) {
-    LOG(ERROR) << path << " is not initialized: " << s.ToString();
-    return Status::OK();
+  auto segment_result = ReadableLogSegment::Open(fs_manager_->env(), path);
+  if (!segment_result.ok()) {
+    auto s = segment_result.status();
+    if (s.IsUninitialized()) {
+      LOG(ERROR) << path << " is not initialized: " << s.ToString();
+      return Status::OK();
+    }
+    if (s.IsCorruption()) {
+      LOG(ERROR) << path << " is corrupt: " << s.ToString();
+      return Status::OK();
+    }
+    return s.CloneAndPrepend("Unexpected error reading log segment " + path);
   }
-  if (s.IsCorruption()) {
-    LOG(ERROR) << path << " is corrupt: " << s.ToString();
-    return Status::OK();
-  }
-  RETURN_NOT_OK_PREPEND(s, "Unexpected error reading log segment " + path);
+  const auto& segment = *segment_result;
 
   std::cout << Indent(indent) << "Size: "
             << HumanReadableNumBytes::ToStringWithoutRounding(segment->file_size())

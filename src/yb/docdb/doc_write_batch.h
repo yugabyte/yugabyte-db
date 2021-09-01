@@ -211,6 +211,11 @@ class DocWriteBatch {
     return cache_.Get(encoded_key_prefix);
   }
 
+  std::pair<std::string, std::string>& AddRaw() {
+    put_batch_.emplace_back();
+    return put_batch_.back();
+  }
+
  private:
   // This member function performs the necessary operations to set a primitive value for a given
   // docpath assuming the appropriate operations have been taken care of for subkeys with index <
