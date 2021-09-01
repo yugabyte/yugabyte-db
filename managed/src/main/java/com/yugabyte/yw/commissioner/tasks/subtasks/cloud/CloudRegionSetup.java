@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import javax.inject.Inject;
 import play.api.Play;
 import play.libs.Json;
@@ -101,9 +102,28 @@ public class CloudRegionSetup extends CloudTaskBase {
           zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
         region.zones = new ArrayList<>();
-        zoneSubnets.forEach(
-            (zone, subnet) ->
-                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+        Map<String, String> zoneSecondarySubnets = taskParams().metadata.azToSecondarySubnetIds;
+        // Secondary subnets were passed, which mean they should have a one to one mapping.
+        // If not, throw an error.
+        if (zoneSecondarySubnets != null && !zoneSecondarySubnets.isEmpty()) {
+          zoneSubnets.forEach(
+              (zone, subnet) ->
+                  region.zones.add(
+                      AvailabilityZone.createOrThrow(
+                          region,
+                          zone,
+                          zone,
+                          subnet,
+                          Optional.ofNullable(zoneSecondarySubnets.get(zone))
+                              .orElseThrow(
+                                  () ->
+                                      new RuntimeException(
+                                          "Secondary subnets for all zones must be provided")))));
+        } else {
+          zoneSubnets.forEach(
+              (zone, subnet) ->
+                  region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+        }
         break;
       case azu:
         Map<String, String> zoneNets = taskParams().metadata.azToSubnetIds;
@@ -153,9 +173,13 @@ public class CloudRegionSetup extends CloudTaskBase {
           subnetId = subnetworks.get(0);
         }
         final String subnet = subnetId;
+        // Will be null in case not provided.
+        final String secondarySubnet = taskParams().metadata.secondarySubnetId;
         region.zones = new ArrayList<>();
         zones.forEach(
-            zone -> region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+            zone ->
+                region.zones.add(
+                    AvailabilityZone.createOrThrow(region, zone, zone, subnet, secondarySubnet)));
         break;
       default:
         throw new RuntimeException(

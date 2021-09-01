@@ -8,29 +8,28 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-import boto3
 import json
 import logging
 import os
 import socket
+import time
 
-from botocore.utils import InstanceMetadataFetcher
+import boto3
 from botocore.exceptions import ClientError
-
-from six.moves.urllib.request import urlopen
+from botocore.utils import InstanceMetadataFetcher
 from six.moves.urllib.error import URLError
-
-from ybops.cloud.aws.command import AwsInstanceCommand, AwsNetworkCommand, \
-    AwsAccessCommand, AwsQueryCommand, AwsDnsCommand
-from ybops.cloud.aws.utils import get_vpc_for_subnet
+from six.moves.urllib.request import urlopen
+from ybops.cloud.aws.command import (AwsAccessCommand, AwsDnsCommand, AwsInstanceCommand,
+                                     AwsNetworkCommand, AwsQueryCommand)
+from ybops.cloud.aws.utils import (ROOT_VOLUME_LABEL, AwsBootstrapClient, YbVpcComponents,
+                                   change_instance_type, create_instance, delete_vpc, get_client,
+                                   get_clients, get_device_names, get_spot_pricing,
+                                   get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
+                                   query_vpc, update_disk)
 from ybops.cloud.common.cloud import AbstractCloud
-from ybops.utils import is_valid_ip_address, validated_key_file, format_rsa_key
-
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.cloud.aws.utils import query_vpc, get_zones, \
-    delete_vpc, get_client, get_clients, AwsBootstrapClient, \
-    get_spot_pricing, YbVpcComponents, create_instance, has_ephemerals, get_device_names, \
-    modify_tags, update_disk, ROOT_VOLUME_LABEL, change_instance_type
+from ybops.utils import (DEFAULT_SSH_PORT, DEFAULT_SSH_USER, format_rsa_key, get_datafile_path,
+                         is_valid_ip_address, remote_exec_command, scp_to_tmp, validated_key_file)
 
 
 class AwsCloud(AbstractCloud):
@@ -63,7 +62,7 @@ class AwsCloud(AbstractCloud):
         return get_vpc_for_subnet(get_client(region), subnet)
 
     def get_image(self, region=None):
-        regions = [region] if region is not None else get_regions()
+        regions = [region] if region is not None else self.get_regions()
         output = {}
         for r in regions:
             output[r] = self.metadata["regions"][r]["image"]
@@ -245,7 +244,7 @@ class AwsCloud(AbstractCloud):
         elif metadata_type in ["region", "privateIp"]:
             identity_data = urlopen(self.INSTANCE_IDENTITY_API,
                                     timeout=self.METADATA_API_TIMEOUT_SECONDS) \
-                                        .read().decode('utf-8')
+                .read().decode('utf-8')
             return json.loads(identity_data).get(metadata_type) if identity_data else None
         elif metadata_type in ["role"]:
             # Arg timeout is in MS.
@@ -332,16 +331,31 @@ class AwsCloud(AbstractCloud):
             disks = data.get("BlockDeviceMappings")
             root_vol = next(disk for disk in disks if disk.get("DeviceName") == ROOT_VOLUME_LABEL)
 
+            primary_private_ip = None
+            secondary_private_ip = None
+            primary_subnet = None
+            secondary_subnet = None
+            network_interfaces = data.get("NetworkInterfaces")
+            for interface in network_interfaces:
+                if interface.get("Attachment").get("DeviceIndex") == 0:
+                    primary_private_ip = interface.get("PrivateIpAddress")
+                    primary_subnet = interface.get("SubnetId")
+                elif interface.get("Attachment").get("DeviceIndex") == 1:
+                    secondary_private_ip = interface.get("PrivateIpAddress")
+                    secondary_subnet = interface.get("SubnetId")
+
             result = dict(
                 id=data.get("InstanceId", None),
                 name=name_tags[0] if name_tags else None,
                 public_ip=data.get("PublicIpAddress", None),
-                private_ip=data["PrivateIpAddress"],
+                private_ip=primary_private_ip,
+                secondary_private_ip=secondary_private_ip,
                 public_dns=data["PublicDnsName"],
                 private_dns=data["PrivateDnsName"],
                 launch_time=data["LaunchTime"].isoformat(),
                 zone=zone,
-                subnet=data["SubnetId"],
+                subnet=primary_subnet,
+                secondary_subnet=secondary_subnet,
                 region=region if region is not None else zone[:-1],
                 instance_type=data["InstanceType"],
                 server_type=server_tags[0] if server_tags else None,
@@ -360,8 +374,20 @@ class AwsCloud(AbstractCloud):
         else:
             return get_device_names(args.instance_type, args.num_volumes)
 
+    def get_subnet_cidr(self, args, subnet_id):
+        ec2 = boto3.resource('ec2', args.region)
+        subnet = ec2.Subnet(subnet_id)
+        return subnet.cidr_block
+
     def create_instance(self, args):
-        return create_instance(args)
+        # If we are configuring second NIC, ensure that this only happens for a
+        # centOS AMI right now.
+        if args.cloud_subnet_secondary:
+            ec2 = boto3.resource('ec2', args.region)
+            image = ec2.Image(args.machine_image)
+            if 'centos' not in image.name.lower():
+                raise YBOpsRuntimeError("Second NIC can only be configured for CentOS right now")
+        create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
         logging.info("Deleting AWS instance {} in region {}".format(instance_id, region))
@@ -369,18 +395,16 @@ class AwsCloud(AbstractCloud):
         instance = ec2.Instance(instance_id)
         if has_elastic_ip:
             client = boto3.client('ec2', region)
-            elastic_ip = client.describe_addresses(
-                Filters=[{'Name': 'public-ip', 'Values': [instance.public_ip_address]}],
-                DryRun=False
-            )["Addresses"][0]
-            client.disassociate_address(
-                AssociationId=elastic_ip["AssociationId"],
-                DryRun=False
-            )
-            client.release_address(
-                AllocationId=elastic_ip["AllocationId"],
-                DryRun=False
-            )
+            elastic_ip_list = client.describe_addresses(
+                Filters=[{'Name': 'public-ip', 'Values': [instance.public_ip_address]}]
+            )["Addresses"]
+            for elastic_ip in elastic_ip_list:
+                client.disassociate_address(
+                    AssociationId=elastic_ip["AssociationId"]
+                )
+                client.release_address(
+                    AllocationId=elastic_ip["AllocationId"]
+                )
             logging.info(
                 "Deleted elastic ip at {} from VM {}".format(elastic_ip["PublicIp"], instance_id))
         instance.terminate()
@@ -464,4 +488,3 @@ class AwsCloud(AbstractCloud):
             logging.error(e)
         finally:
             sock.close()
-
