@@ -18,7 +18,7 @@
   <input class="toggle" type="checkbox" id="toggle-search">
   <label class="toggle-button overlay" for="toggle-drawer"></label>
 
-  {{ partial "header" . }}
+  {{ partialCached "header" . }}
 
   <main class="main">
     <div class="drawer">
@@ -27,7 +27,7 @@
 
     <article class="article">
       <div class="wrapper">
-				{{ partial "breadcrumbs" (dict "context" . "menu" (.Site.Menus.latest)) }}	
+				{{ partialCached "breadcrumbs" (dict "context" . "menu" (.Site.Menus.latest)) .Section }}	
 
 
         {{ range $key, $value := ($.Scratch.Get "terms") }}
@@ -50,5 +50,5 @@
     </div>
   </main>
 
-  {{ partial "footer" . }}
-  {{ partial "footer_js" . }}
+  {{ partialCached "footer" . }}
+  {{ partialCached "footer_js" . }}
