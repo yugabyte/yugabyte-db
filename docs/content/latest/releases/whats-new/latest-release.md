@@ -24,7 +24,7 @@ For Yugabyte Platform, the class is `yugaware.storageClass`. For YugabyteDB, the
 
 {{< /tip >}}
 
-## v2.9.0.0 - August 26, 2021
+## v2.9.0.0 - August 31, 2021
 
 Version 2.9 introduces many new features and refinements. To learn more, check out the [Announcing YugabyteDB 2.9: Pushing the Boundaries of Relational Databases](https://blog.yugabyte.com/announcing-yugabytedb-2-9/) blog post.
 
