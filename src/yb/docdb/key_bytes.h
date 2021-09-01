@@ -68,7 +68,7 @@ class KeyBytes {
   }
 
   std::string ToStringBuffer() const {
-    return data().ToString();
+    return data().ToStringBuffer();
   }
 
   const KeyBuffer& data() const {

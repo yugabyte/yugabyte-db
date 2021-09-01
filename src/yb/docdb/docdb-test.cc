@@ -3864,7 +3864,7 @@ void Append(const char* a, const char* b, ByteBuffer<SmallLen>* out) {
 
 template <size_t SmallLen>
 void PushBack(const ByteBuffer<SmallLen>& value, std::vector<std::string>* out) {
-  out->push_back(value.ToString());
+  out->push_back(value.ToStringBuffer());
 }
 
 constexpr size_t kSourceLen = 32;
