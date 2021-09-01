@@ -8,14 +8,15 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod,\
-    AbstractMethod, DestroyInstancesMethod, AbstractAccessMethod, CreateRootVolumesMethod, \
-    ReplaceRootVolumeMethod, ChangeInstanceTypeMethod
-from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.utils import validated_key_file, format_rsa_key
-from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
-
 import json
+
+from ybops.cloud.common.method import (AbstractAccessMethod, AbstractMethod,
+                                       ChangeInstanceTypeMethod, CreateInstancesMethod,
+                                       CreateRootVolumesMethod, DestroyInstancesMethod,
+                                       ProvisionInstancesMethod, ReplaceRootVolumeMethod)
+from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
+from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
+from ybops.utils import format_rsa_key, validated_key_file
 
 
 class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
@@ -65,18 +66,14 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
             public_key = format_rsa_key(rsa_key, public_key=True)
             ssh_keys = "{}:{} {}".format(self.SSH_USER, public_key, self.SSH_USER)
 
-        self.cloud.get_admin().create_instance(
-            args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
-            server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
-            args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
-            args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
-            auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags)
+        self.cloud.create_instance(args, server_type, can_ip_forward, machine_image, ssh_keys)
 
 
 class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
     """Subclass for provisioning instances in GCP. Sets up the proper Create method to point to the
     GCP specific one.
     """
+
     def __init__(self, base_command):
         super(GcpProvisionInstancesMethod, self).__init__(base_command)
 
@@ -107,14 +104,17 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
             "sourceImage": args.machine_image})
         return res["targetLink"]
 
-    def delete_instance(self, args, instance_id):
+    # Not invoked. Just keeping if for consistency.
+    def delete_instance(self, args):
+        name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
         self.cloud.get_admin().delete_instance(
-            args.region, args.zone, instance_id, has_static_ip=args.delete_static_public_ip)
+            args.region, args.zone, name, has_static_ip=args.assign_static_public_ip)
 
 
 class GcpDestroyInstancesMethod(DestroyInstancesMethod):
     """Subclass for deleting instances in GCP. Uses the API to delete instance bypassing Ansible.
     """
+
     def __init__(self, base_command):
         super(GcpDestroyInstancesMethod, self).__init__(base_command)
 

@@ -383,8 +383,8 @@ class NetworkManager():
         if len(firewalls) == 0:
             return
         return self.waiter.wait(self.compute.firewalls().delete(
-          project=self.project,
-          firewall=firewall_name).execute())
+            project=self.project,
+            firewall=firewall_name).execute())
 
     def get_firewall_rules(self, network_url, name):
         filter = "(network eq {})(name eq {})".format(network_url, name)
@@ -405,7 +405,7 @@ class NetworkManager():
             "targetTags": get_firewall_tags(),
             "sourceRanges": ip_cidr_list,
             "allowed": [{"IPProtocol": p} for p in ["tcp", "udp", "icmp"]]
-            }
+        }
         fw_object = self.compute.firewalls()
         if firewall_exists:
             # Only update if any of these CIDRs are not already there or if targetFlags should
@@ -630,6 +630,11 @@ class GoogleCloudAdmin():
         """
         return {}
 
+    def get_subnetwork_by_name(self, region, name):
+        host_project = self.get_host_project()
+        return self.compute.subnetworks().get(project=host_project,
+                                              region=region, subnetwork=name).execute()
+
     def get_regions(self):
         return list(self.metadata['regions'].keys())
         """
@@ -653,6 +658,9 @@ class GoogleCloudAdmin():
                                                                fields=fields,
                                                                zone=zone).execute()
         return instance_type_items["items"]
+
+    def get_host_project(self):
+        return os.environ.get("GCE_HOST_PROJECT", self.project)
 
     def get_pricing_map(self, ):
         # Requests encounters an SSL bug when run on portal, so verify is set to false
@@ -691,17 +699,37 @@ class GoogleCloudAdmin():
             disks = data.get("disks", [])
             root_vol = next(disk for disk in disks if disk.get("boot", False))
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
-            interface = data.get("networkInterfaces", [None])[0]
-            access_config = interface.get("accessConfigs", [None])[0]
+            interface = [None]
+            private_ip = None
+            primary_subnet = None
+            secondary_private_ip = None
+            secondary_subnet = None
+            public_ip = None
+            if data.get("networkInterfaces"):
+                interface = data.get("networkInterfaces")
+                if len(interface):
+                    for i in interface:
+                        # Interface names are of form
+                        # nic0, nic1, nic2, etc.
+                        if i.get("name") == 'nic0':
+                            access_config = i.get("accessConfigs", [None])[0]
+                            public_ip = access_config.get("natIP") if access_config else None
+                            private_ip = i.get("networkIP")
+                            primary_subnet = i.get("subnetwork").split("/")[-1]
+                        elif i.get("name") == 'nic1':
+                            secondary_private_ip = i.get("networkIP")
+                            secondary_subnet = i.get("subnetwork").split("/")[-1]
             zone = data["zone"].split("/")[-1]
             region = zone[:-2]
             machine_type = data["machineType"].split("/")[-1]
-            public_ip = access_config.get("natIP") if access_config else None
             result = dict(
                 id=data.get("name"),
                 name=data.get("name"),
                 public_ip=public_ip,
-                private_ip=interface.get("networkIP"),
+                private_ip=private_ip,
+                secondary_private_ip=secondary_private_ip,
+                subnet=primary_subnet,
+                secondary_subnet=secondary_subnet,
                 region=region,
                 zone=zone,
                 instance_type=machine_type,
@@ -710,7 +738,7 @@ class GoogleCloudAdmin():
                 launch_time=data.get("creationTimestamp"),
                 root_volume=root_vol["source"],
                 root_volume_device_name=root_vol["deviceName"]
-                )
+            )
             if not get_all:
                 return result
             results.append(result)
@@ -720,9 +748,9 @@ class GoogleCloudAdmin():
                         use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
-                        auto_delete_boot_disk=True, tags=None):
+                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None):
         # Name of the project that target VPC network belongs to.
-        host_project = os.environ.get("GCE_HOST_PROJECT", self.project)
+        host_project = self.get_host_project()
 
         boot_disk_json = {
             "autoDelete": auto_delete_boot_disk,
@@ -784,16 +812,23 @@ class GoogleCloudAdmin():
                 "items": get_firewall_tags()
             },
             "scheduling": {
-              "preemptible": use_preemptible
+                "preemptible": use_preemptible
             }
         }
+        # Attach a secondary network interface if present.
+        if cloud_subnet_secondary:
+            body["networkInterfaces"].append({
+                "accessConfigs": None,
+                "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
+                    host_project, region, cloud_subnet_secondary)
+            })
 
         if boot_script:
             with open(boot_script, 'r') as script:
                 body["metadata"]["items"].append({
                     "key": "startup-script",
                     "value": script.read()
-                    })
+                })
 
         initial_params = {}
         if volume_type == GCP_SCRATCH:

@@ -33,7 +33,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
 
   // Additional parameters for this task.
   public static class Params extends NodeTaskParams {
-    // The VPC into which the node is to be provisioned.
+    // The subnet into which the node's network interface needs to be provisioned.
     public String subnetId;
 
     // For AWS, this will dictate if we use the Time Sync Service.

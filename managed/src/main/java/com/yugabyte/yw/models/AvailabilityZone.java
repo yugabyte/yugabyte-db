@@ -71,6 +71,10 @@ public class AvailabilityZone extends Model {
   @ApiModelProperty(value = "AZ Subnet", example = "subnet id")
   public String subnet;
 
+  @Column(length = 50)
+  @ApiModelProperty(value = "AZ Secondary Subnet", example = "secondary subnet id")
+  public String secondarySubnet;
+
   @DbJson
   @Column(columnDefinition = "TEXT")
   @ApiModelProperty(value = "AZ Config values")
@@ -106,12 +110,18 @@ public class AvailabilityZone extends Model {
 
   public static AvailabilityZone createOrThrow(
       Region region, String code, String name, String subnet) {
+    return createOrThrow(region, code, name, subnet, null);
+  }
+
+  public static AvailabilityZone createOrThrow(
+      Region region, String code, String name, String subnet, String secondarySubnet) {
     try {
       AvailabilityZone az = new AvailabilityZone();
       az.region = region;
       az.code = code;
       az.name = name;
       az.subnet = subnet;
+      az.secondarySubnet = secondarySubnet;
       az.save();
       return az;
     } catch (Exception e) {

@@ -701,6 +701,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.universeUUID = taskParams().universeUUID;
     // Pick one of the subnets in a round robin fashion.
     params.subnetId = cloudInfo.subnet_id;
+    params.secondarySubnetId = cloudInfo.secondary_subnet_id;
     // Set the instance type.
     params.instanceType = cloudInfo.instance_type;
     // Set the assign public ip param.

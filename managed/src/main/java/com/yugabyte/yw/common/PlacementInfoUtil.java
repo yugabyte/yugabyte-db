@@ -2,13 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toCollection;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -58,6 +51,12 @@ import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toCollection;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
@@ -1639,6 +1638,7 @@ public class PlacementInfoUtil {
     nodeDetails.azUuid = placementAZ.uuid;
     nodeDetails.cloudInfo.az = placementAZ.name;
     nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
+    nodeDetails.cloudInfo.secondary_subnet_id = placementAZ.secondarySubnet;
     nodeDetails.cloudInfo.instance_type = cluster.userIntent.instanceType;
     nodeDetails.cloudInfo.assignPublicIP = cluster.userIntent.assignPublicIP;
     nodeDetails.cloudInfo.useTimeSync = cluster.userIntent.useTimeSync;
@@ -2196,6 +2196,7 @@ public class PlacementInfoUtil {
                   newPlacementAZ.name = az.name;
                   newPlacementAZ.replicationFactor = 0;
                   newPlacementAZ.subnet = az.subnet;
+                  newPlacementAZ.secondarySubnet = az.secondarySubnet;
                   newPlacementAZ.isAffinitized = isAffinitized;
                   placementRegion.azList.add(newPlacementAZ);
 

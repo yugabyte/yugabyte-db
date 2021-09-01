@@ -894,6 +894,11 @@
           "example" : "south-east-1",
           "type" : "string"
         },
+        "secondarySubnet" : {
+          "description" : "AZ Secondary Subnet",
+          "example" : "secondary subnet id",
+          "type" : "string"
+        },
         "subnet" : {
           "description" : "AZ Subnet",
           "example" : "subnet id",
@@ -1463,6 +1468,14 @@
         },
         "region" : {
           "description" : "Region",
+          "type" : "string"
+        },
+        "secondary_private_ip" : {
+          "description" : "Secondary Private IP",
+          "type" : "string"
+        },
+        "secondary_subnet_id" : {
+          "description" : "Secondary Subnet IP",
           "type" : "string"
         },
         "subnet_id" : {
@@ -3068,6 +3081,9 @@
         "replicationFactor" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "secondarySubnet" : {
+          "type" : "string"
         },
         "subnet" : {
           "type" : "string"

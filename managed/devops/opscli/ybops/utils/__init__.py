@@ -42,6 +42,7 @@ YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
 SSH_RETRY_LIMIT = 60
 SSH_RETRY_LIMIT_PRECHECK = 4
 DEFAULT_SSH_PORT = 22
+DEFAULT_SSH_USER = 'centos'
 # Timeout in seconds.
 SSH_TIMEOUT = 45
 
