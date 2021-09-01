@@ -293,9 +293,10 @@ _PG_init(void)
 	planner_hook_next       		= planner_hook;
 	planner_hook                    = HOOK(pgss_planner_hook);
 #endif
-	emit_log_hook                 = HOOK(pgsm_emit_log_hook);
+	prev_emit_log_hook				= emit_log_hook;
+	emit_log_hook					= HOOK(pgsm_emit_log_hook);
 	prev_ExecutorCheckPerms_hook 	= ExecutorCheckPerms_hook;
-	ExecutorCheckPerms_hook		= HOOK(pgss_ExecutorCheckPerms);
+	ExecutorCheckPerms_hook			= HOOK(pgss_ExecutorCheckPerms);
 
 	nested_queryids = (uint64*) malloc(sizeof(uint64) * max_stack_depth);
 
@@ -317,6 +318,7 @@ _PG_fini(void)
 	ExecutorFinish_hook 	= prev_ExecutorFinish;
 	ExecutorEnd_hook 		= prev_ExecutorEnd;
 	ProcessUtility_hook 	= prev_ProcessUtility;
+	emit_log_hook			= prev_emit_log_hook;
 
 	free(nested_queryids);
 	regfree(&preg_query_comments);
