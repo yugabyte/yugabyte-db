@@ -364,7 +364,7 @@ public class CustomerTask extends Model {
   @ApiModelProperty(
       value = "Creation time",
       accessMode = READ_ONLY,
-      example = "1624295187911",
+      example = "2021-06-17 15:00:05",
       required = true)
   private Date createTime;
 
@@ -377,7 +377,7 @@ public class CustomerTask extends Model {
   @ApiModelProperty(
       value = "Completion time (present only if a task has completed)",
       accessMode = READ_ONLY,
-      example = "1624295187911")
+      example = "2021-06-17 15:00:05")
   private Date completionTime;
 
   public Date getCompletionTime() {
