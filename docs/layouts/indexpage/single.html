@@ -22,7 +22,7 @@
 		</div> 
 		<article class="article">
 			<div class="wrapper">
-				{{ partialCached "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) .Section }}	
+				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
 
 				{{ range where .Site.Pages "Type" "index" }}
 					<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}</h1>
