@@ -131,7 +131,7 @@ def add_cidr_to_rules(rules, cidr):
         "from_port": 0,
         "to_port": 65535,
         "cidr_ip": cidr
-        }
+    }
     rules.append(rule_block)
 
 
@@ -646,7 +646,7 @@ def query_vpc(region):
     raw_client = boto3.client("ec2", region_name=region)
     zones = [z["ZoneName"]
              for z in raw_client.describe_availability_zones(
-                Filters=get_filters("state", "available")).get("AvailabilityZones", [])]
+        Filters=get_filters("state", "available")).get("AvailabilityZones", [])]
     # Default to empty lists, in case some zones do not have subnets, so we can use this as a query
     # for all available AZs in this region.
     subnets_by_zone = {z: [] for z in zones}
@@ -855,17 +855,7 @@ def has_ephemerals(instance_type):
     return not is_nvme(instance_type) and not is_next_gen(instance_type)
 
 
-def create_instance(args):
-    client = get_client(args.region)
-    vars = {
-        "ImageId": args.machine_image,
-        "KeyName": args.key_pair_name,
-        "MinCount": 1,
-        "MaxCount": 1,
-        "InstanceType": args.instance_type,
-    }
-    # Network setup.
-    # Lets assume they have provided security group id comma delimited.
+def __get_security_group(client, args):
     sg_ids = args.security_group_id.split(",") if args.security_group_id else None
     if sg_ids is None:
         # Figure out which VPC this instance will be brought up in and search for the SG in there.
@@ -878,12 +868,39 @@ def create_instance(args):
         sg_name = get_yb_sg_name(args.region)
         sg = get_security_group(client, sg_name, vpc)
         sg_ids = [sg.id]
+    return sg_ids
+
+
+def create_instance(args):
+    client = get_client(args.region)
+    vars = {
+        "ImageId": args.machine_image,
+        "KeyName": args.key_pair_name,
+        "MinCount": 1,
+        "MaxCount": 1,
+        "InstanceType": args.instance_type,
+    }
+    # Network setup.
+    # Lets assume they have provided security group id comma delimited.
+    sg_ids = __get_security_group(client, args)
+
     vars["NetworkInterfaces"] = [{
         "DeviceIndex": 0,
-        "AssociatePublicIpAddress": args.assign_public_ip,
         "SubnetId": args.cloud_subnet,
-        "Groups": sg_ids
+        "Groups": sg_ids,
+        "DeleteOnTermination": True
     }]
+    if args.cloud_subnet_secondary:
+        vars["NetworkInterfaces"].append({
+            "DeviceIndex": 1,
+            "SubnetId": args.cloud_subnet_secondary,
+            "Groups": sg_ids,
+            "DeleteOnTermination": True
+        })
+    # AWS limitation that no public IP can be assigned if using two network interfaces.
+    else:
+        vars["NetworkInterfaces"][0]["AssociatePublicIpAddress"] = args.assign_public_ip
+
     # Volume setup.
     volumes = []
 
@@ -978,6 +995,9 @@ def create_instance(args):
             len(instance_ids)))
     instance = instance_ids[0]
     instance.wait_until_running()
+
+    logging.info("[app] AWS VM {} created.".format(args.search_pattern))
+
     if args.assign_static_public_ip:
         # Create elastic IP.
         eip_tags = list(user_tags)
@@ -989,22 +1009,27 @@ def create_instance(args):
         ec2_client = boto3.client("ec2", region_name=args.region)
         eip = ec2_client.allocate_address(
             Domain="vpc",
-            DryRun=False,
             TagSpecifications=[{
                 "ResourceType": "elastic-ip",
                 "Tags": eip_tags
             }]
         )
+        # Re-fetch instance to get latest state.
+        instance = client.Instance(instance.id)
+        # Get instance's primary network interface and attach IP.
+        interface_id = None
+        for i in instance.network_interfaces:
+            if i.attachment.get("DeviceIndex") == 0:
+                interface_id = i.id
         # Associate elastic IP with instance.
         ec2_client.associate_address(
             AllocationId=eip["AllocationId"],
-            InstanceId=instance.id,
-            DryRun=False
+            NetworkInterfaceId=interface_id
         )
         logging.info("[app] Created Elastic IP address at {} in region {} for AWS VM {}"
                      .format(eip["PublicIp"], args.region, args.search_pattern))
 
-    logging.info("[app] AWS VM {} created.".format(args.search_pattern))
+    return instance.id
 
 
 def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
@@ -1112,8 +1137,8 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
     client.get_waiter('resource_record_sets_changed').wait(
         Id=result['ChangeInfo']['Id'],
         WaiterConfig={
-          'Delay': 10,
-          'MaxAttempts': 60
+            'Delay': 10,
+            'MaxAttempts': 60
         })
 
 

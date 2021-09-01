@@ -77,10 +77,20 @@ public class CloudBootstrap extends CloudTaskBase {
       // Required: True for custom input, False for YW managed.
       public Map<String, String> azToSubnetIds;
 
+      // Custom map from AZ name to Subnet ID for AWS.
+      // Default: Empty
+      // Required: False for custom input, False for YW managed.
+      public Map<String, String> azToSecondarySubnetIds = null;
+
       // Region Subnet ID for GCP.
       // Default: created by YB.
       // Required: True for custom input, False for YW managed.
       public String subnetId;
+
+      // Region Secondary Subnet ID for GCP.
+      // Default: Null
+      // Required: False for custom input, False for YW managed.
+      public String secondarySubnetId = null;
 
       // TODO(bogdan): does this not need a custom SSH user as well???
       // Custom AMI ID to use for YB nodes.
@@ -100,7 +110,7 @@ public class CloudBootstrap extends CloudTaskBase {
         //    perRegionMetadata.subnetId = can only be set per zone
         perRegionMetadata.vpcId = region.getVnetName();
         //    perRegionMetadata.vpcCidr = never used
-        if (region.zones == null) {
+        if (region.zones == null || region.zones.size() == 0) {
           perRegionMetadata.azToSubnetIds = new HashMap<>();
         } else {
           perRegionMetadata.azToSubnetIds =
@@ -109,6 +119,16 @@ public class CloudBootstrap extends CloudTaskBase {
                   .stream()
                   .filter(zone -> zone.name != null && zone.subnet != null)
                   .collect(Collectors.toMap(zone -> zone.name, zone -> zone.subnet));
+          // Check if the zones have a secondary subnet
+          perRegionMetadata.azToSecondarySubnetIds =
+              region
+                  .zones
+                  .stream()
+                  .filter(zone -> zone.name != null && zone.secondarySubnet != null)
+                  .collect(Collectors.toMap(zone -> zone.name, zone -> zone.secondarySubnet));
+          // In case of GCP, we want to use the secondary subnet, which will be the same across
+          // zones. Will be ignored in all other cases.
+          perRegionMetadata.secondarySubnetId = region.zones.get(0).secondarySubnet;
         }
         return perRegionMetadata;
       }

@@ -889,6 +889,7 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
@@ -897,7 +898,11 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
-            Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+            // Only create second NIC for cloud.
+            if (config.getBoolean("yb.cloud.enabled") && taskParam.secondarySubnetId != null) {
+              commandArgs.add("--cloud_subnet_secondary");
+              commandArgs.add(taskParam.secondarySubnetId);
+            }
 
             // Use case: cloud free tier instances.
             if (config.getBoolean("yb.cloud.enabled")) {
