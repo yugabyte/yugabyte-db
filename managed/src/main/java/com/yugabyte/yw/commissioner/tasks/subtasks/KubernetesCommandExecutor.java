@@ -50,6 +50,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 
@@ -339,7 +341,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 ? String.format("%s_%s", podSpec.path("hostname").asText(), azName)
                 : podSpec.path("hostname").asText();
         String podNamespace = podInfo.path("metadata").path("namespace").asText();
-        if (podNamespace.isEmpty() || podNamespace == null) {
+        if (StringUtils.isBlank(podNamespace)) {
           throw new IllegalArgumentException(
               "metadata.namespace of pod " + podName + " is empty. This shouldn't happen");
         }

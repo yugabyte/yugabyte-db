@@ -47,8 +47,8 @@ public class HealthManager extends DevopsBase {
   public ShellResponse runCommand(
       Provider provider,
       List<ClusterInfo> clusters,
-      Long potentialStartTimeMs,
-      Boolean shouldLogOutput) {
+      long potentialStartTimeMs,
+      boolean shouldLogOutput) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -61,12 +61,14 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(clusters)));
     }
 
-    if (potentialStartTimeMs > 0) {
+    if (potentialStartTimeMs > 0L) {
       commandArgs.add("--start_time_ms");
       commandArgs.add(String.valueOf(potentialStartTimeMs));
     }
 
-    if (!provider.code.equals("onprem") && !provider.code.equals("kubernetes")) {
+    if (provider != null
+        && !provider.code.equals("onprem")
+        && !provider.code.equals("kubernetes")) {
       commandArgs.add("--check_clock");
     }
 
