@@ -1929,12 +1929,10 @@ class YBBackup:
                                       checksum_path(target_path))).strip()
         else:
             server_ip = self.get_main_host_ip()
-
-            if not self.args.disable_checksums:
-                checksum_downloaded = checksum_path_downloaded(target_path)
-                self.run_ssh_cmd(
-                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
-                    server_ip)
+            checksum_downloaded = checksum_path_downloaded(target_path)
+            self.run_ssh_cmd(
+                self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
+                server_ip)
             self.run_ssh_cmd(
                 self.storage.download_file_cmd(src_path, target_path),
                 server_ip)
