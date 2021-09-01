@@ -2,19 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -32,8 +19,20 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudBootstrapTest extends CommissionerBaseTest {
@@ -84,6 +83,29 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       boolean customAzMapping,
       boolean customSecurityGroup,
       boolean customImageId)
+      throws InterruptedException {
+    validateCloudBootstrapSuccess(
+        taskParams,
+        zoneInfo,
+        expectedRegions,
+        expectedProviderCode,
+        customAccessKey,
+        customAzMapping,
+        customSecurityGroup,
+        customImageId,
+        false);
+  }
+
+  private void validateCloudBootstrapSuccess(
+      CloudBootstrap.Params taskParams,
+      JsonNode zoneInfo,
+      List<String> expectedRegions,
+      String expectedProviderCode,
+      boolean customAccessKey,
+      boolean customAzMapping,
+      boolean customSecurityGroup,
+      boolean customImageId,
+      boolean hasSecondarySubnet)
       throws InterruptedException {
     Provider provider = Provider.get(taskParams.providerUUID);
     // Mock region metadata.
@@ -157,11 +179,33 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       List<AvailabilityZone> zones = r.zones;
       assertNotNull(zones);
       if (customAzMapping) {
-        assertEquals(metadata.azToSubnetIds.size(), zones.size());
-        for (AvailabilityZone zone : zones) {
-          String subnet = metadata.azToSubnetIds.get(zone.code);
-          assertNotNull(subnet);
+        if (expectedProviderCode.equals("aws")) {
+          assertEquals(metadata.azToSubnetIds.size(), zones.size());
+          for (AvailabilityZone zone : zones) {
+            String subnet = metadata.azToSubnetIds.get(zone.code);
+            String subnetDb = zone.subnet;
+            assertNotNull(subnetDb);
+            assertEquals(subnet, subnetDb);
+            if (hasSecondarySubnet) {
+              String secondarySubnet = metadata.azToSecondarySubnetIds.get(zone.code);
+              String secondarySubnetDb = zone.secondarySubnet;
+              assertNotNull(secondarySubnetDb);
+              assertEquals(secondarySubnet, secondarySubnetDb);
+            } else {
+              assertNull(zone.secondarySubnet);
+            }
+          }
+        } else if (expectedProviderCode.equals("gcp")) {
+          for (AvailabilityZone zone : zones) {
+            assertEquals(metadata.subnetId, zone.subnet);
+            if (hasSecondarySubnet) {
+              assertEquals(metadata.secondarySubnetId, zone.secondarySubnet);
+            } else {
+              assertNull(zone.secondarySubnet);
+            }
+          }
         }
+
       } else {
         // By default, assume the test puts just 1 in the zoneInfo.
         assertEquals(1, zones.size());
@@ -217,6 +261,26 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         taskParams, zoneInfo, ImmutableList.of("us-west-1"), "aws", false, false, false, false);
   }
 
+  public void createPerRegionMetadata(
+      String region,
+      boolean useSecondarySubnet,
+      boolean useCustomImage,
+      CloudBootstrap.Params.PerRegionMetadata regionMetadata) {
+    regionMetadata.vpcId = region;
+    regionMetadata.azToSubnetIds = new HashMap<>();
+    regionMetadata.azToSecondarySubnetIds = new HashMap<>();
+    regionMetadata.azToSubnetIds.put(region + "-1a", "subnet-1");
+    regionMetadata.azToSubnetIds.put(region + "-1b", "subnet-2");
+    if (useSecondarySubnet) {
+      regionMetadata.azToSecondarySubnetIds.put(region + "-1a", "subnet-1");
+      regionMetadata.azToSecondarySubnetIds.put(region + "-1b", "subnet-2");
+    }
+    if (useCustomImage) {
+      regionMetadata.customImageId = region + "-image";
+    }
+    regionMetadata.customSecurityGroupId = region + "-sg-id";
+  }
+
   @Test
   public void testCloudBootstrapSuccessAwsCustomMultiRegion() throws InterruptedException {
     // Zone information should not be used if we are passing in custom azToSubnetIds mapping.
@@ -225,21 +289,11 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     // Add region west.
     CloudBootstrap.Params.PerRegionMetadata westRegion =
         new CloudBootstrap.Params.PerRegionMetadata();
-    westRegion.vpcId = "west-id";
-    westRegion.azToSubnetIds = new HashMap<>();
-    westRegion.azToSubnetIds.put("us-west-1a", "subnet-1");
-    westRegion.azToSubnetIds.put("us-west-1b", "subnet-2");
-    westRegion.customImageId = "west-image";
-    westRegion.customSecurityGroupId = "west-sg-id";
+    createPerRegionMetadata("us-west", false, true, westRegion);
     // Add region east.
     CloudBootstrap.Params.PerRegionMetadata eastRegion =
         new CloudBootstrap.Params.PerRegionMetadata();
-    eastRegion.vpcId = "east-id";
-    eastRegion.azToSubnetIds = new HashMap<>();
-    eastRegion.azToSubnetIds.put("us-east-1a", "subnet-1");
-    eastRegion.azToSubnetIds.put("us-east-1b", "subnet-2");
-    eastRegion.customImageId = "east-image";
-    eastRegion.customSecurityGroupId = "east-sg-id";
+    createPerRegionMetadata("us-east", false, true, eastRegion);
     // Add all the regions in the taskParams and validate.
     taskParams.perRegionMetadata.put("us-west-1", westRegion);
     taskParams.perRegionMetadata.put("us-east-1", eastRegion);
@@ -259,6 +313,39 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testCloudBootstrapSuccessAwsCustomMultiRegionSecondarySubnet()
+      throws InterruptedException {
+    // Zone information should not be used if we are passing in custom azToSubnetIds mapping.
+    JsonNode zoneInfo = Json.parse("{}");
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    // Add region west.
+    CloudBootstrap.Params.PerRegionMetadata westRegion =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    createPerRegionMetadata("us-west", true, true, westRegion);
+    // Add region east.
+    CloudBootstrap.Params.PerRegionMetadata eastRegion =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    createPerRegionMetadata("us-east", true, true, eastRegion);
+    // Add all the regions in the taskParams and validate.
+    taskParams.perRegionMetadata.put("us-west-1", westRegion);
+    taskParams.perRegionMetadata.put("us-east-1", eastRegion);
+    // Add in the keypair info.
+    taskParams.keyPairName = "keypair-name";
+    taskParams.sshPrivateKeyContent = "ssh-content";
+    taskParams.sshUser = "ssh-user";
+    validateCloudBootstrapSuccess(
+        taskParams,
+        zoneInfo,
+        ImmutableList.of("us-west-1", "us-east-1"),
+        "aws",
+        true,
+        true,
+        true,
+        true,
+        true);
+  }
+
+  @Test
   public void testCloudBootstrapSuccessAwsCustomSingleRegionJustAzs() throws InterruptedException {
     // Zone information should not be used if we are passing in custom azToSubnetIds mapping.
     JsonNode zoneInfo = Json.parse("{}");
@@ -266,14 +353,35 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     // Add region west.
     CloudBootstrap.Params.PerRegionMetadata westRegion =
         new CloudBootstrap.Params.PerRegionMetadata();
-    westRegion.vpcId = "west-id";
-    westRegion.azToSubnetIds = new HashMap<>();
-    westRegion.azToSubnetIds.put("us-west-1a", "subnet-1");
-    westRegion.azToSubnetIds.put("us-west-1b", "subnet-2");
+    createPerRegionMetadata("us-west", false, false, westRegion);
     // Add all the regions in the taskParams and validate.
     taskParams.perRegionMetadata.put("us-west-1", westRegion);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west-1"), "aws", false, true, false, false);
+  }
+
+  @Test
+  public void testCloudBootstrapSuccessAwsCustomSingleRegionJustAzsSecondarySubnet()
+      throws InterruptedException {
+    // Zone information should not be used if we are passing in custom azToSubnetIds mapping.
+    JsonNode zoneInfo = Json.parse("{}");
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    // Add region west.
+    CloudBootstrap.Params.PerRegionMetadata westRegion =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    createPerRegionMetadata("us-west", true, false, westRegion);
+    // Add all the regions in the taskParams and validate.
+    taskParams.perRegionMetadata.put("us-west-1", westRegion);
+    validateCloudBootstrapSuccess(
+        taskParams,
+        zoneInfo,
+        ImmutableList.of("us-west-1"),
+        "aws",
+        false,
+        true,
+        false,
+        false,
+        true);
   }
 
   @Test
@@ -285,6 +393,35 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     taskParams.perRegionMetadata.put("us-west1", new CloudBootstrap.Params.PerRegionMetadata());
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, false, false, false);
+  }
+
+  @Test
+  public void testCloudBootstrapSuccessGcpCustom() throws InterruptedException {
+    JsonNode zoneInfo =
+        Json.parse("{\"us-west1\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-0\"]}}");
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    CloudBootstrap.Params.PerRegionMetadata westRegion =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    westRegion.subnetId = "us-west1";
+    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.perRegionMetadata.put("us-west1", westRegion);
+    validateCloudBootstrapSuccess(
+        taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false);
+  }
+
+  @Test
+  public void testCloudBootstrapSuccessGcpCustomSecondarySubnet() throws InterruptedException {
+    JsonNode zoneInfo =
+        Json.parse("{\"us-west1\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-0\"]}}");
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    CloudBootstrap.Params.PerRegionMetadata westRegion =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    westRegion.subnetId = "us-west1-subnet1";
+    westRegion.secondarySubnetId = "us-west1-subnet2";
+    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.perRegionMetadata.put("us-west1", westRegion);
+    validateCloudBootstrapSuccess(
+        taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false, true);
   }
 
   @Test
