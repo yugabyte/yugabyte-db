@@ -22,6 +22,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
@@ -41,6 +43,12 @@ public class UniverseClustersController extends AuthenticatedController {
               + "Just fill in the userIntent for PRIMARY and (optionally) an ASYNC cluster",
       response = YBPTask.class,
       nickname = "createAllClusters")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "UniverseConfigureTaskParams",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
+          required = true))
   public Result createAllClusters(UUID customerUUID) {
     // TODO: add assertions that only expected params are set or bad_request
     // Basically taskParams.clusters[]->userIntent and may be few more things

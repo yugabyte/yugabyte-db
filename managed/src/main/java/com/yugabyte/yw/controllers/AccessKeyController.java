@@ -52,7 +52,10 @@ public class AccessKeyController extends AuthenticatedController {
     return PlatformResults.withData(accessKey);
   }
 
-  @ApiOperation(value = "List access keys for a specific provider", response = AccessKey.class)
+  @ApiOperation(
+      value = "List access keys for a specific provider",
+      response = AccessKey.class,
+      responseContainer = "List")
   public Result list(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);

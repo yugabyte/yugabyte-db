@@ -170,6 +170,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public UUID uuid = UUID.randomUUID();
 
+    @ApiModelProperty(required = false)
     public void setUuid(UUID uuid) {
       this.uuid = uuid;
     }
@@ -181,11 +182,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Constraints.Required() public UserIntent userIntent;
 
     // The placement information computed from the user intent.
-    public PlacementInfo placementInfo = null;
+    @ApiModelProperty public PlacementInfo placementInfo = null;
 
     // The cluster index by which node names are sorted when shown in UI.
     // This is set internally by the placement util in the server, client should not set it.
-    public int index = 0;
+    @ApiModelProperty public int index = 0;
 
     /** Default to PRIMARY. */
     private Cluster() {
