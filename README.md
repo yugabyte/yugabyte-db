@@ -69,11 +69,11 @@ YugabyteDB supports several languages and client drivers. Below is a brief list.
 
 # What's being worked on?
 
-> This section was last updated in **July, 2021**.
+> This section was last updated in **August, 2021**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.7 latest release** has been released in **May, 2021**, and the **v2.6 stable release** was released in **July 2021**).
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.9 latest release** has been released in **August, 2021**, and the **v2.6 stable release** was released in **July 2021**).
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |

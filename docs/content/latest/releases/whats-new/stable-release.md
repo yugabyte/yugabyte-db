@@ -19,6 +19,8 @@ Included here are the release notes for all releases in the v2.6 stable release 
 
 ## v2.6.0.0 - July 7, 2021
 
+**Build:** `2.6.0.0-b69`
+
 ### Downloads
 
 <a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.0.0-darwin.tar.gz">
@@ -42,7 +44,7 @@ docker pull yugabytedb/yugabyte:2.6.0.0-b69
 
 ### New features
 
-#### Core database
+#### Database
 
 ##### Point-in-time recovery
 
@@ -81,7 +83,7 @@ This feature allows you to restore the state of a cluster back to a previous poi
 
 ### Improvements
 
-#### Core database
+#### Database
 
 * [[1248](https://github.com/yugabyte/yugabyte-db/issues/1248)] [YSQL] Create background task for verifying tablet data integrity
 * [[1479](https://github.com/yugabyte/yugabyte-db/issues/1479)] [YBase] Allow normal load balancing for DEAD+BLACKLISTED TS
@@ -168,7 +170,7 @@ This feature allows you to restore the state of a cluster back to a previous poi
 
 ### Bug fixes
 
-#### Core database
+#### Database
 
 * [[4412](https://github.com/yugabyte/yugabyte-db/issues/4412)] [DocDB] Fix Load balancer state for move operations
 * [[4437](https://github.com/yugabyte/yugabyte-db/issues/4437)] [[8731](https://github.com/yugabyte/yugabyte-db/issues/8731)] [DocDB] disabled bloom filters for master tablet and fixed DocDBAwareV2FilterPolicy compatibility for range-partitioned co-located tables
@@ -275,7 +277,7 @@ These functions are enabled by default for _new installations_ on 2.6. But, if y
 
 ### Known issues
 
-#### Core database
+#### Database
 
 N/A
 
