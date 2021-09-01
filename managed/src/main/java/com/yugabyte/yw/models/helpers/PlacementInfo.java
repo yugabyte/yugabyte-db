@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -62,6 +63,8 @@ public class PlacementInfo {
     public int replicationFactor;
     // The subnet in the AZ.
     public String subnet;
+    // The secondary subnet in the AZ.
+    @ApiModelProperty public String secondarySubnet;
     // Number of nodes in each Az.
     public int numNodesInAZ;
     // Is this an affinitized zone.

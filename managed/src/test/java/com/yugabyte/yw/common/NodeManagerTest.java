@@ -1,34 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Certs;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.ToggleTls;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -39,8 +11,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
@@ -98,6 +70,33 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Certs;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.ToggleTls;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -472,6 +471,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(createParams.instanceType);
           expectedCommand.add("--cloud_subnet");
           expectedCommand.add(createParams.subnetId);
+          if (createParams.secondarySubnetId != null) {
+            expectedCommand.add("--cloud_subnet_secondary");
+            expectedCommand.add(createParams.secondarySubnetId);
+          }
           String ybImage = testData.region.ybImage;
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
@@ -964,6 +967,29 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateNodeCommandSecondarySubnet() {
+    for (TestData t : testData) {
+      when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+      AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
+      buildValidParams(
+          t,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      params.secondarySubnetId = "testSubnet";
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+    }
+  }
+
+  @Test
   public void testProvisionNodeCommandWithLocalPackage() {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
@@ -1035,7 +1061,7 @@ public class NodeManagerTest extends FakeDBApplication {
         setInstanceTags(params);
       }
 
-      ArrayList<String> expectedCommandArrayList = new ArrayList();
+      ArrayList<String> expectedCommandArrayList = new ArrayList<>();
       expectedCommandArrayList.addAll(t.baseCommand);
       expectedCommandArrayList.addAll(
           nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
@@ -1105,8 +1131,8 @@ public class NodeManagerTest extends FakeDBApplication {
         accessKeyCommands.add(userIntent.accessKeyCode);
         // String customSecurityGroupId = t.region.getSecurityGroupId();
         // if (customSecurityGroupId != null) {
-        //   accessKeyCommands.add("--security_group_id");
-        //   accessKeyCommands.add(customSecurityGroupId);
+        // accessKeyCommands.add("--security_group_id");
+        // accessKeyCommands.add(customSecurityGroupId);
         // }
       }
       accessKeyCommands.add("--custom_ssh_port");
@@ -1244,7 +1270,7 @@ public class NodeManagerTest extends FakeDBApplication {
         setInstanceTags(params);
       }
 
-      ArrayList<String> expectedCommandArrayList = new ArrayList();
+      ArrayList<String> expectedCommandArrayList = new ArrayList<>();
       expectedCommandArrayList.addAll(t.baseCommand);
       expectedCommandArrayList.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
 

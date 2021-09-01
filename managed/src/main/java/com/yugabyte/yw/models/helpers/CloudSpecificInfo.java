@@ -17,6 +17,10 @@ public class CloudSpecificInfo {
   @ApiModelProperty(value = "Private IP")
   public String private_ip = null;
 
+  // The secondary private ip address
+  @ApiModelProperty(value = "Secondary Private IP")
+  public String secondary_private_ip = null;
+
   // The public ip address.
   @ApiModelProperty(value = "Public IP")
   public String public_ip = null;
@@ -36,6 +40,10 @@ public class CloudSpecificInfo {
   // The id of the subnet into which this node is deployed.
   @ApiModelProperty(value = "Subnet IP")
   public String subnet_id = null;
+
+  // The id of the secondary subnet into which this node is deployed.
+  @ApiModelProperty(value = "Secondary Subnet IP")
+  public String secondary_subnet_id = null;
 
   // The az into which the node is deployed.
   @ApiModelProperty(value = "AZ")
@@ -64,11 +72,13 @@ public class CloudSpecificInfo {
   public CloudSpecificInfo clone() {
     CloudSpecificInfo cloudInfo = new CloudSpecificInfo();
     cloudInfo.private_ip = private_ip;
+    cloudInfo.secondary_private_ip = secondary_private_ip;
     cloudInfo.public_ip = public_ip;
     cloudInfo.public_dns = public_dns;
     cloudInfo.private_dns = private_dns;
     cloudInfo.instance_type = instance_type;
     cloudInfo.subnet_id = subnet_id;
+    cloudInfo.secondary_subnet_id = secondary_subnet_id;
     cloudInfo.az = az;
     cloudInfo.region = region;
     cloudInfo.cloud = cloud;

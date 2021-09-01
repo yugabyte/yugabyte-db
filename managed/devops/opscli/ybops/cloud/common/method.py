@@ -100,6 +100,10 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--cloud_subnet",
                                  required=False,
                                  help="The VPC subnet id into which we want to provision")
+        self.parser.add_argument("--cloud_subnet_secondary",
+                                 required=False,
+                                 help="The VPC subnet id into which we want to provision "
+                                 "the secondary network interface")
         if self.required_host:
             self.parser.add_argument("search_pattern", default=None)
         else:
@@ -391,8 +395,17 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         self.update_ansible_vars_with_args(args)
 
-        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
-                                                 default_port=True))
+        if host_info:
+            self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
+                                                     default_port=True))
+
+        # Check if secondary subnet is present. If so, configure it.
+        if host_info.get('secondary_subnet'):
+            self.cloud.configure_secondary_interface(
+                args, self.extra_vars, self.cloud.get_subnet_cidr(args,
+                                                                  host_info['secondary_subnet']))
+
+        self.preprovision(args)
 
         if not args.skip_preprovision:
             self.preprovision(args)
@@ -790,7 +803,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         .format(args.package))
                 if args.gcs_remote_download:
                     gcs_credentials_json = args.gcs_credentials_json or \
-                                           os.getenv('GCS_CREDENTIALS_JSON')
+                        os.getenv('GCS_CREDENTIALS_JSON')
 
                     if gcs_credentials_json is None:
                         raise YBOpsRuntimeError("GCS credentials are not specified, nor found in " +
