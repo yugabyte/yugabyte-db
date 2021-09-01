@@ -207,12 +207,12 @@ public class MultiTableBackup extends UniverseTaskBase {
             tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
           }
         }
-        ybService.closeClient(client, masterAddresses);
       } catch (Exception e) {
         log.error("Failed to get list of tables in universe " + params().universeUUID, e);
-        ybService.closeClient(client, masterAddresses);
         unlockUniverseForUpdate();
         throw new RuntimeException(e);
+      } finally {
+        ybService.closeClient(client, masterAddresses);
       }
 
       updateBackupState(true);

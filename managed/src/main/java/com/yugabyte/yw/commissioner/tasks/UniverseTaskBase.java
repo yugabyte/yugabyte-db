@@ -1377,12 +1377,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddrs, certificate);
-
-    HostAndPort hp =
-        HostAndPort.fromParts(
-            node.cloudInfo.private_ip,
-            server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-    return client.waitForServer(hp, 5000);
+    try {
+      HostAndPort hp =
+          HostAndPort.fromParts(
+              node.cloudInfo.private_ip,
+              server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
+      return client.waitForServer(hp, 5000);
+    } finally {
+      ybService.closeClient(client, masterAddrs);
+    }
   }
 
   public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs) {

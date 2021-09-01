@@ -246,7 +246,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   public Result retrieveKey(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
-            "Retrieving universe key for universe %s",
+            "Retrieving universe key for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
     ObjectNode formData = (ObjectNode) request().body().asJson();
     byte[] keyRef = Base64.getDecoder().decode(formData.get("reference").asText());

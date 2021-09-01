@@ -770,9 +770,11 @@ public class Universe extends Model {
     final String cert = getCertificateNodetoNode();
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final YBClient client = ybService.getClient(masterAddresses, cert);
-    final HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
-    ybService.closeClient(client, masterAddresses);
-    return leaderMasterHostAndPort;
+    try {
+      return client.getLeaderMasterHostAndPort();
+    } finally {
+      ybService.closeClient(client, masterAddresses);
+    }
   }
 
   /**

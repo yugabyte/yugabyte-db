@@ -418,7 +418,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   public NodeDetails getPodName(
       int partition, String azCode, ServerType serverType, boolean isMultiAz) {
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
-    Set<NodeDetails> tservers = new HashSet<>();
     String podName =
         isMultiAz
             ? String.format("%s-%d_%s", sType, partition, azCode)

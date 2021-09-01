@@ -269,26 +269,35 @@ public class CertificateHelper {
 
       clientCert.verify(cer.getPublicKey(), "BC");
 
-      JcaPEMWriter clientCertWriter;
-      JcaPEMWriter clientKeyWriter;
+      JcaPEMWriter clientCertWriter = null;
+      JcaPEMWriter clientKeyWriter = null;
       StringWriter certWriter = new StringWriter();
       StringWriter keyWriter = new StringWriter();
       CertificateDetails certificateDetails = new CertificateDetails();
-      if (storagePath != null) {
-        String clientCertPath = String.format("%s/%s", storagePath, certFileName);
-        String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
-        File clientCertfile = new File(clientCertPath);
-        File clientKeyfile = new File(clientKeyPath);
-        clientCertWriter = new JcaPEMWriter(new FileWriter(clientCertfile));
-        clientKeyWriter = new JcaPEMWriter(new FileWriter(clientKeyfile));
-      } else {
-        clientCertWriter = new JcaPEMWriter(certWriter);
-        clientKeyWriter = new JcaPEMWriter(keyWriter);
+      try {
+        if (storagePath != null) {
+          String clientCertPath = String.format("%s/%s", storagePath, certFileName);
+          String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
+          File clientCertfile = new File(clientCertPath);
+          File clientKeyfile = new File(clientKeyPath);
+          clientCertWriter = new JcaPEMWriter(new FileWriter(clientCertfile));
+          clientKeyWriter = new JcaPEMWriter(new FileWriter(clientKeyfile));
+        } else {
+          clientCertWriter = new JcaPEMWriter(certWriter);
+          clientKeyWriter = new JcaPEMWriter(keyWriter);
+        }
+        clientCertWriter.writeObject(clientCert);
+        clientCertWriter.flush();
+        clientKeyWriter.writeObject(clientKeyPair.getPrivate());
+        clientKeyWriter.flush();
+      } finally {
+        if (clientCertWriter != null) {
+          clientCertWriter.close();
+        }
+        if (clientKeyWriter != null) {
+          clientKeyWriter.close();
+        }
       }
-      clientCertWriter.writeObject(clientCert);
-      clientCertWriter.flush();
-      clientKeyWriter.writeObject(clientKeyPair.getPrivate());
-      clientKeyWriter.flush();
       if (storagePath == null) {
         certificateDetails.crt = certWriter.toString();
         certificateDetails.key = keyWriter.toString();
@@ -663,16 +672,16 @@ public class CertificateHelper {
   }
 
   public static KeyPair getKeyPairObject() {
-    KeyPairGenerator keypairGen = null;
     try {
       // Add the security provider in case it was never called.
       Security.addProvider(new BouncyCastleProvider());
-      keypairGen = KeyPairGenerator.getInstance("RSA");
+      KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
       keypairGen.initialize(2048);
+      return keypairGen.generateKeyPair();
     } catch (Exception e) {
       LOG.error(e.getMessage());
     }
-    return keypairGen.generateKeyPair();
+    return null;
   }
 
   private static boolean verifySignature(X509Certificate cert, String key) {

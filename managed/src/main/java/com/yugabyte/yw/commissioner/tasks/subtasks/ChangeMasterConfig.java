@@ -77,8 +77,6 @@ public class ChangeMasterConfig extends AbstractTaskBase {
           "No master host/ports for a change config op in " + taskParams().universeUUID);
     }
     String certificate = universe.getCertificateNodetoNode();
-    YBClient client;
-    client = ybService.getClient(masterAddresses, certificate);
 
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
@@ -90,6 +88,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
         taskParams().opType.toString(),
         taskParams().useHostPort);
     ChangeConfigResponse response = null;
+    YBClient client = ybService.getClient(masterAddresses, certificate);
     try {
       response =
           client.changeMasterConfig(
