@@ -113,7 +113,7 @@ inline void ComplementZeroEncodeAndAppendStrToKey(const std::string &s, KeyBuffe
 inline std::string ZeroEncodeStr(const std::string& s) {
   KeyBuffer result;
   ZeroEncodeAndAppendStrToKey(s, &result);
-  return result.ToString();
+  return result.ToStringBuffer();
 }
 
 // Reverses the encoding we use for string fields in a RocksDB key where a zero is represented as

@@ -63,7 +63,7 @@ class TransactionStatusResolver::Impl {
   }
 
   void Start(CoarseTimePoint deadline) {
-    LOG_WITH_PREFIX(INFO) << "Start, queues: " << queues_.size();
+    VLOG_WITH_PREFIX(2) << "Start, queues: " << queues_.size();
 
     deadline_ = deadline;
     run_latch_.Reset(1);
@@ -193,7 +193,7 @@ class TransactionStatusResolver::Impl {
       queue.pop_front();
     }
     if (queue.empty()) {
-      LOG_WITH_PREFIX(INFO) << "Processed queue for: " << it->first;
+      VLOG_WITH_PREFIX(2) << "Processed queue for: " << it->first;
       queues_.erase(it);
     }
 
@@ -203,7 +203,7 @@ class TransactionStatusResolver::Impl {
   }
 
   void Complete(const Status& status) {
-    LOG_WITH_PREFIX(INFO) << "Complete: " << status;
+    VLOG_WITH_PREFIX(2) << "Complete: " << status;
     result_promise_.set_value(status);
     AtomicFlagSleepMs(&FLAGS_TEST_inject_status_resolver_complete_delay_ms);
     run_latch_.CountDown();

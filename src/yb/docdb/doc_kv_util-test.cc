@@ -75,7 +75,7 @@ TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
 TEST(DocKVUtilTest, AppendZeroEncodedStrToKey) {
   KeyBuffer buf("a"s);
   AppendZeroEncodedStrToKey("bc", &buf);
-  ASSERT_EQ("abc", buf.ToString());
+  ASSERT_EQ("abc", buf.ToStringBuffer());
   string str_with_embedded_zeros = "f";
   str_with_embedded_zeros.push_back('\x0');
   str_with_embedded_zeros.push_back('g');
