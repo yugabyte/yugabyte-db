@@ -498,8 +498,7 @@ begin
       where
       (
         -- Prune all but one path to each distinct new terminal.
-        path not in (select min(path) from temp_paths group by terminal(path)) and
-        terminal(path) in (select terminal(path) from temp_paths)
+        path not in (select min(path) from temp_paths group by terminal(path))
       )
       or
       (
