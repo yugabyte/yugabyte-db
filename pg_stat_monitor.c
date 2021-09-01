@@ -56,6 +56,8 @@ static int plan_nested_level = 0;
 /* The array to store outer layer query id*/
 uint64 *nested_queryids;
 
+/* Regex object used to extract query comments. */
+static regex_t preg_query_comments;
 static char relations[REL_LST][REL_LEN];
 static int num_relations;							/*  Number of relation in the query */
 static bool system_init = false;
@@ -67,7 +69,7 @@ static char *pgss_explain(QueryDesc *queryDesc);
 static struct pg_hook_stats_t *pg_hook_stats;
 #endif
 
-static char *extract_query_comments(const char *query);
+static void extract_query_comments(const char *query, char *comments, size_t max_len);
 static int  get_histogram_bucket(double q_time);
 static bool IsSystemInitialized(void);
 static void dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
@@ -219,7 +221,8 @@ static uint64 djb2_hash(unsigned char *str, size_t len);
 void
 _PG_init(void)
 {
-	int i;
+	int i, rc;
+
 	elog(DEBUG2, "pg_stat_monitor: %s()", __FUNCTION__);
 	/*
 	 * In order to create our shared memory area, we have to be loaded via
@@ -251,6 +254,15 @@ _PG_init(void)
 	}
 
 	EmitWarningsOnPlaceholders("pg_stat_monitor");
+
+	/*
+	 * Compile regular expression for extracting out query comments only once.
+	 */
+	rc = regcomp(&preg_query_comments, "/\\*.*\\*/", 0);
+	if (rc != 0)
+	{
+		elog(ERROR, "pg_stat_monitor: query comments regcomp() failed, return code=(%d)\n", rc);
+	}
 
 	/*
 	 * Request additional shared resources.  (These are no-ops if we're not in
@@ -307,6 +319,7 @@ _PG_fini(void)
 	ProcessUtility_hook 	= prev_ProcessUtility;
 
 	free(nested_queryids);
+	regfree(&preg_query_comments);
 
 	hash_entry_reset();
 }
@@ -1483,7 +1496,7 @@ pgss_store(uint64 queryid,
 	uint64 			ip = pg_get_client_addr();
 	uint64			planid = plan_info ? plan_info->planid: 0;
 	uint64			appid = djb2_hash((unsigned char *)application_name, application_name_len);
-	char            *comments;
+	char            comments[512] = "";
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
 		return;
@@ -1494,7 +1507,7 @@ pgss_store(uint64 queryid,
     else
      userid =  GetUserId();
 
-    comments = extract_query_comments(query);
+    extract_query_comments(query, comments, sizeof(comments));
 
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pgss->current_wbucket])
@@ -3407,29 +3420,20 @@ get_histogram_timings(PG_FUNCTION_ARGS)
 	return CStringGetTextDatum(text_str);
 }
 
-char *
-extract_query_comments(const char *query)
+static void
+extract_query_comments(const char *query, char *comments, size_t max_len)
 {
-	regex_t    preg;
-	char       *pattern = "/\\*.*\\*/";
 	int        rc;
 	size_t     nmatch = 1;
 	regmatch_t pmatch;
-	char       *comments = palloc0(512);
 
-   rc = regcomp(&preg, pattern, 0);
-   if (rc != 0)
-   {
-	   printf("regcomp() failed, returning nonzero (%d)\n", rc);
-	   return "";
-   }
-   rc = regexec(&preg, query, nmatch, &pmatch, 0);
-   if (rc != 0)
-	   return "";
-   sprintf(comments, "%.*s", pmatch.rm_eo - pmatch.rm_so -4, &query[pmatch.rm_so + 2]);
-   regfree(&preg);
-   return comments;
+	rc = regexec(&preg_query_comments, query, nmatch, &pmatch, 0);
+	if (rc != 0)
+		return;
+
+	snprintf(comments, max_len, "%.*s", pmatch.rm_eo - pmatch.rm_so -4, &query[pmatch.rm_so + 2]);
 }
+
 #if PG_VERSION_NUM < 140000
 static uint64
 get_query_id(JumbleState *jstate, Query *query)
