@@ -108,6 +108,8 @@ DEFINE_uint64(metrics_snapshotter_ttl_ms, 7 * 24 * 60 * 60 * 1000 /* 1 week */,
              "Ttl for snapshotted metrics.");
 TAG_FLAG(metrics_snapshotter_ttl_ms, advanced);
 
+DECLARE_int32(num_tables);
+
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
@@ -320,8 +322,10 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   NMSWriter::EntityMetricsMap table_metrics;
   NMSWriter::MetricsMap server_metrics;
   NMSWriter nmswriter{&table_metrics, &server_metrics};
+  auto opt = MetricPrometheusOptions();
+  opt.num_tables = FLAGS_num_tables;
   WARN_NOT_OK(
-      server_->metric_registry()->WriteForPrometheus(&nmswriter, MetricPrometheusOptions()),
+      server_->metric_registry()->WriteForPrometheus(&nmswriter, opt),
       "Couldn't write metrics for native metrics storage");
   for (const auto& kv : server_metrics) {
     if (tserver_metrics_whitelist_.find(kv.first) != tserver_metrics_whitelist_.end()) {
