@@ -45,7 +45,7 @@ Before you can deploy YugabyteDB on AKS, you need to verify that the following a
 - `kubectl`
   - For more information, see [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
   - [Kubernetes API v1.18.0](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/)
-- Helm 3 - v3.1.0 or later
+- Helm 3 - v3.4 or later
   - For more information, see [Installing Helm](https://helm.sh/docs/intro/install/).
 
 - [Microsoft Azure](https://azure.microsoft.com/en-au/pricing/purchase-options/pay-as-you-go/) account
@@ -231,7 +231,7 @@ $ helm repo add yugabytedb https://charts.yugabyte.com
 
 Now, make sure that you get the latest update from the `charts` repository by running the following `helm` command:
 
-```sg
+```sh
 $ helm repo update
 ```
 
@@ -246,7 +246,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```
 NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte yugabyte-2.7.0         2.7.0.0-b17 YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace

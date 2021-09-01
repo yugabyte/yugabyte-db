@@ -45,9 +45,9 @@ You must have a GKE cluster that has Helm configured. If you have not installed 
 
 The YugabyteDB Helm Chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
-- Helm 3.0 or later
-- Docker image for YugabyteDB (`yugabytedb/yugabyte`) 2.1.0 or later
+- GKE running Kubernetes 1.18 or later with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
+- Helm 3.4 or later
+- Docker image for YugabyteDB (`yugabytedb/yugabyte`) 2.6.0 or later
 - For optimal performance, ensure you set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites.
@@ -89,7 +89,7 @@ $ helm version
 You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
 ```
-version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
+version.BuildInfo{Version:"v3.6.3", GitCommit:"d506314abfb5d21419df8c7e7e68012379db2354", GitTreeState:"dirty", GoVersion:"go1.16.5"}
 ```
 
 ## 1. Create a GKE cluster
@@ -129,8 +129,8 @@ $ helm search repo yugabytedb/yugabyte
 **Output:**
 
 ```sh
-NAME                CHART VERSION APP VERSION DESCRIPTION                                       
-yugabytedb/yugabyte 2.1.4         2.1.4.0-b5  YugabyteDB is the high-performance distributed ...
+NAME                CHART VERSION      APP VERSION DESCRIPTION                                       
+yugabytedb/yugabyte 2.7.0     2.7.0.0-b17  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -222,7 +222,7 @@ $ helm history yb-demo -n yb-demo
 
 ```sh
 REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION     
-1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.1.4  2.1.4.0-b5  Install complete
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.7.0      2.7.0.0-b17  Install complete
 ```
 
 ## Connect using YugabyteDB shells

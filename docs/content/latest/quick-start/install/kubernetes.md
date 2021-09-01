@@ -52,27 +52,27 @@ showAsideToc: true
 
 - [Minikube](https://github.com/kubernetes/minikube) is installed on your localhost machine.
 
-    The Kubernetes version used by Minikube should be v1.13.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+    The Kubernetes version used by Minikube should be v1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/) is installed.
 
     To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
 
-- [Helm 3+](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
+- [Helm 3.4 or later](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
 
     To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
 ## Start Kubernetes
 
-- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. We recommend starting minkube with at least 8GB RAM, 4 CPUs and 40GB disk as shown below.
+- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. We recommend starting minikube with at least 8GB RAM, 4 CPUs and 40GB disk as shown below.
 
     ```sh
-    $ minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
+    $ minikube start --kubernetes-version v1.18.20 --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
     ```
 
     ```output
     ...
-    Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
+    Configuring environment for Kubernetes v1.18.20 on Docker 20.10.7
     ...
     ```
 
@@ -89,8 +89,8 @@ showAsideToc: true
     ```
 
     ```output
-    Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
-    Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
+    Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.18.20-dispatcher", ...}
+    Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.18.20", ...}
     ```
 
 - Confirm that your Helm 3 is configured correctly by running the following command.
@@ -100,7 +100,7 @@ showAsideToc: true
     ```
 
     ```output
-    version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
+    version.BuildInfo{Version:"v3.6.3", GitCommit:"d506314abfb5d21419df8c7e7e68012379db2354", GitTreeState:"dirty", GoVersion:"go1.16.5"}
     ```
 
 ## Download YugabyteDB Helm Chart

@@ -58,9 +58,9 @@ You must have a Kubernetes cluster that has Helm configured. If you have not ins
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
-- Helm 3.0 or later.
-- YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
+- Kubernetes 1.18 or later with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
+- Helm 3.4 or later.
+- YugabyteDB Docker image (yugabytedb/yugabyte) 2.6.0 or later
 - For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 Confirm that `helm` and `kubectl` are configured correctly.
@@ -70,7 +70,7 @@ $ helm version
 ```
 
 ```
-version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
+version.BuildInfo{Version:"v3.6.3", GitCommit:"d506314abfb5d21419df8c7e7e68012379db2354", GitTreeState:"dirty", GoVersion:"go1.16.5"}
 ```
 
 ```sh
@@ -105,7 +105,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```sh
 NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte	2.7.0        	2.7.0.0-b17 	YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -233,7 +233,7 @@ $ helm history yb-demo -n yb-demo
 
 ```sh
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.1.4 2.1.4.0-b5  Install complete
+1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.7.0  2.7.0.0-b17   Install complete
 ```
 
 ## Connect using YugabyteDB Shells
@@ -354,10 +354,10 @@ gflags.tserver.placement_cloud=myk8s-cloud,gflags.tserver.placement_region=myk8s
 
 ## Upgrade cluster
 
-You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the installation uses the `latest` Docker image. In the examples, the Docker image specified is `2.1.6.0-b17`.
+You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the installation uses the `latest` Docker image. In the examples, the Docker image specified is `2.7.2.0-b216`.
 
 ```sh
-$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.1.6.0-b17 --wait -n yb-demo
+$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.7.2.0-b216 --wait -n yb-demo
 ```
 
 ## Delete cluster
