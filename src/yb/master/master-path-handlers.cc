@@ -1505,19 +1505,27 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                           "See all tables &raquo;");
   (*output) << "  </tr>\n";
 
-  // Load Balancer State
-  {
-    IsLoadBalancerIdleRequestPB req;
-    IsLoadBalancerIdleResponsePB resp;
-    Status isIdle = master_->catalog_manager()->IsLoadBalancerIdle(&req, &resp);
+  // Load balancer status.
+  bool load_balancer_enabled = master_->catalog_manager()->IsLoadBalancerEnabled();
+  (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
+                          "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
+                          "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
+                          "Load Balancer Enabled",
+                          load_balancer_enabled ? "fa-check"
+                                                : "fa-times label label-danger");
+  if (load_balancer_enabled) {
+    IsLoadBalancedRequestPB req;
+    IsLoadBalancedResponsePB resp;
+    Status load_balanced = master_->catalog_manager()->IsLoadBalanced(&req, &resp);
 
     (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
                             "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
                             "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
                             "Is Load Balanced?",
-                            isIdle.ok() ? "fa-check"
-                                        : "fa-times label label-danger");
+                            load_balanced.ok() ? "fa-check"
+                                               : "fa-times label label-danger");
   }
+
   // Build version and type.
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-code-fork yb-dashboard-icon' aria-hidden='true'></i>",

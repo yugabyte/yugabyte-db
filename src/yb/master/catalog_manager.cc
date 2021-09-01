@@ -9460,14 +9460,16 @@ string CatalogManager::placement_uuid() const {
 
 Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                       IsLoadBalancedResponsePB* resp) {
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  if (req->has_expected_num_servers()) {
+    TSDescriptorVector ts_descs;
+    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
 
-  if (req->has_expected_num_servers() && req->expected_num_servers() > ts_descs.size()) {
-    Status s = STATUS_SUBSTITUTE(IllegalState,
-        "Found $0, which is below the expected number of servers $1.",
-        ts_descs.size(), req->expected_num_servers());
-    return SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
+    if (req->expected_num_servers() > ts_descs.size()) {
+      Status s = STATUS_SUBSTITUTE(IllegalState,
+          "Found $0, which is below the expected number of servers $1.",
+          ts_descs.size(), req->expected_num_servers());
+      return SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
+    }
   }
 
   Status s = load_balance_policy_->IsIdle();
