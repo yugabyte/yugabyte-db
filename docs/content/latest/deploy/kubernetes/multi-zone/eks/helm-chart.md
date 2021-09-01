@@ -41,38 +41,43 @@ The following steps show how to meet these prerequisites.
 
 - Install and configure the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/installing.html).
 
-- Install [`eksctl`](https://eksctl.io/)
+- Install [`eksctl`](https://eksctl.io/).
 
-`eksctl` is a simple command line utility for creating and managing Amazon EKS clusters. Detailed instructions for installing eksctl based on the OS of your choice are available at [Getting Started with eksctl](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html). Following instructions apply to macOS.
+    \
+    `eksctl` is a simple command line utility for creating and managing Amazon EKS clusters. Detailed instructions for installing eksctl based on the OS of your choice are available at [Getting Started with eksctl](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html). The following instructions apply to macOS.
 
-```sh
-$ brew tap weaveworks/tap
-$ brew install weaveworks/tap/eksctl
-```
+    ```sh
+    $ brew tap weaveworks/tap
+    $ brew install weaveworks/tap/eksctl
+    ```
 
-Test that your installation was successful.
+    \
+    Test that your installation was successful.
 
-```sh
-eksctl version
-```
+    ```sh
+    eksctl version
+    ```
 
-- Install and configure `kubectl` for Amazon EKS
+- Install and configure `kubectl` for Amazon EKS.
 
-You have multiple options to download and install `kubectl` for your OS. Note that Amazon EKS also vends kubectl binaries that you can use that are identical to the upstream kubectl binaries with the same version. To install the Amazon EKS-vended binary for your operating system, see [Installing kubectl](https://docs.aws.amazon.com/eks/latest/userguide/install-kubectl.html).
+    \
+    You have multiple options to download and install `kubectl` for your OS. Note that Amazon EKS also vends kubectl binaries that you can use that are identical to the upstream kubectl binaries with the same version. To install the Amazon EKS-vended binary for your operating system, see [Installing kubectl](https://docs.aws.amazon.com/eks/latest/userguide/install-kubectl.html).
 
-- Ensure `helm` is installed
+- Ensure `helm` is installed.
 
-First, check to see if Helm is installed by using the Helm version command.
+    \
+    First, check to see if Helm is installed by using the Helm version command.
 
-```sh
-$ helm version
-```
+    ```sh
+    $ helm version
+    ```
 
-For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
+    \
+    For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
-version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
-```
+    ```output
+    version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
+    ```
 
 ## 1. Create a EKS cluster
 
@@ -102,7 +107,7 @@ We need to ensure that the storage classes used by the pods in a given zone are 
 
 Copy the contents below to a file named `storage.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -160,7 +165,7 @@ Validate that you have the updated char version.
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```sh
+```output
 NAME                CHART VERSION APP VERSION DESCRIPTION                                       
 yugabytedb/yugabyte 2.1.0         2.1.0.0-b18 YugabyteDB is the high-performance distributed ...
 ```
@@ -169,7 +174,7 @@ yugabytedb/yugabyte 2.1.0         2.1.0.0-b18 YugabyteDB is the high-performance
 
 Copy the contents below to a file named `overrides-us-east-1a.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east-1a
@@ -200,7 +205,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-east-1b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east-1b
@@ -231,7 +236,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-east-1c.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east-1c
@@ -308,7 +313,7 @@ Check the services.
 $ kubectl get services --all-namespaces
 ```
 
-```
+```output
 NAMESPACE            NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP                                                               PORT(S)                                        AGE
 default              kubernetes           ClusterIP      10.100.0.1       <none>                                                                    443/TCP                                        20m
 kube-system          kube-dns             ClusterIP      10.100.0.10      <none>                                                                    53/UDP,53/TCP                                  20m
@@ -324,7 +329,6 @@ yb-demo-us-east-1c   yb-master-ui         LoadBalancer   10.100.0.232     a6cd55
 yb-demo-us-east-1c   yb-masters           ClusterIP      None             <none>                                                                    7100/TCP,7000/TCP                              55s
 yb-demo-us-east-1c   yb-tserver-service   LoadBalancer   10.100.119.40    a6cd628b667df11ea9fec12feeb58bc1-403831649.us-east-1.elb.amazonaws.com    6379:31544/TCP,9042:31541/TCP,5433:32374/TCP   55s
 yb-demo-us-east-1c   yb-tservers          ClusterIP      None             <none>                                                                    7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   55s
-
 ```
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
@@ -378,7 +382,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` address of o
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-demo-us-east-1a   yb-tserver-service   LoadBalancer   10.100.97.195    ad37e06fb67de11ea87920e8fdeea06a-238172614.us-east-1.elb.amazonaws.com    6379:30334/TCP,9042:31406/TCP,5433:30024/TCP   5m12s

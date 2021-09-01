@@ -50,43 +50,48 @@ The following steps show how to meet these prerequisites.
 
 - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/downloads/).
 
-- Configure defaults for gcloud
+- Configure defaults for gcloud.
 
-Set the project ID as `yugabyte`. You can change this as needed.
+    \
+    Set the project ID as `yugabyte`. You can change this as needed.
 
-```sh
-$ gcloud config set project yugabyte
-```
+    ```sh
+    $ gcloud config set project yugabyte
+    ```
 
-Set the default compute zone as `us-west1-b`. You can change this as needed.
+    Set the default compute zone as `us-west1-b`. You can change this as needed.
 
-```sh
-$ gcloud config set compute/zone us-west1-b
-```
+    ```sh
+    $ gcloud config set compute/zone us-west1-b
+    ```
 
-- Install `kubectl`
+- Install `kubectl`.
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command.
+    \
+    After installing Cloud SDK, install the `kubectl` command line tool by running the following command.
 
-```sh
-$ gcloud components install kubectl
-```
+    ```sh
+    $ gcloud components install kubectl
+    ```
 
-Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest kubectl version that is compatible across different Kubernetes distributions if that's what you intend to.
+    \
+    Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest kubectl version that is compatible across different Kubernetes distributions if that's what you intend to.
 
-- Ensure `helm` is installed
+- Ensure `helm` is installed.
 
-First, check to see if Helm is installed by using the Helm version command.
+    \
+    First, check to see if Helm is installed by using the Helm version command.
 
-```sh
-$ helm version
-```
+    ```sh
+    $ helm version
+    ```
 
-You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
+    \
+    You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
-version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
-```
+    ```output
+    version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
+    ```
 
 ## 1. Create a GKE cluster
 
@@ -122,9 +127,7 @@ $ helm repo update
 $ helm search repo yugabytedb/yugabyte
 ```
 
-**Output:**
-
-```sh
+```output
 NAME                CHART VERSION APP VERSION DESCRIPTION                                       
 yugabytedb/yugabyte 2.1.4         2.1.4.0-b5  YugabyteDB is the high-performance distributed ...
 ```
@@ -146,9 +149,7 @@ You can check the status of the cluster using various commands noted below.
 $ helm status yb-demo -n yb-demo
 ```
 
-**Output**:
-
-```sh
+```output
 NAME: yb-demo
 LAST DEPLOYED: Thu Feb 13 13:29:13 2020
 NAMESPACE: yb-demo
@@ -184,7 +185,7 @@ Check the pods.
 $ kubectl get pods --namespace yb-demo
 ```
 
-```
+```output
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          4m
 yb-master-1    1/1       Running   0          4m
@@ -200,7 +201,7 @@ Check the services.
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.109.39.242   35.225.153.213 7000:31920/TCP                                 10s
 yb-masters           ClusterIP      None            <none>         7100/TCP,7000/TCP                              10s
@@ -214,9 +215,7 @@ You can even check the history of the `yb-demo` deployment.
 $ helm history yb-demo -n yb-demo
 ```
 
-**Output:**
-
-```sh
+```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION     
 1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.1.4  2.1.4.0-b5  Install complete
 ```
@@ -243,7 +242,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` IP address o
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.98.36.163    35.225.153.214     6379:30929/TCP,9042:30975/TCP,5433:30048/TCP   10s
