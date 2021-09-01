@@ -363,7 +363,6 @@ public class Util {
   }
 
   @ApiModel(
-      value = "Universe detail subset",
       description = "A small subset of universe information")
   @Getter
   public static class UniverseDetailSubset {

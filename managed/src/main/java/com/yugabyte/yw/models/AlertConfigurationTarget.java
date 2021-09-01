@@ -23,7 +23,7 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@ApiModel(value = "Alert target. Set to `all`, or specify one or more target UUIDs.")
+@ApiModel(description = "Alert target. Set to `all`, or specify one or more target UUIDs.")
 public class AlertConfigurationTarget {
   @ApiModelProperty(value = "Alert applicable to all targets", accessMode = READ_WRITE)
   private boolean all;

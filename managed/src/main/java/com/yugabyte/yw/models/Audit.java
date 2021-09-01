@@ -27,7 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
-@ApiModel(description = "Audit logging for requests and responses.")
+@ApiModel(description = "Audit logging for requests and responses")
 @Entity
 public class Audit extends Model {
 
