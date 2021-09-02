@@ -89,7 +89,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertConfiguration configuration = Json.fromJson(initialJson, AlertConfiguration.class);
 
-    JsonNode resultJson = Json.toJson(configuration);
+    String stringify = Json.stringify(Json.toJson(configuration));
+    JsonNode resultJson = Json.parse(stringify);
 
     assertThat(resultJson, equalTo(initialJson));
   }
