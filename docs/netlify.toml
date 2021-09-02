@@ -39,6 +39,11 @@
 # even if we have content in the older version's folder.
 
 [[redirects]]
+  from = "/"
+  to = "/latest/"
+  force = true
+
+[[redirects]]
   from = "/:version/comparisons/*"
   to = "/latest/comparisons/:splat"
   force = true
