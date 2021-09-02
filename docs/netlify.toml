@@ -28,6 +28,17 @@
 #
 # validator: https://play.netlify.com/redirects
 
+### ALEX TESTING
+# This style of redirect will pull content from the remote URL
+# without actually redirecting the browser.
+# Hopefully, this is a way to split the docs up into microsites
+# and speed up build times!
+
+[[redirects]]
+  from = "/platform-api-docs/*"
+  to = "https://api-docs.yugabyte.com/docs/yugabyte-platform/:splat"
+  status = 200
+
 # Make sure we're not redirecting anything under /images
 
 [[redirects]]
