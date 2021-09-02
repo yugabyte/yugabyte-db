@@ -4,7 +4,6 @@
 -- Based on "alter_generic" test.
 -- The following sections are missing as they are not supported yet:
 -- * ALTER CONVERSION
--- * ALTER FOREIGN DATA
 -- * ALTER LANGUAGE
 -- * ALTER OPERATOR CLASS
 -- * ALTER STATISTICS
@@ -95,6 +94,24 @@ SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
   WHERE p.pronamespace = n.oid AND p.proowner = a.oid
     AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
   ORDER BY nspname, proname;
+
+--
+-- Foreign Data Wrapper and Foreign Server
+--
+CREATE FOREIGN DATA WRAPPER alt_fdw1;
+CREATE FOREIGN DATA WRAPPER alt_fdw2;
+
+CREATE SERVER alt_fserv1 FOREIGN DATA WRAPPER alt_fdw1;
+CREATE SERVER alt_fserv2 FOREIGN DATA WRAPPER alt_fdw2;
+
+ALTER FOREIGN DATA WRAPPER alt_fdw1 RENAME TO alt_fdw2;  -- failed (name conflict)
+ALTER FOREIGN DATA WRAPPER alt_fdw1 RENAME TO alt_fdw3;  -- OK
+
+ALTER SERVER alt_fserv1 RENAME TO alt_fserv2;   -- failed (name conflict)
+ALTER SERVER alt_fserv1 RENAME TO alt_fserv3;   -- OK
+
+SELECT fdwname FROM pg_foreign_data_wrapper WHERE fdwname like 'alt_fdw%';
+SELECT srvname FROM pg_foreign_server WHERE srvname like 'alt_fserv%';
 
 --
 -- Operator
