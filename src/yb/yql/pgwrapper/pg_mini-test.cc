@@ -706,7 +706,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
   // Check that `FOR KEY SHARE` prevents rows from being deleted even in case not all key
   // components are specified.
-  void TestRowKeyShareLock() {
+  void TestRowKeyShareLock(const std::string& cur_name = "") {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
@@ -714,10 +714,12 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
         "CREATE TABLE t (h INT, r1 INT, r2 INT, v INT, PRIMARY KEY(h, r1, r2))"));
     ASSERT_OK(conn.Execute(
         "INSERT INTO t VALUES (1, 2, 3, 4), (1, 2, 30, 40), (1, 3, 4, 5), (10, 2, 3, 4)"));
-    ASSERT_OK(StartTxn(&conn));
+
+    // Transaction 1.
     // SELECT FOR KEY SHARE locks all sub doc keys of (1, 2)
     // as not all key components are specified.
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r1 = 2 FOR KEY SHARE"));
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT * FROM t WHERE h = 1 AND r1 = 2 FOR KEY SHARE", cur_name);
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 30"));
@@ -725,26 +727,32 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 3 AND r2 = 4"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
-    ASSERT_OK(StartTxn(&conn));
+
+    // Transaction 2.
     // SELECT FOR KEY SHARE locks all sub doc keys of () as not all key components are specified.
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE r2 = 2 FOR KEY SHARE"));
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT * FROM t WHERE r2 = 2 FOR KEY SHARE", cur_name);
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
-    ASSERT_OK(StartTxn(&conn));
+
+    // Transaction 3.
     // SELECT FOR KEY SHARE locks all sub doc keys of (1) as not all key components are specified.
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r2 = 2 FOR KEY SHARE"));
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT * FROM t WHERE h = 1 AND r2 = 2 FOR KEY SHARE", cur_name);
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
     // Doc key  (10, 2, 3) in not locked.
     ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
-    ASSERT_OK(StartTxn(&conn));
+
+    // Transaction 4.
     // SELECT FOR KEY SHARE locks one specific row with doc key (1, 2, 3) only.
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3 FOR KEY SHARE"));
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT * FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3 FOR KEY SHARE", cur_name);
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
     ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 30"));
@@ -762,15 +770,16 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
   // FOR SHARE         |       O       |     O     |         X         |     X
   // FOR NO KEY UPDATE |       O       |     X     |         X         |     X
   // FOR UPDATE        |       X       |     X     |         X         |     X
-  void TestRowLockConflictMatrix() {
+  void TestRowLockConflictMatrix(const std::string& cur_name = "") {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
 
+    // Transaction 1.
     ASSERT_OK(StartTxn(&conn));
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE k = 1 FOR UPDATE"));
+    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE", cur_name);
 
     ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
     ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
@@ -778,8 +787,10 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Transaction 2.
     ASSERT_OK(StartTxn(&conn));
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
 
     ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
     ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
@@ -787,8 +798,10 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Transaction 3.
     ASSERT_OK(StartTxn(&conn));
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE k = 1 FOR SHARE"));
+    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR SHARE", cur_name);
 
     ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
     ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
@@ -796,8 +809,10 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Transaction 4.
     ASSERT_OK(StartTxn(&conn));
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
 
     ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
     ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
@@ -805,14 +820,26 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
+    // Transaction 5.
     // Check FOR KEY SHARE + FOR UPDATE conflict separately
     // as FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
     ASSERT_OK(StartTxn(&conn));
-    ASSERT_RESULT(conn.Fetch("SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
 
     ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
 
     ASSERT_NOK(conn.Execute("COMMIT"));
+  }
+
+  void RowLock(PGConn* connection, const std::string& query, const std::string& cur_name) {
+    std::string lock_stmt = query;
+    if (!cur_name.empty()) {
+      const std::string declare_stmt = Format("DECLARE $0 CURSOR FOR $1", cur_name, query);
+      ASSERT_OK(connection->Execute(declare_stmt));
+
+      lock_stmt = Format("FETCH ALL $0", cur_name);
+    }
+    ASSERT_RESULT(connection->Fetch(lock_stmt));
   }
 
   static Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
@@ -935,6 +962,30 @@ TEST_F_EX(PgMiniTest,
           YB_DISABLE_TEST_IN_TSAN(RowLockConflictMatrixSnapshot),
           PgMiniTestTxnHelperSnapshot) {
   TestRowLockConflictMatrix();
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(CursorRowKeyShareLockSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestRowKeyShareLock("cur_name");
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(CursorRowKeyShareLockSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestRowKeyShareLock("cur_name");
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(CursorRowLockConflictMatrixSerializable),
+          PgMiniTestTxnHelperSerializable) {
+  TestRowLockConflictMatrix("cur_name");
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(CursorRowLockConflictMatrixSnapshot),
+          PgMiniTestTxnHelperSnapshot) {
+  TestRowLockConflictMatrix("cur_name");
 }
 
 TEST_F_EX(PgMiniTest,
