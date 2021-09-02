@@ -211,8 +211,7 @@ public class PlatformInstance extends Model {
             && json.has("config_uuid")
             && json.has("address")
             && json.has("is_leader")
-            && json.has("is_local")
-            && json.has("last_backup")) {
+            && json.has("is_local")) {
           PlatformInstance instance = new PlatformInstance();
           instance.uuid = UUID.fromString(json.get("uuid").asText());
           UUID configUUID = UUID.fromString(json.get("config_uuid").asText());
@@ -222,7 +221,9 @@ public class PlatformInstance extends Model {
           instance.setIsLocal(json.get("is_local").asBoolean());
           JsonNode lastBackup = json.get("last_backup");
           instance.lastBackup =
-              lastBackup.asText().equals("null") ? null : new Date(lastBackup.asLong());
+              (lastBackup == null || lastBackup.asText().equals("null"))
+                  ? null
+                  : new Date(lastBackup.asLong());
 
           return instance;
         } else {
