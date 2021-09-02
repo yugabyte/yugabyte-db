@@ -319,7 +319,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(task.get("percentComplete").asDouble(), allOf(notNullValue(), equalTo(50.0)));
     assertThat(task.get("status").asText(), allOf(notNullValue(), equalTo("Running")));
     assertTrue(task.get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
-    assertTrue(task.get("completionTime").isNull());
+    assertTrue(!task.has("completionTime"));
     assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
     assertThat(
         task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(universeUUID.toString())));
@@ -360,7 +360,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(task.get("percentComplete").asDouble(), allOf(notNullValue(), equalTo(10.0)));
     assertThat(task.get("status").asText(), allOf(notNullValue(), equalTo("Running")));
     assertTrue(task.get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
-    assertTrue(task.get("completionTime").isNull());
+    assertTrue(!task.has("completionTime"));
     assertThat(task.get("target").asText(), allOf(notNullValue(), equalTo("Provider")));
     assertThat(
         task.get("targetUUID").asText(), allOf(notNullValue(), equalTo(providerUUID.toString())));
