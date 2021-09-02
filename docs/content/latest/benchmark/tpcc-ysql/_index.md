@@ -76,7 +76,7 @@ Other options like username, password, port, etc. can be changed using the confi
 
 ## 3. Best practices
 
-**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application `git clone`.
+**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest released version, or, to get the very latest changes, you can clone the repository and build from source.
 
 **Pre-compacting tables:** Pre-compact tables with the yb-admin utility's `compact_table` command.
 
