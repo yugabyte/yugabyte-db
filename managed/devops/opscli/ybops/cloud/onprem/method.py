@@ -57,7 +57,7 @@ class OnPremProvisionInstancesMethod(ProvisionInstancesMethod):
 
     def callback(self, args):
         # For onprem, we are always using pre-existing hosts!
-        args.reuse_host = True
+        args.skip_preprovision = True
         super(OnPremProvisionInstancesMethod, self).callback(args)
 
 
