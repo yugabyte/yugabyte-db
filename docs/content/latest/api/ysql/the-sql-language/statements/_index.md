@@ -126,7 +126,8 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 ## Other statements
 
-| Statement          | Description                                 |
-| ------------------ | ------------------------------------------- |
-| [`COPY`](cmd_copy) | Copy data between tables and files          |
-| [`DO`](cmd_do)     | Execute an anonymous PL/pgSQL code block    |
+| Statement                | Description                                 |
+| ------------------------ | ------------------------------------------- |
+| [`ANALYZE`](cmd_analyze) | Collect statistics about a database         |
+| [`COPY`](cmd_copy)       | Copy data between tables and files          |
+| [`DO`](cmd_do)           | Execute an anonymous PL/pgSQL code block    |
