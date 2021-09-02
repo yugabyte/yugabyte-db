@@ -13,7 +13,7 @@
 <input class="toggle" type="checkbox" id="toggle-search">
 <label class="toggle-button overlay" for="toggle-drawer"></label>
 
-{{ partial "header" . }}
+{{ partialCached "header" . }}
 
 <div class="container-fluid">
 	<main class="main">
@@ -32,7 +32,7 @@
 				
 			</div>
 
-			<!-- {{ partial "feedback" . }} -->
+			<!-- {{ partialCached "feedback" . }} -->
 		</article>
 
 		<div class="results" role="status" aria-live="polite">
@@ -46,8 +46,8 @@
 	</main>
 </div>
 
-{{ partial "footer" . }}
-{{ partial "footer_js" . }}
+{{ partialCached "footer" . }}
+{{ partialCached "footer_js" . }}
 
 <script>
 	const pageConfig = {

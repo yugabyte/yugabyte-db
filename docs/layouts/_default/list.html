@@ -13,7 +13,7 @@
 <input class="toggle" type="checkbox" id="toggle-search">
 <label class="toggle-button overlay" for="toggle-drawer"></label>
 
-{{ partial "header" . }}
+{{ partialCached "header" . }}
 
 <div class="container-fluid listpage">
 	<main class="main">
@@ -25,7 +25,7 @@
 				<div class="image">
 					<img alt="{{ .Title }}" title="{{ .Title }}" src="{{ .Page.Params.image }}" />
 				</div>
-				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
+				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
 
 				<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }}  {{ if .Draft }} (Draft){{ end }}</h1>
 
@@ -52,7 +52,7 @@
 
 				</div>
 				
-				{{ partial "footer_links" . }}
+				{{ partialCached "footer_links" . }}
 
 			</article>
 
@@ -67,5 +67,5 @@
 	</main>
 </div>
 
-{{ partial "footer" . }}
-{{ partial "footer_js" . }}
+{{ partialCached "footer" . }}
+{{ partialCached "footer_js" . }}

@@ -13,7 +13,7 @@
 <input class="toggle" type="checkbox" id="toggle-search">
 <label class="toggle-button overlay" for="toggle-drawer"></label>
 
-{{ partial "header" . }}
+{{ partialCached "header" . }}
 
 <div class="container indexpage">
 		<div id="particles-js"></div>
@@ -28,6 +28,6 @@
 		</div>
 </div>
 
-{{ partial "footer" . }}
+{{ partialCached "footer" . }}
 {{ partial "indexpage_js" . }}
-{{ partial "footer_js" . }}
+{{ partialCached "footer_js" . }}

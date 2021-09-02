@@ -7,7 +7,7 @@
       </a>
 
       <div class="navbar-search-small">
-        {{ partial "search" . }}
+        {{ partialCached "search" . }}
       </div>
       <button type="button" class="navbar-toggler collapsed" data-toggle="collapse" data-target=".navbar-collapse">
         
@@ -21,7 +21,7 @@
       <div class="navbar-collapse collapse">
         <div class="flex-spacer"></div>
         <div class="navbar-text navbar-search-main">
-            {{ partial "search" . }}
+            {{ partialCached "search" . }}
         </div>
         <div class="navbar-misc">
           <a href="https://www.yugabyte.com/slack" target="_blank" class="navbar-link-btn">
