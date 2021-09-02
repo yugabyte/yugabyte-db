@@ -1061,7 +1061,7 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
-            commandArgs.add("--reuse_host");
+            commandArgs.add("--skip_preprovision");
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
