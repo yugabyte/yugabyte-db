@@ -20,7 +20,7 @@ When the optional `RECURSIVE` keyword is used, the [`common_table_expression`](.
 
 ```
 with
-  recursive <name>(c1, c2, ...) as (
+  recursive r(c1, c2, ...) as (
 
     -- Non-recursive term.
     (
@@ -29,12 +29,12 @@ with
 
     union [all]
 
-    -- Recursive term (notice the recursive self-reference to <name>.
+    -- Recursive term. Notice the so-called recursive self-reference to r.
     (
-      select ... from <name> ...
+      select ... from r ...
     )
   )
-select ... from <name> ...;
+select ... from r ...;
 ```
 The following minimal example is found in very many articles and in the documentation for several SQL databases.
 
