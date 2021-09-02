@@ -779,13 +779,15 @@ SELECT * FROM uctest;
 
 -- Check UPDATE WHERE CURRENT; this time use FOR UPDATE
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
+-- Disable 'FOR UPDATE' due to github #9915
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ f1 | f2
+----+-----
+  1 | one
+(1 row)
+
 UPDATE uctest SET f1 = 8 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = 8 WHERE CURRENT OF c1;
@@ -859,13 +861,15 @@ SELECT * FROM uctest;
 (3 rows)
 
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
+-- Disable 'FOR UPDATE' due to github #9915
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ f1 | f2
+----+-----
+  1 | one
+(1 row)
+
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
@@ -931,13 +935,15 @@ SELECT * FROM uctest;
 (3 rows)
 
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
+-- Disable 'FOR UPDATE' due to github #9915
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest;
 FETCH 1 FROM c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ f1 | f2
+----+-----
+  1 | one
+(1 row)
+
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
@@ -983,13 +989,14 @@ LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
 ROLLBACK;
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR UPDATE;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE...
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
+-- Disable 'FOR UPDATE' due to github #9915
+-- DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5;
 FETCH 1 FROM c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ f1 | f2 | f1 | f2
+----+----+----+----
+(0 rows)
+
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;  -- fail
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
@@ -998,12 +1005,11 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the 
 ROLLBACK;
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR SHARE OF a;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE...
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
 FETCH 1 FROM c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ f1 | f2 | f1 | f2
+----+----+----+----
+(0 rows)
+
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
@@ -1034,10 +1040,6 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the 
 ROLLBACK;
 BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM tenk2 FOR SHARE;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c CURSOR FOR SELECT * FROM tenk2 FOR SHARE;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
 DELETE FROM uctest WHERE CURRENT OF c;  -- fail, cursor on wrong table
 ERROR:  WHERE CURRENT OF not supported yet
 LINE 1: DELETE FROM uctest WHERE CURRENT OF c;
@@ -1069,11 +1071,8 @@ LINE 1: DELETE FROM uctest WHERE CURRENT OF c1;
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
 ROLLBACK;
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT MIN(f1) FROM uctest FOR UPDATE;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c1 CURSOR FOR SELECT MIN(f1) FROM uctest FOR UPDATE;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
+-- DISABLE 'FOR UPDATE' due to github #9915
+-- DECLARE c1 CURSOR FOR SELECT MIN(f1) FROM uctest FOR UPDATE;
 ROLLBACK;
 -- WHERE CURRENT OF may someday work with views, but today is not that day.
 -- For now, just make sure it errors out cleanly.
@@ -1164,15 +1163,11 @@ BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE cursor (a int);
 INSERT INTO cursor VALUES (1);
-DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM cursor FOR UPDATE;
-ERROR:  CURSOR with row-locking not supported yet
-LINE 1: DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM cursor FOR UPD...
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/6541. Click '+' on the description to raise its priority
-UPDATE cursor SET a = 2;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+-- DISABLE 'FOR UPDATE' due to github #9915
+-- DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM cursor FOR UPDATE;
+-- UPDATE cursor SET a = 2;
 FETCH ALL FROM c1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  cursor "c1" does not exist
 COMMIT;
 DROP TABLE cursor;
 -- Check rewinding a cursor containing a stable function in LIMIT,

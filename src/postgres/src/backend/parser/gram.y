@@ -12119,11 +12119,6 @@ set_target_list:
  *****************************************************************************/
 DeclareCursorStmt: DECLARE cursor_name cursor_options CURSOR opt_hold FOR SelectStmt
 				{
-					SelectStmt *stmt = (SelectStmt *)$7;
-					if (stmt->lockingClause) {
-						parser_ybc_signal_unsupported(@1, "CURSOR with row-locking", 6541);
-					}
-
 					DeclareCursorStmt *n = makeNode(DeclareCursorStmt);
 					n->portalname = $2;
 					/* currently we always set FAST_PLAN option */
