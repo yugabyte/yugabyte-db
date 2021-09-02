@@ -18,7 +18,7 @@
   <input class="toggle" type="checkbox" id="toggle-search">
   <label class="toggle-button overlay" for="toggle-drawer"></label>
 
-  {{ partial "header" . }}
+  {{ partialCached "header" . }}
 
   <main class="main">
     <div class="drawer">
@@ -50,5 +50,5 @@
     </div>
   </main>
 
-  {{ partial "footer" . }}
-  {{ partial "footer_js" . }}
+  {{ partialCached "footer" . }}
+  {{ partialCached "footer_js" . }}
