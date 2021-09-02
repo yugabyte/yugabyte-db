@@ -41,7 +41,7 @@ Before you can deploy YugabyteDB on AKS, you need to verify that the following a
 - `kubectl`
   - For more information, see [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
   - [Kubernetes API v1.18.0](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/)
-- Helm 3 - v3.1.0 or later
+- Helm 3.4 or later
   - For more information, see [Installing Helm](https://helm.sh/docs/intro/install/).
 
 - [Microsoft Azure](https://azure.microsoft.com/en-au/pricing/purchase-options/pay-as-you-go/) account
