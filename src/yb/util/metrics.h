@@ -522,7 +522,7 @@ struct MetricPrometheusOptions {
   MetricLevel level;
 
   // Number of tables to include metrics for.
-  uint32_t num_tables;
+  uint32_t max_tables_metrics_breakdowns;
 
   // Regex for metrics that should always be included for all tables.
   string priority_regex;
@@ -719,13 +719,15 @@ class PrometheusWriter {
     return Status::OK();
   }
 
-  CHECKED_STATUS FlushAggregatedValues(const uint32_t& num_tables, string priority_regex) {
+  CHECKED_STATUS FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
+                                       string priority_regex) {
     uint32_t counter = 0;
     const auto& p_regex = std::regex(priority_regex);
     for (const auto& entry : per_table_values_) {
       const auto& attrs = per_table_attributes_[entry.first];
       for (const auto& metric_entry : entry.second) {
-        if (counter < num_tables || std::regex_match(metric_entry.first, p_regex)) {
+        if (counter < max_tables_metrics_breakdowns ||
+            std::regex_match(metric_entry.first, p_regex)) {
           RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
         }
       }
