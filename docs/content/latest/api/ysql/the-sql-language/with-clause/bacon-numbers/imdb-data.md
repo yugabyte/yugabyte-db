@@ -114,9 +114,9 @@ call insert_edges();
 
 with v(actor) as (
   select node_1 from edges
-  union all
+  union
   select node_2 from edges)
-select distinct actor from v order by 1
+select actor from v order by 1
 limit 10;
 
 select distinct unnest(movies) as movie
