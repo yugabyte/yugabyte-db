@@ -121,9 +121,9 @@ Confirm that the expected actors are represented:
 ```plpgsql
 with v(actor) as (
   select node_1 from edges
-  union all
+  union
   select node_2 from edges)
-select distinct actor from v order by 1;
+select actor from v order by 1;
 ```
 
 This is the result:
