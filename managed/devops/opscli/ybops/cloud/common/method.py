@@ -362,7 +362,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         """
         super(ProvisionInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--air_gap", action="store_true", help="Run airgapped install.")
-        self.parser.add_argument("--reuse_host", action="store_true", default=False)
+        self.parser.add_argument("--skip_preprovision", action="store_true", default=False)
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with the prometheus tarball.")
@@ -391,10 +391,13 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         self.update_ansible_vars_with_args(args)
 
-        self.preprovision(args)
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
+                                                 default_port=True))
 
-        if host_info:
-            self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        if not args.skip_preprovision:
+            self.preprovision(args)
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
         if args.air_gap:
