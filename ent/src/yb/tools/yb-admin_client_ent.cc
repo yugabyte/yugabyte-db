@@ -775,10 +775,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
           return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
         }
 
-        YBTableName orig_table_name;
-        orig_table_name.set_namespace_name(meta.namespace_name());
-        orig_table_name.set_table_name(meta.name());
-
         // Update the table name if needed.
         if (update_meta) {
           entry.set_data(meta.SerializeAsString());
