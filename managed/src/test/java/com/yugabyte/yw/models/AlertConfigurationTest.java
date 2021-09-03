@@ -57,8 +57,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private Universe universe;
   private AlertDestination alertDestination;
 
-  private AlertService alertService = new AlertService();
-  private AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
+  private final AlertService alertService = new AlertService();
+  private final AlertDefinitionService alertDefinitionService =
+      new AlertDefinitionService(alertService);
   private AlertConfigurationService alertConfigurationService;
 
   @Before
@@ -89,8 +90,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertConfiguration configuration = Json.fromJson(initialJson, AlertConfiguration.class);
 
-    String stringify = Json.stringify(Json.toJson(configuration));
-    JsonNode resultJson = Json.parse(stringify);
+    JsonNode resultJson = Json.toJson(configuration);
 
     assertThat(resultJson, equalTo(initialJson));
   }
