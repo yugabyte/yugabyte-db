@@ -12,19 +12,63 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
-import java.util.*;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -1359,16 +1403,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return false;
     }
 
-    TaskInfo taskInfo = TaskInfo.get(userTaskUUID);
-    if (taskInfo == null) {
+    final CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
+    if (task == null) {
       return false;
     }
 
-    TaskType taskType = taskInfo.getTaskType();
-    return !(taskType == TaskType.CreateUniverse
-        || taskType == TaskType.DestroyUniverse
-        || taskType == TaskType.PauseUniverse
-        || taskType == TaskType.ResumeUniverse);
+    return !(task.getTarget().equals(CustomerTask.TargetType.Universe)
+        && (task.getType().equals(CustomerTask.TaskType.Create)
+            || task.getType().equals(CustomerTask.TaskType.Delete)
+            || task.getType().equals(CustomerTask.TaskType.Pause)
+            || task.getType().equals(CustomerTask.TaskType.Resume)));
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.
