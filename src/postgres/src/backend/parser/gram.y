@@ -4214,7 +4214,6 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
 					$$ = $3;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }
