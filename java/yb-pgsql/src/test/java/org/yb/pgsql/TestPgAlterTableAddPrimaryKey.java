@@ -157,6 +157,21 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
   }
 
   @Test
+  public void rangePk() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int)");
+      stmt.executeUpdate("INSERT INTO nopk VALUES (1), (2), (3)");
+      alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id DESC)");
+
+      // Order should be descending.
+      assertQuery(stmt, "SELECT * FROM nopk",
+          new Row(3),
+          new Row(2),
+          new Row(1));
+    }
+  }
+
+  @Test
   public void pkInclude() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int, v1 int, v2 int)");
@@ -316,6 +331,9 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
       assertEquals(1, getNumTablets("clc", "normal_table"));
       assertEquals(1, getNumTablets("clc", "nopk_c"));
       assertEquals(NUM_TABLET_SERVERS, getNumTablets("clc", "nopk_nc"));
+
+      runInvalidQuery(stmt, "ALTER TABLE nopk_c ADD PRIMARY KEY (id HASH)",
+          "cannot colocate hash partitioned table");
 
       // This doesn't really accomplish much though, since colocated property is invisible to SQL
       // - we can't check whether a re-created table keeps/gains/loses it.
