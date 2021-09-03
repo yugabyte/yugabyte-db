@@ -1071,15 +1071,6 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(localPackagePath);
           }
 
-          // right now we only need explicit python installation for CentOS 8 graviton instances
-          if (taskParam.instanceType != null
-              && configHelper
-                  .getGravitonInstancePrefixList()
-                  .stream()
-                  .anyMatch(taskParam.instanceType::startsWith)) {
-            commandArgs.add("--install_python");
-          }
-
           break;
         }
       case Configure:

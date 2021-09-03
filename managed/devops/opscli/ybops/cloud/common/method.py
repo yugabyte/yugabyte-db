@@ -382,8 +382,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  type=str.lower)
         self.parser.add_argument("--disable_custom_ssh", action="store_true",
                                  help="Disable running the ansible task for using custom SSH.")
-        self.parser.add_argument("--install_python", action="store_true", default=False,
-                                 help="Flag to set if host OS needs python installed for Ansible.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -461,8 +459,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.update_ansible_vars(args)
         host_info = self.wait_for_host(args)
         ansible = self.cloud.setup_ansible(args)
-        if (args.install_python):
-            self.extra_vars["install_python"] = True
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
         if not args.disable_custom_ssh:
