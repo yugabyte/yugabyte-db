@@ -24,7 +24,7 @@ import java.util.UUID;
     // Ignore auto-generated boolean properties: https://stackoverflow.com/questions/32270422
     value = {"master", "tserver", "redisServer", "yqlServer", "ysqlServer"},
     ignoreUnknown = true)
-    @ApiModel(description = "Details of a cloud node")
+@ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
@@ -112,9 +112,7 @@ public class NodeDetails {
   }
 
   // The current state of the node.
-  @ApiModelProperty(
-      value = "Node state",
-      example = "Provisioned")
+  @ApiModelProperty(value = "Node state", example = "Provisioned")
   public NodeState state;
 
   // True if this node is a master, along with port info.

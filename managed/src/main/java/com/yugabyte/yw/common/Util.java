@@ -362,9 +362,7 @@ public class Util {
     }
   }
 
-  @ApiModel(
-      value = "UniverseDetailSubset",
-      description = "A small subset of universe information")
+  @ApiModel(value = "UniverseDetailSubset", description = "A small subset of universe information")
   @Getter
   public static class UniverseDetailSubset {
     final UUID uuid;

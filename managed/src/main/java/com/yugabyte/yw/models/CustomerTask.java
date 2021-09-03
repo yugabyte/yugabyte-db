@@ -32,7 +32,8 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
-@ApiModel(description = "Customer task information. A customer task has a _target_ and a _task type_.")
+@ApiModel(
+    description = "Customer task information. A customer task has a _target_ and a _task type_.")
 public class CustomerTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTask.class);
 
@@ -329,7 +330,7 @@ public class CustomerTask extends Model {
 
   public TaskType getType() {
     return type;
-  }  
+  }
 
   @Constraints.Required
   @Column(nullable = false)
@@ -348,7 +349,7 @@ public class CustomerTask extends Model {
   public String getTargetName() {
     return targetName;
   }
-  
+
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "Task target UUID", accessMode = READ_ONLY, required = true)

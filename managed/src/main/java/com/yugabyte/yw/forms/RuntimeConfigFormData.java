@@ -56,7 +56,8 @@ public class RuntimeConfigFormData {
      * customer
      */
     @ApiModelProperty(
-        value = "Mutability of the scope. Only super admin users can change global scope; other scopes are customer-mutable.")
+        value =
+            "Mutability of the scope. Only super admin users can change global scope; other scopes are customer-mutable.")
     public final boolean mutableScope;
 
     @ApiModelProperty(value = "List of configurations")

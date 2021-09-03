@@ -64,9 +64,7 @@ public class Schedule extends Model {
     return customerUUID;
   }
 
-  @ApiModelProperty(
-      value = "Number of failed backup attempts",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Number of failed backup attempts", accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
@@ -94,7 +92,10 @@ public class Schedule extends Model {
     return taskParams;
   }
 
-  @ApiModelProperty(value = "Type of task to be scheduled. This can be either a multi-table backup, or a full-universe backup.", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value =
+          "Type of task to be scheduled. This can be either a multi-table backup, or a full-universe backup.",
+      accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;

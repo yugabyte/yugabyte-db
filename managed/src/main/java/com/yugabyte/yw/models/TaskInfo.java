@@ -74,7 +74,9 @@ public class TaskInfo extends Model {
 
   // The position within the parent task's taskQueue (-1 for a CustomerTask)
   @Column(columnDefinition = "integer default -1")
-  @ApiModelProperty(value = "The task's position with its parent task's queue", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "The task's position with its parent task's queue",
+      accessMode = READ_ONLY)
   private Integer position = -1;
 
   // The task type.
@@ -120,7 +122,10 @@ public class TaskInfo extends Model {
   // Identifier of the process owning the task.
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "ID of the process that owns this task", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(
+      value = "ID of the process that owns this task",
+      accessMode = READ_ONLY,
+      required = true)
   private String owner;
 
   public TaskInfo(TaskType taskType) {

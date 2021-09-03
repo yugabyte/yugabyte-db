@@ -35,7 +35,9 @@ import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@ApiModel(description = "A single backup. Includes the backup's status, expiration time, and configuration.")
+@ApiModel(
+    description =
+        "A single backup. Includes the backup's status, expiration time, and configuration.")
 @Entity
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
@@ -69,9 +71,7 @@ public class Backup extends Model {
   @Id
   public UUID backupUUID;
 
-  @ApiModelProperty(
-      value = "Customer UUID that owns this backup",
-      accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Customer UUID that owns this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
   public UUID customerUUID;
 

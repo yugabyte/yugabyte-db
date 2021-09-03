@@ -103,15 +103,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   private Date createTime = nowWithoutMillis();
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(
-      value = "Timestamp at which the alert was acknowledged",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Timestamp at which the alert was acknowledged", accessMode = READ_ONLY)
   private Date acknowledgedTime;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(
-      value = "Timestamp at which the alert was resolved",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Timestamp at which the alert was resolved", accessMode = READ_ONLY)
   private Date resolvedTime;
 
   @Enumerated(EnumType.STRING)

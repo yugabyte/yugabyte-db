@@ -72,19 +72,13 @@ public class Region extends Model {
   public String ybImage;
 
   @Column(columnDefinition = "float")
-  @ApiModelProperty(
-      value = "The region's longitude",
-      example = "-120.01",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
   @Constraints.Min(-180)
   @Constraints.Max(180)
   public double longitude = -90;
 
   @Column(columnDefinition = "float")
-  @ApiModelProperty(
-      value = "The region's latitude",
-      example = "37.22",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The region's latitude", example = "37.22", accessMode = READ_ONLY)
   @Constraints.Min(-90)
   @Constraints.Max(90)
   public double latitude = -90;

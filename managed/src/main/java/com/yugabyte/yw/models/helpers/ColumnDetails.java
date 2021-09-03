@@ -13,7 +13,8 @@ import org.yb.Type;
 public class ColumnDetails {
 
   // The relative position for this column in the table and in CQL commands
-  @ApiModelProperty(value = "Relative position (column order) for this column, in the table and in CQL commands")
+  @ApiModelProperty(
+      value = "Relative position (column order) for this column, in the table and in CQL commands")
   public int columnOrder;
 
   // The name of this column

@@ -21,7 +21,10 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@ApiModel(value = "AlertConfigurationThreshold", description = "Alert configuration threshold. Conditions can be either greater than a specified value, or less than a specified value.")
+@ApiModel(
+    value = "AlertConfigurationThreshold",
+    description =
+        "Alert configuration threshold. Conditions can be either greater than a specified value, or less than a specified value.")
 public class AlertConfigurationThreshold {
 
   public enum Condition {

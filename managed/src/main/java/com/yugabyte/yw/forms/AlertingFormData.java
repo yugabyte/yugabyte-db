@@ -11,7 +11,8 @@ import play.data.validation.Constraints;
 /** This class will be used by the API and UI Form Elements to validate constraints are met */
 @ApiModel(
     value = "CustomerAlertData",
-    description = "Format of an alert, used by the API and UI to validate data against input constraints")
+    description =
+        "Format of an alert, used by the API and UI to validate data against input constraints")
 public class AlertingFormData {
   @Constraints.MaxLength(15)
   @ApiModelProperty(value = "Alert code")

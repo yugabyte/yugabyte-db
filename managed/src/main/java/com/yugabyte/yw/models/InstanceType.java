@@ -102,9 +102,7 @@ public class InstanceType extends Model {
     idKey.instanceTypeCode = code;
   }
 
-  @ApiModelProperty(
-      value = "True if the instance is active",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "True if the instance is active", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "boolean default true")
   private Boolean active = true;
@@ -127,7 +125,9 @@ public class InstanceType extends Model {
   @Column(nullable = false, columnDefinition = "float")
   public Double memSizeGB;
 
-  @ApiModelProperty(value = "Extra details about the instance (as a JSON object)", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Extra details about the instance (as a JSON object)",
+      accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT")
   private String instanceTypeDetailsJson;
 

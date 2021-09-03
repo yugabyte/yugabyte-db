@@ -47,7 +47,9 @@ import play.mvc.Http;
     produces = {"application/json"},
     schemes = {SwaggerDefinition.Scheme.HTTP, SwaggerDefinition.Scheme.HTTPS},
     externalDocs =
-        @ExternalDocs(value = "About Yugabyte Platform", url = "https://docs.yugabyte.com/latest/yugabyte-platform/"),
+        @ExternalDocs(
+            value = "About Yugabyte Platform",
+            url = "https://docs.yugabyte.com/latest/yugabyte-platform/"),
     securityDefinition =
         @SecurityDefinition(
             apiKeyAuthDefinitions = {

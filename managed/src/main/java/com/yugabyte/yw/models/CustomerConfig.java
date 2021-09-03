@@ -35,7 +35,9 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Entity
-@ApiModel(description = "Customer configuration. Includes storage, alerts, password policy, and call-home level.")
+@ApiModel(
+    description =
+        "Customer configuration. Includes storage, alerts, password policy, and call-home level.")
 public class CustomerConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfig.class);
   public static final String ALERTS_PREFERENCES = "preferences";
@@ -134,9 +136,7 @@ public class CustomerConfig extends Model {
     return false;
   }
 
-  @ApiModelProperty(
-      value = "Universe details",
-      example = "{\"name\": \"jd-aws-21-6-21-test4\"}")
+  @ApiModelProperty(value = "Universe details", example = "{\"name\": \"jd-aws-21-6-21-test4\"}")
   public List<UniverseDetailSubset> getUniverseDetails() {
     Set<Universe> universes = new HashSet<>();
     if (this.type == ConfigType.STORAGE) {

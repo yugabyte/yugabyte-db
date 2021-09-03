@@ -56,7 +56,9 @@ public class AvailabilityZone extends Model {
   public Region region;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
-  @ApiModelProperty(value = "AZ status. This value is `true` for an active AZ.", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "AZ status. This value is `true` for an active AZ.",
+      accessMode = READ_ONLY)
   public Boolean active = true;
 
   public Boolean isActive() {
