@@ -646,8 +646,7 @@ public class SessionControllerTest {
     Result result = routeWithYWErrHandler(request, app);
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
-    assertInternalServerError(
-        result, "\"java.net.UnknownHostException: " + node.cloudInfo.private_ip + ":");
+    assertInternalServerError(result, null /*errorStr*/);
   }
 
   @Test
