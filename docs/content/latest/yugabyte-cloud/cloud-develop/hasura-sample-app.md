@@ -1,13 +1,13 @@
 ---
-title: Running Hasura Applications
-headerTitle: Running Hasura Applications
-linkTitle: Hasura Applications
-description: Run applications in Hasura Cloud and Yugabyte Cloud.
+title: Deploy Realtime Poll Application on Hasura Cloud
+headerTitle: Deploy Realtime Poll Application on Hasura Cloud
+linkTitle: Hasura Realtime Poll
+description: Deploy the Realtime Poll application in Hasura Cloud and Yugabyte Cloud.
 menu:
   latest:
     identifier: hasura-application
-    parent: yugabyte-cloud
-    weight: 710
+    parent: cloud-develop
+    weight: 910
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,10 +20,9 @@ The example has the following prerequisites:
 
 * You have created a cluster on Yugabyte Cloud
 * You have created a Hasura project and connected it to your cluster
+  * For instructions, refer to [Connect Hasura Cloud to Yugabyte Cloud](../hasura-cloud/).
 
 You will also need the **Admin Secret** of your Hasura project.
-
-For instructions, refer to [Connect Hasura Cloud to Yugabyte Cloud](../hasura-cloud/).
 
 For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](https://hasura.io/docs/latest/graphql/cloud/index.html).
 
