@@ -121,6 +121,12 @@ name := "yugaware"
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
   .disablePlugins(PlayLayoutPlugin)
+  .settings(commands += Command.command("deflake") { state =>
+    "test" :: "deflake" :: state
+  })
+  .settings(commands += Command.args("deflakeOne", "<arg>") { (state, args) =>
+    "testOnly " + args.mkString(" ") :: "deflakeOne " + args.mkString(" "):: state
+  })
 
 scalaVersion := "2.12.10"
 version := (sys.process.Process("cat version.txt").lineStream_!.head)
