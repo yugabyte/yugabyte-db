@@ -69,11 +69,12 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
       if (currentNode.state != NodeDetails.NodeState.Live
           && currentNode.state != NodeDetails.NodeState.ToBeRemoved
-          && currentNode.state != NodeDetails.NodeState.ToJoinCluster) {
+          && currentNode.state != NodeDetails.NodeState.ToJoinCluster
+          && currentNode.state != NodeDetails.NodeState.Stopped) {
         String msg =
             "Node "
                 + taskParams().nodeName
-                + " is not in Live/ToJoinCluster/ToBeRemoved states, but is in "
+                + " is not in Live/ToJoinCluster/ToBeRemoved/Stopped states, but is in "
                 + currentNode.state
                 + ", so cannot be removed.";
         log.error(msg);
@@ -156,10 +157,13 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
                 currentNode.cloudInfo.region,
                 currentNode.cloudInfo.az);
 
-        if (rfInZone == -1 || nodesInZone == 0) {
+        if (rfInZone == -1) {
+          log.error(
+              "Unexpected placement info in univ {} {} {}", universe.name, rfInZone, nodesInZone);
           throw new RuntimeException(
               "Error getting placement info for cluster with node: " + currentNode.nodeName);
         }
+
         // Perform a data migration and stop the tserver process only if it is reachable.
         boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
         log.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
