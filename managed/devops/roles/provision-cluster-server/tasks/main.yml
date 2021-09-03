@@ -27,6 +27,9 @@
   - name: Install NTP
     become: yes
     become_method: sudo
+    module_defaults:
+      yum:
+        lock_timeout: 600
     package:
       name: ntp
       state: latest
@@ -57,6 +60,9 @@
   - name: Uninstall NTP if available
     become: yes
     become_method: sudo
+    module_defaults:
+      yum:
+        lock_timeout: 600
     package:
       name: ntp
       state: absent
