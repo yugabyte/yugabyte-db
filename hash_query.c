@@ -147,7 +147,7 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key,int encoding)
 		return NULL;
 	}
 	/* Find or create an entry with desired hash code */
-	entry = (pgssEntry *) hash_search(pgss_hash, key, HASH_ENTER, &found);
+	entry = (pgssEntry *) hash_search(pgss_hash, key, HASH_ENTER_NULL, &found);
 	if (!found)
 	{
 		pgss->bucket_entry[pgss->current_wbucket]++;
@@ -285,7 +285,7 @@ hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 us
 	key.ip = ip;
 	key.appid = appid;
 
-	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_ENTER, &found);
+	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_ENTER_NULL, &found);
 	return entry;
 }
 

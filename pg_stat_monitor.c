@@ -1499,6 +1499,7 @@ pgss_store(uint64 queryid,
 	uint64			planid = plan_info ? plan_info->planid: 0;
 	uint64			appid = djb2_hash((unsigned char *)application_name, application_name_len);
 	char            comments[512] = "";
+	bool		out_of_memory = false;
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
 		return;
@@ -1532,7 +1533,7 @@ pgss_store(uint64 queryid,
 			pgssQueryEntry *query_entry;
 			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, appid, query, strlen(query), kind);
 			if (query_entry == NULL)
-				elog(DEBUG1, "pg_stat_monitor: out of memory");
+				out_of_memory = true;
 			break;
 		}
 		case PGSS_ERROR:
@@ -1543,13 +1544,13 @@ pgss_store(uint64 queryid,
 			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, appid, query, strlen(query), kind);
 			if (query_entry == NULL)
 			{
-				elog(DEBUG1, "pg_stat_monitor: out of memory");
+				out_of_memory = true;
 				break;
 			}
 			entry = pgss_get_entry(bucketid, userid, dbid, queryid, ip, planid, appid);
 			if (entry == NULL)
 			{
-				elog(DEBUG1, "pg_stat_monitor: out of memory");
+				out_of_memory = true;
 				break;
 			}
 
@@ -1576,6 +1577,8 @@ pgss_store(uint64 queryid,
 			break;
 	}
 	LWLockRelease(pgss->lock);
+	if (out_of_memory)
+		elog(DEBUG1, "pg_stat_monitor: out of memory");
 }
 /*
  * Reset all statement statistics.
