@@ -87,10 +87,11 @@ class GcpCloud(AbstractCloud):
 
     def clone_disk(self, args, volume_id, num_disks):
         output = []
-
+        # disk names must match regex https://cloud.google.com/compute/docs/reference/rest/v1/disks
+        name = args.search_pattern[:58] if len(args.search_pattern) > 58 else args.search_pattern
         for x in range(num_disks):
             res = self.get_admin().create_disk(args.zone, args.instance_tags, body={
-                "name": "{}-disk-{}".format(args.search_pattern, x),
+                "name": "{}-d{}".format(name, x),
                 "sizeGb": args.boot_disk_size_gb,
                 "sourceDisk": volume_id})
             output.append(res["targetLink"])
