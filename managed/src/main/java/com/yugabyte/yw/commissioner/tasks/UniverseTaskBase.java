@@ -64,15 +64,14 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashSet;
@@ -1478,16 +1477,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return false;
     }
 
-    TaskInfo taskInfo = TaskInfo.get(userTaskUUID);
-    if (taskInfo == null) {
+    final CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
+    if (task == null) {
       return false;
     }
 
-    TaskType taskType = taskInfo.getTaskType();
-    return !(taskType == TaskType.CreateUniverse
-        || taskType == TaskType.DestroyUniverse
-        || taskType == TaskType.PauseUniverse
-        || taskType == TaskType.ResumeUniverse);
+    return !((task.getTarget() == CustomerTask.TargetType.Universe)
+        && (task.getType() == CustomerTask.TaskType.Create
+            || task.getType() == CustomerTask.TaskType.UpgradeVMImage
+            || task.getType() == CustomerTask.TaskType.Delete
+            || task.getType() == CustomerTask.TaskType.Pause
+            || task.getType() == CustomerTask.TaskType.Resume));
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.
