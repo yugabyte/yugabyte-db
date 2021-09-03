@@ -32,7 +32,7 @@ class StreamRefiner {
   virtual CHECKED_STATUS ProcessHeader() = 0;
   virtual CHECKED_STATUS Send(OutboundDataPtr data) = 0;
   virtual CHECKED_STATUS Handshake() = 0;
-  virtual CHECKED_STATUS Read(StreamReadBuffer* out) = 0;
+  virtual Result<ReadBufferFull> Read(StreamReadBuffer* out) = 0;
   virtual const Protocol* GetProtocol() = 0;
 
   virtual std::string ToString() const = 0;
@@ -68,7 +68,7 @@ class RefinedStream : public Stream, public StreamContext {
   std::string ToString() const override;
 
   // Implementation StreamContext
-  Result<size_t> ProcessReceived() override;
+  Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full) override;
   void Connected() override;
 
   void UpdateLastActivity() override;
@@ -89,6 +89,10 @@ class RefinedStream : public Stream, public StreamContext {
     return local_side_;
   }
 
+  const MemTrackerPtr& buffer_tracker() const {
+    return buffer_tracker_;
+  }
+
  private:
   Result<size_t> Handshake();
   Result<size_t> Read();
@@ -101,6 +105,7 @@ class RefinedStream : public Stream, public StreamContext {
   size_t upper_stream_bytes_to_skip_ = 0;
   LocalSide local_side_ = LocalSide::kServer;
   CircularReadBuffer read_buffer_;
+  MemTrackerPtr buffer_tracker_;
 };
 
 class RefinedStreamFactory : public StreamFactory {
