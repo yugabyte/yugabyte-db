@@ -7571,6 +7571,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	AttrNumber*  old2new_attmap;
 	AttrNumber*  new2old_attmap;
 	Oid          old_relid, new_relid;
+	bool         is_range_pk = false;
 
 	Relation     pg_constraint, pg_trigger, pg_depend;
 	ScanKeyData  key;
@@ -7615,6 +7616,15 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	if ((*mutable_rel)->rd_rel->relhassubclass)
 		elog(ERROR, "adding primary key to a table having children tables "
 		            "is not yet implemented");
+
+	/*
+	 * At this point we're already sure that the table has no explicit PK -
+	 * meaning it's PK has to be (ybctid HASH).
+	 */
+	Assert(yb_table_props.is_colocated || yb_table_props.num_hash_key_columns == 1);
+
+	/* We should have at least one index parameter. */
+	Assert(stmt->indexParams->length > 0);
 
 	const Oid   namespace_oid   = RelationGetNamespace(*mutable_rel);
 	const char* namespace_name  = get_namespace_name(namespace_oid);
@@ -7680,13 +7690,47 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 			makeDefElem("colocated", (Node *) makeInteger(colocated), -1));
 	}
 
+	/* The only constraint we care about here is the PK constraint needed for YB. */
+	Constraint* pk_constr = makeNode(Constraint);
+	pk_constr->contype      = CONSTR_PRIMARY;
+	pk_constr->conname      = stmt->idxname;
+	pk_constr->options      = stmt->options;
+	pk_constr->indexspace   = stmt->tableSpace;
+	foreach(cell, stmt->indexParams)
+	{
+		IndexElem* ielem = lfirst(cell);
+		pk_constr->keys            = lappend(pk_constr->keys, makeString(ielem->name));
+		pk_constr->yb_index_params = lappend(pk_constr->yb_index_params, ielem);
+	}
+	switch (lfirst_node(IndexElem, stmt->indexParams->head)->ordering)
+	{
+		case SORTBY_HASH:
+			is_range_pk = false;
+			break;
+		case SORTBY_ASC:
+		case SORTBY_DESC:
+			is_range_pk = true;
+			break;
+		case SORTBY_DEFAULT:
+			/*
+			 * Default ordering for the first PK element is hash in
+			 * non-colocated case.
+			 */
+			is_range_pk = yb_table_props.is_colocated;
+			break;
+		case SORTBY_USING:
+			elog(ERROR, "USING is not allowed in primary key");
+	}
+	create_stmt->constraints = lappend(create_stmt->constraints, pk_constr);
+
 	/*
 	 * While there is little to no sense for a user to be doing
 	 * CREATE TABLE ... SPLIT INTO x TABLETS without defining a primary key,
-	 * we're still going to preserve it.
+	 * we're still going to preserve the number of tablets.
 	 * It might come in handy if once we start supporting DROP PK as well.
+	 * In case we define a range primary key though, we discard this.
 	 */
-	if (yb_table_props.num_hash_key_columns > 0)
+	if (!yb_table_props.is_colocated && !is_range_pk)
 	{
 		create_stmt->split_options = makeNode(OptSplit);
 		create_stmt->split_options->split_type   = NUM_TABLETS;
@@ -7759,20 +7803,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 		create_stmt->tableElts = lappend(create_stmt->tableElts, col_def);
 	}
-
-	/* The only constraint we care about here is the PK constraint needed for YB. */
-	Constraint* pk_constr = makeNode(Constraint);
-	pk_constr->contype      = CONSTR_PRIMARY;
-	pk_constr->conname      = stmt->idxname;
-	pk_constr->options      = stmt->options;
-	pk_constr->indexspace   = stmt->tableSpace;
-	foreach(cell, stmt->indexParams)
-	{
-		IndexElem* ielem = lfirst(cell);
-		pk_constr->keys            = lappend(pk_constr->keys, makeString(ielem->name));
-		pk_constr->yb_index_params = lappend(pk_constr->yb_index_params, ielem);
-	}
-	create_stmt->constraints = lappend(create_stmt->constraints, pk_constr);
 
 	/*
 	 * Create an altered table and open it.
