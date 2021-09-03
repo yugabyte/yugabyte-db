@@ -240,6 +240,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <regex>
 #include <set>
 #include <string>
 #include <sstream>
@@ -519,6 +520,12 @@ struct MetricPrometheusOptions {
   // Include the metrics at a level and above.
   // Default: debug
   MetricLevel level;
+
+  // Number of tables to include metrics for.
+  uint32_t max_tables_metrics_breakdowns;
+
+  // Regex for metrics that should always be included for all tables.
+  string priority_regex;
 };
 
 class MetricEntityPrototype {
@@ -703,12 +710,19 @@ class PrometheusWriter {
     return Status::OK();
   }
 
-  CHECKED_STATUS FlushAggregatedValues() {
+  CHECKED_STATUS FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
+                                       string priority_regex) {
+    uint32_t counter = 0;
+    const auto& p_regex = std::regex(priority_regex);
     for (const auto& entry : per_table_values_) {
       const auto& attrs = per_table_attributes_[entry.first];
       for (const auto& metric_entry : entry.second) {
-        RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
+        if (counter < max_tables_metrics_breakdowns ||
+            std::regex_match(metric_entry.first, p_regex)) {
+          RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
+        }
       }
+      counter += 1;
     }
     return Status::OK();
   }

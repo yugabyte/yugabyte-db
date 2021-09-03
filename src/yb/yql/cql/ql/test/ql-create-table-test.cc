@@ -435,7 +435,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
   ASSERT_OK(processor->Run(Format("SELECT * FROM k.$0", table_name)));
 
   // Sleep enough for one tick of metrics snapshotter (and a bit more).
-  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_metrics_snapshotter_interval_ms));
+  SleepFor(MonoDelta::FromMilliseconds(3 * FLAGS_metrics_snapshotter_interval_ms + 200));
 
   // Verify whitelist functionality for table metrics.
   {
