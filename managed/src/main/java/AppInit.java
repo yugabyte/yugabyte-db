@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -25,7 +24,6 @@ import play.Application;
 import play.Configuration;
 import play.Environment;
 import play.Logger;
-import play.libs.Json;
 
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
@@ -44,7 +42,6 @@ public class AppInit {
       TaskGarbageCollector taskGC,
       PlatformReplicationManager replicationManager)
       throws ReflectiveOperationException {
-    Json.mapper().setSerializationInclusion(Include.NON_NULL);
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
