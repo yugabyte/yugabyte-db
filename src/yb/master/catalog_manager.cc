@@ -2181,6 +2181,19 @@ Status CatalogManager::TEST_SplitTablet(
   return DoSplitTablet(source_tablet_info, split_hash_code);
 }
 
+Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& table_id) {
+  auto table_info = GetTableInfo(table_id);
+  SCHECK(table_info != nullptr, NotFound, Format("Table $0 not found", table_id));
+
+  LockGuard lock(mutex_);
+  auto table_lock = table_info->LockForWrite();
+  auto& table_pb = table_lock.mutable_data()->pb;
+  table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table_info));
+  table_lock.Commit();
+  return Status::OK();
+}
+
 Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
@@ -3935,6 +3948,17 @@ Result<TableDescription> CatalogManager::DescribeTable(
   result.namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
 
   return result;
+}
+
+Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
+  RSTATUS_DCHECK_EQ(table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Expected YSQL table, got: $0", table_info->GetTableType()));
+
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
+  const uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
+  const uint32_t relnamespace_oid = VERIFY_RESULT(
+      sys_catalog_->ReadPgClassRelnamespace(database_oid, table_oid));
+  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
 }
 
 // Truncate a Table.
@@ -7629,6 +7653,9 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   if (report.has_should_disable_lb_move()) {
     new_replica->should_disable_lb_move = report.should_disable_lb_move();
   }
+  if (report.has_fs_data_dir()) {
+    new_replica->fs_data_dir = report.fs_data_dir();
+  }
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {
@@ -9433,14 +9460,16 @@ string CatalogManager::placement_uuid() const {
 
 Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                       IsLoadBalancedResponsePB* resp) {
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  if (req->has_expected_num_servers()) {
+    TSDescriptorVector ts_descs;
+    master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
 
-  if (req->has_expected_num_servers() && req->expected_num_servers() > ts_descs.size()) {
-    Status s = STATUS_SUBSTITUTE(IllegalState,
-        "Found $0, which is below the expected number of servers $1.",
-        ts_descs.size(), req->expected_num_servers());
-    return SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
+    if (req->expected_num_servers() > ts_descs.size()) {
+      Status s = STATUS_SUBSTITUTE(IllegalState,
+          "Found $0, which is below the expected number of servers $1.",
+          ts_descs.size(), req->expected_num_servers());
+      return SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
+    }
   }
 
   Status s = load_balance_policy_->IsIdle();
@@ -9894,32 +9923,28 @@ BlacklistSet CatalogManager::BlacklistSetFromPB() const {
   return blacklist_set;
 }
 
-void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
-                                             const TabletPathInfoPB& info) {
-  for (const auto& path : info.list_path()) {
-    for (const auto& tablet_info : path.tablet()) {
-      const string& tablet_id = tablet_info.tablet_id();
-      scoped_refptr<TabletInfo> tablet;
-      {
-        SharedLock lock(mutex_);
-        tablet = FindPtrOrNull(*tablet_map_, tablet_id);
-      }
-
-      if (!tablet) {
-        VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
-        continue;
-      }
-      TabletReplicaDriveInfo drive_info{path.path_id(),
-                                        tablet_info.sst_file_size(),
-                                        tablet_info.wal_file_size(),
-                                        tablet_info.uncompressed_sst_file_size(),
-                                        tablet_info.may_have_orphaned_post_split_data()};
-      tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
-      WARN_NOT_OK(
-          tablet_split_manager_.ProcessLiveTablet(*tablet, ts_uuid, drive_info),
-          "Failed to process tablet split candidate.");
-    }
+void CatalogManager::ProcessTabletStorageMetadata(
+    const std::string& ts_uuid,
+    const TabletDriveStorageMetadataPB& storage_metadata) {
+  const string& tablet_id = storage_metadata.tablet_id();
+  scoped_refptr<TabletInfo> tablet;
+  {
+    SharedLock lock(mutex_);
+    tablet = FindPtrOrNull(*tablet_map_, tablet_id);
   }
+  if (!tablet) {
+    VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
+    return;
+  }
+  TabletReplicaDriveInfo drive_info{
+        storage_metadata.sst_file_size(),
+        storage_metadata.wal_file_size(),
+        storage_metadata.uncompressed_sst_file_size(),
+        storage_metadata.may_have_orphaned_post_split_data()};
+  tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
+  WARN_NOT_OK(
+        tablet_split_manager_.ProcessLiveTablet(*tablet, ts_uuid, drive_info),
+        "Failed to process tablet split candidate.");
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {

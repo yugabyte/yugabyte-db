@@ -12,7 +12,7 @@ package com.yugabyte.yw.forms;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -94,7 +94,8 @@ public class RuntimeConfigFormData {
         case PROVIDER:
           return factory.forProvider(Provider.get(uuid));
       }
-      throw new YWServiceException(Http.Status.INTERNAL_SERVER_ERROR, "Unexpected Type " + type);
+      throw new PlatformServiceException(
+          Http.Status.INTERNAL_SERVER_ERROR, "Unexpected Type " + type);
     }
   }
 

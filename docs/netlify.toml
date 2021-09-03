@@ -5,17 +5,17 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.84.4"
+  HUGO_VERSION = "0.87.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.84.4"
+  HUGO_VERSION = "0.87.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.84.4"
+  HUGO_VERSION = "0.87.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -37,6 +37,11 @@
 
 # Legal, FAQ, and release notes should always point to the latest,
 # even if we have content in the older version's folder.
+
+[[redirects]]
+  from = "/"
+  to = "/latest/"
+  force = true
 
 [[redirects]]
   from = "/:version/comparisons/*"

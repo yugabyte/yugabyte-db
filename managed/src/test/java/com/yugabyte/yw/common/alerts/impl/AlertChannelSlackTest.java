@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.is;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
-import com.yugabyte.yw.common.alerts.YWNotificationException;
+import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
@@ -43,7 +43,7 @@ public class AlertChannelSlackTest extends FakeDBApplication {
   }
 
   @Test
-  public void test() throws YWNotificationException, IOException, InterruptedException {
+  public void test() throws PlatformNotificationException, IOException, InterruptedException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url(SLACK_TEST_PATH);

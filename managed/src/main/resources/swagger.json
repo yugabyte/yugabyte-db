@@ -25,7 +25,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "keyCode", "providerUUID" ],
       "type" : "object"
     },
     "Alert" : {
@@ -368,7 +367,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -411,7 +410,7 @@
           "type" : "string"
         },
         "template" : {
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT" ],
           "type" : "string"
         },
         "uuids" : {
@@ -525,7 +524,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -892,6 +891,11 @@
         "name" : {
           "description" : "AZ name",
           "example" : "south-east-1",
+          "type" : "string"
+        },
+        "secondarySubnet" : {
+          "description" : "AZ Secondary Subnet",
+          "example" : "secondary subnet id",
           "type" : "string"
         },
         "subnet" : {
@@ -1465,6 +1469,14 @@
           "description" : "Region",
           "type" : "string"
         },
+        "secondary_private_ip" : {
+          "description" : "Secondary Private IP",
+          "type" : "string"
+        },
+        "secondary_subnet_id" : {
+          "description" : "Secondary Subnet IP",
+          "type" : "string"
+        },
         "subnet_id" : {
           "description" : "Subnet IP",
           "type" : "string"
@@ -1504,7 +1516,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusterType", "index", "placementInfo", "userIntent", "uuid" ],
+      "required" : [ "clusterType", "userIntent" ],
       "type" : "object"
     },
     "ColumnDetails" : {
@@ -2219,7 +2231,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "airGapInstall", "installNodeExporter", "nodeExporterPort", "nodeExporterUser", "passwordlessSudoAccess", "privateKey", "provisionInstanceScript", "publicKey", "skipProvisioning", "sshPort", "sshUser", "vaultFile", "vaultPasswordFile" ],
       "type" : "object"
     },
     "LogData" : {
@@ -3069,6 +3080,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "secondarySubnet" : {
+          "type" : "string"
+        },
         "subnet" : {
           "type" : "string"
         },
@@ -3077,7 +3091,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "isAffinitized", "name", "numNodesInAZ", "replicationFactor", "subnet", "uuid" ],
       "type" : "object"
     },
     "PlacementCloud" : {
@@ -3096,7 +3109,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "code", "regionList", "uuid" ],
       "type" : "object"
     },
     "PlacementInfo" : {
@@ -3130,7 +3142,9 @@
           "type" : "string"
         }
       },
-      "required" : [ "azList", "code", "name", "uuid" ],
+      "type" : "object"
+    },
+    "PlatformResults" : {
       "type" : "object"
     },
     "Provider" : {
@@ -3727,6 +3741,152 @@
       "required" : [ "creationDate", "name", "universePaused", "updateInProgress", "updateSucceeded", "uuid" ],
       "type" : "object"
     },
+    "UniverseConfigureTaskParams" : {
+      "properties" : {
+        "allowInsecure" : {
+          "type" : "boolean"
+        },
+        "backupInProgress" : {
+          "type" : "boolean"
+        },
+        "capability" : {
+          "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
+          "type" : "string"
+        },
+        "clientRootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "clusterOperation" : {
+          "enum" : [ "CREATE", "EDIT", "DELETE" ],
+          "type" : "string"
+        },
+        "clusters" : {
+          "items" : {
+            "$ref" : "#/definitions/Cluster"
+          },
+          "type" : "array"
+        },
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "currentClusterType" : {
+          "enum" : [ "PRIMARY", "ASYNC" ],
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Expected universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "firstTry" : {
+          "description" : "Whether this task has been tried before",
+          "type" : "boolean"
+        },
+        "importedState" : {
+          "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
+          "type" : "string"
+        },
+        "itestS3PackagePath" : {
+          "type" : "string"
+        },
+        "nextClusterIndex" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeDetailsSet" : {
+          "description" : "Node details",
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "nodePrefix" : {
+          "type" : "string"
+        },
+        "remotePackagePath" : {
+          "type" : "string"
+        },
+        "resetAZConfig" : {
+          "type" : "boolean"
+        },
+        "rootAndClientRootCASame" : {
+          "type" : "boolean"
+        },
+        "rootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "setTxnTableWaitCountFlag" : {
+          "type" : "boolean"
+        },
+        "sourceAsyncReplicationRelationships" : {
+          "description" : "The source universe's sync replication relationships",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "targetAsyncReplicationRelationships" : {
+          "description" : "The target universe's async replication relationships",
+          "items" : {
+            "$ref" : "#/definitions/AsyncReplicationConfig"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "universeUUID" : {
+          "description" : "Associated universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "userAZSelected" : {
+          "type" : "boolean"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
+        }
+      },
+      "required" : [ "clusters" ],
+      "type" : "object"
+    },
     "UniverseDefinitionTaskParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -3866,7 +4026,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
+      "required" : [ "clusters" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParamsResp" : {
@@ -4008,7 +4168,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "backupInProgress", "capability", "clientRootCA", "clusters", "currentClusterType", "importedState", "itestS3PackagePath", "nextClusterIndex", "nodePrefix", "remotePackagePath", "resetAZConfig", "rootAndClientRootCASame", "rootCA", "setTxnTableWaitCountFlag", "universePaused", "updateInProgress", "updateSucceeded", "userAZSelected" ],
+      "required" : [ "clusters" ],
       "type" : "object"
     },
     "UniverseResourceDetails" : {
@@ -4229,7 +4389,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "accessKeyCode", "awsArnString", "deviceInfo", "instanceTags", "instanceType", "masterGFlags", "numNodes", "preferredRegion", "provider", "providerType", "regionList", "replicationFactor", "tserverGFlags", "universeName", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "UserRegistrationData" : {
@@ -4441,13 +4600,18 @@
       "required" : [ "bootstrapIds", "sourceMasterAddressesToChange", "sourceTableIds", "sourceTableIdsToAdd", "sourceTableIdsToRemove", "sourceUniverseUUID" ],
       "type" : "object"
     },
-    "YWError" : {
+    "YBPError" : {
       "description" : "Generic error response from the Yugabyte Platform API",
       "properties" : {
         "error" : {
           "description" : "User visible unstructured error message",
           "example" : "There was a problem creating the universe",
           "type" : "string"
+        },
+        "errorJson" : {
+          "description" : "User visible error message as json object",
+          "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
+          "type" : "object"
         },
         "success" : {
           "description" : "Always set to false to indicate failure",
@@ -4457,24 +4621,7 @@
       },
       "type" : "object"
     },
-    "YWResults" : {
-      "type" : "object"
-    },
-    "YWStructuredError" : {
-      "properties" : {
-        "error" : {
-          "description" : "User visible error message as json object",
-          "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
-          "type" : "object"
-        },
-        "success" : {
-          "type" : "boolean"
-        }
-      },
-      "required" : [ "success" ],
-      "type" : "object"
-    },
-    "YWSuccess" : {
+    "YBPSuccess" : {
       "properties" : {
         "message" : {
           "description" : "API response message.",
@@ -4489,7 +4636,7 @@
       },
       "type" : "object"
     },
-    "YWTask" : {
+    "YBPTask" : {
       "properties" : {
         "resourceUUID" : {
           "description" : "UUID of the resource being modified by the task",
@@ -4504,6 +4651,9 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "YBPTasks" : {
       "type" : "object"
     }
   },
@@ -4600,7 +4750,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -4748,7 +4898,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -4949,7 +5099,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5108,7 +5258,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5428,7 +5578,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTasks"
             }
           }
         },
@@ -5492,7 +5642,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the regions",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -5589,7 +5739,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5784,7 +5934,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -5941,7 +6091,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -6013,7 +6163,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -6056,7 +6206,7 @@
           "400" : {
             "description" : "When request fails validations.",
             "schema" : {
-              "$ref" : "#/definitions/YWStructuredError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -6166,7 +6316,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -6198,7 +6348,10 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/AccessKey"
+              "items" : {
+                "$ref" : "#/definitions/AccessKey"
+              },
+              "type" : "array"
             }
           }
         },
@@ -6265,7 +6418,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6383,7 +6536,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/YWResults"
+                "$ref" : "#/definitions/PlatformResults"
               },
               "type" : "array"
             }
@@ -6391,7 +6544,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the instance types",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -6466,7 +6619,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6640,7 +6793,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the regions",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -6848,7 +7001,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6944,7 +7097,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -6968,7 +7121,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -7240,7 +7393,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWResults"
+              "$ref" : "#/definitions/PlatformResults"
             }
           }
         },
@@ -7496,12 +7649,19 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UniverseConfigureTaskParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UniverseConfigureTaskParams"
+          }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7577,7 +7737,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7648,7 +7808,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -7688,7 +7848,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7735,7 +7895,7 @@
           "500" : {
             "description" : "If there was a server or database issue when listing the backups",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -7767,7 +7927,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7799,7 +7959,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7829,7 +7989,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7873,7 +8033,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -7905,7 +8065,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -7969,7 +8129,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8033,7 +8193,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8230,7 +8390,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8334,7 +8494,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8374,7 +8534,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8438,7 +8598,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8478,7 +8638,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8510,7 +8670,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWError"
+              "$ref" : "#/definitions/YBPError"
             }
           }
         },
@@ -8633,7 +8793,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -8830,7 +8990,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8868,7 +9028,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -8989,7 +9149,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9035,7 +9195,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9167,7 +9327,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9199,7 +9359,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9239,7 +9399,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9277,7 +9437,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9315,7 +9475,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9459,7 +9619,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWTask"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -9552,7 +9712,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9617,7 +9777,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
@@ -9692,7 +9852,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YWSuccess"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },

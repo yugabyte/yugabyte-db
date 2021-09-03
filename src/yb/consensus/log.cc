@@ -69,6 +69,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
@@ -77,7 +78,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/shared_lock.h"
+#include "yb/util/unique_lock.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;  // NOLINT.
@@ -139,6 +140,9 @@ DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
             "for the opId to apply to the local log. i.e. WaitForSafeOpIdToApply "
             "becomes a noop.");
 
+DEFINE_test_flag(bool, simulate_abrupt_server_restart, false,
+                 "If true, don't properly close the log segment.");
+
 // TaskStream flags.
 // We have to make the queue length really long.
 // TODO: Create new flags log_taskstream_queue_max_size and log_taskstream_queue_max_wait_ms
@@ -151,6 +155,10 @@ DEFINE_int32(taskstream_queue_max_wait_ms, 1000,
 
 DEFINE_int32(wait_for_safe_op_id_to_apply_default_timeout_ms, 15000 * yb::kTimeMultiplier,
              "Timeout used by WaitForSafeOpIdToApply when it was not specified by caller.");
+
+DEFINE_test_flag(int64, log_fault_after_segment_allocation_min_replicate_index, 0,
+                 "Fault of segment allocation when min replicate index is at least specified. "
+                 "0 to disable.");
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
@@ -1223,6 +1231,9 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 }
 
 Status Log::Close() {
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_abrupt_server_restart)) {
+    return Status::OK();
+  }
   // Allocation pool is used from appender pool, so we should shutdown appender first.
   appender_->Shutdown();
   allocation_token_.reset();
@@ -1251,7 +1262,7 @@ Status Log::Close() {
   }
 }
 
-const int Log::num_segments() const {
+int Log::num_segments() const {
   boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
   return (reader_) ? reader_->num_segments() : 0;
 }
@@ -1298,14 +1309,23 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
     log_copy_min_index_ = std::numeric_limits<int64_t>::max();
   });
 
-  // Rollover current active segment if it is not empty.
-  RETURN_NOT_OK(AllocateSegmentAndRollOver());
-
   SegmentSequence segments;
+  scoped_refptr<LogIndex> log_index;
   {
-    std::lock_guard<percpu_rwlock> l(state_lock_);
-    SCHECK_EQ(log_state_, kLogWriting, IllegalState, "Invalid log state");
+    UniqueLock<percpu_rwlock> l(state_lock_);
+    if (log_state_ != kLogInitialized) {
+      SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
+      ReverseLock<decltype(l)> rlock(l);
+      // Rollover current active segment if it is not empty.
+      RETURN_NOT_OK(AllocateSegmentAndRollOver());
+    }
 
+    SCHECK(
+        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
+        Format("Invalid log state: $0", log_state_));
+    // Remember log_index, because it could be reset if someone closes the log after we release
+    // state_lock_.
+    log_index = log_index_;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
 
     // We skip the last snapshot segment because it might be mutable and is either:
@@ -1333,7 +1353,7 @@ Status Log::CopyTo(const std::string& dest_wal_dir) {
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options_.env, dest_wal_dir),
                         Format("Failed to create tablet WAL dir $0", dest_wal_dir));
 
-  RETURN_NOT_OK(log_index_->Flush());
+  RETURN_NOT_OK(log_index->Flush());
 
   auto* const env = options_.env;
 
@@ -1404,6 +1424,14 @@ Status Log::SwitchToAllocatedSegment() {
 
   RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
   RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
+
+  int64_t fault_after_min_replicate_index =
+      FLAGS_TEST_log_fault_after_segment_allocation_min_replicate_index;
+  if (PREDICT_FALSE(fault_after_min_replicate_index)) {
+    if (reader_->GetMinReplicateIndex() >= fault_after_min_replicate_index) {
+      MAYBE_FAULT(1.0);
+    }
+  }
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(

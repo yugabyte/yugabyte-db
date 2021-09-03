@@ -250,6 +250,7 @@ class CppCassandraDriverTestIndexSlower : public CppCassandraDriverTestIndex {
     flags.push_back("--TEST_slowdown_backfill_by_ms=3000");
     flags.push_back("--ycql_num_tablets=1");
     flags.push_back("--ysql_num_tablets=1");
+    flags.push_back("--raft_heartbeat_interval_ms=200");
     return flags;
   }
 

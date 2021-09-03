@@ -20,6 +20,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,6 +96,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
     flags.put("ysql_max_write_restart_attempts", "0");
+    flags.put("enable_pg_savepoints", "true");
     return flags;
   }
 
@@ -173,6 +175,20 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
         false /* expectRestartErrors */
+    ).runTest();
+  }
+
+  /**
+   * Doing SELECT * operation on short strings with savepoints enabled and created and expect
+   * restarts to to *not* happen transparently.
+   * <p>
+   * todo
+   */
+  @Test
+  public void selectStarShortWithSavepoints() throws Exception {
+    new SavepointStatementTester(
+        getConnectionBuilder(),
+        getShortString()
     ).runTest();
   }
 
@@ -348,6 +364,24 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     }.runTest();
   }
 
+  /**
+   * Doing SELECT func() where the sql func executes a DML statement internally.
+   * Read restarts should happen transparently.
+   */
+  @Test
+  public void selectFuncWithDml() throws Exception {
+    Statement stmt = connection.createStatement();
+    stmt.execute("CREATE FUNCTION update_test_rr() RETURNS void AS " +
+                 "$$ update test_rr set i=1 where i=0; " +
+                 "$$ LANGUAGE SQL");
+
+    new SelectWithDmlFuncTester(
+        getConnectionBuilder(),
+        "SELECT update_test_rr()",
+        getShortString()
+    ).runTest();
+  }
+
   //
   // Helpers methods
   //
@@ -442,6 +476,70 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   }
 
   /**
+   * Performs generic testing of concurrent INSERT with other queries by running several
+   * concurrent threads.
+   */
+  private abstract class ConcurrentInsertQueryTester<Stmt extends AutoCloseable> {
+
+    /** Number of threads in a fixed thread pool */
+    private static final int NUM_THREADS = 4;
+
+    private final ConnectionBuilder cb;
+
+    private final String valueToInsert;
+
+    public ConcurrentInsertQueryTester(ConnectionBuilder cb, String valueToInsert) {
+      this.cb = cb;
+      this.valueToInsert = valueToInsert;
+    }
+
+    public abstract List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution);
+
+    public void runTest() throws Exception {
+      ExecutorService es = Executors.newFixedThreadPool(NUM_THREADS);
+      List<Future<?>> futures = new ArrayList<>();
+
+      InsertRunnable insertRunnable = new InsertRunnable(cb, valueToInsert);
+      Future<?> insertFuture = es.submit(insertRunnable);
+      futures.add(insertFuture);
+
+      for (Runnable r : getRunnableThreads(cb, insertFuture)) {
+        futures.add(es.submit(r));
+      }
+
+      insertRunnable.unpause();
+      try {
+        try {
+          LOG.info("Waiting for INSERT thread");
+          insertFuture.get(INSERTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
+        } catch (TimeoutException ex) {
+          LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
+          fail("Test timed out! Try increasing waiting time?");
+        }
+        try {
+          LOG.info("Waiting for other threads");
+          for (Future<?> future : futures) {
+            future.get(SELECTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
+          }
+        } catch (TimeoutException ex) {
+          LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
+          // It's very likely that cause lies on a YB side (e.g. unexpected performance slowdown),
+          // not in test.
+          fail("Waiting for other threads timed out, this is unexpected!");
+        }
+      } finally {
+        LOG.info("Shutting down executor service");
+        es.shutdownNow(); // This should interrupt all submitted threads
+        if (es.awaitTermination(10, TimeUnit.SECONDS)) {
+          LOG.info("Executor shutdown complete");
+        } else {
+          LOG.info("Executor shutdown failed (timed out)");
+        }
+      }
+    }
+  }
+
+  /**
    * Performs generic testing of concurrent SELECT/INSERT by running several concurrent threads:
    *
    * <ul>
@@ -459,15 +557,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
    * For the transactional SELECTs, we're only checking for restart read error on first operation.
    * If it happens in the second, that's always valid.
    */
-  private abstract class ConcurrentInsertSelectTester<Stmt extends AutoCloseable> {
-
-    /** Number of threads in a fixed thread pool */
-    private static final int NUM_THREADS = 4;
-
-    private final ConnectionBuilder cb;
-
-    private final String valueToInsert;
-
+  private abstract class ConcurrentInsertSelectTester<Stmt extends AutoCloseable>
+      extends ConcurrentInsertQueryTester<Stmt>{
     /** Whether we expect errors to happen without transactions/in SNAPSHOT isolated transactions */
     private final boolean expectRestartErrors;
 
@@ -475,8 +566,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      this.cb = cb;
-      this.valueToInsert = valueToInsert;
+      super(cb, valueToInsert);
       this.expectRestartErrors = expectRestartErrors;
     }
 
@@ -484,25 +574,20 @@ public class TestPgReadRestarts extends BasePgSQLTest {
 
     public abstract ResultSet executeQuery(Stmt stmt) throws Exception;
 
-    public void runTest() throws Exception {
-      ExecutorService es = Executors.newFixedThreadPool(NUM_THREADS);
-      List<Future<?>> futures = new ArrayList<>();
-
-      InsertRunnable insertRunnable = new InsertRunnable(cb, valueToInsert);
-      Future<?> insertFuture = es.submit(insertRunnable);
-      futures.add(insertFuture);
-
+    @Override
+    public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
+      List<Runnable> runnables = new ArrayList<>();
       //
       // Singular SELECT
       //
-      futures.add(es.submit(() -> {
+      runnables.add(() -> {
         int selectsAttempted = 0;
         int selectsRestartRequired = 0;
         int selectsSucceeded = 0;
         boolean onlyEmptyResults = true;
         try (Connection conn = cb.connect();
             Stmt stmt = createStatement(conn)) {
-          for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
+          for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
             if (Thread.interrupted()) return; // Skips all post-loop checks
             try {
               List<Row> rows = getRowList(executeQuery(stmt));
@@ -539,7 +624,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
                   + " SELECTs (non-txn) resulted in 'restart read required', likely a regression!",
               selectsRestartRequired == 0);
         }
-      }));
+      });
 
       // We never expect SERIALIZABLE transaction to result in "restart read required"
       Map<IsolationLevel, Boolean> isoLevelsWithRestartsExpected = new LinkedHashMap<>();
@@ -552,7 +637,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
       // Two SELECTs grouped in a transaction. Their result should match.
       //
       for (Entry<IsolationLevel, Boolean> isoEntry : isoLevelsWithRestartsExpected.entrySet()) {
-        futures.add(es.submit(() -> {
+        runnables.add(() -> {
           IsolationLevel isolation = isoEntry.getKey();
           boolean expectRestartInIsolation = isoEntry.getValue();
           int selectsAttempted = 0;
@@ -561,7 +646,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
           try (Connection selectTxnConn = cb.withIsolationLevel(isolation).connect();
               Stmt stmt = createStatement(selectTxnConn)) {
             selectTxnConn.setAutoCommit(false);
-            for (/* No setup */; !insertFuture.isDone(); ++selectsAttempted) {
+            for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
               if (Thread.interrupted()) return; // Skips all post-loop checks
               int numCompletedOps = 0;
               try {
@@ -615,38 +700,9 @@ public class TestPgReadRestarts extends BasePgSQLTest {
             assertTrue("No SELECT operations in " + isolation
                 + " succeeded, ever! Flawed test?", selectsSucceeded > 0);
           }
-        }));
+        });
       }
-
-      insertRunnable.unpause();
-      try {
-        try {
-          LOG.info("Waiting for INSERT thread");
-          insertFuture.get(INSERTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
-        } catch (TimeoutException ex) {
-          LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
-          fail("Test timed out! Try increasing waiting time?");
-        }
-        try {
-          LOG.info("Waiting for SELECT threads");
-          for (Future<?> future : futures) {
-            future.get(SELECTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
-          }
-        } catch (TimeoutException ex) {
-          LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
-          // It's very likely that cause lies on a YB side (e.g. unexpected performance slowdown),
-          // not in test.
-          fail("Waiting for SELECT threads timed out, this is unexpected!");
-        }
-      } finally {
-        LOG.info("Shutting down executor service");
-        es.shutdownNow(); // This should interrupt all submitted threads
-        if (es.awaitTermination(10, TimeUnit.SECONDS)) {
-          LOG.info("Executor shutdown complete");
-        } else {
-          LOG.info("Executor shutdown failed (timed out)");
-        }
-      }
+      return runnables;
     }
   }
 
@@ -695,6 +751,133 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     @Override
     public ResultSet executeQuery(PreparedStatement stmt) throws Exception {
       return stmt.executeQuery();
+    }
+  }
+
+  /** SavepointStatementTester that uses regular Statement and savepoints in various places */
+  private class SavepointStatementTester extends ConcurrentInsertQueryTester<Statement> {
+    public SavepointStatementTester(
+        ConnectionBuilder cb,
+        String valueToInsert) {
+      super(cb, valueToInsert);
+    }
+
+    private Runnable getRunnableThread(
+        ConnectionBuilder cb, Future<?> execution, String secondSavepointOpString) {
+      return () -> {
+        int selectsAttempted = 0;
+        int selectsPostSecondSavepointOpRestartRequired = 0;
+        int selectsSucceeded = 0;
+        try (Connection selectTxnConn = cb.withIsolationLevel(
+              IsolationLevel.REPEATABLE_READ).connect();
+              Statement stmt = selectTxnConn.createStatement()) {
+          selectTxnConn.setAutoCommit(false);
+          for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
+            if (Thread.interrupted()) return; // Skips all post-loop checks
+            int numCompletedOps = 0;
+            try {
+              stmt.execute("SAVEPOINT a");
+              List<Row> rows1 = getRowList(stmt.executeQuery("SELECT * from test_rr LIMIT 1"));
+              ++numCompletedOps;
+              if (Thread.interrupted()) return; // Skips all post-loop checks
+
+              stmt.execute(secondSavepointOpString);
+              List<Row> rows2 = getRowList(stmt.executeQuery("SELECT * from test_rr LIMIT 1"));
+              ++numCompletedOps;
+              if (Thread.interrupted()) return; // Skips all post-loop checks
+
+              selectTxnConn.commit();
+              assertEquals("Two SELECT done within same transaction mismatch", rows1, rows2);
+              ++selectsSucceeded;
+            } catch (Exception ex) {
+              try {
+                selectTxnConn.rollback();
+              } catch (SQLException ex1) {
+                fail("Rollback failed: " + ex1.getMessage());
+              }
+              if (isRestartReadError(ex)) {
+                if (numCompletedOps == 1) {
+                  ++selectsPostSecondSavepointOpRestartRequired;
+                }
+              }
+              if (!isTxnError(ex)) {
+                throw ex;
+              }
+            }
+          }
+        } catch (Exception ex) {
+          fail("SELECT in savepoint thread failed: " + ex.getMessage());
+        }
+        LOG.info(
+            "SELECT in savepoint thread with second savepoint op \"" + secondSavepointOpString
+            + "\": " + selectsSucceeded + " of " + selectsAttempted + " succeeded");
+        assertTrue(
+            "No SELECTs after second savepoint statement: " + secondSavepointOpString
+                + " resulted in 'restart read required' on second operation"
+                + " - but we expected them to!"
+                + " " + selectsAttempted + " attempted, " + selectsSucceeded + " succeeded",
+                selectsPostSecondSavepointOpRestartRequired > 0);
+      };
+    }
+
+    @Override
+    public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
+      List<Runnable> runnables = new ArrayList<>();
+      runnables.add(getRunnableThread(cb, execution, "SAVEPOINT b"));
+      runnables.add(getRunnableThread(cb, execution, "ROLLBACK TO a"));
+      runnables.add(getRunnableThread(cb, execution, "RELEASE a"));
+      return runnables;
+    }
+  }
+
+  /** SelectWithDmlFuncTester tests kReadRestart retries in "SELECT func()" where func does DML */
+  private class SelectWithDmlFuncTester extends ConcurrentInsertQueryTester<Statement> {
+    private final String queryString;
+    public SelectWithDmlFuncTester(
+        ConnectionBuilder cb,
+        String queryString,
+        String valueToInsert) {
+      super(cb, valueToInsert);
+      this.queryString = queryString;
+    }
+
+    @Override
+    public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
+      return Arrays.<Runnable>asList(() -> {
+        int selectsAttempted = 0;
+        int selectsSucceeded = 0;
+        int selectsRestartRequired = 0;
+        int selectsConflictsDetected = 0;
+        try (Connection selectTxnConn = cb.withIsolationLevel(
+              IsolationLevel.REPEATABLE_READ).connect();
+              Statement stmt = selectTxnConn.createStatement()) {
+          for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
+            if (Thread.interrupted()) return; // Skips all post-loop checks
+            try {
+              stmt.execute(queryString);
+              ++selectsSucceeded;
+            } catch (Exception ex) {
+              if (isRestartReadError(ex)) {
+                ++selectsRestartRequired;
+              } else if (ex.getMessage().toLowerCase().contains("conflict")) {
+                // A conflict can only occur when the read time of the UPDATE
+                // is the same as the write time of when a row was inserted.
+                ++selectsConflictsDetected;
+              } else {
+                throw ex;
+              }
+            }
+          }
+        } catch (Exception ex) {
+          fail("SELECT thread failed: " + ex.getMessage());
+        }
+        LOG.info(this.queryString +
+                  " selectsAttempted=" + selectsAttempted +
+                  " selectsSucceeded=" + selectsSucceeded +
+                  " selectsRestartRequired=" + selectsRestartRequired +
+                  " selectsConflictsDetected=" + selectsConflictsDetected);
+        assertTrue("selectsRestartRequired != 0", selectsRestartRequired == 0);
+      });
     }
   }
 }

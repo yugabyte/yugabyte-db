@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -152,7 +152,7 @@ public class Customer extends Model {
   public static Customer getOrBadRequest(UUID customerUUID) {
     Customer customer = get(customerUUID);
     if (customer == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
     }
     return customer;
   }
@@ -194,7 +194,7 @@ public class Customer extends Model {
    */
   public void upsertFeatures(JsonNode input) {
     if (!input.isObject()) {
-      throw new YWServiceException(BAD_REQUEST, "Features must be Jsons.");
+      throw new PlatformServiceException(BAD_REQUEST, "Features must be Jsons.");
     } else if (features == null || features.isNull() || features.size() == 0) {
       features = input;
     } else {

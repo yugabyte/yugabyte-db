@@ -1399,22 +1399,32 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       }
     }
   }
-  if (req->is_compaction()) {
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-        server_->tablet_manager()->TriggerCompactionAndWait(tablet_ptrs), resp, &context);
-  } else {
-    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-      resp->set_failed_tablet_id(tablet->tablet_id());
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
-      resp->clear_failed_tablet_id();
-    }
+  switch (req->operation()) {
+    case FlushTabletsRequestPB::FLUSH:
+      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
 
-    // Wait for end of all flush operations.
-    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-      resp->set_failed_tablet_id(tablet->tablet_id());
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
-      resp->clear_failed_tablet_id();
-    }
+      // Wait for end of all flush operations.
+      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
+    case FlushTabletsRequestPB::COMPACT:
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+          server_->tablet_manager()->TriggerCompactionAndWait(tablet_ptrs), resp, &context);
+      break;
+    case FlushTabletsRequestPB::LOG_GC:
+      for (const auto& tablet : tablet_peers) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->RunLogGC(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
   }
 
   context.RespondSuccess();
@@ -2235,7 +2245,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       break;
     }
     if (!read_context->allow_retry) {
-      // The read time is specified, than we read as part of transaction. So we should restart
+      // If the read time is specified, then we read as part of a transaction. So we should restart
       // whole transaction. In this case we report restart time and abort reading.
       read_context->resp->Clear();
       auto restart_read_time = read_context->resp->mutable_restart_read_time();

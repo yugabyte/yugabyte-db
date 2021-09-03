@@ -19,32 +19,35 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
+import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertConfigurationThreshold;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
-import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
+import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -66,6 +69,8 @@ public class AlertConfigurationService {
 
   private final AlertDefinitionService alertDefinitionService;
   private final RuntimeConfigFactory runtimeConfigFactory;
+  private final MultiKeyLock<AlertConfiguration> configUuidLock =
+      new MultiKeyLock<>(Comparator.comparing(AlertConfiguration::getUuid));
 
   @Inject
   public AlertConfigurationService(
@@ -109,22 +114,31 @@ public class AlertConfigurationService {
             .collect(
                 Collectors.groupingBy(configuration -> configuration.isNew() ? CREATE : UPDATE));
 
-    if (toCreateAndUpdate.containsKey(CREATE)) {
-      List<AlertConfiguration> toCreate = toCreateAndUpdate.get(CREATE);
-      toCreate.forEach(configuration -> configuration.setCreateTime(nowWithoutMillis()));
-      toCreate.forEach(AlertConfiguration::generateUUID);
-      AlertConfiguration.db().saveAll(toCreate);
+    List<AlertConfiguration> toCreate =
+        toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
+    toCreate.forEach(configuration -> configuration.setCreateTime(nowWithoutMillis()));
+    toCreate.forEach(AlertConfiguration::generateUUID);
+
+    List<AlertConfiguration> toUpdate =
+        toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
+
+    try {
+      configUuidLock.acquireLocks(configurations);
+      if (!CollectionUtils.isEmpty(toCreate)) {
+        AlertConfiguration.db().saveAll(toCreate);
+      }
+
+      if (!CollectionUtils.isEmpty(toUpdate)) {
+        AlertConfiguration.db().updateAll(toUpdate);
+      }
+
+      manageDefinitions(configurations, beforeConfigurations);
+
+      log.debug("{} alert configurations saved", configurations.size());
+      return configurations;
+    } finally {
+      configUuidLock.releaseLocks(configurations);
     }
-
-    if (toCreateAndUpdate.containsKey(UPDATE)) {
-      List<AlertConfiguration> toUpdate = toCreateAndUpdate.get(UPDATE);
-      AlertConfiguration.db().updateAll(toUpdate);
-    }
-
-    manageDefinitions(configurations, beforeConfigurations);
-
-    log.debug("{} alert configurations saved", configurations.size());
-    return configurations;
   }
 
   @Transactional
@@ -134,7 +148,7 @@ public class AlertConfigurationService {
 
   public AlertConfiguration get(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Can't get Alert Configuration by null uuid");
+      throw new PlatformServiceException(BAD_REQUEST, "Can't get Alert Configuration by null uuid");
     }
     return list(AlertConfigurationFilter.builder().uuid(uuid).build())
         .stream()
@@ -144,11 +158,11 @@ public class AlertConfigurationService {
 
   public AlertConfiguration getOrBadRequest(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
     }
     AlertConfiguration configuration = get(uuid);
     if (configuration == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert Configuration UUID: " + uuid);
     }
     return configuration;
   }
@@ -199,10 +213,15 @@ public class AlertConfigurationService {
   public void delete(AlertConfigurationFilter filter) {
     List<AlertConfiguration> toDelete = list(filter);
 
-    manageDefinitions(Collections.emptyList(), toDelete);
+    try {
+      configUuidLock.acquireLocks(toDelete);
+      manageDefinitions(Collections.emptyList(), toDelete);
 
-    int deleted = createQueryByFilter(filter).delete();
-    log.debug("{} alert definition configurations deleted", deleted);
+      int deleted = createQueryByFilter(filter).delete();
+      log.debug("{} alert definition configurations deleted", deleted);
+    } finally {
+      configUuidLock.releaseLocks(toDelete);
+    }
   }
 
   private void prepareForSave(AlertConfiguration configuration, AlertConfiguration before) {
@@ -213,27 +232,31 @@ public class AlertConfigurationService {
 
   private void validate(AlertConfiguration configuration, AlertConfiguration before) {
     if (configuration.getCustomerUUID() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
     }
     if (StringUtils.isEmpty(configuration.getName())) {
-      throw new YWServiceException(BAD_REQUEST, "Name field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Name field is mandatory");
     }
     if (configuration.getName().length() > MAX_NAME_LENGTH) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Name field can't be longer than " + MAX_NAME_LENGTH + " characters");
     }
     if (configuration.getTargetType() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Target type field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Target type field is mandatory");
     }
     if (configuration.getTarget() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Target field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Target field is mandatory");
     }
     AlertConfigurationTarget target = configuration.getTarget();
     if (target.isAll() != CollectionUtils.isEmpty(target.getUuids())) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Should select either all entries or particular UUIDs as target");
     }
     if (!CollectionUtils.isEmpty(target.getUuids())) {
+      boolean hasNulls = target.getUuids().stream().anyMatch(Objects::isNull);
+      if (hasNulls) {
+        throw new PlatformServiceException(BAD_REQUEST, "Target UUIDs can't have null values");
+      }
       switch (configuration.getTargetType()) {
         case UNIVERSE:
           Set<UUID> existingUuids =
@@ -244,38 +267,39 @@ public class AlertConfigurationService {
           Set<UUID> missingUuids = new HashSet<>(configuration.getTarget().getUuids());
           missingUuids.removeAll(existingUuids);
           if (!missingUuids.isEmpty()) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 BAD_REQUEST,
                 "Universe(s) missing for uuid(s) "
                     + missingUuids.stream().map(UUID::toString).collect(Collectors.joining(", ")));
           }
           break;
         default:
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST,
               configuration.getTargetType().name() + " configuration can't have target uuids");
       }
     }
     if (configuration.getTemplate() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Template field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Template field is mandatory");
     }
     if (configuration.getTemplate().getTargetType() != configuration.getTargetType()) {
-      throw new YWServiceException(BAD_REQUEST, "Target type should be consistent with template");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Target type should be consistent with template");
     }
     if (MapUtils.isEmpty(configuration.getThresholds())) {
-      throw new YWServiceException(BAD_REQUEST, "Query thresholds are mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Query thresholds are mandatory");
     }
     if (configuration.getDestinationUUID() != null
         && AlertDestination.get(configuration.getCustomerUUID(), configuration.getDestinationUUID())
             == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Alert destination " + configuration.getDestinationUUID() + " is missing");
     }
     if (configuration.getThresholdUnit() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Threshold unit is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Threshold unit is mandatory");
     }
     if (configuration.getThresholdUnit() != configuration.getTemplate().getDefaultThresholdUnit()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Can't set threshold unit incompatible with alert definition template");
     }
     configuration
@@ -284,42 +308,42 @@ public class AlertConfigurationService {
         .forEach(
             threshold -> {
               if (threshold.getCondition() == null) {
-                throw new YWServiceException(BAD_REQUEST, "Threshold condition is mandatory");
+                throw new PlatformServiceException(BAD_REQUEST, "Threshold condition is mandatory");
               }
               if (threshold.getThreshold() == null) {
-                throw new YWServiceException(BAD_REQUEST, "Threshold value is mandatory");
+                throw new PlatformServiceException(BAD_REQUEST, "Threshold value is mandatory");
               }
               if (threshold.getThreshold() < configuration.getTemplate().getThresholdMinValue()) {
-                throw new YWServiceException(
+                throw new PlatformServiceException(
                     BAD_REQUEST,
                     "Threshold value can't be less than "
                         + doubleToString(configuration.getTemplate().getThresholdMinValue()));
               }
               if (threshold.getThreshold() > configuration.getTemplate().getThresholdMaxValue()) {
-                throw new YWServiceException(
+                throw new PlatformServiceException(
                     BAD_REQUEST,
                     "Threshold value can't be greater than "
                         + doubleToString(configuration.getTemplate().getThresholdMaxValue()));
               }
             });
     if (configuration.getDurationSec() == null || configuration.getDurationSec() < 0) {
-      throw new YWServiceException(BAD_REQUEST, "Duration can't be less than 0");
+      throw new PlatformServiceException(BAD_REQUEST, "Duration can't be less than 0");
     }
     if (before != null) {
       if (!configuration.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change customer UUID for configuration " + configuration.getUuid());
       }
       if (!configuration.getTargetType().equals(before.getTargetType())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change target type for configuration " + configuration.getUuid());
       }
       if (!configuration.getCreateTime().equals(before.getCreateTime())) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Can't change create time for configuration " + configuration.getUuid());
       }
     } else if (!configuration.isNew()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Can't update missing configuration " + configuration.getUuid());
     }
   }
@@ -466,25 +490,36 @@ public class AlertConfigurationService {
                 universes
                     .stream()
                     .collect(Collectors.toMap(Universe::getUniverseUUID, Function.identity()));
-            Map<UUID, AlertDefinition> definitionsByUniverseUuid =
+            Map<UUID, List<AlertDefinition>> definitionsByUniverseUuid =
                 currentDefinitions
                     .stream()
-                    .collect(
-                        Collectors.toMap(AlertDefinition::getUniverseUUID, Function.identity()));
+                    .collect(Collectors.groupingBy(AlertDefinition::getUniverseUUID));
             for (UUID universeUuid : universeUUIDs) {
               Universe universe = universeMap.get(universeUuid);
-              AlertDefinition universeDefinition = definitionsByUniverseUuid.get(universeUuid);
+              List<AlertDefinition> universeDefinitions =
+                  definitionsByUniverseUuid.get(universeUuid);
               // In case universe still exists and is in our target - we need to have definition.
               boolean shouldHaveDefinition =
                   (target.isAll() || target.getUuids().contains(universeUuid)) && universe != null;
+              AlertDefinition universeDefinition;
               if (shouldHaveDefinition) {
-                if (universeDefinition == null) {
+                if (CollectionUtils.isEmpty(universeDefinitions)) {
                   // Either new universe is created or it's just added to the configuration target.
                   universeDefinition = createEmptyDefinition(configuration);
-                } else if (!configurationChanged) {
-                  // Universe had definition before the update and group is not changed.
-                  // We want to avoid updating definitions unnecessarily.
-                  continue;
+                } else {
+                  universeDefinition = universeDefinitions.get(0);
+                  if (universeDefinitions.size() > 1) {
+                    log.warn(
+                        "Have more than one definition for configuration {} universe {}",
+                        uuid,
+                        universeUuid);
+                    toRemove.addAll(universeDefinitions.subList(1, universeDefinitions.size()));
+                  }
+                  if (!configurationChanged) {
+                    // Universe had definition before the update and group is not changed.
+                    // We want to avoid updating definitions unnecessarily.
+                    continue;
+                  }
                 }
                 universeDefinition.setConfigWritten(false);
                 universeDefinition.setQuery(
@@ -494,9 +529,9 @@ public class AlertConfigurationService {
                       MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
                 }
                 toSave.add(universeDefinition);
-              } else if (universeDefinition != null) {
+              } else if (!CollectionUtils.isEmpty(universeDefinitions)) {
                 // Remove existing definition if it's not needed.
-                toRemove.add(universeDefinition);
+                toRemove.addAll(universeDefinitions);
               }
             }
             break;

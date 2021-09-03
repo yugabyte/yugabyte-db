@@ -35,6 +35,7 @@ class AwsReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
 class AwsListInstancesMethod(ListInstancesMethod):
     """Subclass for listing instances in AWS. Currently doesn't provide any extra functionality.
     """
+
     def __init__(self, base_command):
         super(AwsListInstancesMethod, self).__init__(base_command)
 
@@ -43,6 +44,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
     """Subclass for creating instances in AWS. This is responsible for taking in the AWS specific
     flags, such as VPCs, AMIs and more.
     """
+
     def __init__(self, base_command):
         super(AwsCreateInstancesMethod, self).__init__(base_command)
 
@@ -106,6 +108,7 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
     """Subclass for provisioning instances in AWS. Setups the proper Create method to point to the
     AWS specific one.
     """
+
     def __init__(self, base_command):
         super(AwsProvisionInstancesMethod, self).__init__(base_command)
 
@@ -148,16 +151,17 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
     """Subclass for destroying an instance in AWS, we fetch the host info and update the extra_vars
     with necessary parameters
     """
+
     def __init__(self, base_command):
         super(AwsDestroyInstancesMethod, self).__init__(base_command)
 
     def callback(self, args):
         filters = [
-                {
-                    "Name": "instance-state-name",
-                    "Values": ["stopped", "running"]
-                }
-            ]
+            {
+                "Name": "instance-state-name",
+                "Values": ["stopped", "running"]
+            }
+        ]
         host_info = self.cloud.get_host_info_specific_args(
             args.region,
             args.search_pattern,
@@ -168,16 +172,9 @@ class AwsDestroyInstancesMethod(DestroyInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
-        if args.delete_static_public_ip:
-            self.cloud.delete_instance(args.region, host_info["id"], True)
-            return
-        self.extra_vars.update({
-            "cloud_subnet": host_info["subnet"],
-            "cloud_region": host_info["region"],
-            "private_ip": host_info['private_ip']
-        })
 
-        super(AwsDestroyInstancesMethod, self).callback(args)
+        self.cloud.delete_instance(args.region, host_info['id'],
+                                   args.delete_static_public_ip)
 
 
 class AwsPauseInstancesMethod(AbstractInstancesMethod):
@@ -185,6 +182,7 @@ class AwsPauseInstancesMethod(AbstractInstancesMethod):
     Subclass for stopping an instance in AWS, we fetch the host info
     and call the stop_instance method.
     """
+
     def __init__(self, base_command):
         super(AwsPauseInstancesMethod, self).__init__(base_command, "pause")
 
@@ -213,6 +211,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
     Subclass for resuming an instance in AWS, we fetch the host info
     and call the start_instance method.
     """
+
     def __init__(self, base_command):
         super(AwsResumeInstancesMethod, self).__init__(base_command, "resume")
 
@@ -223,11 +222,11 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         filters = [
-                {
-                    "Name": "instance-state-name",
-                    "Values": ["stopped"]
-                }
-            ]
+            {
+                "Name": "instance-state-name",
+                "Values": ["stopped"]
+            }
+        ]
         host_info = self.cloud.get_host_info_specific_args(
             args.region,
             args.search_pattern,

@@ -30,15 +30,15 @@ public class AlertChannelSlackParamsTest {
       @Nullable String webHookUrl,
       @Nullable String iconUrl,
       @Nullable String expectedError)
-      throws YWValidateException {
+      throws PlatformValidationException {
     AlertChannelSlackParams params = new AlertChannelSlackParams();
     params.username = username;
     params.webhookUrl = webHookUrl;
     params.iconUrl = iconUrl;
     if (expectedError != null) {
-      YWValidateException ex =
+      PlatformValidationException ex =
           assertThrows(
-              YWValidateException.class,
+              PlatformValidationException.class,
               () -> {
                 params.validate();
               });

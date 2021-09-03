@@ -3,8 +3,8 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
+import com.yugabyte.yw.models.AlertConfiguration.TargetType;
 import com.yugabyte.yw.models.AlertConfigurationThreshold.Condition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -31,9 +31,8 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(
-          AlertConfiguration.Severity.SEVERE, DefaultThreshold.from("yb.alert.replication_lag_ms")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.replication_lag_ms")),
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.MILLISECOND),
 
@@ -48,9 +47,8 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          AlertConfiguration.Severity.SEVERE, DefaultThreshold.from("yb.alert.max_clock_skew_ms")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_clock_skew_ms")),
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.MILLISECOND),
 
@@ -75,10 +73,8 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}%",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          AlertConfiguration.Severity.SEVERE,
-          DefaultThreshold.from("yb.alert.max_memory_cons_pct")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_memory_cons_pct")),
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.PERCENT),
 
@@ -90,8 +86,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -104,8 +100,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -117,8 +113,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -132,8 +128,8 @@ public enum AlertTemplate {
           + " failed due to other backup or universe operation is in progress.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -146,10 +142,8 @@ public enum AlertTemplate {
           + " for universe '{{ $labels.source_name }}'.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          AlertConfiguration.Severity.SEVERE,
-          DefaultThreshold.from("yb.alert.inactive_cronjob_nodes")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.inactive_cronjob_nodes")),
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -161,8 +155,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.PLATFORM,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.PLATFORM,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -174,8 +168,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.PLATFORM,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.PLATFORM,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -187,8 +181,8 @@ public enum AlertTemplate {
           + " failed: {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.PLATFORM,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.PLATFORM,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -201,8 +195,8 @@ public enum AlertTemplate {
           + " failed: {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER, DefinitionSettings.SKIP_TARGET_LABELS),
-      ImmutableMap.of(AlertConfiguration.Severity.SEVERE, DefaultThreshold.statusOk()),
-      AlertConfiguration.TargetType.PLATFORM,
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
+      TargetType.PLATFORM,
       Condition.LESS_THAN,
       Unit.STATUS),
 
@@ -218,7 +212,7 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -236,7 +230,7 @@ public enum AlertTemplate {
       ImmutableMap.of(
           Severity.WARNING, DefaultThreshold.from(0D),
           Severity.SEVERE, DefaultThreshold.from(2D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -255,7 +249,7 @@ public enum AlertTemplate {
       ImmutableMap.of(
           Severity.WARNING, DefaultThreshold.from("yb.alert.max_cpu_usage_pct_warn"),
           Severity.SEVERE, DefaultThreshold.from("yb.alert.max_cpu_usage_pct_severe")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.PERCENT),
 
@@ -273,7 +267,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(
           Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_disk_usage_pct_severe")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.PERCENT),
 
@@ -281,7 +275,7 @@ public enum AlertTemplate {
       "DB node file descriptors usage",
       "Node file descriptors usage percentage is above threshold",
       "count by (universe_uuid) (ybp_health_check_used_fd_pct{"
-          + "universe_uuid=\"__universeUuid__\"} * 100 "
+          + "universe_uuid=\"__universeUuid__\"} "
           + "{{ query_condition }} {{ query_threshold }})",
       "Node file descriptors usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
@@ -289,7 +283,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(
           Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_fd_usage_pct_severe")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.PERCENT),
 
@@ -304,7 +298,7 @@ public enum AlertTemplate {
       3600,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -320,7 +314,7 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -339,7 +333,7 @@ public enum AlertTemplate {
       ImmutableMap.of(
           Severity.WARNING, DefaultThreshold.from(0D),
           Severity.SEVERE, DefaultThreshold.from(2D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -354,7 +348,7 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -368,7 +362,7 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -382,7 +376,7 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -396,7 +390,7 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -410,7 +404,7 @@ public enum AlertTemplate {
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.GREATER_THAN,
       Unit.COUNT),
 
@@ -426,7 +420,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(
           Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
       Unit.DAY),
 
@@ -442,7 +436,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(
           Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
       Unit.DAY),
 
@@ -458,7 +452,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(
           Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
       Unit.DAY),
 
@@ -474,9 +468,149 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       ImmutableMap.of(
           Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
-      AlertConfiguration.TargetType.UNIVERSE,
+      TargetType.UNIVERSE,
       Condition.LESS_THAN,
-      Unit.DAY);
+      Unit.DAY),
+
+  YSQL_OP_AVG_LATENCY(
+      "YSQL average latency is high",
+      "Average latency of YSQL operations is above threshold",
+      "(sum by (service_method)(rate(rpc_latency_sum{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"ysql_export\",server_type=\"yb_ysqlserver\",service_type="
+          + "\"SQLProcessor\",service_method=~\"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|"
+          + "Transactions\"}[5m])) / "
+          + "sum by (service_method)(rate(rpc_latency_count{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"ysql_export\",server_type=\"yb_ysqlserver\",service_type="
+          + "\"SQLProcessor\",service_method=~\"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|"
+          + "Transactions\"}[5m]))) {{ query_condition }} {{ query_threshold }}",
+      "Average YSQL operations latency for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }} ms."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ysql_opavg_latency")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.MILLISECOND),
+
+  YCQL_OP_AVG_LATENCY(
+      "YCQL average latency is high",
+      "Average latency of YCQL operations is above threshold",
+      "(sum by (service_method)(rate(rpc_latency_sum{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"cql_export\",server_type=\"yb_cqlserver\",service_type="
+          + "\"SQLProcessor\",service_method=~\"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|"
+          + "Transaction\"}[5m])) / "
+          + "sum by (service_method)(rate(rpc_latency_count{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"cql_export\",server_type=\"yb_cqlserver\",service_type="
+          + "\"SQLProcessor\",service_method=~\"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|"
+          + "Transaction\"}[5m]))) {{ query_condition }} {{ query_threshold }}",
+      "Average YCQL operations latency for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }} ms."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_opavg_latency")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.MILLISECOND),
+
+  YSQL_OP_P99_LATENCY(
+      "YSQL P99 latency is high",
+      "P99 latency of YSQL operations is above threshold",
+      "max by (service_method)(rpc_latency{node_prefix=\"__nodePrefix__\",server_type="
+          + "\"yb_ysqlserver\",service_type=\"SQLProcessor\",service_method=~\"SelectStmt|"
+          + "InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions\",quantile=\"p99\"})"
+          + " {{ query_condition }} {{ query_threshold }}",
+      "YSQL P99 latency for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }} ms."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ysql_p99_latency")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.MILLISECOND),
+
+  YCQL_OP_P99_LATENCY(
+      "YCQL P99 latency is high",
+      "P99 latency of YCQL operations is above threshold",
+      "max by (service_method)(rpc_latency{node_prefix=\"__nodePrefix__\",server_type="
+          + "\"yb_cqlserver\",service_type=\"SQLProcessor\",service_method=~\"SelectStmt|"
+          + "InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction\",quantile=\"p99\"})"
+          + " {{ query_condition }} {{ query_threshold }}",
+      "YCQL P99 latency for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }} ms."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_p99_latency")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.MILLISECOND),
+
+  HIGH_NUM_YCQL_CONNECTIONS(
+      "Number of YCQL connections is high",
+      "Number of YCQL connections is above threshold",
+      "max by (node_name) (max_over_time(rpc_connections_alive{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"cql_export\"}[5m])) {{ query_condition }} {{ query_threshold }}",
+      "Number of YCQL connections for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }}."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_connections")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  HIGH_NUM_YEDIS_CONNECTIONS(
+      "Number of YEDIS connections is high",
+      "Number of YEDIS connections is above threshold",
+      "max by (node_name) (max_over_time(rpc_connections_alive{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"redis_export\"}[5m])) {{ query_condition }} {{ query_threshold }}",
+      "Number of YEDIS connections for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }}."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_yedis_connections")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  YSQL_THROUGHPUT(
+      "YSQL throughput is high",
+      "Throughput for YSQL operations is above threshold",
+      "sum by (service_method)(rate(rpc_latency_count{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"ysql_export\",server_type=\"yb_ysqlserver\",service_type="
+          + "\"SQLProcessor\",service_method=~\"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|"
+          + "Transactions\"}[5m])) {{ query_condition }} {{ query_threshold }}",
+      "Maximum throughput for YSQL operations for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }}."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ysql_throughput")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT),
+
+  YCQL_THROUGHPUT(
+      "YCQL throughput is high",
+      "Average latency of YCQL operations is above threshold",
+      "sum by (service_method)(rate(rpc_latency_count{node_prefix=\"__nodePrefix__\","
+          + "export_type=\"cql_export\",server_type=\"yb_cqlserver\",service_type=\"SQLProcessor\","
+          + "service_method=~\"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction\"}[5m]))"
+          + " {{ query_condition }} {{ query_threshold }}",
+      "Maximum throughput for YCQL operations for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }}."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_throughput")),
+      TargetType.UNIVERSE,
+      Condition.GREATER_THAN,
+      Unit.COUNT);
   // @formatter:on
 
   enum DefinitionSettings {
@@ -496,9 +630,9 @@ public enum AlertTemplate {
 
   private final EnumSet<DefinitionSettings> settings;
 
-  private final Map<AlertConfiguration.Severity, DefaultThreshold> defaultThresholdMap;
+  private final Map<Severity, DefaultThreshold> defaultThresholdMap;
 
-  private final AlertConfiguration.TargetType targetType;
+  private final TargetType targetType;
 
   private final Condition defaultThresholdCondition;
 
@@ -530,8 +664,8 @@ public enum AlertTemplate {
       String summaryTemplate,
       int defaultDurationSec,
       EnumSet<DefinitionSettings> settings,
-      Map<AlertConfiguration.Severity, DefaultThreshold> defaultThresholdParamMap,
-      AlertConfiguration.TargetType targetType,
+      Map<Severity, DefaultThreshold> defaultThresholdParamMap,
+      TargetType targetType,
       Condition defaultThresholdCondition,
       Unit defaultThresholdUnit) {
     this(
@@ -556,8 +690,8 @@ public enum AlertTemplate {
       String summaryTemplate,
       int defaultDurationSec,
       EnumSet<DefinitionSettings> settings,
-      Map<AlertConfiguration.Severity, DefaultThreshold> defaultThresholdParamMap,
-      AlertConfiguration.TargetType targetType,
+      Map<Severity, DefaultThreshold> defaultThresholdParamMap,
+      TargetType targetType,
       Condition defaultThresholdCondition,
       Unit defaultThresholdUnit,
       double thresholdMinValue,

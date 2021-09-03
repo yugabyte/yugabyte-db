@@ -725,6 +725,8 @@ class CatalogManager :
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
+  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info);
+
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
   }
@@ -776,6 +778,8 @@ class CatalogManager :
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key);
 
+  CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id);
+
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
 
@@ -801,7 +805,9 @@ class CatalogManager :
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table);
 
-  void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
+  void ProcessTabletStorageMetadata(
+      const std::string& ts_uuid,
+      const TabletDriveStorageMetadataPB& storage_metadata);
 
   void CheckTableDeleted(const TableInfoPtr& table);
 

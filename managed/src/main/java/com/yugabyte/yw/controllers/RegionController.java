@@ -10,9 +10,11 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.RegionFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -55,13 +57,13 @@ public class RegionController extends AuthenticatedController {
       @io.swagger.annotations.ApiResponse(
           code = 500,
           message = "If there was a server or database issue when listing the regions",
-          response = YWResults.YWError.class))
+          response = YBPError.class))
   public Result list(UUID customerUUID, UUID providerUUID) {
     List<Region> regionList;
 
     int minAZCountNeeded = 1;
     regionList = Region.fetchValidRegions(customerUUID, providerUUID, minAZCountNeeded);
-    return YWResults.withData(regionList);
+    return PlatformResults.withData(regionList);
   }
 
   @ApiOperation(
@@ -105,7 +107,7 @@ public class RegionController extends AuthenticatedController {
     String regionCode = form.code;
 
     if (Region.getByCode(provider, regionCode) != null) {
-      throw new YWServiceException(BAD_REQUEST, "Region code already exists: " + regionCode);
+      throw new PlatformServiceException(BAD_REQUEST, "Region code already exists: " + regionCode);
     }
 
     Map<String, Object> regionMetadata =
@@ -126,7 +128,7 @@ public class RegionController extends AuthenticatedController {
             Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
         if (subnetworks.size() != 1) {
           region.delete(); // don't really need this anymore due to @Transactional
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR,
               "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
         }
@@ -155,7 +157,7 @@ public class RegionController extends AuthenticatedController {
               provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return YWResults.withData(region);
+    return PlatformResults.withData(region);
   }
 
   /**
@@ -171,7 +173,7 @@ public class RegionController extends AuthenticatedController {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     region.disableRegionAndZones();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   // TODO: Use @Transactionally on controller method to get rid of region.delete()
@@ -181,7 +183,7 @@ public class RegionController extends AuthenticatedController {
         cloudQueryHelper.getZones(region.uuid, provider.getConfig().get("CUSTOM_GCE_NETWORK"));
     if (zoneInfo.has("error") || !zoneInfo.has(region.code)) {
       region.delete();
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Region Bootstrap failed. Unable to fetch zones for " + region.code);
     }
@@ -194,7 +196,7 @@ public class RegionController extends AuthenticatedController {
     JsonNode vpcInfo = networkManager.bootstrap(region.uuid, null, null /* customPayload */);
     if (vpcInfo.has("error") || !vpcInfo.has(region.code)) {
       region.delete();
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
     }
     return vpcInfo;
   }

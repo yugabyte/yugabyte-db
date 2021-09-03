@@ -4,7 +4,7 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import io.ebean.Ebean;
 import io.ebean.ExpressionList;
@@ -200,7 +200,7 @@ public class NodeInstance extends Model {
   public static NodeInstance getOrBadRequest(UUID nodeUuid) {
     NodeInstance node = get(nodeUuid);
     if (node == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid node UUID: " + nodeUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid node UUID: " + nodeUuid);
     }
     return node;
   }

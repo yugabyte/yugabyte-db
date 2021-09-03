@@ -9,6 +9,7 @@ export const AddDestinationChannelForm = (props) => {
   const { visible, onHide, onError, defaultChannel } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(true);
+  const [defaultRecipient, setDefaultRecipient] = useState(false);
 
   // TODO: Add option for pagerDuty oce API is avaialable
   const channelTypeList = [
@@ -26,6 +27,7 @@ export const AddDestinationChannelForm = (props) => {
   const onModalHide = () => {
     setChannelType(defaultChannel);
     setCustomSMTP(true);
+    setDefaultRecipient(false);
     onHide();
   };
 
@@ -85,11 +87,24 @@ export const AddDestinationChannelForm = (props) => {
     if (name === 'customSmtp') {
       setCustomSMTP(!value);
     }
+    if (name === 'defaultRecipients') {
+      setDefaultRecipient(value);
+    }
   };
 
   const handleChannelTypeChange = (value) => {
     setChannelType(value);
   };
+
+  const validationSchemaEmail = Yup.object().shape({
+    email_name: Yup.string().required('Name is Required'),
+    emailIds: !defaultRecipient && Yup.string().required('Email id is Required')
+  });
+
+  const validationSchemaSlack = Yup.object().shape({
+    slack_name: Yup.string().required('Slack name is Required'),
+    webhookURL: Yup.string().required('Web hook Url is Required')
+  });
 
   const getChannelForm = () => {
     switch (channelType) {
@@ -163,13 +178,28 @@ export const AddDestinationChannelForm = (props) => {
             </Row>
             <Row>
               <Col lg={12}>
-                <Field
-                  name="emailIds"
-                  type="text"
-                  label="Emails"
-                  placeholder="Enter email addressess"
-                  component={YBFormInput}
-                />
+                <Field name="defaultRecipients">
+                  {({ field }) => (
+                    <YBToggle
+                      onToggle={handleOnToggle}
+                      name="defaultRecipients"
+                      input={{
+                        value: field.value,
+                        onChange: field.onChange
+                      }}
+                      label="Use Default Recepients"
+                    />
+                  )}
+                </Field>
+                <div hidden={defaultRecipient}>
+                  <Field
+                    name="emailIds"
+                    type="text"
+                    label="Emails"
+                    placeholder="Enter email addressess"
+                    component={YBFormInput}
+                  />
+                </div>
               </Col>
             </Row>
             <Row>
@@ -268,16 +298,6 @@ export const AddDestinationChannelForm = (props) => {
         return null;
     }
   };
-
-  const validationSchemaEmail = Yup.object().shape({
-    email_name: Yup.string().required('Name is Required'),
-    emailIds: Yup.string().required('Email ids is Required')
-  });
-
-  const validationSchemaSlack = Yup.object().shape({
-    slack_name: Yup.string().required('Slack name is Required'),
-    webhookURL: Yup.string().required('Web hook Url is Required')
-  });
 
   return (
     <YBModalForm

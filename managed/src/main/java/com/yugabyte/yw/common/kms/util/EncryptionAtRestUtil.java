@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.models.KmsConfig;
@@ -237,7 +237,7 @@ public class EncryptionAtRestUtil {
   public static KmsHistory getActiveKeyOrBadRequest(UUID universeUUID) {
     KmsHistory activeKey = getActiveKey(universeUUID);
     if (activeKey == null) {
-      throw new YWServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
+      throw new PlatformServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
     }
     return activeKey;
   }

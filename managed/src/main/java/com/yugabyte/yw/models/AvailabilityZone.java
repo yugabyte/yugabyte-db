@@ -7,7 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -71,6 +71,10 @@ public class AvailabilityZone extends Model {
   @ApiModelProperty(value = "AZ subnet", example = "subnet id")
   public String subnet;
 
+  @Column(length = 50)
+  @ApiModelProperty(value = "AZ Secondary Subnet", example = "secondary subnet id")
+  public String secondarySubnet;
+
   @DbJson
   @Column(columnDefinition = "TEXT")
   @ApiModelProperty(value = "AZ configuration values")
@@ -106,17 +110,23 @@ public class AvailabilityZone extends Model {
 
   public static AvailabilityZone createOrThrow(
       Region region, String code, String name, String subnet) {
+    return createOrThrow(region, code, name, subnet, null);
+  }
+
+  public static AvailabilityZone createOrThrow(
+      Region region, String code, String name, String subnet, String secondarySubnet) {
     try {
       AvailabilityZone az = new AvailabilityZone();
       az.region = region;
       az.code = code;
       az.name = name;
       az.subnet = subnet;
+      az.secondarySubnet = secondarySubnet;
       az.save();
       return az;
     } catch (Exception e) {
       LOG.error(e.getMessage());
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Unable to create zone: " + code);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to create zone: " + code);
     }
   }
 
@@ -132,7 +142,7 @@ public class AvailabilityZone extends Model {
     AvailabilityZone availabilityZone =
         AvailabilityZone.find.query().where().idEq(azUUID).eq("region_uuid", regionUUID).findOne();
     if (availabilityZone == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Region/AZ UUID:" + azUUID);
     }
     return availabilityZone;
   }
@@ -156,7 +166,8 @@ public class AvailabilityZone extends Model {
     return maybeGet(zoneUuid)
         .orElseThrow(
             () ->
-                new YWServiceException(BAD_REQUEST, "Invalid AvailabilityZone UUID: " + zoneUuid));
+                new PlatformServiceException(
+                    BAD_REQUEST, "Invalid AvailabilityZone UUID: " + zoneUuid));
   }
 
   // TODO getOrNull should be replaced by maybeGet or getOrBadRequest

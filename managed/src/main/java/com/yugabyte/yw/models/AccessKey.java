@@ -5,8 +5,10 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.yugabyte.yw.common.YWServiceException;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -25,30 +27,37 @@ import play.data.validation.Constraints;
         "Access key for the cloud provider. This helps to "
             + "authenticate the user and get access to the provider.")
 public class AccessKey extends Model {
+  @ApiModel
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class KeyInfo {
-    public String publicKey;
-    public String privateKey;
-    public String vaultPasswordFile;
-    public String vaultFile;
-    public String sshUser;
-    public Integer sshPort;
-    public boolean airGapInstall = false;
-    public boolean passwordlessSudoAccess = true;
-    public String provisionInstanceScript = "";
-    public boolean installNodeExporter = true;
-    public Integer nodeExporterPort = 9300;
-    public String nodeExporterUser = "prometheus";
-    public boolean skipProvisioning = false;
+    @ApiModelProperty public String publicKey;
+    @ApiModelProperty public String privateKey;
+    @ApiModelProperty public String vaultPasswordFile;
+    @ApiModelProperty public String vaultFile;
+    @ApiModelProperty public String sshUser;
+    @ApiModelProperty public Integer sshPort;
+    @ApiModelProperty public boolean airGapInstall = false;
+    @ApiModelProperty public boolean passwordlessSudoAccess = true;
+    @ApiModelProperty public String provisionInstanceScript = "";
+    @ApiModelProperty public boolean installNodeExporter = true;
+    @ApiModelProperty public Integer nodeExporterPort = 9300;
+    @ApiModelProperty public String nodeExporterUser = "prometheus";
+    @ApiModelProperty public boolean skipProvisioning = false;
   }
 
-  @EmbeddedId @Constraints.Required public AccessKeyId idKey;
+  @ApiModelProperty(required = true)
+  @EmbeddedId
+  @Constraints.Required
+  public AccessKeyId idKey;
 
-  @JsonBackReference
+  @ApiModelProperty(required = false, hidden = true)
+  @JsonIgnore
   public String getKeyCode() {
     return this.idKey.keyCode;
   }
 
-  @JsonBackReference
+  @ApiModelProperty(required = false, hidden = true)
+  @JsonIgnore
   public UUID getProviderUUID() {
     return this.idKey.providerUUID;
   }
@@ -77,7 +86,7 @@ public class AccessKey extends Model {
 
   public void deleteOrThrow() {
     if (!super.delete()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Delete unsuccessful for: " + this.idKey);
     }
   }
@@ -92,7 +101,7 @@ public class AccessKey extends Model {
   public static AccessKey getOrBadRequest(UUID providerUUID, String keyCode) {
     AccessKey accessKey = get(providerUUID, keyCode);
     if (accessKey == null) {
-      throw new YWServiceException(BAD_REQUEST, "KeyCode not found: " + keyCode);
+      throw new PlatformServiceException(BAD_REQUEST, "KeyCode not found: " + keyCode);
     }
     return accessKey;
   }

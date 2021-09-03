@@ -287,7 +287,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     void Apply(rocksdb::WriteBatch* batch) {
       KeyValuePairPB kv_pair;
       kv_pair.set_key(key_.ToStringBuffer());
-      kv_pair.set_value(value_.ToString());
+      kv_pair.set_value(value_.ToStringBuffer());
       ExternalTxnApplyState external_txn_apply_state;
       AddPairToWriteBatch(kv_pair, hybrid_time_, 0, &external_txn_apply_state, nullptr, batch);
     }

@@ -20,9 +20,9 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -54,7 +54,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -859,6 +858,28 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
+  private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
+    Map<String, String> envVars = new HashMap<>();
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
+
+    envVars.put("ANSIBLE_STRATEGY", runtimeConfig.getString("yb.ansible.strategy"));
+    envVars.put(
+        "ANSIBLE_TIMEOUT", Integer.toString(runtimeConfig.getInt("yb.ansible.conn_timeout_secs")));
+    envVars.put(
+        "ANSIBLE_VERBOSITY", Integer.toString(runtimeConfig.getInt("yb.ansible.verbosity")));
+    if (runtimeConfig.getBoolean("yb.ansible.debug")) {
+      envVars.put("ANSIBLE_DEBUG", "True");
+    }
+    if (runtimeConfig.getBoolean("yb.ansible.diff_always")) {
+      envVars.put("ANSIBLE_DIFF_ALWAYS", "True");
+    }
+    envVars.put("ANSIBLE_LOCAL_TEMP", runtimeConfig.getString("yb.ansible.local_temp"));
+
+    LOG.trace("ansible env vars {}", envVars);
+    return envVars;
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
@@ -889,6 +910,7 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
@@ -897,7 +919,11 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
-            Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+            // Only create second NIC for cloud.
+            if (config.getBoolean("yb.cloud.enabled") && taskParam.secondarySubnetId != null) {
+              commandArgs.add("--cloud_subnet_secondary");
+              commandArgs.add(taskParam.secondarySubnetId);
+            }
 
             // Use case: cloud free tier instances.
             if (config.getBoolean("yb.cloud.enabled")) {
@@ -1035,7 +1061,7 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
-            commandArgs.add("--reuse_host");
+            commandArgs.add("--skip_preprovision");
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
@@ -1250,7 +1276,8 @@ public class NodeManager extends DevopsBase {
           null,
           type.toString().toLowerCase(),
           commandArgs,
-          getCloudArgs(nodeTaskParam));
+          getCloudArgs(nodeTaskParam),
+          getAnsibleEnvVars(nodeTaskParam.universeUUID));
     } finally {
       if (bootScriptFile != null) {
         try {

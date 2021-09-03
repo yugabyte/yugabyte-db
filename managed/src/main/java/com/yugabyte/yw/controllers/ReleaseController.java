@@ -5,12 +5,13 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.ReleaseFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.Api;
@@ -39,10 +40,7 @@ public class ReleaseController extends AuthenticatedController {
 
   @Inject ValidatingFormFactory formFactory;
 
-  @ApiOperation(
-      value = "Create a release",
-      response = YWResults.YWSuccess.class,
-      nickname = "createRelease")
+  @ApiOperation(value = "Create a release", response = YBPSuccess.class, nickname = "createRelease")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release",
@@ -71,11 +69,11 @@ public class ReleaseController extends AuthenticatedController {
       releases.forEach(
           (version, metadata) -> releaseManager.addReleaseWithMetadata(version, metadata));
     } catch (RuntimeException re) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
 
     auditService().createAuditEntry(ctx(), request(), request().body().asJson());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(
@@ -94,7 +92,7 @@ public class ReleaseController extends AuthenticatedController {
             .stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
             .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
-    return YWResults.withData(
+    return PlatformResults.withData(
         includeMetadata ? CommonUtils.maskObject(filtered) : filtered.keySet());
   }
 
@@ -116,7 +114,7 @@ public class ReleaseController extends AuthenticatedController {
     ObjectNode formData;
     ReleaseManager.ReleaseMetadata m = releaseManager.getReleaseByVersion(version);
     if (m == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Release version: " + version);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
     formData = (ObjectNode) request().body().asJson();
 
@@ -127,13 +125,13 @@ public class ReleaseController extends AuthenticatedController {
       m.state = ReleaseManager.ReleaseState.valueOf(stateValue);
       releaseManager.updateReleaseMetadata(version, m);
     } else {
-      throw new YWServiceException(BAD_REQUEST, "Missing Required param: State");
+      throw new PlatformServiceException(BAD_REQUEST, "Missing Required param: State");
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
-    return YWResults.withData(m);
+    return PlatformResults.withData(m);
   }
 
-  @ApiOperation(value = "Refresh a release", response = YWResults.YWSuccess.class)
+  @ApiOperation(value = "Refresh a release", response = YBPSuccess.class)
   public Result refresh(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -141,8 +139,8 @@ public class ReleaseController extends AuthenticatedController {
     try {
       releaseManager.importLocalReleases();
     } catch (RuntimeException re) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 }

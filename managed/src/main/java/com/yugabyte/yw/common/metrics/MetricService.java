@@ -15,7 +15,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
@@ -198,13 +198,13 @@ public class MetricService {
 
   private void validate(Metric metric) {
     if (metric.getType() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Type field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Type field is mandatory");
     }
     if (StringUtils.isEmpty(metric.getName())) {
-      throw new YWServiceException(BAD_REQUEST, "Name field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Name field is mandatory");
     }
     if (metric.getValue() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Value field is mandatory");
+      throw new PlatformServiceException(BAD_REQUEST, "Value field is mandatory");
     }
   }
 

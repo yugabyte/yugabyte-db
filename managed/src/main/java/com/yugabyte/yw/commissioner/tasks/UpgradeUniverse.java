@@ -45,9 +45,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
-import java.util.ArrayList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -119,7 +117,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           // ResizeNode cannot change the number of volumes
           if (deviceInfo.numVolumes != null
-              && primIntent.deviceInfo.numVolumes != deviceInfo.numVolumes) {
+              && !deviceInfo.numVolumes.equals(primIntent.deviceInfo.numVolumes)) {
             throw new IllegalArgumentException(
                 "ResizeNode cannot change the number of volumes. It was "
                     + primIntent.deviceInfo.numVolumes
