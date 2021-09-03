@@ -988,8 +988,7 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
-      verify(shellProcessHandler, times(1))
-          .run(eq(expectedCommand), eq(t.region.provider.getConfig()), anyString());
+      verify(shellProcessHandler, times(1)).run(eq(expectedCommand), anyMap(), anyString());
     }
   }
 
