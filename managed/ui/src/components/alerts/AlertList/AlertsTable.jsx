@@ -57,7 +57,7 @@ export default function AlertsTable({ filters }) {
 
   useEffect(() => {
     resetPage();
-  }, [filters.targetStates, filters.severities, filters.groupTypes]);
+  }, [filters.targetStates, filters.severities, filters.groupTypes, filters.sourceName]);
 
   if (isLoading) return <YBLoading />;
 
