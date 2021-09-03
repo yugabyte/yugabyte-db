@@ -343,6 +343,6 @@ PUT    /settings/ha/internal/config/sync/:timestamp                            c
 POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups()
 
 # Schedule External Script API
-POST   /customers/:cUUID/universes/:uniUUID/scheduleScript                     com.yugabyte.yw.controllers.ScheduleScriptController.externalScriptSchedule(cUUID: java.util.UUID, uniUUID : java.util.UUID)
-PUT    /customers/:cUUID/universes/:uniUUID/stopScheduledScript                com.yugabyte.yw.controllers.ScheduleScriptController.stopScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
-PUT    /customers/:cUUID/universes/:uniUUID/updateScheduledScript              com.yugabyte.yw.controllers.ScheduleScriptController.updateScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/schedule_script                    com.yugabyte.yw.controllers.ScheduleScriptController.externalScriptSchedule(cUUID: java.util.UUID, uniUUID : java.util.UUID)
+PUT    /customers/:cUUID/universes/:uniUUID/stop_scheduled_script              com.yugabyte.yw.controllers.ScheduleScriptController.stopScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
+PUT    /customers/:cUUID/universes/:uniUUID/update_scheduled_script            com.yugabyte.yw.controllers.ScheduleScriptController.updateScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
