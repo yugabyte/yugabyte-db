@@ -72,7 +72,7 @@ public class AvailabilityZone extends Model {
   public String subnet;
 
   @Column(length = 50)
-  @ApiModelProperty(value = "AZ Secondary Subnet", example = "secondary subnet id")
+  @ApiModelProperty(value = "AZ secondary subnet", example = "secondary subnet id")
   public String secondarySubnet;
 
   @DbJson
