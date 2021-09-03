@@ -51,9 +51,9 @@ export class AlertListNew extends Component {
     });
   }
 
-  updateTargetName = (value) => {
+  updateSourceName = (value) => {
     const { filter_groups } = this.state;
-    filter_groups['targetName'] = value;
+    filter_groups['sourceName'] = value;
     this.setState({
       filter_groups
     });
@@ -113,7 +113,7 @@ export class AlertListNew extends Component {
                       <Col lg={12} lgOffset={1} className="noMargin">
                         <YBSelectWithLabel
                           options={universesList}
-                          onInputChanged={this.updateTargetName}
+                          onInputChanged={this.updateSourceName}
                         />
                       </Col>
                     </Row>
