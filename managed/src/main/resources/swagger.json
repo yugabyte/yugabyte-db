@@ -8719,7 +8719,7 @@
         "tags" : [ "Universe database management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/scheduleScript" : {
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/schedule_script" : {
       "post" : {
         "operationId" : "externalScriptSchedule",
         "parameters" : [ {
@@ -8907,7 +8907,7 @@
         "tags" : [ "Universe information" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/stopScheduledScript" : {
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/stop_scheduled_script" : {
       "put" : {
         "operationId" : "stopScheduledScript",
         "parameters" : [ {
@@ -9280,33 +9280,6 @@
         "tags" : [ "Universe management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/updateScheduledScript" : {
-      "put" : {
-        "operationId" : "updateScheduledScript",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "ScheduleExternalScript" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_backup_state" : {
       "put" : {
         "description" : "",
@@ -9374,6 +9347,33 @@
         } ],
         "summary" : "Set a universe's database credentials",
         "tags" : [ "Universe database management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_scheduled_script" : {
+      "put" : {
+        "operationId" : "updateScheduledScript",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "tags" : [ "ScheduleExternalScript" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/xcluster_replication" : {
