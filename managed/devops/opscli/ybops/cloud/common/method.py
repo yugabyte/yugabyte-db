@@ -13,9 +13,11 @@ import glob
 import json
 import logging
 import os
+import random
+import re
+import string
 import sys
 import time
-import re
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
@@ -496,7 +498,8 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         self.create_method.preprocess_args(args)
 
     def callback(self, args):
-        args.search_pattern += "-{}".format(time.time()).replace('.', '-')
+        unique_string = ''.join(random.choice(string.ascii_lowercase) for i in range(6))
+        args.search_pattern = "{}-".format(unique_string) + args.search_pattern
         vid = self.create_master_volume(args)
         output = [vid]
         num_disks = int(args.num_disks) - 1
