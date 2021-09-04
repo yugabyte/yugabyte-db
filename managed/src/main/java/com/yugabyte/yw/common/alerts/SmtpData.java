@@ -14,7 +14,7 @@ public class SmtpData {
   @ApiModelProperty(value = "SMTP port number", example = "465")
   public int smtpPort = -1;
 
-  @ApiModelProperty(value = "SMTP email id", example = "test@example.com")
+  @ApiModelProperty(value = "SMTP email 'from' address", example = "test@example.com")
   public String emailFrom = null;
 
   @ApiModelProperty(value = "SMTP email username", example = "testsmtp")
@@ -23,10 +23,10 @@ public class SmtpData {
   @ApiModelProperty(value = "SMTP password", example = "XurenRknsc")
   public String smtpPassword = null;
 
-  @ApiModelProperty(value = "Use SMTP SSL", example = "true")
+  @ApiModelProperty(value = "Connect to SMTP server using SSL", example = "true")
   public boolean useSSL = true;
 
-  @ApiModelProperty(value = "Use SMTP TLS", example = "false")
+  @ApiModelProperty(value = "Connect to SMTP server using TLS", example = "false")
   public boolean useTLS = false;
 
   @Override

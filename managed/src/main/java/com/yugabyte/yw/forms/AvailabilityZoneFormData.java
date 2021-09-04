@@ -14,20 +14,22 @@ import play.data.validation.Constraints;
 public class AvailabilityZoneFormData {
 
   @Constraints.Required()
-  @ApiModelProperty(value = "Availability zones", required = true)
+  @ApiModelProperty(value = "List of availability zones", required = true)
   public List<AvailabilityZoneData> availabilityZones;
 
-  @ApiModel(description = "Availability zone information")
+  @ApiModel(
+      description =
+          "Details of an availability zone, used by the API and UI to validate data against input constraints")
   public static class AvailabilityZoneData {
     @Constraints.Required()
-    @ApiModelProperty(value = "Az code", required = true)
+    @ApiModelProperty(value = "AZ code", required = true)
     public String code;
 
     @Constraints.Required()
-    @ApiModelProperty(value = "Az name", required = true)
+    @ApiModelProperty(value = "AZ name", required = true)
     public String name;
 
-    @ApiModelProperty(value = "Az subnet")
+    @ApiModelProperty(value = "AZ subnet")
     public String subnet;
   }
 }

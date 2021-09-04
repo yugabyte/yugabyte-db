@@ -9,11 +9,12 @@ import java.util.Set;
 import org.yb.ColumnSchema;
 import org.yb.Type;
 
-@ApiModel(description = "Column details")
+@ApiModel(description = "Details of a CQL database column")
 public class ColumnDetails {
 
   // The relative position for this column in the table and in CQL commands
-  @ApiModelProperty(value = "Column order")
+  @ApiModelProperty(
+      value = "Relative position (column order) for this column, in the table and in CQL commands")
   public int columnOrder;
 
   // The name of this column
@@ -21,7 +22,7 @@ public class ColumnDetails {
   public String name;
 
   // The type of this column
-  @ApiModelProperty(value = "Column type")
+  @ApiModelProperty(value = "The column's data type")
   public YQLDataType type;
 
   // For collections, this is the item type (key type for maps)
@@ -41,7 +42,7 @@ public class ColumnDetails {
   public boolean isClusteringKey;
 
   // SortOrder for this column (only valid for clustering columns)
-  @ApiModelProperty(value = "SortOrder for this column")
+  @ApiModelProperty(value = "Sort order for this column. Valid only for clustering columns.")
   public ColumnSchema.SortOrder sortOrder = ColumnSchema.SortOrder.NONE;
 
   public static ColumnDetails createWithColumnSchema(ColumnSchema columnSchema) {

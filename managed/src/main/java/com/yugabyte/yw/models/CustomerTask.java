@@ -32,7 +32,8 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
-@ApiModel(description = "Customers Task Information.")
+@ApiModel(
+    description = "Customer task information. A customer task has a _target_ and a _task type_.")
 public class CustomerTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTask.class);
 
@@ -297,7 +298,7 @@ public class CustomerTask extends Model {
   // Use IDENTITY strategy because `customer_task.id` is a `bigserial` type; not a sequence.
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  @ApiModelProperty(value = "Customer task uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer task UUID", accessMode = READ_ONLY)
   private Long id;
 
   public Long getId() {
@@ -306,7 +307,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY, required = true)
   private UUID customerUUID;
 
   public UUID getCustomerUUID() {
@@ -315,11 +316,20 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Task uuid", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(value = "Task UUID", accessMode = READ_ONLY, required = true)
   private UUID taskUUID;
 
   public UUID getTaskUUID() {
     return taskUUID;
+  }
+
+  @Constraints.Required
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Task type", accessMode = READ_ONLY, required = true)
+  private TaskType type;
+
+  public TaskType getType() {
+    return type;
   }
 
   @Constraints.Required
@@ -342,16 +352,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Task task type", accessMode = READ_ONLY, required = true)
-  private TaskType type;
-
-  public TaskType getType() {
-    return type;
-  }
-
-  @Constraints.Required
-  @Column(nullable = false)
-  @ApiModelProperty(value = "Task target uuid", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(value = "Task target UUID", accessMode = READ_ONLY, required = true)
   private UUID targetUUID;
 
   public UUID getTargetUUID() {
@@ -362,9 +363,9 @@ public class CustomerTask extends Model {
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
-      value = "Create time",
+      value = "Creation time",
       accessMode = READ_ONLY,
-      example = "1624295187911",
+      example = "2021-06-17 15:00:05",
       required = true)
   private Date createTime;
 
@@ -374,7 +375,10 @@ public class CustomerTask extends Model {
 
   @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Completion time", accessMode = READ_ONLY, example = "1624295187911")
+  @ApiModelProperty(
+      value = "Completion time (present only if a task has completed)",
+      accessMode = READ_ONLY,
+      example = "2021-06-17 15:00:05")
   private Date completionTime;
 
   public Date getCompletionTime() {

@@ -31,14 +31,14 @@ import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Entity
-@ApiModel(description = "KMS config.")
+@ApiModel(description = "KMS configuration")
 public class KmsConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsConfig.class);
 
   public static final int SCHEMA_VERSION = 2;
 
   @Id
-  @ApiModelProperty(value = "KMS config uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "KMS config UUID", accessMode = READ_ONLY)
   public UUID configUUID;
 
   @Column(length = 100, nullable = false)
@@ -46,7 +46,7 @@ public class KmsConfig extends Model {
   public String name;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   @Column(length = 100, nullable = false)
@@ -57,12 +57,12 @@ public class KmsConfig extends Model {
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @JsonIgnore
-  @ApiModelProperty(value = "auth config")
+  @ApiModelProperty(value = "Auth config")
   public JsonNode authConfig;
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "version")
+  @ApiModelProperty(value = "KMS configuration version")
   public int version;
 
   public static final Finder<UUID, KmsConfig> find =
@@ -95,7 +95,7 @@ public class KmsConfig extends Model {
     return KmsConfig.find
         .query()
         .where()
-        .eq("customer_uuid", customerUUID)
+        .eq("customer_UUID", customerUUID)
         .eq("version", SCHEMA_VERSION)
         .findList();
   }

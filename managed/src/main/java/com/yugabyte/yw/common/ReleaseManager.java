@@ -47,7 +47,7 @@ public class ReleaseManager {
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
 
-  @ApiModel(value = "Release metadata", description = "YB release metadata")
+  @ApiModel(description = "Yugabyte release metadata")
   public static class ReleaseMetadata {
 
     @ApiModelProperty(value = "Release state", example = "ACTIVE")

@@ -7,10 +7,10 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import play.data.validation.Constraints;
 
-@ApiModel(description = "Metrics details")
+@ApiModel(description = "Metrics request data")
 public class MetricQueryParams {
   @Constraints.Required()
-  @ApiModelProperty(value = "metrics", required = true)
+  @ApiModelProperty(value = "Metrics", required = true)
   private List<String> metrics;
 
   @Constraints.Required()

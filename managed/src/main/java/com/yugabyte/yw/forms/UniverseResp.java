@@ -47,16 +47,16 @@ public class UniverseResp {
   @ApiModelProperty(value = "Universe name")
   public final String name;
 
-  @ApiModelProperty(value = "Creation date")
+  @ApiModelProperty(value = "Universe creation date")
   public final String creationDate;
 
-  @ApiModelProperty(value = "Version")
+  @ApiModelProperty(value = "Universe version")
   public final int version;
 
   @ApiModelProperty(value = "DNS name")
   public final String dnsName;
 
-  @ApiModelProperty(value = "Universe resources")
+  @ApiModelProperty(value = "Universe resource details")
   public final UniverseResourceDetails resources;
 
   @ApiModelProperty(value = "Universe details")

@@ -47,7 +47,9 @@ import play.mvc.Http;
     produces = {"application/json"},
     schemes = {SwaggerDefinition.Scheme.HTTP, SwaggerDefinition.Scheme.HTTPS},
     externalDocs =
-        @ExternalDocs(value = "About Yugabyte Platform", url = "https://docs.yugabyte.com"),
+        @ExternalDocs(
+            value = "About Yugabyte Platform",
+            url = "https://docs.yugabyte.com/latest/yugabyte-platform/"),
     securityDefinition =
         @SecurityDefinition(
             apiKeyAuthDefinitions = {
@@ -55,7 +57,7 @@ import play.mvc.Http;
                   key = AbstractPlatformController.API_KEY_AUTH,
                   name = API_TOKEN_HEADER,
                   in = ApiKeyAuthDefinition.ApiKeyLocation.HEADER,
-                  description = "Api key passed as header")
+                  description = "API token passed as header")
             }))
 public abstract class AbstractPlatformController extends Controller {
 

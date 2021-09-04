@@ -35,7 +35,9 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Entity
-@ApiModel(description = "Customers Configuration")
+@ApiModel(
+    description =
+        "Customer configuration. Includes storage, alerts, password policy, and call-home level.")
 public class CustomerConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfig.class);
   public static final String ALERTS_PREFERENCES = "preferences";

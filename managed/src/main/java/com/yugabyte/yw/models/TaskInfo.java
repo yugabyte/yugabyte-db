@@ -36,7 +36,7 @@ import javax.persistence.Id;
 import play.data.validation.Constraints;
 
 @Entity
-@ApiModel(description = "Task Information.")
+@ApiModel(description = "Task information")
 public class TaskInfo extends Model {
 
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
@@ -65,38 +65,40 @@ public class TaskInfo extends Model {
 
   // The task UUID.
   @Id
-  @ApiModelProperty(value = "Task uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Task UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   // The UUID of the parent task (if any; CustomerTasks have no parent)
-  @ApiModelProperty(value = "Parent task uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Parent task UUID", accessMode = READ_ONLY)
   private UUID parentUuid;
 
   // The position within the parent task's taskQueue (-1 for a CustomerTask)
   @Column(columnDefinition = "integer default -1")
-  @ApiModelProperty(value = "Position", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "The task's position with its parent task's queue",
+      accessMode = READ_ONLY)
   private Integer position = -1;
 
   // The task type.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Task Type", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Task type", accessMode = READ_ONLY)
   private final TaskType taskType;
 
   // The task state.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Task State", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Task state", accessMode = READ_ONLY)
   private State taskState = State.Created;
 
   // The subtask group type (if it is a subtask)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Sub task type", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Subtask type", accessMode = READ_ONLY)
   private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
   @CreatedTimestamp
-  @ApiModelProperty(value = "Created time", accessMode = READ_ONLY, example = "1624295239113")
+  @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY, example = "1624295239113")
   private Date createTime;
 
   // The task update time. Time of the latest update (including heartbeat updates) on this task.
@@ -106,7 +108,7 @@ public class TaskInfo extends Model {
 
   // The percentage completeness of the task, which is a number from 0 to 100.
   @Column(columnDefinition = "integer default 0")
-  @ApiModelProperty(value = "Percentage of task", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Percentage complete", accessMode = READ_ONLY)
   private Integer percentDone = 0;
 
   // Details of the task, usually a JSON representation of the incoming task. This is used to
@@ -120,7 +122,10 @@ public class TaskInfo extends Model {
   // Identifier of the process owning the task.
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Owner of task", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(
+      value = "ID of the process that owns this task",
+      accessMode = READ_ONLY,
+      required = true)
   private String owner;
 
   public TaskInfo(TaskType taskType) {
@@ -215,7 +220,7 @@ public class TaskInfo extends Model {
   public static TaskInfo getOrBadRequest(UUID taskUUID) {
     TaskInfo taskInfo = get(taskUUID);
     if (taskInfo == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid Task Info UUID: " + taskUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid task info UUID: " + taskUUID);
     }
     return taskInfo;
   }

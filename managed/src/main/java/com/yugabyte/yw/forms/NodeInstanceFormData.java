@@ -14,7 +14,9 @@ public class NodeInstanceFormData {
   @ApiModelProperty(value = "Node instances", required = true)
   public List<NodeInstanceData> nodes;
 
-  @ApiModel(description = "Details of a node instance")
+  @ApiModel(
+      description =
+          "Details of a node instance. Used by the API to validate data against input constraints.")
   public static class NodeInstanceData {
 
     @Constraints.Required()
@@ -41,7 +43,7 @@ public class NodeInstanceFormData {
     @ApiModelProperty(value = "Node instance name", example = "Mumbai instance", required = true)
     public String instanceName;
 
-    @ApiModelProperty(value = "Node instance name", example = "India node")
+    @ApiModelProperty(value = "Node name", example = "India node")
     public String nodeName;
   }
 }

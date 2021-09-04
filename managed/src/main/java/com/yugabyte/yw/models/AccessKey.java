@@ -24,8 +24,8 @@ import play.data.validation.Constraints;
 @Entity
 @ApiModel(
     description =
-        "Access key for the provider. This will help to "
-            + "authenticate the user and get the access to the cloud provider.")
+        "Access key for the cloud provider. This helps to "
+            + "authenticate the user and get access to the provider.")
 public class AccessKey extends Model {
   @ApiModel
   @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -64,7 +64,7 @@ public class AccessKey extends Model {
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
-  @ApiModelProperty(value = "Cloud provider key info", required = true)
+  @ApiModelProperty(value = "Cloud provider key information", required = true)
   @DbJson
   private KeyInfo keyInfo;
 
@@ -87,7 +87,7 @@ public class AccessKey extends Model {
   public void deleteOrThrow() {
     if (!super.delete()) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Delete unsuccessfull for : " + this.idKey);
+          INTERNAL_SERVER_ERROR, "Delete unsuccessful for: " + this.idKey);
     }
   }
 

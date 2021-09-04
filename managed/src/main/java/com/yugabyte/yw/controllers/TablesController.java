@@ -230,7 +230,7 @@ public class TablesController extends AuthenticatedController {
     return PlatformResults.withData(ColumnDetails.YQLDataType.values());
   }
 
-  @ApiModel("Table information")
+  @ApiModel(description = "Table information response")
   @Builder
   static class TableInfoResp {
 

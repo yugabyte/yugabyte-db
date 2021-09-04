@@ -65,7 +65,10 @@ public class AccessKeyController extends AuthenticatedController {
     return PlatformResults.withData(accessKeys);
   }
 
-  @ApiOperation(value = "Create an access key", response = AccessKey.class)
+  @ApiOperation(
+      nickname = "create_accesskey",
+      value = "Create an access key",
+      response = AccessKey.class)
   public Result create(UUID customerUUID, UUID providerUUID) throws IOException {
     Form<AccessKeyFormData> formData = formFactory.getFormDataOrBadRequest(AccessKeyFormData.class);
 
@@ -144,7 +147,10 @@ public class AccessKeyController extends AuthenticatedController {
     return PlatformResults.withData(accessKey);
   }
 
-  @ApiOperation(value = "Delete an access key", response = YBPSuccess.class)
+  @ApiOperation(
+      nickname = "delete_accesskey",
+      value = "Delete an access key",
+      response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);

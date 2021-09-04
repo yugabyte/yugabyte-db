@@ -2,14 +2,14 @@
   "consumes" : [ "application/json" ],
   "definitions" : {
     "AccessKey" : {
-      "description" : "Access key for the provider. This will help to authenticate the user and get the access to the cloud provider.",
+      "description" : "Access key for the cloud provider. This helps to authenticate the user and get access to the provider.",
       "properties" : {
         "idKey" : {
           "$ref" : "#/definitions/AccessKeyId"
         },
         "keyInfo" : {
           "$ref" : "#/definitions/KeyInfo",
-          "description" : "Cloud provider key info"
+          "description" : "Cloud provider key information"
         }
       },
       "required" : [ "idKey", "keyInfo" ],
@@ -28,40 +28,40 @@
       "type" : "object"
     },
     "Alert" : {
-      "description" : "Alert information. which is used to send alert notification.",
+      "description" : "Alert definition. Used to send an alert notification.",
       "properties" : {
         "acknowledgedTime" : {
-          "description" : "Acknowledge Date time info.",
+          "description" : "Timestamp at which the alert was acknowledged",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "configurationType" : {
-          "description" : "Alert configuration type.",
+          "description" : "Alert configuration type",
           "enum" : [ "PLATFORM", "UNIVERSE" ],
           "readOnly" : true,
           "type" : "string"
         },
         "configurationUuid" : {
-          "description" : "Alert configuration Uuid.",
+          "description" : "Alert configuration UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
         "createTime" : {
-          "description" : "Create Date time info.",
+          "description" : "Alert creation timestamp",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
-          "description" : "Cutomer uuid",
+          "description" : "Cutomer UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
         "definitionUuid" : {
-          "description" : "Alert definition Uuid",
+          "description" : "Alert definition UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -73,47 +73,47 @@
           "type" : "array"
         },
         "message" : {
-          "description" : "Alert message.",
+          "description" : "The alert's message text",
           "readOnly" : true,
           "type" : "string"
         },
         "name" : {
-          "description" : "Alert name.",
+          "description" : "The alert's name",
           "readOnly" : true,
           "type" : "string"
         },
         "nextNotificationTime" : {
-          "description" : "Time of the next notification attempt.",
+          "description" : "Time of the next notification attempt",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "notificationAttemptTime" : {
-          "description" : "Time of the last notification attempt.",
+          "description" : "Time of the last notification attempt",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "notificationsFailed" : {
-          "description" : "Count of failures to send a notification.",
+          "description" : "Count of failures to send a notification",
           "format" : "int32",
           "readOnly" : true,
           "type" : "integer"
         },
         "notifiedState" : {
-          "description" : "Alert state in last sent notification.",
+          "description" : "Alert state in the last-sent notification",
           "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
         },
         "resolvedTime" : {
-          "description" : "Resolved Date time info.",
+          "description" : "Timestamp at which the alert was resolved",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "severity" : {
-          "description" : "Alert configuration serverity.",
+          "description" : "Alert configuration severity",
           "enum" : [ "SEVERE", "WARNING" ],
           "readOnly" : true,
           "type" : "string"
@@ -123,13 +123,13 @@
           "type" : "integer"
         },
         "sourceName" : {
-          "description" : "Alert source name.",
+          "description" : "The source of the alert",
           "readOnly" : true,
           "type" : "string"
         },
         "state" : {
-          "description" : "Alert state.",
-          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
+          "description" : "The alert's state",
+          "enum" : [ "firing", "acknowledged", "resolved" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -138,46 +138,13 @@
           "type" : "integer"
         },
         "uuid" : {
-          "description" : "Alert uuid",
+          "description" : "Alert UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         }
       },
       "required" : [ "labels", "severityIndex", "stateIndex" ],
-      "type" : "object"
-    },
-    "Alert configuration target." : {
-      "properties" : {
-        "all" : {
-          "description" : "Alert applicable for all targets",
-          "type" : "boolean"
-        },
-        "uuids" : {
-          "description" : "Alert target uuids",
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        }
-      },
-      "type" : "object"
-    },
-    "Alert configuration threshold." : {
-      "properties" : {
-        "condition" : {
-          "description" : "Threshold condition",
-          "enum" : [ "GREATER_THAN", "LESS_THAN" ],
-          "type" : "string"
-        },
-        "threshold" : {
-          "description" : "Threshold value",
-          "format" : "double",
-          "type" : "number"
-        }
-      },
       "type" : "object"
     },
     "AlertApiFilter" : {
@@ -319,7 +286,7 @@
       } ]
     },
     "AlertConfiguration" : {
-      "description" : "Alert configuration.",
+      "description" : "Alert configuration",
       "properties" : {
         "active" : {
           "description" : "Is configured alerts raised or not",
@@ -332,7 +299,7 @@
           "type" : "string"
         },
         "customerUUID" : {
-          "description" : "Customer uuid",
+          "description" : "Customer UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -342,7 +309,7 @@
           "type" : "string"
         },
         "destinationUUID" : {
-          "description" : "Alert destination uuid",
+          "description" : "Alert destination IIOD",
           "format" : "uuid",
           "type" : "string"
         },
@@ -356,7 +323,7 @@
           "type" : "string"
         },
         "target" : {
-          "$ref" : "#/definitions/Alert configuration target.",
+          "$ref" : "#/definitions/AlertConfigurationTarget",
           "description" : "Target"
         },
         "targetType" : {
@@ -372,20 +339,20 @@
           "type" : "string"
         },
         "thresholdUnit" : {
-          "description" : "Thresholds unit",
+          "description" : "Threshold unit",
           "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND", "SECOND", "DAY" ],
           "readOnly" : true,
           "type" : "string"
         },
         "thresholds" : {
           "additionalProperties" : {
-            "$ref" : "#/definitions/Alert configuration threshold."
+            "$ref" : "#/definitions/AlertConfigurationThreshold"
           },
           "description" : "Thresholds",
           "type" : "object"
         },
         "uuid" : {
-          "description" : "Configuration uuid",
+          "description" : "Configuration UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -475,6 +442,25 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
+    "AlertConfigurationTarget" : {
+      "description" : "Alert target. Set to `all`, or specify one or more target UUIDs.",
+      "properties" : {
+        "all" : {
+          "description" : "Alert applicable to all targets",
+          "type" : "boolean"
+        },
+        "uuids" : {
+          "description" : "Alert target UUIDs",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "type" : "object"
+    },
     "AlertConfigurationTemplate" : {
       "description" : "Alert configuration template",
       "properties" : {
@@ -489,7 +475,7 @@
           "type" : "string"
         },
         "customerUUID" : {
-          "description" : "Customer uuid",
+          "description" : "Customer UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -499,7 +485,7 @@
           "type" : "string"
         },
         "destinationUUID" : {
-          "description" : "Alert destination uuid",
+          "description" : "Alert destination IIOD",
           "format" : "uuid",
           "type" : "string"
         },
@@ -513,7 +499,7 @@
           "type" : "string"
         },
         "target" : {
-          "$ref" : "#/definitions/Alert configuration target.",
+          "$ref" : "#/definitions/AlertConfigurationTarget",
           "description" : "Target"
         },
         "targetType" : {
@@ -546,23 +532,39 @@
           "type" : "number"
         },
         "thresholdUnit" : {
-          "description" : "Thresholds unit",
+          "description" : "Threshold unit",
           "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND", "SECOND", "DAY" ],
           "readOnly" : true,
           "type" : "string"
         },
         "thresholds" : {
           "additionalProperties" : {
-            "$ref" : "#/definitions/Alert configuration threshold."
+            "$ref" : "#/definitions/AlertConfigurationThreshold"
           },
           "description" : "Thresholds",
           "type" : "object"
         },
         "uuid" : {
-          "description" : "Configuration uuid",
+          "description" : "Configuration UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "AlertConfigurationThreshold" : {
+      "description" : "Alert configuration threshold. Conditions can be either greater than a specified value, or less than a specified value.",
+      "properties" : {
+        "condition" : {
+          "description" : "Threshold condition (greater than, or less than)",
+          "enum" : [ ">", "<" ],
+          "type" : "string"
+        },
+        "threshold" : {
+          "description" : "Threshold value",
+          "format" : "double",
+          "type" : "number"
         }
       },
       "type" : "object"
@@ -769,28 +771,28 @@
           "type" : "string"
         },
         "checkIntervalMs" : {
-          "description" : "Alert interval",
+          "description" : "Alert interval, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         },
         "enableClockSkew" : {
-          "description" : "Is clock skew enabled?",
+          "description" : "Enable clock skew (default is true)",
           "type" : "boolean"
         },
         "reportBackupFailures" : {
-          "description" : "Is alert needed for backup failure",
+          "description" : "Trigger an alert for backup failures",
           "type" : "boolean"
         },
         "reportOnlyErrors" : {
-          "description" : "Is alert just for errors",
+          "description" : "Trigger an alert only for errors",
           "type" : "boolean"
         },
         "sendAlertsToYb" : {
-          "description" : "Is alert has sent to YB",
+          "description" : "Send alerts to YB as well as to customer",
           "type" : "boolean"
         },
         "statusUpdateIntervalMs" : {
-          "description" : "Status update of alert interval",
+          "description" : "Status update of alert interval, in milliseconds",
           "format" : "int64",
           "type" : "integer"
         }
@@ -821,10 +823,10 @@
       "type" : "object"
     },
     "Audit" : {
-      "description" : "Audit for audit logging of the requests and responses.",
+      "description" : "Audit logging for requests and responses",
       "properties" : {
         "apiCall" : {
-          "description" : "Api call",
+          "description" : "API call",
           "example" : "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
           "readOnly" : true,
           "type" : "string"
@@ -840,13 +842,13 @@
           "type" : "integer"
         },
         "customerUUID" : {
-          "description" : "Customer uuid",
+          "description" : "Customer UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
         "payload" : {
-          "description" : "Audit uuid",
+          "description" : "Audit UUID",
           "readOnly" : true,
           "type" : "object"
         },
@@ -861,7 +863,7 @@
           "type" : "string"
         },
         "userUUID" : {
-          "description" : "User uuid",
+          "description" : "User UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -871,10 +873,10 @@
       "type" : "object"
     },
     "AvailabilityZone" : {
-      "description" : "Availability Zone of regions.",
+      "description" : "Availability zone (AZ) for a region",
       "properties" : {
         "active" : {
-          "description" : "AZ is active or not",
+          "description" : "AZ status. This value is `true` for an active AZ.",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -884,7 +886,7 @@
           "type" : "string"
         },
         "kubeconfigPath" : {
-          "description" : "Kubernetes Config path",
+          "description" : "Path to Kubernetes configuration file",
           "readOnly" : true,
           "type" : "string"
         },
@@ -894,17 +896,17 @@
           "type" : "string"
         },
         "secondarySubnet" : {
-          "description" : "AZ Secondary Subnet",
+          "description" : "AZ secondary subnet",
           "example" : "secondary subnet id",
           "type" : "string"
         },
         "subnet" : {
-          "description" : "AZ Subnet",
+          "description" : "AZ subnet",
           "example" : "subnet id",
           "type" : "string"
         },
         "uuid" : {
-          "description" : "AZ uuid",
+          "description" : "AZ UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -914,18 +916,18 @@
       "type" : "object"
     },
     "AvailabilityZoneData" : {
-      "description" : "Availability zone information",
+      "description" : "Details of an availability zone, used by the API and UI to validate data against input constraints",
       "properties" : {
         "code" : {
-          "description" : "Az code",
+          "description" : "AZ code",
           "type" : "string"
         },
         "name" : {
-          "description" : "Az name",
+          "description" : "AZ name",
           "type" : "string"
         },
         "subnet" : {
-          "description" : "Az subnet",
+          "description" : "AZ subnet",
           "type" : "string"
         }
       },
@@ -935,7 +937,7 @@
     "AvailabilityZoneFormData" : {
       "properties" : {
         "availabilityZones" : {
-          "description" : "Availability zones",
+          "description" : "List of availability zones",
           "items" : {
             "$ref" : "#/definitions/AvailabilityZoneData"
           },
@@ -946,14 +948,14 @@
       "type" : "object"
     },
     "Backup" : {
-      "description" : "Backup with a status, expiry and backup configs",
+      "description" : "A single backup. Includes the backup's status, expiration time, and configuration.",
       "properties" : {
         "backupInfo" : {
           "$ref" : "#/definitions/BackupTableParams",
           "description" : "Details of the backup"
         },
         "backupUUID" : {
-          "description" : "Backup uuid",
+          "description" : "Backup UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -963,17 +965,17 @@
           "type" : "string"
         },
         "customerUUID" : {
-          "description" : "Customer UUID of the backup which it belongs to",
+          "description" : "Customer UUID that owns this backup",
           "format" : "uuid",
           "type" : "string"
         },
         "expiry" : {
-          "description" : "Expiry time of the backup",
+          "description" : "Expiry time (unix timestamp) of the backup",
           "format" : "date-time",
           "type" : "string"
         },
         "scheduleUUID" : {
-          "description" : "Schedule UUID if this backup is taken from scheduling it",
+          "description" : "Schedule UUID, if this backup is part of a schedule",
           "format" : "uuid",
           "type" : "string"
         },
@@ -1303,7 +1305,7 @@
       "type" : "object"
     },
     "CertificateInfo" : {
-      "description" : "Certificate used by the universe to send sensitive information",
+      "description" : "SSL certificate used by the universe",
       "properties" : {
         "certType" : {
           "description" : "Type of the certificate",
@@ -1317,13 +1319,13 @@
           "type" : "string"
         },
         "checksum" : {
-          "description" : "Checksome of a cert file",
+          "description" : "The certificate file's checksum",
           "readOnly" : true,
           "type" : "string"
         },
         "customCertInfo" : {
           "$ref" : "#/definitions/CustomCertInfo",
-          "description" : "Details about the Certificate"
+          "description" : "Details about the certificate"
         },
         "customServerCertInfo" : {
           "$ref" : "#/definitions/CustomServerCertInfo"
@@ -1334,12 +1336,12 @@
           "type" : "string"
         },
         "expiryDate" : {
-          "description" : "Expiry date of the Certificate",
+          "description" : "The certificate's expiry date",
           "format" : "date-time",
           "type" : "string"
         },
         "inUse" : {
-          "description" : "Indicates whether the Certificate is in use or not",
+          "description" : "Indicates whether the certificate is in use. This value is `true` if the universe contains a reference to the certificate.",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -1350,24 +1352,24 @@
         },
         "privateKey" : {
           "description" : "Private key path",
-          "example" : "/opt/yugaware/..../example.key.pem",
+          "example" : "/opt/yugaware/.../example.key.pem",
           "type" : "string"
         },
         "startDate" : {
-          "description" : "Certificate created date",
+          "description" : "The certificate's creation date",
           "format" : "date-time",
           "type" : "string"
         },
         "universeDetails" : {
-          "description" : "Associated universe details of the Certificate",
+          "description" : "Associated universe details for the certificate",
           "items" : {
-            "$ref" : "#/definitions/Universe detail subset"
+            "$ref" : "#/definitions/UniverseDetailSubset"
           },
           "readOnly" : true,
           "type" : "array"
         },
         "uuid" : {
-          "description" : "Certificate uuid",
+          "description" : "Certificate UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -1427,22 +1429,22 @@
       "type" : "object"
     },
     "CloudSpecificInfo" : {
-      "description" : "Cloud specific information",
+      "description" : "Node information reported by the cloud provider",
       "properties" : {
         "assignPublicIP" : {
-          "description" : "Public IP assigned",
+          "description" : "True if the node has a public IP address assigned",
           "type" : "boolean"
         },
         "az" : {
-          "description" : "AZ",
+          "description" : "The node's availability zone",
           "type" : "string"
         },
         "cloud" : {
-          "description" : "Cloud",
+          "description" : "The node's cloud provider",
           "type" : "string"
         },
         "instance_type" : {
-          "description" : "Instance type",
+          "description" : "The node's instance type",
           "type" : "string"
         },
         "mount_roots" : {
@@ -1450,23 +1452,23 @@
           "type" : "string"
         },
         "private_dns" : {
-          "description" : "Private DNS",
+          "description" : "The node's private DNS",
           "type" : "string"
         },
         "private_ip" : {
-          "description" : "Private IP",
+          "description" : "The node's private IP address",
           "type" : "string"
         },
         "public_dns" : {
-          "description" : "Public DNS",
+          "description" : "The node's public DNS name",
           "type" : "string"
         },
         "public_ip" : {
-          "description" : "Public IP",
+          "description" : "The node's public IP address",
           "type" : "string"
         },
         "region" : {
-          "description" : "Region",
+          "description" : "The node's region",
           "type" : "string"
         },
         "secondary_private_ip" : {
@@ -1478,11 +1480,11 @@
           "type" : "string"
         },
         "subnet_id" : {
-          "description" : "Subnet IP",
+          "description" : "ID of the subnet on which this node is deployed",
           "type" : "string"
         },
         "useTimeSync" : {
-          "description" : "Is use time sync enable",
+          "description" : "True if `use time sync` is enabled",
           "type" : "boolean"
         }
       },
@@ -1520,10 +1522,10 @@
       "type" : "object"
     },
     "ColumnDetails" : {
-      "description" : "Column details",
+      "description" : "Details of a CQL database column",
       "properties" : {
         "columnOrder" : {
-          "description" : "Column order",
+          "description" : "Relative position (column order) for this column, in the table and in CQL commands",
           "format" : "int32",
           "type" : "integer"
         },
@@ -1545,12 +1547,12 @@
           "type" : "string"
         },
         "sortOrder" : {
-          "description" : "SortOrder for this column",
+          "description" : "Sort order for this column. Valid only for clustering columns.",
           "enum" : [ "NONE", "ASC", "DESC" ],
           "type" : "string"
         },
         "type" : {
-          "description" : "Column type",
+          "description" : "The column's data type",
           "enum" : [ "TINYINT", "SMALLINT", "INT", "BIGINT", "VARCHAR", "BOOLEAN", "FLOAT", "DOUBLE_PRECISION", "BLOB", "TIMESTAMP", "DECIMAL", "VARINT", "INET", "LIST", "MAP", "SET", "UUID", "TIMEUUID", "FROZEN", "DATE", "TIME", "JSONB", "USER_DEFINED_TYPE" ],
           "type" : "string"
         },
@@ -1627,7 +1629,7 @@
       "description" : "Configuration entry",
       "properties" : {
         "inherited" : {
-          "description" : "Is this configuration inherited",
+          "description" : "Is this configuration inherited?",
           "type" : "boolean"
         },
         "key" : {
@@ -1687,7 +1689,7 @@
       "type" : "object"
     },
     "Customer" : {
-      "description" : "Customers features and Universe UUID.",
+      "description" : "Customer information, including associated universes",
       "properties" : {
         "code" : {
           "description" : "Customer code",
@@ -1702,7 +1704,7 @@
           "type" : "string"
         },
         "customerId" : {
-          "description" : "Customer id",
+          "description" : "Customer ID",
           "example" : 1,
           "format" : "int64",
           "readOnly" : true,
@@ -1725,7 +1727,7 @@
           "uniqueItems" : true
         },
         "uuid" : {
-          "description" : "Customer uuid",
+          "description" : "Customer UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -1735,7 +1737,7 @@
       "type" : "object"
     },
     "CustomerAlertData" : {
-      "description" : "Format of an alert",
+      "description" : "Format of an alert, used by the API and UI to validate data against input constraints",
       "properties" : {
         "alertingData" : {
           "$ref" : "#/definitions/AlertingData"
@@ -1748,12 +1750,12 @@
           "type" : "string"
         },
         "confirmPassword" : {
-          "description" : "Email password",
+          "description" : "Email password confirmation",
           "example" : "XurenRknsc",
           "type" : "string"
         },
         "email" : {
-          "description" : "Alert email",
+          "description" : "Alert email address",
           "example" : "test@example.com",
           "type" : "string"
         },
@@ -1761,7 +1763,7 @@
           "additionalProperties" : {
             "type" : "object"
           },
-          "description" : "Feature",
+          "description" : "Features",
           "type" : "object"
         },
         "name" : {
@@ -1782,7 +1784,7 @@
       "type" : "object"
     },
     "CustomerConfig" : {
-      "description" : "Customers Configuration",
+      "description" : "Customer configuration. Includes storage, alerts, password policy, and call-home level.",
       "properties" : {
         "configName" : {
           "description" : "Config name",
@@ -1825,7 +1827,7 @@
           "description" : "Universe details",
           "example" : "{\"name\": \"jd-aws-21-6-21-test4\"}",
           "items" : {
-            "$ref" : "#/definitions/Universe detail subset"
+            "$ref" : "#/definitions/UniverseDetailSubset"
           },
           "type" : "array"
         }
@@ -1844,7 +1846,7 @@
       "type" : "object"
     },
     "CustomerDetailsData" : {
-      "description" : "Customer details and universe UUIDs.",
+      "description" : "Customer details, including their universe UUIDs. Only the customer code and name are modifiable.",
       "properties" : {
         "alertingData" : {
           "$ref" : "#/definitions/AlertingData",
@@ -1962,12 +1964,12 @@
       "description" : "Device information",
       "properties" : {
         "diskIops" : {
-          "description" : "Desired iops for the volumes mounted on this instance",
+          "description" : "Desired IOPS for the volumes mounted on this instance",
           "format" : "int32",
           "type" : "integer"
         },
         "mountPoints" : {
-          "description" : "Comma separated list of mount points for the devices in each instance",
+          "description" : "Comma-separated list of mount points for the devices in each instance",
           "type" : "string"
         },
         "numVolumes" : {
@@ -1976,11 +1978,11 @@
           "type" : "integer"
         },
         "storageClass" : {
-          "description" : "Name of storage class",
+          "description" : "Name of the storage class",
           "type" : "string"
         },
         "storageType" : {
-          "description" : "The type of storage used for this instance",
+          "description" : "Storage type used for this instance",
           "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS" ],
           "type" : "string"
         },
@@ -1990,7 +1992,7 @@
           "type" : "integer"
         },
         "volumeSize" : {
-          "description" : "he size of each volume in each instance",
+          "description" : "The size of each volume in each instance",
           "format" : "int32",
           "type" : "integer"
         }
@@ -2118,10 +2120,10 @@
       "type" : "object"
     },
     "InstanceType" : {
-      "description" : "Instance type model which holds the information about the instance.",
+      "description" : "Information about an instance",
       "properties" : {
         "active" : {
-          "description" : "indiacates whether this instance is active or not",
+          "description" : "True if the instance is active",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -2135,12 +2137,12 @@
           "$ref" : "#/definitions/InstanceTypeDetails"
         },
         "memSizeGB" : {
-          "description" : "Memory size of an instance",
+          "description" : "The instance's memory size, in gigabytes",
           "format" : "double",
           "type" : "number"
         },
         "numCores" : {
-          "description" : "Number of cores in an instance",
+          "description" : "The instance's number of CPU cores",
           "format" : "double",
           "type" : "number"
         },
@@ -2271,7 +2273,7 @@
       "type" : "object"
     },
     "MetricQueryParams" : {
-      "description" : "Metrics details",
+      "description" : "Metrics request data",
       "properties" : {
         "end" : {
           "description" : "End time",
@@ -2279,7 +2281,7 @@
           "type" : "integer"
         },
         "metrics" : {
-          "description" : "metrics",
+          "description" : "Metrics",
           "items" : {
             "type" : "string"
           },
@@ -2302,7 +2304,8 @@
       "required" : [ "metrics", "start" ],
       "type" : "object"
     },
-    "Multi-table backup parameters" : {
+    "MultiTableBackupParams" : {
+      "description" : "Multi-table backup parameters",
       "properties" : {
         "actionType" : {
           "description" : "Action type",
@@ -2495,7 +2498,7 @@
       "type" : "object"
     },
     "MultiTableBackupRequestParams" : {
-      "description" : "Multiple-table backup parameters",
+      "description" : "Multi-table backup parameters",
       "properties" : {
         "actionType" : {
           "description" : "Action type",
@@ -2652,7 +2655,7 @@
           "type" : "string"
         },
         "tableUUIDList" : {
-          "description" : "Table UUID list",
+          "description" : "Table UUIDs",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -2700,19 +2703,19 @@
       "type" : "object"
     },
     "NodeDetails" : {
-      "description" : "Node details",
+      "description" : "Details of a cloud node",
       "properties" : {
         "azUuid" : {
-          "description" : "Az UUID",
+          "description" : "The availability zone's UUID",
           "format" : "uuid",
           "type" : "string"
         },
         "cloudInfo" : {
           "$ref" : "#/definitions/CloudSpecificInfo",
-          "description" : "Cloud information"
+          "description" : "Node information, as reported by the cloud provider"
         },
         "cronsActive" : {
-          "description" : "True if cronjobs were properly configured for this node",
+          "description" : "True if cron jobs were properly configured for this node",
           "type" : "boolean"
         },
         "isMaster" : {
@@ -2720,23 +2723,23 @@
           "type" : "boolean"
         },
         "isRedisServer" : {
-          "description" : "True if this node is a redis server",
+          "description" : "True if this node is a REDIS server",
           "type" : "boolean"
         },
         "isTserver" : {
-          "description" : "True if this node is a tserver",
+          "description" : "True if this node is a Tablet server",
           "type" : "boolean"
         },
         "isYqlServer" : {
-          "description" : "True if this node is a Yql",
+          "description" : "True if this node is a YCQL server",
           "type" : "boolean"
         },
         "isYsqlServer" : {
-          "description" : "True if this node is a Ysql",
+          "description" : "True if this node is a YSQL server",
           "type" : "boolean"
         },
         "machineImage" : {
-          "description" : "Machine image",
+          "description" : "Machine image name",
           "type" : "string"
         },
         "masterHttpPort" : {
@@ -2755,7 +2758,7 @@
           "type" : "integer"
         },
         "nodeIdx" : {
-          "description" : "Node id",
+          "description" : "Node ID",
           "format" : "int32",
           "type" : "integer"
         },
@@ -2769,52 +2772,53 @@
           "type" : "string"
         },
         "placementUuid" : {
-          "description" : "Placement UUID",
+          "description" : "UUID of the cluster to which this node belongs",
           "format" : "uuid",
           "type" : "string"
         },
         "redisServerHttpPort" : {
-          "description" : "Redis HTTP port",
+          "description" : "REDIS HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "redisServerRpcPort" : {
-          "description" : "Redis RPC port",
+          "description" : "REDIS RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "state" : {
           "description" : "Node state",
           "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing" ],
+          "example" : "Provisioned",
           "type" : "string"
         },
         "tserverHttpPort" : {
-          "description" : "Tserver HTTP port",
+          "description" : "Tablet server HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "tserverRpcPort" : {
-          "description" : "Tserver RPC port",
+          "description" : "Tablet server RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "yqlServerHttpPort" : {
-          "description" : "Yql HTTP port",
+          "description" : "YCQL HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "yqlServerRpcPort" : {
-          "description" : "Yql RPC port",
+          "description" : "YCQL RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "ysqlServerHttpPort" : {
-          "description" : "Ysql HTTP port",
+          "description" : "YSQL HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "ysqlServerRpcPort" : {
-          "description" : "Ysql RPC port",
+          "description" : "YSQL RPC port",
           "format" : "int32",
           "type" : "integer"
         }
@@ -2833,16 +2837,16 @@
           "uniqueItems" : true
         },
         "azUuid" : {
-          "description" : "Az UUID",
+          "description" : "The availability zone's UUID",
           "format" : "uuid",
           "type" : "string"
         },
         "cloudInfo" : {
           "$ref" : "#/definitions/CloudSpecificInfo",
-          "description" : "Cloud information"
+          "description" : "Node information, as reported by the cloud provider"
         },
         "cronsActive" : {
-          "description" : "True if cronjobs were properly configured for this node",
+          "description" : "True if cron jobs were properly configured for this node",
           "type" : "boolean"
         },
         "isMaster" : {
@@ -2850,23 +2854,23 @@
           "type" : "boolean"
         },
         "isRedisServer" : {
-          "description" : "True if this node is a redis server",
+          "description" : "True if this node is a REDIS server",
           "type" : "boolean"
         },
         "isTserver" : {
-          "description" : "True if this node is a tserver",
+          "description" : "True if this node is a Tablet server",
           "type" : "boolean"
         },
         "isYqlServer" : {
-          "description" : "True if this node is a Yql",
+          "description" : "True if this node is a YCQL server",
           "type" : "boolean"
         },
         "isYsqlServer" : {
-          "description" : "True if this node is a Ysql",
+          "description" : "True if this node is a YSQL server",
           "type" : "boolean"
         },
         "machineImage" : {
-          "description" : "Machine image",
+          "description" : "Machine image name",
           "type" : "string"
         },
         "masterHttpPort" : {
@@ -2885,7 +2889,7 @@
           "type" : "integer"
         },
         "nodeIdx" : {
-          "description" : "Node id",
+          "description" : "Node ID",
           "format" : "int32",
           "type" : "integer"
         },
@@ -2899,52 +2903,53 @@
           "type" : "string"
         },
         "placementUuid" : {
-          "description" : "Placement UUID",
+          "description" : "UUID of the cluster to which this node belongs",
           "format" : "uuid",
           "type" : "string"
         },
         "redisServerHttpPort" : {
-          "description" : "Redis HTTP port",
+          "description" : "REDIS HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "redisServerRpcPort" : {
-          "description" : "Redis RPC port",
+          "description" : "REDIS RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "state" : {
           "description" : "Node state",
           "enum" : [ "ToBeAdded", "ToJoinCluster", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Stopping", "Starting", "Stopped", "Unreachable", "ToBeRemoved", "Removing", "Removed", "Adding", "BeingDecommissioned", "Decommissioned", "UpdateCert", "ToggleTls", "Resizing" ],
+          "example" : "Provisioned",
           "type" : "string"
         },
         "tserverHttpPort" : {
-          "description" : "Tserver HTTP port",
+          "description" : "Tablet server HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "tserverRpcPort" : {
-          "description" : "Tserver RPC port",
+          "description" : "Tablet server RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "yqlServerHttpPort" : {
-          "description" : "Yql HTTP port",
+          "description" : "YCQL HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "yqlServerRpcPort" : {
-          "description" : "Yql RPC port",
+          "description" : "YCQL RPC port",
           "format" : "int32",
           "type" : "integer"
         },
         "ysqlServerHttpPort" : {
-          "description" : "Ysql HTTP port",
+          "description" : "YSQL HTTP port",
           "format" : "int32",
           "type" : "integer"
         },
         "ysqlServerRpcPort" : {
-          "description" : "Ysql RPC port",
+          "description" : "YSQL RPC port",
           "format" : "int32",
           "type" : "integer"
         }
@@ -2952,43 +2957,43 @@
       "type" : "object"
     },
     "NodeInstance" : {
-      "description" : "Node instance attched to provider and zones",
+      "description" : "A single node instance, attached to a provider and availability zone",
       "properties" : {
         "details" : {
           "$ref" : "#/definitions/NodeInstanceData"
         },
         "detailsJson" : {
-          "description" : "Node details",
+          "description" : "Node details (as a JSON object)",
           "example" : "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
           "type" : "string"
         },
         "inUse" : {
-          "description" : "Node instance is in used or not",
+          "description" : "True if the node is in use",
           "type" : "boolean"
         },
         "instanceName" : {
-          "description" : "Node instance instance name",
+          "description" : "The node instance's name",
           "example" : "Mumbai instance",
           "type" : "string"
         },
         "instanceTypeCode" : {
-          "description" : "Node instance type code",
+          "description" : "The node's type code",
           "example" : "c5large",
           "type" : "string"
         },
         "nodeName" : {
-          "description" : "Node instance node name",
+          "description" : "The node's name",
           "example" : "India node",
           "type" : "string"
         },
         "nodeUuid" : {
-          "description" : "Node instance UUID",
+          "description" : "The node's UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
         "zoneUuid" : {
-          "description" : "Node instance zone UUID",
+          "description" : "The availability zone's UUID",
           "format" : "uuid",
           "type" : "string"
         }
@@ -2997,7 +3002,7 @@
       "type" : "object"
     },
     "NodeInstanceData" : {
-      "description" : "Details of a node instance",
+      "description" : "Details of a node instance. Used by the API to validate data against input constraints.",
       "properties" : {
         "instanceName" : {
           "description" : "Node instance name",
@@ -3015,7 +3020,7 @@
           "type" : "string"
         },
         "nodeName" : {
-          "description" : "Node instance name",
+          "description" : "Node name",
           "example" : "India node",
           "type" : "string"
         },
@@ -3237,7 +3242,7 @@
       "type" : "object"
     },
     "Region" : {
-      "description" : "Region within a given provider. Typically this will map to a single cloud provider region",
+      "description" : "Region within a given provider. Typically, this maps to a single cloud provider region.",
       "properties" : {
         "code" : {
           "description" : "Cloud provider region code",
@@ -3252,14 +3257,14 @@
           "type" : "object"
         },
         "latitude" : {
-          "description" : "Latitude of this region",
+          "description" : "The region's latitude",
           "example" : 37.22,
           "format" : "double",
           "readOnly" : true,
           "type" : "number"
         },
         "longitude" : {
-          "description" : "Longitude of this region",
+          "description" : "The region's longitude",
           "example" : -120.01,
           "format" : "double",
           "readOnly" : true,
@@ -3267,14 +3272,14 @@
         },
         "name" : {
           "description" : "Cloud provider region name",
-          "example" : "TODO",
+          "example" : "US West (Oregon)",
           "type" : "string"
         },
         "securityGroupId" : {
           "type" : "string"
         },
         "uuid" : {
-          "description" : "Region uuid",
+          "description" : "Region UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -3329,8 +3334,27 @@
       "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "ybImage" ],
       "type" : "object"
     },
-    "Release metadata" : {
-      "description" : "YB release metadata",
+    "ReleaseFormData" : {
+      "description" : "Specification for release locations",
+      "properties" : {
+        "gcs" : {
+          "$ref" : "#/definitions/GCSLocation"
+        },
+        "http" : {
+          "$ref" : "#/definitions/HttpLocation"
+        },
+        "s3" : {
+          "$ref" : "#/definitions/S3Location"
+        },
+        "version" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "gcs", "http", "s3", "version" ],
+      "type" : "object"
+    },
+    "ReleaseMetadata" : {
+      "description" : "Yugabyte release metadata",
       "properties" : {
         "chartPath" : {
           "description" : "Helm chart path",
@@ -3372,25 +3396,6 @@
       },
       "type" : "object"
     },
-    "ReleaseFormData" : {
-      "description" : "Specification for release locations",
-      "properties" : {
-        "gcs" : {
-          "$ref" : "#/definitions/GCSLocation"
-        },
-        "http" : {
-          "$ref" : "#/definitions/HttpLocation"
-        },
-        "s3" : {
-          "$ref" : "#/definitions/S3Location"
-        },
-        "version" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "gcs", "http", "s3", "version" ],
-      "type" : "object"
-    },
     "RuntimeConfigData" : {
       "description" : "Runtime configuration data",
       "properties" : {
@@ -3417,7 +3422,7 @@
       "description" : "Backup schedule",
       "properties" : {
         "cronExpression" : {
-          "description" : "Cron expression for schedule",
+          "description" : "Cron expression for the schedule",
           "type" : "string"
         },
         "customerUUID" : {
@@ -3427,13 +3432,13 @@
           "type" : "string"
         },
         "failureCount" : {
-          "description" : "Number of failed schedule",
+          "description" : "Number of failed backup attempts",
           "format" : "int32",
           "readOnly" : true,
           "type" : "integer"
         },
         "frequency" : {
-          "description" : "Frequency of the schedule",
+          "description" : "Frequency of the schedule, in minutes",
           "format" : "int64",
           "type" : "integer"
         },
@@ -3444,17 +3449,17 @@
           "type" : "string"
         },
         "status" : {
-          "description" : "Status of the task",
+          "description" : "Status of the task. Possible values are _Active_, _Paused_, or _Stopped_.",
           "enum" : [ "Active", "Paused", "Stopped" ],
           "readOnly" : true,
           "type" : "string"
         },
         "taskParams" : {
-          "$ref" : "#/definitions/Multi-table backup parameters",
-          "description" : "Schedule task params"
+          "$ref" : "#/definitions/MultiTableBackupParams",
+          "description" : "Schedule task parameters"
         },
         "taskType" : {
-          "description" : "Type of the task to be scheduled",
+          "description" : "Type of task to be scheduled. This can be either a multi-table backup, or a full-universe backup.",
           "enum" : [ "CloudBootstrap", "CloudCleanup", "CreateCassandraTable", "CreateUniverse", "ReadOnlyClusterCreate", "ReadOnlyClusterDelete", "CreateKubernetesUniverse", "DestroyUniverse", "PauseUniverse", "ResumeUniverse", "DestroyKubernetesUniverse", "DeleteTable", "BackupUniverse", "MultiTableBackup", "EditUniverse", "EditKubernetesUniverse", "ExternalScript", "KubernetesProvision", "ImportIntoTable", "UpgradeUniverse", "RestartUniverse", "SoftwareUpgrade", "SoftwareKubernetesUpgrade", "GFlagsUpgrade", "GFlagsKubernetesUpgrade", "CertsRotate", "TlsToggle", "VMImageUpgrade", "CreateRootVolumes", "ReplaceRootVolume", "ChangeInstanceType", "PersistResizeNode", "PersistSystemdUpgrade", "UpdateNodeDetails", "UpgradeKubernetesUniverse", "DeleteNodeFromUniverse", "StopNodeInUniverse", "StartNodeInUniverse", "AddNodeToUniverse", "RemoveNodeFromUniverse", "ReleaseInstanceFromUniverse", "SetUniverseKey", "SetKubernetesUniverseKey", "CreateKMSConfig", "DeleteKMSConfig", "UpdateDiskSize", "StartMasterOnNode", "SyncDBStateWithPlatform", "CreateXClusterReplication", "DeleteXClusterReplication", "EditXClusterReplication", "PauseOrResumeXClusterReplication", "AnsibleClusterServerCtl", "AnsibleConfigureServers", "AnsibleDestroyServer", "PauseServer", "ResumeServer", "AnsibleSetupServer", "AnsibleCreateServer", "PrecheckNode", "AnsibleUpdateNodeInfo", "BulkImport", "ChangeMasterConfig", "CreateTable", "DeleteNode", "DeleteBackup", "UpdateNodeProcess", "DeleteTableFromUniverse", "LoadBalancerStateChange", "ModifyBlackList", "ManipulateDnsRecordTask", "RemoveUniverseEntry", "SetFlagInMemory", "SetNodeState", "SwamperTargetsFileUpdate", "UniverseUpdateSucceeded", "UpdateAndPersistGFlags", "UpdatePlacementInfo", "UpdateSoftwareVersion", "WaitForDataMove", "WaitForLoadBalance", "WaitForMasterLeader", "WaitForServer", "WaitForTServerHeartBeats", "DeleteClusterFromUniverse", "InstanceActions", "WaitForServerReady", "RunExternalScript", "CloudAccessKeyCleanup", "CloudAccessKeySetup", "CloudInitializer", "CloudProviderCleanup", "CloudRegionCleanup", "CloudRegionSetup", "CloudSetup", "BackupTable", "BackupUniverseKeys", "RestoreUniverseKeys", "WaitForLeadersOnPreferredOnly", "EnableEncryptionAtRest", "DisableEncryptionAtRest", "DestroyEncryptionAtRest", "KubernetesCommandExecutor", "KubernetesWaitForPod", "KubernetesCheckNumPod", "CopyEncryptionKeyFile", "WaitForEncryptionKeyInMemory", "UnivSetCertificate", "CreateAlertDefinitions", "UniverseSetTlsParams", "UniverseUpdateRootCert", "AsyncReplicationPlatformSync", "ResetUniverseVersion", "AlterXClusterReplicationAddTables", "AlterXClusterReplicationRemoveTables", "AlterXClusterReplicationChangeMasterAddresses", "XClusterReplicationSetActive", "DeleteCertificate" ],
           "type" : "string"
         }
@@ -3472,7 +3477,7 @@
           "type" : "array"
         },
         "mutableScope" : {
-          "description" : "Is scope mutable",
+          "description" : "Mutability of the scope. Only super admin users can change global scope; other scopes are customer-mutable.",
           "type" : "boolean"
         },
         "type" : {
@@ -3516,7 +3521,7 @@
       "description" : "SMTP configuration information",
       "properties" : {
         "emailFrom" : {
-          "description" : "SMTP email id",
+          "description" : "SMTP email 'from' address",
           "example" : "test@example.com",
           "type" : "string"
         },
@@ -3542,49 +3547,14 @@
           "type" : "string"
         },
         "useSSL" : {
-          "description" : "Use SMTP SSL",
+          "description" : "Connect to SMTP server using SSL",
           "example" : true,
           "type" : "boolean"
         },
         "useTLS" : {
-          "description" : "Use SMTP TLS",
+          "description" : "Connect to SMTP server using TLS",
           "example" : false,
           "type" : "boolean"
-        }
-      },
-      "type" : "object"
-    },
-    "Table information" : {
-      "properties" : {
-        "keySpace" : {
-          "description" : "Keyspace",
-          "type" : "string"
-        },
-        "relationType" : {
-          "description" : "Relation type",
-          "enum" : [ "SYSTEM_TABLE_RELATION", "USER_TABLE_RELATION", "INDEX_TABLE_RELATION" ],
-          "type" : "string"
-        },
-        "sizeBytes" : {
-          "description" : "Size in bytes",
-          "format" : "double",
-          "readOnly" : true,
-          "type" : "number"
-        },
-        "tableName" : {
-          "description" : "Table name",
-          "type" : "string"
-        },
-        "tableType" : {
-          "description" : "Table type",
-          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
-          "type" : "string"
-        },
-        "tableUUID" : {
-          "description" : "Table UUID",
-          "format" : "uuid",
-          "readOnly" : true,
-          "type" : "string"
         }
       },
       "type" : "object"
@@ -3680,26 +3650,26 @@
       "description" : "Table details",
       "properties" : {
         "columns" : {
-          "description" : "Details of the columns that make up the table",
+          "description" : "Details of all columns in the table",
           "items" : {
             "$ref" : "#/definitions/ColumnDetails"
           },
           "type" : "array"
         },
         "cqlcreateKeyspaceString" : {
-          "description" : "CQL create keyspace detail",
+          "description" : "CQL create keyspace detail. This is the statement to be used to create the keyspace.",
           "type" : "string"
         },
         "cqlcreateTableString" : {
-          "description" : "CQL create table detail",
+          "description" : "CQL create table detail. This is the statement to be used to create the table.",
           "type" : "string"
         },
         "cqluseKeyspaceString" : {
-          "description" : "CQL use keyspace detail",
+          "description" : "CQL use keyspace detail. This is the statement to be used to use the keyspace.",
           "type" : "string"
         },
         "keyspace" : {
-          "description" : "Keyspace that this table belongs to",
+          "description" : "Keyspace to which this table belongs",
           "type" : "string"
         },
         "tableName" : {
@@ -3707,38 +3677,47 @@
           "type" : "string"
         },
         "ttlInSeconds" : {
-          "description" : "The default table-level time to live",
+          "description" : "The default table-level time to live, in seconds. A value of `-1` represents an infinite TTL.",
           "format" : "int64",
           "type" : "integer"
         }
       },
       "type" : "object"
     },
-    "Universe detail subset" : {
-      "description" : "A small subset of universe information",
+    "TableInfoResp" : {
+      "description" : "Table information response",
       "properties" : {
-        "creationDate" : {
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "name" : {
+        "keySpace" : {
+          "description" : "Keyspace",
           "type" : "string"
         },
-        "universePaused" : {
-          "type" : "boolean"
+        "relationType" : {
+          "description" : "Relation type",
+          "enum" : [ "SYSTEM_TABLE_RELATION", "USER_TABLE_RELATION", "INDEX_TABLE_RELATION" ],
+          "type" : "string"
         },
-        "updateInProgress" : {
-          "type" : "boolean"
+        "sizeBytes" : {
+          "description" : "Size in bytes",
+          "format" : "double",
+          "readOnly" : true,
+          "type" : "number"
         },
-        "updateSucceeded" : {
-          "type" : "boolean"
+        "tableName" : {
+          "description" : "Table name",
+          "type" : "string"
         },
-        "uuid" : {
+        "tableType" : {
+          "description" : "Table type",
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
+        "tableUUID" : {
+          "description" : "Table UUID",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         }
       },
-      "required" : [ "creationDate", "name", "universePaused", "updateInProgress", "updateSucceeded", "uuid" ],
       "type" : "object"
     },
     "UniverseConfigureTaskParams" : {
@@ -4171,6 +4150,33 @@
       "required" : [ "clusters" ],
       "type" : "object"
     },
+    "UniverseDetailSubset" : {
+      "description" : "A small subset of universe information",
+      "properties" : {
+        "creationDate" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "creationDate", "name", "universePaused", "updateInProgress", "updateSucceeded", "uuid" ],
+      "type" : "object"
+    },
     "UniverseResourceDetails" : {
       "properties" : {
         "azList" : {
@@ -4233,7 +4239,7 @@
       "description" : "Universe-creation response",
       "properties" : {
         "creationDate" : {
-          "description" : "Creation date",
+          "description" : "Universe creation date",
           "type" : "string"
         },
         "dnsName" : {
@@ -4251,7 +4257,7 @@
         },
         "resources" : {
           "$ref" : "#/definitions/UniverseResourceDetails",
-          "description" : "Universe resources"
+          "description" : "Universe resource details"
         },
         "sampleAppCommandTxt" : {
           "description" : "Sample command",
@@ -4279,7 +4285,7 @@
           "type" : "string"
         },
         "version" : {
-          "description" : "Version",
+          "description" : "Universe version",
           "format" : "int32",
           "type" : "integer"
         }
@@ -4392,7 +4398,7 @@
       "type" : "object"
     },
     "UserRegistrationData" : {
-      "description" : "User registration data",
+      "description" : "User registration data. The API and UI use this to validate form data.",
       "properties" : {
         "confirmPassword" : {
           "description" : "Password confirmation",
@@ -4427,44 +4433,44 @@
       "type" : "object"
     },
     "Users" : {
-      "description" : "Users associated customers.",
+      "description" : "A user associated with a customer",
       "properties" : {
         "authTokenIssueDate" : {
-          "description" : "Token issued date",
+          "description" : "API token creation date",
           "example" : "1624255408795",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "creationDate" : {
-          "description" : "Creation time",
+          "description" : "User creation date",
           "example" : "2021-06-17 15:00:05",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "customerUUID" : {
-          "description" : "Customer uuid",
+          "description" : "Customer UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
         },
         "email" : {
-          "description" : "User email id",
+          "description" : "User email address",
           "example" : "username1@example.com",
           "type" : "string"
         },
         "isPrimary" : {
-          "description" : "User is primary user or not",
+          "description" : "True if the user is the primary user",
           "type" : "boolean"
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "enum" : [ "Admin", "BackupAdmin", "ReadOnly", "SuperAdmin" ],
           "type" : "string"
         },
         "uuid" : {
-          "description" : "User uuid",
+          "description" : "User UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -4604,7 +4610,7 @@
       "description" : "Generic error response from the Yugabyte Platform API",
       "properties" : {
         "error" : {
-          "description" : "User visible unstructured error message",
+          "description" : "User-visible unstructured error message",
           "example" : "There was a problem creating the universe",
           "type" : "string"
         },
@@ -4629,7 +4635,7 @@
           "type" : "string"
         },
         "success" : {
-          "description" : "API operation success",
+          "description" : "API operation status. A value of true indicates the operation was successful.",
           "readOnly" : true,
           "type" : "boolean"
         }
@@ -4659,7 +4665,7 @@
   },
   "externalDocs" : {
     "description" : "About Yugabyte Platform",
-    "url" : "https://docs.yugabyte.com"
+    "url" : "https://docs.yugabyte.com/latest/yugabyte-platform/"
   },
   "info" : {
     "contact" : {
@@ -6363,7 +6369,7 @@
       },
       "post" : {
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "create_accesskey",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -6395,7 +6401,7 @@
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_keys/{keyCode}" : {
       "delete" : {
         "description" : "",
-        "operationId" : "delete",
+        "operationId" : "delete_accesskey",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -7160,7 +7166,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Release metadata"
+              "$ref" : "#/definitions/ReleaseMetadata"
             }
           }
         },
@@ -8950,7 +8956,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/Table information"
+                "$ref" : "#/definitions/TableInfoResp"
               },
               "type" : "array"
             }
@@ -9373,7 +9379,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/xcluster_replication" : {
       "delete" : {
         "description" : "",
-        "operationId" : "delete",
+        "operationId" : "delete_xcluster",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9411,7 +9417,7 @@
       },
       "post" : {
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "create_xcluster",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -10154,7 +10160,7 @@
   "schemes" : [ "http", "https" ],
   "securityDefinitions" : {
     "apiKeyAuth" : {
-      "description" : "Api key passed as header",
+      "description" : "API token passed as header",
       "in" : "header",
       "name" : "X-AUTH-YW-API-TOKEN",
       "type" : "apiKey"

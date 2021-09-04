@@ -35,7 +35,7 @@ import play.libs.Json;
 
 @Entity
 // @IdClass(KmsHistoryId.class)
-@ApiModel(description = "KMS History.")
+@ApiModel(description = "KMS history")
 public class KmsHistory extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsHistory.class);
 
@@ -58,12 +58,12 @@ public class KmsHistory extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Config UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "KMS configuration UUID", accessMode = READ_ONLY)
   public UUID configUuid;
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "KMS is active or not", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "True if the KMS is active", accessMode = READ_ONLY)
   public boolean active;
 
   public static final Finder<KmsHistoryId, KmsHistory> find =

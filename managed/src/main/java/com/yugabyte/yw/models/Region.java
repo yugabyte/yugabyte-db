@@ -43,12 +43,12 @@ import play.libs.Json;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @ApiModel(
     description =
-        "Region within a given provider. Typically this will map to a "
-            + "single cloud provider region")
+        "Region within a given provider. Typically, this maps to a "
+            + "single cloud provider region.")
 public class Region extends Model {
 
   @Id
-  @ApiModelProperty(value = "Region uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Region UUID", accessMode = READ_ONLY)
   public UUID uuid;
 
   @Column(length = 25, nullable = false)
@@ -59,7 +59,10 @@ public class Region extends Model {
   public String code;
 
   @Column(length = 100, nullable = false)
-  @ApiModelProperty(value = "Cloud provider region name", example = "TODO", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Cloud provider region name",
+      example = "US West (Oregon)",
+      accessMode = READ_WRITE)
   public String name;
 
   @ApiModelProperty(
@@ -69,13 +72,13 @@ public class Region extends Model {
   public String ybImage;
 
   @Column(columnDefinition = "float")
-  @ApiModelProperty(value = "Longitude of this region", example = "-120.01", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
   @Constraints.Min(-180)
   @Constraints.Max(180)
   public double longitude = -90;
 
   @Column(columnDefinition = "float")
-  @ApiModelProperty(value = "Latitude of this region", example = "37.22", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The region's latitude", example = "37.22", accessMode = READ_ONLY)
   @Constraints.Min(-90)
   @Constraints.Max(90)
   public double latitude = -90;
@@ -183,7 +186,7 @@ public class Region extends Model {
    * @param provider Cloud Provider
    * @param code Unique PlacementRegion Code
    * @param name User Friendly PlacementRegion Name
-   * @param ybImage The YB image id that we need to use for provisioning in this region
+   * @param ybImage The YB image ID that we need to use for provisioning in this region
    * @return instance of PlacementRegion
    */
   public static Region create(Provider provider, String code, String name, String ybImage) {
@@ -224,11 +227,11 @@ public class Region extends Model {
   }
 
   public static Region getByCode(Provider provider, String code) {
-    return find.query().where().eq("provider_uuid", provider.uuid).eq("code", code).findOne();
+    return find.query().where().eq("provider_UUID", provider.uuid).eq("code", code).findOne();
   }
 
   public static List<Region> getByProvider(UUID providerUUID) {
-    return find.query().where().eq("provider_uuid", providerUUID).findList();
+    return find.query().where().eq("provider_UUID", providerUUID).findList();
   }
 
   public static Region getOrBadRequest(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
@@ -245,14 +248,14 @@ public class Region extends Model {
     String regionQuery =
         " select r.uuid, r.code, r.name"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
-            + "  where r.uuid = :r_uuid and p.uuid = :p_uuid and p.customer_uuid = :c_uuid";
+            + "  where r.uuid = :r_uuid and p.uuid = :p_uuid and p.customer_uuid = :c_UUID";
 
     RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
     Query<Region> query = Ebean.find(Region.class);
     query.setRawSql(rawSql);
-    query.setParameter("r_uuid", regionUUID);
-    query.setParameter("p_uuid", providerUUID);
-    query.setParameter("c_uuid", customerUUID);
+    query.setParameter("r_UUID", regionUUID);
+    query.setParameter("p_UUID", providerUUID);
+    query.setParameter("c_UUID", customerUUID);
     return query.findOne();
   }
 
@@ -267,7 +270,7 @@ public class Region extends Model {
         " select r.uuid, r.code, r.name"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
             + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
-            + "  where p.uuid = :p_uuid and p.customer_uuid = :c_uuid"
+            + "  where p.uuid = :p_uuid and p.customer_uuid = :c_UUID"
             + "  group by r.uuid "
             + " having count(zone.uuid) >= "
             + minZoneCount;
@@ -275,8 +278,8 @@ public class Region extends Model {
     RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
     Query<Region> query = Ebean.find(Region.class);
     query.setRawSql(rawSql);
-    query.setParameter("p_uuid", providerUUID);
-    query.setParameter("c_uuid", customerUUID);
+    query.setParameter("p_UUID", providerUUID);
+    query.setParameter("c_UUID", customerUUID);
     return query.findList();
   }
 
@@ -286,10 +289,10 @@ public class Region extends Model {
       setActiveFlag(false);
       update();
       String s =
-          "UPDATE availability_zone set active = :active_flag where region_uuid = :region_uuid";
+          "UPDATE availability_zone set active = :active_flag where region_uuid = :region_UUID";
       SqlUpdate updateStmt = Ebean.createSqlUpdate(s);
       updateStmt.setParameter("active_flag", false);
-      updateStmt.setParameter("region_uuid", uuid);
+      updateStmt.setParameter("region_UUID", uuid);
       Ebean.execute(updateStmt);
       commitTransaction();
     } catch (Exception e) {

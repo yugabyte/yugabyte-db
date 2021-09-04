@@ -43,7 +43,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
     // Whether to enable/disable/rotate universe key/encryption at rest
     @JsonAlias({"key_op"})
     @ApiModelProperty(
-        value = "Operation type: enable, disable, or rotate the universe key/encryption at rest")
+        value = "Operation type: enable, disable, or rotate the universe key/encryption at rest",
+        allowableValues = "ENABLE, DISABLE, UNDEFINED")
     public OpType opType;
 
     // Whether to generate a data key or just retrieve the CMK arn

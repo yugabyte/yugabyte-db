@@ -24,10 +24,10 @@ import java.util.UUID;
     // Ignore auto-generated boolean properties: https://stackoverflow.com/questions/32270422
     value = {"master", "tserver", "redisServer", "yqlServer", "ysqlServer"},
     ignoreUnknown = true)
-@ApiModel(description = "Node details")
+@ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   // The id of the node. This is usually present in the node name.
-  @ApiModelProperty(value = "Node id")
+  @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
 
   // Name of the node.
@@ -40,18 +40,18 @@ public class NodeDetails {
   public UUID nodeUuid;
 
   // Information about the node that is returned by the cloud provider.
-  @ApiModelProperty(value = "Cloud information")
+  @ApiModelProperty(value = "Node information, as reported by the cloud provider")
   public CloudSpecificInfo cloudInfo;
 
   // The AZ UUID (the YB UUID for the AZ) into which the node is deployed.
-  @ApiModelProperty(value = "Az UUID")
+  @ApiModelProperty(value = "The availability zone's UUID")
   public UUID azUuid;
 
   // The UUID of the cluster that this node belongs to.
-  @ApiModelProperty(value = "Placement UUID")
+  @ApiModelProperty(value = "UUID of the cluster to which this node belongs")
   public UUID placementUuid;
 
-  @ApiModelProperty(value = "Machine image")
+  @ApiModelProperty(value = "Machine image name")
   public String machineImage;
 
   // Possible states in which this node can exist.
@@ -112,7 +112,7 @@ public class NodeDetails {
   }
 
   // The current state of the node.
-  @ApiModelProperty(value = "Node state")
+  @ApiModelProperty(value = "Node state", example = "Provisioned")
   public NodeState state;
 
   // True if this node is a master, along with port info.
@@ -126,43 +126,43 @@ public class NodeDetails {
   public int masterRpcPort = 7100;
 
   // True if this node is a tserver, along with port info.
-  @ApiModelProperty(value = "True if this node is a tserver")
+  @ApiModelProperty(value = "True if this node is a Tablet server")
   public boolean isTserver = true;
 
-  @ApiModelProperty(value = "Tserver HTTP port")
+  @ApiModelProperty(value = "Tablet server HTTP port")
   public int tserverHttpPort = 9000;
 
-  @ApiModelProperty(value = "Tserver RPC port")
+  @ApiModelProperty(value = "Tablet server RPC port")
   public int tserverRpcPort = 9100;
 
   // True if this node is a Redis server, along with port info.
-  @ApiModelProperty(value = "True if this node is a redis server")
+  @ApiModelProperty(value = "True if this node is a REDIS server")
   public boolean isRedisServer = true;
 
-  @ApiModelProperty(value = "Redis HTTP port")
+  @ApiModelProperty(value = "REDIS HTTP port")
   public int redisServerHttpPort = 11000;
 
-  @ApiModelProperty(value = "Redis RPC port")
+  @ApiModelProperty(value = "REDIS RPC port")
   public int redisServerRpcPort = 6379;
 
   // True if this node is a YSQL server, along with port info.
-  @ApiModelProperty(value = "True if this node is a Yql")
+  @ApiModelProperty(value = "True if this node is a YCQL server")
   public boolean isYqlServer = true;
 
-  @ApiModelProperty(value = "Yql HTTP port")
+  @ApiModelProperty(value = "YCQL HTTP port")
   public int yqlServerHttpPort = 12000;
 
-  @ApiModelProperty(value = "Yql RPC port")
+  @ApiModelProperty(value = "YCQL RPC port")
   public int yqlServerRpcPort = 9042;
 
   // True if this node is a YSQL server, along with port info.
-  @ApiModelProperty(value = "True if this node is a Ysql")
+  @ApiModelProperty(value = "True if this node is a YSQL server")
   public boolean isYsqlServer = true;
 
-  @ApiModelProperty(value = "Ysql HTTP port")
+  @ApiModelProperty(value = "YSQL HTTP port")
   public int ysqlServerHttpPort = 13000;
 
-  @ApiModelProperty(value = "Ysql RPC port")
+  @ApiModelProperty(value = "YSQL RPC port")
   public int ysqlServerRpcPort = 5433;
 
   // Which port node_exporter is running on.
@@ -170,7 +170,7 @@ public class NodeDetails {
   public int nodeExporterPort = 9300;
 
   // True if cronjobs were properly configured for this node.
-  @ApiModelProperty(value = "True if cronjobs were properly configured for this node")
+  @ApiModelProperty(value = "True if cron jobs were properly configured for this node")
   public boolean cronsActive = true;
 
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
