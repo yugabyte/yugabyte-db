@@ -21,7 +21,10 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@ApiModel(value = "Alert configuration threshold.")
+@ApiModel(
+    value = "AlertConfigurationThreshold",
+    description =
+        "Alert configuration threshold. Conditions can be either greater than a specified value, or less than a specified value.")
 public class AlertConfigurationThreshold {
 
   public enum Condition {
@@ -39,7 +42,10 @@ public class AlertConfigurationThreshold {
     }
   }
 
-  @ApiModelProperty(value = "Threshold condition", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Threshold condition (greater than, or less than)",
+      allowableValues = ">, <",
+      accessMode = READ_WRITE)
   private Condition condition;
 
   @ApiModelProperty(value = "Threshold value", accessMode = READ_WRITE)

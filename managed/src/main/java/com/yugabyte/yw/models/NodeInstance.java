@@ -29,20 +29,20 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @Entity
-@ApiModel(description = "Node instance attched to provider and zones")
+@ApiModel(description = "A single node instance, attached to a provider and availability zone")
 public class NodeInstance extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstance.class);
 
   @Id
-  @ApiModelProperty(value = "Node instance UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The node's UUID", accessMode = READ_ONLY)
   public UUID nodeUuid;
 
   @Column
-  @ApiModelProperty(value = "Node instance type code", example = "c5large")
+  @ApiModelProperty(value = "The node's type code", example = "c5large")
   public String instanceTypeCode;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Node instance node name", example = "India node")
+  @ApiModelProperty(value = "The node's name", example = "India node")
   private String nodeName;
 
   public String getNodeName() {
@@ -58,19 +58,19 @@ public class NodeInstance extends Model {
   }
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Node instance instance name", example = "Mumbai instance")
+  @ApiModelProperty(value = "The node instance's name", example = "Mumbai instance")
   public String instanceName;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Node instance zone UUID")
+  @ApiModelProperty(value = "The availability zone's UUID")
   public UUID zoneUuid;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Node instance is in used or not")
+  @ApiModelProperty(value = "True if the node is in use")
   public boolean inUse;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Node instance node details")
+  @ApiModelProperty(value = "Node details (as a JSON object)")
   private String nodeDetailsJson;
 
   // Preserving the details into a structured class.
@@ -95,7 +95,9 @@ public class NodeInstance extends Model {
     this.save();
   }
 
-  @ApiModelProperty(value = "Node details", example = "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}")
+  @ApiModelProperty(
+      value = "Node details (as a JSON object)",
+      example = "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}")
   public String getDetailsJson() {
     return nodeDetailsJson;
   }
@@ -198,7 +200,7 @@ public class NodeInstance extends Model {
   public static NodeInstance getOrBadRequest(UUID nodeUuid) {
     NodeInstance node = get(nodeUuid);
     if (node == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid Node UUID: " + nodeUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid node UUID: " + nodeUuid);
     }
     return node;
   }

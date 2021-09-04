@@ -64,7 +64,7 @@ public class Schedule extends Model {
     return customerUUID;
   }
 
-  @ApiModelProperty(value = "Number of failed schedule", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Number of failed backup attempts", accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
@@ -72,7 +72,7 @@ public class Schedule extends Model {
     return failureCount;
   }
 
-  @ApiModelProperty(value = "Frequency of the schedule", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Frequency of the schedule, in minutes", accessMode = READ_WRITE)
   @Column(nullable = false)
   private long frequency;
 
@@ -81,7 +81,7 @@ public class Schedule extends Model {
   }
 
   @ApiModelProperty(
-      value = "Schedule task params",
+      value = "Schedule task parameters",
       accessMode = READ_WRITE,
       dataType = "com.yugabyte.yw.commissioner.tasks.MultiTableBackup$Params")
   @Column(nullable = false, columnDefinition = "TEXT")
@@ -92,7 +92,10 @@ public class Schedule extends Model {
     return taskParams;
   }
 
-  @ApiModelProperty(value = "Type of the task to be scheduled", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value =
+          "Type of task to be scheduled. This can be either a multi-table backup, or a full-universe backup.",
+      accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
@@ -101,7 +104,10 @@ public class Schedule extends Model {
     return taskType;
   }
 
-  @ApiModelProperty(value = "Status of the task", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "Status of the task. Possible values are _Active_, _Paused_, or _Stopped_.",
+      allowableValues = "Active, Paused, Stopped",
+      accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private State status = State.Active;
@@ -111,7 +117,7 @@ public class Schedule extends Model {
   }
 
   @Column
-  @ApiModelProperty(value = "Cron expression for schedule")
+  @ApiModelProperty(value = "Cron expression for the schedule")
   private String cronExpression;
 
   public String getCronExpression() {

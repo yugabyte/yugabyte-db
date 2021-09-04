@@ -21,15 +21,17 @@ public class TableDetails {
   public String tableName;
 
   // The keyspace that this table belongs to.
-  @ApiModelProperty(value = "Keyspace that this table belongs to")
+  @ApiModelProperty(value = "Keyspace to which this table belongs")
   public String keyspace;
 
   // The default table-level time to live (in seconds).
-  @ApiModelProperty(value = "The default table-level time to live")
+  @ApiModelProperty(
+      value =
+          "The default table-level time to live, in seconds. A value of `-1` represents an infinite TTL.")
   public long ttlInSeconds = -1;
 
   // Details of the columns that make up the table (to be used to create ColumnSchemas).
-  @ApiModelProperty(value = "Details of the columns that make up the table")
+  @ApiModelProperty(value = "Details of all columns in the table")
   public List<ColumnDetails> columns;
 
   /**
@@ -50,12 +52,15 @@ public class TableDetails {
     return tableDetails;
   }
 
-  @ApiModelProperty(value = "CQL create keyspace detail")
+  @ApiModelProperty(
+      value =
+          "CQL create keyspace detail. This is the statement to be used to create the keyspace.")
   public String getCQLCreateKeyspaceString() {
     return "CREATE KEYSPACE IF NOT EXISTS \"" + keyspace + "\"";
   }
 
-  @ApiModelProperty(value = "CQL use keyspace detail")
+  @ApiModelProperty(
+      value = "CQL use keyspace detail. This is the statement to be used to use the keyspace.")
   public String getCQLUseKeyspaceString() {
     return "USE \"" + keyspace + "\"";
   }
@@ -67,7 +72,8 @@ public class TableDetails {
    *
    * @return a CQL CREATE TABLE statement for the table represented by this TableDetails object
    */
-  @ApiModelProperty(value = "CQL create table detail")
+  @ApiModelProperty(
+      value = "CQL create table detail. This is the statement to be used to create the table.")
   public String getCQLCreateTableString() {
     List<String> partitionKeys = new ArrayList<>();
     List<String> clusteringKeys = new ArrayList<>();
