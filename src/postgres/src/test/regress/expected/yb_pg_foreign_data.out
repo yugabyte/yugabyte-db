@@ -1606,8 +1606,9 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the
  c8     | integer |           |          |         | plain    |              | 
 Child tables: ft2
 
--- ^^^ originally c6 supposed to be:
+-- ^^^ originally c6 and c8 supposed to be:
 --  c6     | integer |           | not null |         | plain    |              | 
+--  c8     | text    |           |          |         | external |              | 
 \d+ ft2
                                        Foreign table "public.ft2"
  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 

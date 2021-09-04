@@ -652,8 +652,9 @@ ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 \d+ fd_pt1
--- ^^^ originally c6 supposed to be:
+-- ^^^ originally c6 and c8 supposed to be:
 --  c6     | integer |           | not null |         | plain    |              | 
+--  c8     | text    |           |          |         | external |              | 
 \d+ ft2
 -- ^^^ originally c6 and c8 supposed to be:
 --  c6     | integer |           | not null |         |             | plain    |              | 
