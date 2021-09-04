@@ -42,7 +42,10 @@ public class XClusterReplicationController extends AuthenticatedController {
    *
    * @return Result
    */
-  @ApiOperation(nickname = "create_xcluster", value = "Create xCluster Replication", response = YBPTask.class)
+  @ApiOperation(
+      nickname = "create_xcluster",
+      value = "Create xCluster Replication",
+      response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "xcluster_replication_form_data",
@@ -96,7 +99,10 @@ public class XClusterReplicationController extends AuthenticatedController {
    *
    * @return Result
    */
-  @ApiOperation(nickname = "delete_xcluster", value = "Delete xCluster Replication", response = YBPTask.class)
+  @ApiOperation(
+      nickname = "delete_xcluster",
+      value = "Delete xCluster Replication",
+      response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "xcluster_replication_form_data",
