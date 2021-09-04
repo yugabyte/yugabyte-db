@@ -896,7 +896,7 @@
           "type" : "string"
         },
         "secondarySubnet" : {
-          "description" : "AZ Secondary Subnet",
+          "description" : "AZ secondary subnet",
           "example" : "secondary subnet id",
           "type" : "string"
         },
@@ -6369,7 +6369,7 @@
       },
       "post" : {
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "create_accesskey",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -6401,7 +6401,7 @@
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_keys/{keyCode}" : {
       "delete" : {
         "description" : "",
-        "operationId" : "delete",
+        "operationId" : "delete_accesskey",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9379,7 +9379,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/xcluster_replication" : {
       "delete" : {
         "description" : "",
-        "operationId" : "delete",
+        "operationId" : "delete_xcluster",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -9417,7 +9417,7 @@
       },
       "post" : {
         "description" : "",
-        "operationId" : "create",
+        "operationId" : "create_xcluster",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
