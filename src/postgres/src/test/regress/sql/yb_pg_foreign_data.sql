@@ -625,28 +625,25 @@ CREATE FOREIGN TABLE ft3 (
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c5 integer DEFAULT 0;
 ALTER TABLE fd_pt1 ADD COLUMN c6 integer;
-ALTER TABLE fd_pt1 ADD COLUMN c7 integer NOT NULL;
--- ^^^ TODO: originally no error here
+ALTER TABLE fd_pt1 ADD COLUMN c7 integer; -- TODO: should have NOT NULL; setting NOT NULL results in "Invalid argument: Invalid column number 4"
 ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
 \d+ fd_pt1
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         | plain    |              | 
 \d+ ft2
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         |             | plain    |              | 
 \d+ ct3
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         | plain    |              | 
 \d+ ft3
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         |             | plain    |              | 
 -- alter attributes recursively
 ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
 ALTER TABLE fd_pt1 ALTER COLUMN c5 DROP DEFAULT;
-ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL;
--- ^^^ TODO: originally no error here
+-- ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL; -- TODO: fix; setting NOT NULL results in "Invalid argument: Invalid column number 4"
 ALTER TABLE fd_pt1 ALTER COLUMN c7 DROP NOT NULL;
--- ^^^ TODO: originally no error here
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';        -- ERROR
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET DATA TYPE text;
@@ -657,21 +654,16 @@ ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 \d+ fd_pt1
 -- ^^^ originally c6 supposed to be:
 --  c6     | integer |           | not null |         | plain    |              | 
--- ^^^ originally extra column:
---  c7     | integer |           |          |         | plain    |              | 
 \d+ ft2
 -- ^^^ originally c6 and c8 supposed to be:
 --  c6     | integer |           | not null |         |             | plain    |              | 
 --  c8     | text    |           |          |         |             | external |              | 
--- ^^^ originally extra column:
---  c7     | integer |           |          |         |             | plain    |              | 
 
 -- drop attributes recursively
 ALTER TABLE fd_pt1 DROP COLUMN c4;
 ALTER TABLE fd_pt1 DROP COLUMN c5;
 ALTER TABLE fd_pt1 DROP COLUMN c6;
 ALTER TABLE fd_pt1 DROP COLUMN c7;
--- ^^^ originally: no error
 ALTER TABLE fd_pt1 DROP COLUMN c8;
 \d+ fd_pt1
 \d+ ft2

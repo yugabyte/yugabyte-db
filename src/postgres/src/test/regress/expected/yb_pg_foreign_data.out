@@ -1490,9 +1490,7 @@ Inherits: ft2
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c5 integer DEFAULT 0;
 ALTER TABLE fd_pt1 ADD COLUMN c6 integer;
-ALTER TABLE fd_pt1 ADD COLUMN c7 integer NOT NULL;
-ERROR:  Invalid argument: Invalid column number 4
--- ^^^ TODO: originally no error here
+ALTER TABLE fd_pt1 ADD COLUMN c7 integer; -- TODO: should have NOT NULL; setting NOT NULL results in "Invalid argument: Invalid column number 4"
 ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
 \d+ fd_pt1
                                    Table "public.fd_pt1"
@@ -1504,10 +1502,11 @@ ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
  c4     | integer |           |          |         | plain    |              | 
  c5     | integer |           |          | 0       | plain    |              | 
  c6     | integer |           |          |         | plain    |              | 
+ c7     | integer |           |          |         | plain    |              | 
  c8     | integer |           |          |         | plain    |              | 
 Child tables: ft2
 
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         | plain    |              | 
 \d+ ft2
                                        Foreign table "public.ft2"
@@ -1519,6 +1518,7 @@ Child tables: ft2
  c4     | integer |           |          |         |             | plain    |              | 
  c5     | integer |           |          | 0       |             | plain    |              | 
  c6     | integer |           |          |         |             | plain    |              | 
+ c7     | integer |           |          |         |             | plain    |              | 
  c8     | integer |           |          |         |             | plain    |              | 
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
@@ -1526,7 +1526,7 @@ Inherits: fd_pt1
 Child tables: ct3,
               ft3
 
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         |             | plain    |              | 
 \d+ ct3
                                     Table "public.ct3"
@@ -1538,10 +1538,11 @@ Child tables: ct3,
  c4     | integer |           |          |         | plain    |              | 
  c5     | integer |           |          | 0       | plain    |              | 
  c6     | integer |           |          |         | plain    |              | 
+ c7     | integer |           |          |         | plain    |              | 
  c8     | integer |           |          |         | plain    |              | 
 Inherits: ft2
 
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         | plain    |              | 
 \d+ ft3
                                        Foreign table "public.ft3"
@@ -1553,21 +1554,18 @@ Inherits: ft2
  c4     | integer |           |          |         |             | plain    |              | 
  c5     | integer |           |          | 0       |             | plain    |              | 
  c6     | integer |           |          |         |             | plain    |              | 
+ c7     | integer |           |          |         |             | plain    |              | 
  c8     | integer |           |          |         |             | plain    |              | 
 Server: s0
 Inherits: ft2
 
--- ^^^ originally extra column:
+-- ^^^ originally c7 column must be:
 --  c7     | integer |           | not null |         |             | plain    |              | 
 -- alter attributes recursively
 ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
 ALTER TABLE fd_pt1 ALTER COLUMN c5 DROP DEFAULT;
-ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL;
-ERROR:  Invalid argument: Invalid column number 4
--- ^^^ TODO: originally no error here
+-- ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL; -- TODO: fix; setting NOT NULL results in "Invalid argument: Invalid column number 4"
 ALTER TABLE fd_pt1 ALTER COLUMN c7 DROP NOT NULL;
-ERROR:  column "c7" of relation "fd_pt1" does not exist
--- ^^^ TODO: originally no error here
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';        -- ERROR
 ERROR:  "ft2" is not a table
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
@@ -1604,13 +1602,12 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the
  c4     | integer |           |          | 0       | plain    |              | 
  c5     | integer |           |          |         | plain    |              | 
  c6     | integer |           |          |         | plain    |              | 
+ c7     | integer |           |          |         | plain    |              | 
  c8     | integer |           |          |         | plain    |              | 
 Child tables: ft2
 
 -- ^^^ originally c6 supposed to be:
 --  c6     | integer |           | not null |         | plain    |              | 
--- ^^^ originally extra column:
---  c7     | integer |           |          |         | plain    |              | 
 \d+ ft2
                                        Foreign table "public.ft2"
  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
@@ -1621,6 +1618,7 @@ Child tables: ft2
  c4     | integer |           |          | 0       |             | plain    |              | 
  c5     | integer |           |          |         |             | plain    |              | 
  c6     | integer |           |          |         |             | plain    |              | 
+ c7     | integer |           |          |         |             | plain    |              | 
  c8     | integer |           |          |         |             | plain    |              | 
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
@@ -1631,15 +1629,11 @@ Child tables: ct3,
 -- ^^^ originally c6 and c8 supposed to be:
 --  c6     | integer |           | not null |         |             | plain    |              | 
 --  c8     | text    |           |          |         |             | external |              | 
--- ^^^ originally extra column:
---  c7     | integer |           |          |         |             | plain    |              | 
 -- drop attributes recursively
 ALTER TABLE fd_pt1 DROP COLUMN c4;
 ALTER TABLE fd_pt1 DROP COLUMN c5;
 ALTER TABLE fd_pt1 DROP COLUMN c6;
 ALTER TABLE fd_pt1 DROP COLUMN c7;
-ERROR:  column "c7" of relation "fd_pt1" does not exist
--- ^^^ originally: no error
 ALTER TABLE fd_pt1 DROP COLUMN c8;
 \d+ fd_pt1
                                    Table "public.fd_pt1"
