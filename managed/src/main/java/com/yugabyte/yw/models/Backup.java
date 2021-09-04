@@ -35,7 +35,9 @@ import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@ApiModel(description = "Backup with a status, expiry and backup configs")
+@ApiModel(
+    description =
+        "A single backup. Includes the backup's status, expiration time, and configuration.")
 @Entity
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
@@ -65,13 +67,11 @@ public class Backup extends Model {
     Stopped,
   }
 
-  @ApiModelProperty(value = "Backup uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
   @Id
   public UUID backupUUID;
 
-  @ApiModelProperty(
-      value = "Customer UUID of the backup which it belongs to",
-      accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Customer UUID that owns this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
   public UUID customerUUID;
 
@@ -89,7 +89,7 @@ public class Backup extends Model {
   public UUID taskUUID;
 
   @ApiModelProperty(
-      value = "Schedule UUID if this backup is taken from scheduling it",
+      value = "Schedule UUID, if this backup is part of a schedule",
       accessMode = READ_WRITE)
   @Column
   private UUID scheduleUUID;
@@ -98,7 +98,7 @@ public class Backup extends Model {
     return scheduleUUID;
   }
 
-  @ApiModelProperty(value = "Expiry time of the backup", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Expiry time (unix timestamp) of the backup", accessMode = READ_WRITE)
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
@@ -242,7 +242,7 @@ public class Backup extends Model {
   public static Backup getOrBadRequest(UUID customerUUID, UUID backupUUID) {
     Backup backup = get(customerUUID, backupUUID);
     if (backup == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid customer/backup UUID");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid customer or backup UUID");
     }
     return backup;
   }
@@ -344,7 +344,7 @@ public class Backup extends Model {
       try {
         universes.add(Universe.getOrBadRequest(universeUUID));
       }
-      // Backup is present but universe does no. We are ignoring such backups.
+      // Backup is present but universe does not. We are ignoring such backups.
       catch (Exception e) {
       }
     }
