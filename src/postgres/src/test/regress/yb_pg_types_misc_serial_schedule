@@ -12,5 +12,6 @@ test: yb_pg_interval
 test: yb_pg_inet
 test: yb_pg_macaddr
 test: yb_pg_macaddr8
+test: yb_hash_func
 # LOG sequence number
 test: yb_pg_lsn
