@@ -17,6 +17,96 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
+## v2.6.1.0 - Sept 3, 2021
+
+**Build:** `2.6.1.0-b49`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.1.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.1.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.6.1.0-b49
+```
+
+### Improvements
+
+#### Database
+
+* [[4014](https://github.com/yugabyte/yugabyte-db/issues/4014)] [YSQL] Indexes on Enum based columns
+* [[4421](https://github.com/yugabyte/yugabyte-db/issues/4421)] [YCQL] Enable LDAP based authentication
+* [[6470](https://github.com/yugabyte/yugabyte-db/issues/6470)] [YSQL] Enable ALTER SCHEMA RENAME
+* [[8418](https://github.com/yugabyte/yugabyte-db/issues/8418)] Add filter to list_snapshot_schedules
+* [[8757](https://github.com/yugabyte/yugabyte-db/issues/8757)] [xCluster] Make setting up replication synchronous
+* [[9317](https://github.com/yugabyte/yugabyte-db/issues/9317)] [YBase] Introduce mutex for permissions manager
+* [[9333](https://github.com/yugabyte/yugabyte-db/issues/9333)] [Backup] Improve internal PB structure to store backup metadata into SnapshotInfoPB file.
+* [[9370](https://github.com/yugabyte/yugabyte-db/issues/9370)] Implement network traffic compression
+* [[9762](https://github.com/yugabyte/yugabyte-db/issues/9762)] (Part 1) Populate partial index predicate in "options" column of system_schema.indexes
+
+#### Yugabyte Platform
+
+* [[3452](https://github.com/yugabyte/yugabyte-db/issues/3452)] [Platform] UI support for root cert rotation
+* [[8489](https://github.com/yugabyte/yugabyte-db/issues/8489)] [Platform] Add support for root cert rotation for custom certs
+* [[8789](https://github.com/yugabyte/yugabyte-db/issues/8789)] Add support for certificate chaining in platform/yb-client.
+* [[9063](https://github.com/yugabyte/yugabyte-db/issues/9063)] Support metrics filtering for /prometheus-metrics endpoint
+* [[9451](https://github.com/yugabyte/yugabyte-db/issues/9451)] Default AWS EBS volume type changed from GP2 to GP3
+
+### Bug fixes
+
+#### Database
+
+* [[8114](https://github.com/yugabyte/yugabyte-db/issues/8114)] [YSQL] [Backup] Partial index syntax error in the ysql_dump output
+* [[8294](https://github.com/yugabyte/yugabyte-db/issues/8294)] Fix missing conflict when creating row using multiple inserts
+* [[8480](https://github.com/yugabyte/yugabyte-db/issues/8480)] Add check for recursive shared lock
+* [[8592](https://github.com/yugabyte/yugabyte-db/issues/8592)] Check capability before sending graceful cleanup
+* [[8804](https://github.com/yugabyte/yugabyte-db/issues/8804)] [YSQL] [Backup] Support in backups the same table name across different schemas.
+* [[9032](https://github.com/yugabyte/yugabyte-db/issues/9032)] [YCQL] Honour token() conditions for all partition keys from IN clause
+* [[9270](https://github.com/yugabyte/yugabyte-db/issues/9270)] [Backup] Fixed compatibility issue in yb_backup.
+* [[9314](https://github.com/yugabyte/yugabyte-db/issues/9314)] [PITR] Cleanup sys catalog snapshots
+* [[9418](https://github.com/yugabyte/yugabyte-db/issues/9418)] [xCluster] Add cdc_state Schema Caching to Producer Cluster
+* [[9550](https://github.com/yugabyte/yugabyte-db/issues/9550)] [YSQL] output NOTICE when CREATE INDEX in txn block
+* [[9605](https://github.com/yugabyte/yugabyte-db/issues/9605)] [PITR] Fix auto cleanup of restored hidden tables
+* [[9616](https://github.com/yugabyte/yugabyte-db/issues/9616)] Fix master crash when restoring snapshot schedule with deleted namespace
+* [[9654](https://github.com/yugabyte/yugabyte-db/issues/9654)] [xCluster] Limit how often ViolatesMaxTimePolicy and ViolatesMinSpacePolicy are logged
+* [[9656](https://github.com/yugabyte/yugabyte-db/issues/9656)] [xCluster] Update cdc_min_replicated_index on BootstrapProducer
+* [[9657](https://github.com/yugabyte/yugabyte-db/issues/9657)] [YCQL] Show static column in the output of DESC table
+* [[9746](https://github.com/yugabyte/yugabyte-db/issues/9746)] Set WAL footer close_timestamp_micros on Bootstrap
+* [[9812](https://github.com/yugabyte/yugabyte-db/issues/9812)] [YSQL] Check database is colocated before adding colocated option for Alter Table
+
+#### Yugabyte Platform
+
+* [[1525](https://github.com/yugabyte/yugabyte-db/issues/1525)] [Platform] New Universe creation gets public IP assigned even with flag = false
+* [[9417](https://github.com/yugabyte/yugabyte-db/issues/9417)] [[9662](https://github.com/yugabyte/yugabyte-db/issues/9662)] Set enable_log_retention_by_op_idx to true by default and bump update_metrics_interval_ms to 15000
+* [[9571](https://github.com/yugabyte/yugabyte-db/issues/9571)] [Platform] Backup and Restore failing in k8s auth enabled environment
+* [[9692](https://github.com/yugabyte/yugabyte-db/issues/9692)] Fix initialization of async cluster form values for existing universes without read-replica
+* [[9713](https://github.com/yugabyte/yugabyte-db/issues/9713)] [Platform] Do not perform version checks if HA is not set
+* [[9786](https://github.com/yugabyte/yugabyte-db/issues/9786)] Universe Actions-> Add Read Replica is failing on 2.6.1.0-b23
+* [PLAT-1644] Fix k8s universe creation failure for platform configured with HA
+* [PLAT-525] [Platform] Add IP address to SAN of node certificates
+
+### Known issues
+
+#### Database
+
+N/A
+
+#### Yugabyte Platform
+
+N/A
+
 ## v2.6.0.0 - July 7, 2021
 
 **Build:** `2.6.0.0-b69`
