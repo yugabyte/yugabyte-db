@@ -76,17 +76,26 @@ Yugabyte Cloud restricts access to clusters to IP addresses whitelisted in IP al
     * **Data Source Driver**: PostgreSQL
     * **Connect Database Via**: Database URL
 
-1. Set the **Database URL**. The URL is in the form `postgresql://username:password@hostname:port/database?ssl=true&sslmode=require`. Set the URL as follows:
+1. Set the **Database URL**. The URL is in the form 
+
+    ```url
+    postgresql://username:password@hostname:port/database?ssl=true&sslmode=require
+    ```
+
+    Set the URL as follows:
 
     * Use your database credentials for `username` and `password`.
     * Use the host and port from your Yugabyte Cloud cluster connection info, recorded earlier, for `hostname` and `port`.
     * Finally, use the name of your database for `database`.
     * Be sure to encode any special characters in the hostname or password when you add them to the URL.
 
-    For example, `postgresql://admin:qwerty@1234%20cloudportal.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require`.
+    For example
     
-    <br/><br/>
-
+    ```url
+    postgresql://admin:qwerty@1234%20cloudportal.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
+    ```
+    
+    \
     ![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-cloud-connect-database.png)
 
 1. Click **Connect Database** and wait for confirmation that the database has connected.

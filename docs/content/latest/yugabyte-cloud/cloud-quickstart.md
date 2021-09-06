@@ -210,7 +210,7 @@ You can now create a database and load some sample data.
     INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (13,'2019-04-06T01:04:43.973Z',2.1173410336074987,70,2,57.493003808959784,3.95,61.42339339833593,3);
     INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (21,'2018-05-02T03:57:22.388Z',NULL,94,5,109.21864156655383,7.51,116.62982729669602,3);
     INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (22,'2019-12-12T21:32:01.533Z',6.752650070439861,10,1,47.6793282102869,1.38,49.056071014283766,4);
-    INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (22,'2019-12-12T21:32:01.533Z',6.752650070439861,10,1,47.6793282102869,1.38,49.056071014283766,4);
+    INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (23,'2019-06-02T11:33:15.096Z',NULL,85,5,54.90104734428525,1.59,56.5115886738793,4);
     INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (26,'2018-06-20T02:18:00.254Z',NULL,40,5,99.66240044231697,3.99,103.57613671689575,5);
     INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (27,'2019-04-28T07:01:15.932Z',NULL,14,2,37.648145389078365,1.51,39.11528698753412,6);
     INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (42,'2019-11-16T08:11:08.666Z',NULL,145,3,61.1983004605443,4.28,65.5559297559252,7);

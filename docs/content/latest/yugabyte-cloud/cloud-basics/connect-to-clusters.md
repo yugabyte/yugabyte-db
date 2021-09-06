@@ -132,7 +132,7 @@ To connect a cluster to an application:
 1. Click **Connect**.
 1. Click **Connect to your Application**.
 1. Click **Download CA Cert** and install the certificate on the computer running the application.
-1. Add the appropriate connection string to your application.
+1. Add the appropriate YSQL or YCQL connection string to your application.
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
 
