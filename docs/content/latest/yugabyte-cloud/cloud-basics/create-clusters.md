@@ -72,8 +72,8 @@ If you are creating a **Paid** cluster, set the following additional options:
 
 - **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failues: 
 
-  - **None** - no replication or resiliency. Recommended for development and testing only.
-  - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1. 
+  - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
+  - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
   - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
 - **VPC Peer**: If you want to use dedicated VPCs for network isolation and security, contact Yugabyte Support to set up VPC Peering with your client VPC. Note this has to be done before you create your cluster.

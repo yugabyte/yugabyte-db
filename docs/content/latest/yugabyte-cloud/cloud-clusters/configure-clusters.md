@@ -27,7 +27,7 @@ Displays the cluster name.
 
 Summarizes the cluster setup, including the region, number of nodes and vCPUs, the disk size, and fault tolerance. 
 
-You can modify the number of nodes, vCPUs, and increase the disk size of paid clusters. You cannot reduce disk size.
+You can modify the number of nodes, vCPUs, and increase the disk size of paid clusters. You cannot reduce disk size. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
 To scale the cluster:
 

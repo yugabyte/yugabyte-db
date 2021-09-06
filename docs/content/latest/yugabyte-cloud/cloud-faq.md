@@ -120,15 +120,17 @@ The Yugabyte Cloud support team has direct access to cluster data. They adhere t
 
 ### What cluster configurations can I create?
 
-You can create multi-zone and multi-region clusters.
+From the cloud console you can create single region clusters that can be deployed across multiple and single availability zones. 
+
+The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failues and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
+
+- **None** - single node, with no replication or resiliency. Recommended for development and testing only.
+- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1. 
+- **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
 Free clusters are limited to a single node in a single region.
 
-For more complex geo-distributed topologies, contact Customer Support.
-
-### Can I change my cluster configuration?
-
-Yugabyte Cloud supports on-demand scale in and out of paid clusters for both horizontal and vertical scaling. To change your cluster configuration, click [Edit Infrastructure](../cloud-clusters/configure-clusters/) on the cluster **Settings** tab. You can change the number of nodes, vCPUs, and disk size. Disk size cannot be reduced. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
+For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact Customer Support.
 
 ### What is the upgrade policy for clusters?
 
@@ -137,6 +139,8 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 - Cloud console - During a maintenance window, Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
 
 - Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify customers of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime. 
+
+### How do I migrate my database to Yugabyte Cloud
 
 ## Backups
 
