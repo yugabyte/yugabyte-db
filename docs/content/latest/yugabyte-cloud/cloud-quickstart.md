@@ -57,7 +57,10 @@ Once the cluster is ready, the cluster [Overview](../cloud-clusters/overview) is
 
 Once the **Overview** tab is displayed, you can connect to the cluster.
 
-Using the cloud shell, you can connect to and interact with your YugabyteDB database from your browser. You have the option of using the YSQL shell [ysqlsh](../../admin/ysqlsh/), a CLI for interacting with YugabyteDB using the [YSQL API](../../api/ysql), or the YCQL shell [ycqlsh](../../admin/ycqlsh/), which uses the [YCQL API](../../api/ycql).
+Using the cloud shell, you can connect to and interact with your YugabyteDB database from your browser. You have the option of using the following CLIs in the cloud shell:
+
+- [ysqlsh](../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../api/ysql) 
+- [ycqlsh](../../admin/ycqlsh/) - YCQL shell which uses the [YCQL API](../../api/ycql)
 
 To use `ysqlsh` to create and manage YugabyteDB databases and tables in your Yugabyte Cloud cluster, do the following:
 
@@ -67,7 +70,7 @@ To use `ysqlsh` to create and manage YugabyteDB databases and tables in your Yug
 
 1. Enter the database name (`yugabyte`), the user name (`admin`), select the YSQL API and click **Confirm**.
 
-    The cloud shell opens in a separate browser window.
+    The cloud shell opens in a separate browser window. Cloud shell can take up to 30 seconds to be ready.
 
     ```output
     Password for user admin: 

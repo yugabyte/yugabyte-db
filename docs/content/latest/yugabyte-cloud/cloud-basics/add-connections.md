@@ -31,6 +31,8 @@ To add IP allow lists to a cluster:
     - Click **Detect and add my IP to this list** to add your own IP address.
 1. Click **Save** when done.
 
+The allow list takes up to 30 seconds to become active
+
 Any IP allow list that you create is also added to your cloud settings. For information on managing cloud networking, refer to [Configure networking](../../cloud-network/).
 
 ## Next steps

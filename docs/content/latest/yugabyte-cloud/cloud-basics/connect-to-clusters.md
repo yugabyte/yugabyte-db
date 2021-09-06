@@ -85,58 +85,46 @@ If you enter an incorrect password, the cloud shell session is terminated immedi
 
 ## Connect via Client Shell
 
-You can connect to your YugabyteDB cluster using the YugabyteDB ysqlsh and ycqlsh client shells installed on your computer. 
+You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. 
 
 Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](add-connections/).
 
-To connect to a cluster via Client Shell:
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#ysqlsh" class="nav-link active" id="ysqlsh-tab" data-toggle="tab" role="tab" aria-controls="ysqlsh" aria-selected="true">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      ysqlsh
+    </a>
+  </li>
+  <li>
+    <a href="#ycqlsh" class="nav-link" id="ycqlsh-tab" data-toggle="tab" role="tab" aria-controls="ycqlsh" aria-selected="false">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      ycqlsh
+    </a>
+  </li>
+</ul>
 
-1. On the **Clusters** tab, select a cluster.
-1. Click **Connect**.
-1. Click **YugabyteDB Client Shell**.
-
-1. If you have not installed the client shell on your computer, choose **I do not have the YugabyteDB client shell installed** and do the following:
-    - Select your operating system.
-    - Copy the command to install the shell from the command line, or click **Download YugabyteDB Client** to download the binary, and then install it.
-    - Click **Download CA Cert** to download the root.crt certificate for TLS encryption, and install the certificate on your computer.
-1. Copy the connection string. A connection string is provided for [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh).
-    \
-    The connection string includes flags specifying the host (-h), username (-U), and database (-d). The command connects to the default database (yugabyte), and specifies that the connection will use the SSL certificate you installed on your computer.
-
-    Here's an example of the generated `ysqlsh` command:
-
-    ```sh
-    PGPASSWORD=<PASSWORD> ./ysqlsh -h <ENDPOINT> -U <USER> -d yugabyte --set=sslmode=verify-full --set=sslrootcert=<path to the CA Cert file>
-    ```
-
-1. On your computer, change directories to the directory where you installed the client shell.
-1. Paste and run the command, replacing \<PASSWORD\> and \<USER\> with your database credentials, and \<path to the CA Cert file\> with the path to the location where you installed the certificate on your computer.
-
-If you are using `ysqlsh`, the `ysqlsh` shell opens connected to the remote cluster.
-
-```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-If you are using `ycqlsh`, the `ycqlsh` shell opens connected to the remote cluster.
-
-```output
-Connected to local cluster at 35.236.85.97:12200.
-[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
-Use HELP for help.
-admin@ycqlsh>
-```
+<div class="tab-content">
+  <div id="ysqlsh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysqlsh-tab">
+    {{% includeMarkdown "connect/ysql.md" /%}}
+  </div>
+  <div id="ycqlsh" class="tab-pane fade" role="tabpanel" aria-labelledby="ycqlsh-tab">
+    {{% includeMarkdown "connect/ycql.md" /%}}
+  </div>
+</div>
 
 You are now ready to [Create and explore a database](create-databases/).
 
 ## Connect an application
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps). 
 
-Before you can connect, you need to have an IP allow list or VPC peer set up.
+Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, do one of the following:
+
+- Add the public IP addresses to the [cluster IP access list](../add-connections).
+- Use [VPC peering](../../cloud-network/vpc-peers) to add private IP addresses.
+
+Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
 To connect a cluster to an application:
 
@@ -145,8 +133,6 @@ To connect a cluster to an application:
 1. Click **Connect to your Application**.
 1. Click **Download CA Cert** and install the certificate on the computer running the application.
 1. Add the appropriate connection string to your application.
-
-Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
 

@@ -37,9 +37,20 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-Use the **Free** cluster to get started with YugabyteDB. The free cluster is limited to a single node and, depending on the cloud provider, provides up to 2 vCPUs and 10 GB of storage. Although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. You can only have one Free cluster.
+Use the **Free** cluster to get started with YugabyteDB. Although not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
 
-**Paid** clusters clusters support multi-node and highly available deployments. You can choose any cluster size based on your use case. Paid clusters support horizontal and vertical scaling - nodes and storage can be added or removed at will to suit your production loads. Paid clusters also support VPC peering. You can create as many Paid clusters as you need.
+- single node
+- depending on the cloud provider, up to 2 vCPUs and 10 GB of storage
+- limit of one per account
+
+**Paid** clusters support multi-node and highly available deployments and include the following features:
+
+- no limit on cluster size - choose any cluster size based on your use case
+- 100 GB base storage with no limit
+- horizontal and vertical scaling - add or remove nodes and add storage to suit your production loads
+- VPC peering support
+- automated and on-demand backups
+- create as many as you need
 
 If you have not already provided payment information, you will need to add it before you can create a paid cluster.
 
@@ -53,25 +64,25 @@ Select **Yugabyte Cloud Free** or **Yugabyte Cloud** and click **Next** to displ
 
 Set the following options:
 
-* **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact Yugabyte Support.) 
-* **Cluster Name**: Enter a name for the cluster.
-* **Region**: Choose the Region where the cluster will be located.
+- **Provider**: Choose a cloud provider - AWS or GCP. (For Azure, contact Yugabyte Support.) 
+- **Cluster Name**: Enter a name for the cluster.
+- **Region**: Choose the Region where the cluster will be located.
 
 If you are creating a **Paid** cluster, set the following additional options:
 
-* **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failues: 
+- **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failues: 
 
-  * **None** - no replication or resiliency. Recommended for development and testing only.
-  * **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1. 
-  * **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
+  - **None** - no replication or resiliency. Recommended for development and testing only.
+  - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1. 
+  - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
-* **VPC Peer**: If you want to use dedicated VPCs for network isolation and security, contact Yugabyte Support to set up VPC Peering with your client VPC. Note this has to be done before you create your cluster.
+- **VPC Peer**: If you want to use dedicated VPCs for network isolation and security, contact Yugabyte Support to set up VPC Peering with your client VPC. Note this has to be done before you create your cluster.
 
-* **Cluster Configuration**:
+- **Cluster Configuration**:
 
-  * Nodes - enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
-  * vCPU/Node - enter the number of virtual CPUs per node.
-  * Disk size/Node - enter the disk size per node in GB.
+  - Nodes - enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
+  - vCPU/Node - enter the number of virtual CPUs per node.
+  - Disk size/Node - enter the disk size per node in GB.
 
   Paid clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../configure-clusters#infrastructure). For cluster configuration costs, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/).
 
@@ -87,7 +98,7 @@ Copy the credentials, select **I have copied the admin credentials** and click *
 
 {{< warning title="Important" >}}
 
-Make sure you save your credentials in a safe place. If you lose these credentials you will not be able to use the database.
+Save your credentials in a safe place. If you lose these credentials you will not be able to use the database.
 
 {{< /warning >}}
 
@@ -103,8 +114,8 @@ You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud
 
 ## Next steps
 
-* [Assign IP allow lists](../add-connections/)
-* [Add database users](../add-users/)
-* [Connect to your cluster](../connect-to-clusters)
-* [Create a database](../create-databases)
-* [Connect an application](../connect-application)
+- [Assign IP allow lists](../add-connections/)
+- [Add database users](../add-users/)
+- [Connect to your cluster](../connect-to-clusters)
+- [Create a database](../create-databases)
+- [Connect an application](../connect-application)

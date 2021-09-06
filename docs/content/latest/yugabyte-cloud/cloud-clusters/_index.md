@@ -18,11 +18,11 @@ The **Clusters** page lists your currently provisioned clusters and their status
 
 ![Yugabyte Cloud Clusters page](/images/yb-cloud/cloud-clusters.png)
 
-To manage a cluster, select the cluster in the list to display the cluster [Overview](overview/). Once you've selected a cluster, you can [connect](../cloud-basics/connect-to-clusters/) to it, [view database tables](cluster-tables/) and [cluster nodes](manage-clusters/), access [backups](backup-clusters/), [authorize the networks](../cloud-basics/add-connections/) that can connect, and [scale the cluster](configure-clusters/).
-
-To add a cluster, click **Add Cluster**. Refer to [Create a cluster](../cluster-basics/create-clusters/).
+To add a cluster, click **Add Cluster**. Refer to [Create a cluster](../cloud-basics/create-clusters/).
 
 To delete a cluster, click the three dots icon for the cluster you want to delete and choose **Terminate Cluster**. Then enter the name of the cluster and click **Delete**. This deletes the cluster and all of its data, including backups.
+
+To manage a cluster, select the cluster in the list to display the cluster [Overview](overview/). Once you've selected a cluster, you can [connect](../cloud-basics/connect-to-clusters/) to it, [view database tables](cluster-tables/) and [cluster nodes](manage-clusters/), access [backups](backup-clusters/), [authorize the networks](../cloud-basics/add-connections/) that can connect, and [scale the cluster](configure-clusters/).
 
 <div class="row">
 

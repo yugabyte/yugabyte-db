@@ -4,8 +4,6 @@ linkTitle: Users
 description: Manage access to Yugabyte Cloud and your clusters.
 headcontent:
 image: /images/section_icons/secure/create-roles.png
-aliases:
-  - /latest/deploy/yugabyte-cloud/manage-access/
 menu:
   latest:
     identifier: manage-cloud-access
