@@ -77,7 +77,7 @@ class StatementParameters {
     return STATUS(RuntimeError, "no bind variable available");
   }
 
-  const YBConsistencyLevel yb_consistency_level() const {
+  YBConsistencyLevel yb_consistency_level() const {
     return yb_consistency_level_;
   }
 

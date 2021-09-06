@@ -11,6 +11,9 @@
 # under the License.
 #
 
+# TODO(dmitry): Remove next line after fixing #9279
+set(CMAKE_CXX_FLAGS "${YB_CMAKE_CXX_EXTRA_FLAGS} ${CMAKE_CXX_FLAGS}")
+
 # CQL service
 add_subdirectory(cql/ql)
 add_subdirectory(cql/cqlserver)

@@ -11,9 +11,6 @@
 # under the License.
 #
 
-# TODO(dmitry): Remove next line after fixing #9279
-set(CMAKE_CXX_FLAGS "${YB_CMAKE_CXX_EXTRA_FLAGS} ${CMAKE_CXX_FLAGS}")
-
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS

@@ -89,6 +89,13 @@ class Decimal {
           bool is_positive = true)
       : digits_(digits), exponent_(exponent), is_positive_(is_positive) { make_canonical(); }
   Decimal(const Decimal& other) : Decimal(other.digits_, other.exponent_, other.is_positive_) {}
+  Decimal& operator=(const Decimal& other) {
+    digits_ = other.digits_;
+    exponent_ = other.exponent_;
+    is_positive_ = other.is_positive_;
+    make_canonical();
+    return *this;
+  }
 
   // Ensure the type conversion is possible if you use these constructors. Use FromX() otherwise.
   explicit Decimal(const std::string& string_val) { CHECK_OK(FromString(string_val)); }

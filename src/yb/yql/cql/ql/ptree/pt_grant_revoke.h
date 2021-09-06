@@ -136,7 +136,7 @@ class PTGrantRevokePermission : public TreeNode {
     return role_name_;
   }
 
-  const ResourceType resource_type() const {
+  ResourceType resource_type() const {
     return resource_type_;
   }
 
@@ -157,7 +157,7 @@ class PTGrantRevokePermission : public TreeNode {
     return nullptr;
   }
 
-  const PermissionType permission() const {
+  PermissionType permission() const {
     return permission_;
   }
 
