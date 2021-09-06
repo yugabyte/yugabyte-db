@@ -407,7 +407,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
         assertYWSE(
             () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
-        Json.parse(contentAsString(result)), "Instance Type not found: " + fakeInstanceCode);
+        Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -441,7 +441,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
         assertYWSE(
             () -> doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
-        Json.parse(contentAsString(result)), "Instance Type not found: " + fakeInstanceCode);
+        Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
   }
 

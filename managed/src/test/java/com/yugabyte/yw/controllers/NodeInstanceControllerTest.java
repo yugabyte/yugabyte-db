@@ -57,7 +57,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
   private final String FAKE_IP_2 = "fake_ip_2";
   private Customer customer;
-  private Users user;
   private Provider provider;
   private Region region;
   private AvailabilityZone zone;
@@ -69,7 +68,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("tc", "Test Customer 1");
-    user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
@@ -196,7 +195,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   public void testGetNodeWithInvalidUuid() {
     UUID uuid = UUID.randomUUID();
     Result r = assertYWSE(() -> getNode(uuid));
-    String expectedError = "Invalid Node UUID: " + uuid;
+    String expectedError = "Invalid node UUID: " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }

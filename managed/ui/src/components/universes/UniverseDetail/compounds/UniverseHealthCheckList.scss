@@ -31,6 +31,12 @@
     font-size: 0.9em;
   }
 
+  .label-warning {
+    margin-right: 6px;
+    padding: 0em 0.4em 0.1em;
+    font-size: 0.9em;
+  }
+
   .expand-cell {
     width: 50%;
   }
@@ -61,6 +67,11 @@
 
   .status-bad i {
     background-color: $YB_FAIL_COLOR;
+    color: #ffffff;
+  }
+
+  .status-warning i {
+    background-color: $YB_WARNING_COLOR;
     color: #ffffff;
   }
 
