@@ -43,7 +43,7 @@ To create a project in Hasura Cloud:
     <br/><br/>
 
     ![Create Hasura project](/images/deploy/yugabyte-cloud/hasura-create-project.png)
-    
+
     <br/><br/>
 
 1. Click **Create project**.
@@ -90,11 +90,11 @@ Yugabyte Cloud restricts access to clusters to IP addresses whitelisted in IP al
     * Be sure to encode any special characters in the hostname or password when you add them to the URL.
 
     For example
-    
+
     ```url
     postgresql://admin:qwerty@1234%20cloudportal.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
     ```
-    
+
     \
     ![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-cloud-connect-database.png)
 

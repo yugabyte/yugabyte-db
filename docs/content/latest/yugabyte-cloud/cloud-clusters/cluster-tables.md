@@ -13,6 +13,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The **Tables** tab displays the database YSQL and YCQL tables on the cluster, including the name, namespace, and size.
+The **Tables** tab displays the database YSQL and YCQL tables on the cluster, including the name, namespace or keyspace, and size.
 
 ![Cluster Tables tab](/images/yb-cloud/cloud-clusters-tables.png)

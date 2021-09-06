@@ -115,7 +115,7 @@ yb_demo=# SELECT id, title, category, price, rating
 
 ## More to explore
 
-To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../develop/realworld-apps/retail-analytics/). 
+To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../develop/realworld-apps/retail-analytics#3-run-queries). 
 
 Here are links to documentation on the tested datasets and the steps to create the other sample databases included with YugabyteDB:
 

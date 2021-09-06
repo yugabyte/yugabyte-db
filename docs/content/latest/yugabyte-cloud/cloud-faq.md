@@ -67,30 +67,46 @@ We are continuously improving region coverage, so if there are any regions you w
 
 ### How do I connect to my cluster?
 
-You can always connect to a cluster using the Cloud Shell.
+You can connect to clusters in the following ways:
 
-To connect to a cluster from another computer or application, you need to:
+#### Cloud Shell
 
-- add the computer to an IP allow list for the cluster
-- create a database user
-- download the CA certificate
-- generate a connection string or, to allow an application to connect, generate the code that you add to your application
- 
-Use the connection string to connect to your cluster using the [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells. 
+The Cloud Shell allows you to run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud shell does not require a CA certificate or any special network access configured.
 
-For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters/).
+For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters#connect-via-cloud-shell). 
+
+#### Client Shell
+
+You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
+
+Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
+
+For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters#connect-via-client-shell). 
+
+#### Applications
+
+Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 
+
+Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, do one of the following:
+
+- Add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections).
+- Use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
+
+Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 
 ## Security
 
 ### How secure is my cluster?
 
-Your data is processed at the Yugabyte Cloud account level, and each account is a single tenant, meaning it runs its components for only one customer. Clusters in your cloud are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
+Your data is processed at the Yugabyte Cloud account level, and each cloud account is a single tenant, meaning it runs its components for only one customer. Clusters in your cloud are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
 
-Yugabyte Cloud uses both encryption at rest and in transit.
+Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure.
 
 Encryption at rest is enabled using the default implementation of the cloud provider where you created the cluster.
 
 Encryption in transit is secured using TLS certificates that you can download and install.
+
+Yugabyte Cloud uses a shared responsibility model for cloud security. For more information on Yugabyte Cloud security, refer to [Cloud security](../cloud-security/).
 
 ### Does my cluster share resources with other clusters?
 
