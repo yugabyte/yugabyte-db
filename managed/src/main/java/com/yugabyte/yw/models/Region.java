@@ -248,7 +248,7 @@ public class Region extends Model {
     String regionQuery =
         " select r.uuid, r.code, r.name"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
-            + "  where r.uuid = :r_uuid and p.uuid = :p_uuid and p.customer_uuid = :c_UUID";
+            + "  where r.uuid = :r_UUID and p.uuid = :p_UUID and p.customer_uuid = :c_UUID";
 
     RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
     Query<Region> query = Ebean.find(Region.class);
@@ -270,7 +270,7 @@ public class Region extends Model {
         " select r.uuid, r.code, r.name"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
             + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
-            + "  where p.uuid = :p_uuid and p.customer_uuid = :c_UUID"
+            + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID"
             + "  group by r.uuid "
             + " having count(zone.uuid) >= "
             + minZoneCount;
