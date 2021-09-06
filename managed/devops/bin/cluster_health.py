@@ -37,7 +37,9 @@ VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
 VM_CLIENT_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/root.crt")
 VM_CLIENT_ROOT_CERT_FILE_ALTERNATIVE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/ca.crt")
 VM_CLIENT_NODE_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt")
-K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
+
+K8S_CERTS_PATH = "/opt/certs/yugabyte/"
+K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -74,6 +76,7 @@ class EntryType:
     DETAILS = "details"
     METRIC_VALUE = "metric_value"
     HAS_ERROR = "has_error"
+    HAS_WARNING = "has_warning"
     PROCESS = "process"
 
 
@@ -88,6 +91,7 @@ class Entry:
         self.details = None
         self.metric_value = None
         self.has_error = None
+        self.has_warning = None
 
     def fill_and_return_entry(self, details, has_error=False):
         return self.fill_and_return_entry(details, has_error, None)
@@ -95,7 +99,14 @@ class Entry:
     def fill_and_return_entry(self, details, has_error=False, metric_value=None):
         self.details = details
         self.has_error = has_error
+        self.has_warning = False
         self.metric_value = metric_value
+        return self
+
+    def fill_and_return_warning_entry(self, details):
+        self.details = details
+        self.has_error = False
+        self.has_warning = True
         return self
 
     def as_json(self):
@@ -105,7 +116,8 @@ class Entry:
             EntryType.TIMESTAMP: self.timestamp,
             EntryType.MESSAGE: self.message,
             EntryType.DETAILS: self.details,
-            EntryType.HAS_ERROR: self.has_error
+            EntryType.HAS_ERROR: self.has_error,
+            EntryType.HAS_WARNING: self.has_warning
         }
         if self.metric_value:
             j[EntryType.METRIC_VALUE] = self.metric_value
@@ -125,11 +137,11 @@ class Report:
     def add_entry(self, entry):
         self.entries.append(entry)
 
-    def has_errors(self):
-        return True in [e.has_error for e in self.entries]
+    def has_errors_or_warnings(self):
+        return True in [e.has_error or e.has_warning for e in self.entries]
 
     def write_to_log(self, log_file):
-        if not self.has_errors() or log_file is None:
+        if not self.has_errors_or_warnings() or log_file is None:
             logging.info("Not logging anything to a file.")
             return
 
@@ -144,8 +156,10 @@ class Report:
         j = {
             "timestamp": self.start_ts,
             "yb_version": self.yb_version,
-            "data": [e.as_json() for e in self.entries if not only_errors or e.has_error],
-            "has_error": True in [e.has_error for e in self.entries]
+            "data": [e.as_json() for e in self.entries
+                     if not only_errors or e.has_error or e.has_warning],
+            "has_error": True in [e.has_error for e in self.entries],
+            "has_warning": True in [e.has_warning for e in self.entries]
         }
         return json.dumps(j, indent=2)
 
@@ -232,6 +246,7 @@ class NodeChecker():
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
         self.universe_version = universe_version
+        self.additional_info = {}
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name)
@@ -306,6 +321,9 @@ class NodeChecker():
 
     def check_certificate_expiration(self, cert_name, cert_path):
         e = self._new_entry(cert_name + " Cert Expiry Days")
+        ssl_installed = self.additional_info.get("ssl_installed:" + self.node)
+        if ssl_installed is not None and not ssl_installed:
+            return e.fill_and_return_warning_entry(["OpenSSL is not installed, skipped"])
 
         output = self.get_certificate_expiration_date(cert_path)
         if has_errors(output):
@@ -345,10 +363,16 @@ class NodeChecker():
         return self._remote_check_output(remote_cmd).strip()
 
     def check_node_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration("Node To Node CA", VM_ROOT_CERT_FILE_PATH)
+        return self.check_certificate_expiration("Node To Node CA",
+                                                 VM_ROOT_CERT_FILE_PATH if not self.is_k8s
+                                                 else K8S_CERT_FILE_PATH)
 
     def check_node_to_node_certificate_expiration(self):
-        cert_path = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/node.{}.crt".format(self.node))
+        if not self.is_k8s:
+            cert_path = os.path.join(YB_HOME_DIR,
+                                     "yugabyte-tls-config/node.{}.crt".format(self.node))
+        else:
+            cert_path = os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
         return self.check_certificate_expiration("Node To Node", cert_path)
 
     def check_client_to_node_ca_certificate_expiration(self):
@@ -635,6 +659,13 @@ class NodeChecker():
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
+    def check_openssl_availability(self):
+        remote_cmd = "which openssl &>/dev/null; echo $?"
+        output = self._remote_check_output(remote_cmd).rstrip()
+        logging.info("OpenSSL installed state for node %s: %s",  self.node, output)
+        return {"ssl_installed:" + self.node: (output == "0")
+                if not has_errors(output) else None}
+
 
 ###################################################################################################
 # Utility functions
@@ -664,6 +695,15 @@ def multithreaded_caller(instance, func_name,  sleep_interval=0, args=(), kwargs
 
 
 class CheckCoordinator:
+    class PreCheckRunInfo:
+        def __init__(self, instance, func_name):
+            self.instance = instance
+            if PY3:
+                self.__name__ = func_name
+            else:
+                self.func_name = func_name
+            self.result = {}
+
     class CheckRunInfo:
         def __init__(self, instance, func_name, yb_process):
             self.instance = instance
@@ -678,17 +718,34 @@ class CheckCoordinator:
 
     def __init__(self, retry_interval_secs):
         self.pool = Pool(MAX_CONCURRENT_PROCESSES)
+        self.prechecks = []
         self.checks = []
         self.retry_interval_secs = retry_interval_secs
+
+    def add_precheck(self, instance, func_name):
+        self.prechecks.append(CheckCoordinator.PreCheckRunInfo(instance, func_name))
 
     def add_check(self, instance, func_name, yb_process=None):
         self.checks.append(CheckCoordinator.CheckRunInfo(instance, func_name, yb_process))
 
     def run(self):
 
+        precheck_results = []
+        for precheck in self.prechecks:
+            precheck_func_name = precheck.__name__ if PY3 else precheck.func_name
+            result = self.pool.apply_async(multithreaded_caller, (precheck.instance,
+                                                                  precheck_func_name))
+            precheck_results.append(result)
+
+        # Getting results.
+        additional_info = {}
+        for result in precheck_results:
+            additional_info.update(result.get())
+
         while True:
             checks_remaining = 0
             for check in self.checks:
+                check.instance.additional_info = additional_info
                 check.entry = check.result.get() if check.result else None
 
                 # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
@@ -728,7 +785,7 @@ class CheckCoordinator:
 
 class Cluster():
     def __init__(self, data):
-        self.identity_file = data["identityFile"]
+        self.identity_file = data.get("identityFile")
         self.ssh_port = data["sshPort"]
         self.enable_tls = data["enableTls"]
         self.enable_tls_client = data["enableTlsClient"]
@@ -789,6 +846,9 @@ def main():
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
                         c.master_http_port, c.tserver_http_port, universe_version)
+
+                coordinator.add_precheck(checker, "check_openssl_availability")
+
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(

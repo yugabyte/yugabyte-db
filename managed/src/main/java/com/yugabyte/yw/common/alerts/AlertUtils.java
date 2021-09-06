@@ -64,7 +64,7 @@ public class AlertUtils {
       }
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
       if (alert.getState() == State.ACTIVE) {
-        template = template + "\n\n" + StringUtils.abbreviate(alert.getMessage(), 500);
+        template = template + "\n\n" + StringUtils.abbreviate(alert.getMessage(), 1000);
       }
     }
     return alertSubstitutions(alert, template);

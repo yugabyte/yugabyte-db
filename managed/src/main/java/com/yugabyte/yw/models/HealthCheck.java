@@ -33,6 +33,7 @@ public class HealthCheck extends Model {
 
       public String node_name;
       public Boolean has_error;
+      public Boolean has_warning;
       public List<String> details;
       public String message;
     }
