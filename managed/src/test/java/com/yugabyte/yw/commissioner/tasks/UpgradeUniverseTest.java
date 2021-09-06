@@ -655,7 +655,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
   private void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
 
     List<String> nodeNames =
-        subTasks.stream()
+        subTasks
+            .stream()
             .map(t -> t.getTaskDetails().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
@@ -672,7 +673,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
             List<Object> values =
-                subTaskDetails.stream()
+                subTaskDetails
+                    .stream()
                     .map(
                         t -> {
                           JsonNode data =
