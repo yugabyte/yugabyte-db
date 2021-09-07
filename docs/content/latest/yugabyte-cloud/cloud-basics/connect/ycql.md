@@ -13,7 +13,7 @@ To connect to a cluster using `ycqlsh`:
 
     ```sh
     SSL_CERTFILE=<ROOT_CERT_PATH> ./ycqlsh \
-    740ce33e-4242-4242-a424-cc4242c4242b.devcloud.yugabyte.com 9042 \
+    740ce33e-4242-4242-a424-cc4242c4242b.cloud.yugabyte.com 9042 \
     -u <DB USER> \
     --ssl
     ```

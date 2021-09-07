@@ -12,41 +12,50 @@ menu:
 weight: 800
 ---
 
-Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on cloud providers (Google Cloud Platform (GCP), Amazon Web Services (AWS)). It consists of management and data planes. The management plane is a centralized management service deployed on GCP that is responsible for creating and managing customer data planes. The data plane is the customer YugabyteDB clusters deployed on cloud provider infrastructure.
+Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more coming soon. It consists of management and data planes. The management plane is a centralized management service deployed on GCP, and is responsible for creating and managing customer data planes. The data plane is the customer YugabyteDB clusters deployed on public cloud provider infrastructure. 
 
-As such, Yugabyte Cloud security is a shared responsibility between the cloud providers, Yugabyte, and you, the customer. Under this shared responsibility model, Yugabyte implements the technical and organizational security measures as described in the [Yugabyte Cloud - Data Processing Addendum (CCPA & GDPR)](). 
+![Yugabyte Cloud high-level architecture](/images/yb-cloud/cloud-security-diagram.png)
 
-Yugabyte is responsible for making the management plane more secure. The management plane includes the GCP plane, cloud provider planes, VMs, API servers, operating systems, and various other controllers. All of your data plane components run on GCP and AWS infrastructure operated by Yugabyte. Your data is processed at the Yugabyte Cloud account level, and each account is a single tenant, meaning it runs its components for only one customer. 
+Yugabyte creates individual dedicated VPCs for each database cluster within your chosen public cloud provider. All VPCs are firewalled from each other and any other outside connection. [Free clusters](../cloud-faq/#what-are-the-differences-between-free-and-paid-clusters) are deployed in a shared VPC.
 
-You are responsible for the security, protection, and backup of your data, and your use and configuration of Yugabyte Cloud. It is also your responsibility to evaluate Yugabyte Cloud security to determine whether your data can be stored in Yugabyte Cloud.
+## The shared responsibility model
 
-The cloud providers and Yugabyte manage the following components:
+Yugabyte Cloud security and compliance is a shared responsibility between the public cloud providers, Yugabyte, and Yugabyte Cloud customers.
 
-- The GCP management plane, including the VMs, API server, other components on the VMs, and etcd
-- The AWS and GCP data planes on which the clusters are deployed, including the VMs, API server, other components on the VMs, and etcd
-- The Kubernetes distribution
-- The cluster nodes' operating system
-- YugabyteDB cluster infrastructure
+Under a shared responsibility model for cloud security, there is a division of responsibility for security aspects of the entire system, including things like network controls, data classification, application controls, identity and access management, and more. The responsibilities for each workload and feature depend on where the workload is hosted - Software as a Service (SaaS), Platform as a Service (PaaS), Infrastructure as a Service (IaaS), or on-premises in your own data center.
 
-Configuration related to these components is generally not available for you to audit or modify in Yugabyte Cloud. You are responsible for configuring Yugabyte Cloud and your clusters, and can audit and remediate any recommendations for those components. 
+![Shared responsibility model](/images/yb-cloud/cloud-shared-responsibility.png)
 
-### Securing cluster configurations
+You are responsible for reviewing Yugabyte Cloud security capabilities and features to determine whether your data can be stored in Yugabyte Cloud. You are also responsible for the security, protection, and backup of your data, as well as your use and configuration of Yugabyte Cloud. 
 
-Protecting workloads is your responsibility. Yugabyte Cloud runs on Yugabyte Platform and offers the same security hardening options. Refer to [Yugabyte Platform Security](../../yugabyte-platform/security/).
+Public cloud providers are responsible for protecting the infrastructure that runs all of the cloud services. This infrastructure is composed of the hardware, software, networking, and facilities. Configuration related to these components is generally not available for you to audit or modify in Yugabyte Cloud. You are responsible for configuring Yugabyte Cloud and your clusters, and can audit and remediate any recommendations for those components.
 
-### Infrastructure security
+Yugabyte implements the technical and organizational security measures as described in the [Yugabyte Cloud Data Processing Addendum (DPA)](https://www.yugabyte.com/yugabyte-cloud-data-processing-addendum/). 
+
+## Infrastructure security
 
 Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure.
 
-All communication between Yugabyte Cloud architecture domains is encrypted in transit using TLS. Likewise, all communication between clients or applications and clusters is encrypted in transit. Every cluster has its own certificates, generated when the cluster is created and signed by internal PKI managed by Yugabyte. Root and intermediate certificates are not extractable from the hardware security appliances.
+All communication between Yugabyte Cloud architecture domains is encrypted in transit using TLS. Likewise, all communication between clients or applications and clusters is encrypted in transit. Every cluster has its own certificates, generated when the cluster is created and signed by the Yugabyte internal PKI. Root and intermediate certificates are not extractable from the hardware security appliances.
 
-Data at rest, including clusters and backups, is AES-256 encrypted. The encryption keys are managed by Yugabyte and anchored by hardware security appliances. 
+Data at rest, including clusters and backups, is AES-256 encrypted. Encryption keys are managed by Yugabyte and anchored by hardware security appliances. Customers can enable [column-level encryption](../../secure/column-level-encryption) as an additional security control. 
 
 Yugabyte Cloud provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 
-### Data privacy and compliance
+## Securing database clusters by default
 
-For information on data privacy and compliance, refer to [Data privacy and compliance]().
+Yugabyte secures Yugabyte Cloud using the same default [security measures that we recommend to our customers](../../secure/security-checklist/) to secure their own YugabyteDB installations, including:
+
+- authentication
+- role-based access control
+- dedicated users
+- limited network exposure
+- encryption in transit
+- encryption at rest
+
+## Data privacy and compliance
+
+For information on data privacy and compliance, refer to the [Yugabyte DPA](https://www.yugabyte.com/yugabyte-cloud-data-processing-addendum/).
 
 ## Auditing
 

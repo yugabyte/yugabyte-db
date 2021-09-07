@@ -12,7 +12,7 @@ To connect to a cluster using `ysqlsh`:
     Here's an example of the generated `ysqlsh` command:
 
     ```sh
-    ./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.devcloud.yugabyte.com \
+    ./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.cloud.yugabyte.com \
     user=<DB USER> \
     dbname=<database name> \
     sslmode=verify-full \

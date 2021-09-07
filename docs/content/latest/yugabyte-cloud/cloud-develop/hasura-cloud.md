@@ -92,7 +92,7 @@ Yugabyte Cloud restricts access to clusters to IP addresses whitelisted in IP al
     For example
 
     ```url
-    postgresql://admin:qwerty@1234%20cloudportal.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
+    postgresql://admin:qwerty@1234%20cloud.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
     ```
 
     \
