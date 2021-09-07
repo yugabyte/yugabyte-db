@@ -13,6 +13,8 @@ isTocNested: true
 showAsideToc: true
 ---
 
+The following instructions show how you can build a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6.
+
 ## Maven
 
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
@@ -37,9 +39,13 @@ This tutorial assumes that you have:
 
 You also need to download and install your Yugabyte Cloud cluster CA certificate as follows:
 
-1. Download the root certificate for your cluster from Yugabyte Cloud.
+1. Sign in to Yugabyte Cloud, select your cluster, and click **Connect**.
 
-1. Generate a truststore with downloaded root certificate.
+1. Click **Connect to your Application**.
+
+1. Click **Download CA Cert** to download the cluster `root.crt` certificate to your computer.
+
+1. Generate a truststore using the downloaded root certificate.
 
     ```sh
     $ keytool -keystore ybtruststore -alias ybtruststore -import -file root.crt
@@ -49,7 +55,7 @@ You also need to download and install your Yugabyte Cloud cluster CA certificate
 
 ### Create the project's POM
 
-Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project.
+Create a Project Object Model (POM) file, named `pom.xml`, and then copy the following content into it. The POM includes configuration information required to build the project.
 
 ```xml
 <?xml version="1.0"?>
@@ -111,9 +117,7 @@ Create the appropriate directory structure as expected by Maven.
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
 ```
 
-Initialize custom SSLContext by loading the truststore created with the Yugabyte Cloud root certificate. 
-
-Add the following `YugabyteSSLContext` class to your project by copying the following contents into the file `src/main/java/com/yugabyte/sample/apps/YugabyteSSLContext.java`.
+Initialize a custom SSLContext by loading the truststore created with the Yugabyte Cloud root certificate. You do this by adding the following `YugabyteSSLContext` class to your project. Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YugabyteSSLContext.java`.
 
 ```java
 public class YugabyteSSLContext {
@@ -196,19 +200,21 @@ public class YBCqlHelloWorld {
 
 Set the following variables in `YBCqlHelloWorld.java`:
 
-- local-datacanter - us-west-1 (select * from system.peers)
+- LocalDatacenter - us-west-1 (select * from system.peers)
 - YUGABYTE_CLOUD_HOSTNAME - the host of your Yugabyte Cloud cluster
-- YUGABYTE_TRUSTSTORE_PASSWORD - the truststore password your created
+- YUGABYTE_TRUSTSTORE_PASSWORD - the truststore password you created
 - YCQL_USER - your Yugabyte database user name
 - YCQL_PASSWORD - your Yugabyte database password
 
-Configure the truststore in the app
+### Add the trustore to the project
+
+To add the truststore you created to the application project, create a `resources` directory in your Java project.
 
 ```sh
 $ mkdir -p src/main/resources
 ```
 
-Copy the truststore `ybtruststore` into the `src/main/resources` directory of your Java project.
+Then copy the truststore `ybtruststore` into the `src/main/resources` directory.
 
 ### Build the project
 
