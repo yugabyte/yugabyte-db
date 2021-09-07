@@ -1,20 +1,20 @@
 ---
 title: Deploy a Spring Boot application on GKE
 headerTitle: Deploy a Spring Boot application on GKE
-linkTitle: GKE
-description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE).
+linkTitle: Deploy on GKE
+description: Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE).
 menu:
   latest:
     parent: spring-boot
     name: Google Kubernetes Engine
     identifier: spring-boot-gke
-    weight: 623
+    weight: 30
 type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-Deploy a Spring Boot application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE) by following the steps below.
+Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE) by following the steps below.
 
 This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
 

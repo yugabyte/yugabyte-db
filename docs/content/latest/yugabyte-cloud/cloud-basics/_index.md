@@ -33,9 +33,9 @@ Follow these steps to learn how to add, configure, and connect to clusters:
 1. [Add database users](add-users/)
     \
     Grant access to cluster databases to additional users.
-1. [Connect an application](connect-application/)
+1. [Connect a Spring application](connect-application/)
     \
-    Connect a Spring Boot application to a cluster.
+    Connect a Spring Data YugabyteDB application to a Yugabyte Cloud cluster.
 
 ## Monitor and back up clusters
 

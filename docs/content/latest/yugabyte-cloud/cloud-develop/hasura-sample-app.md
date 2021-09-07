@@ -1,7 +1,7 @@
 ---
-title: Deploy Realtime Poll Application on Hasura Cloud
-headerTitle: Deploy Realtime Poll Application on Hasura Cloud
-linkTitle: Hasura Realtime Poll
+title: Deploy a GraphQL application
+headerTitle: Deploy a GraphQL application
+linkTitle: Deploy a GraphQL application
 description: Deploy the Realtime Poll application in Hasura Cloud and Yugabyte Cloud.
 menu:
   latest:

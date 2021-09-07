@@ -1,19 +1,19 @@
 ---
 title: Deploy a Spring Boot application on Amazon EKS
-linkTitle: Amazon EKS
-description: Use Helm Chart to deploy a single-zone Kubernetes cluster on Amazon Elastic Kubernetes Service (EKS).
+linkTitle: Deploy on Amazon EKS
+description: Deploy a Spring application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS).
 menu:
   latest:
     parent: spring-boot
     name: Amazon EKS
     identifier: spring-boot-eks
-    weight: 622
+    weight: 20
 type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-Deploy a Spring Boot application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS) by following the steps below.
+Deploy a Spring application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS) by following the steps below.
 
 This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
 

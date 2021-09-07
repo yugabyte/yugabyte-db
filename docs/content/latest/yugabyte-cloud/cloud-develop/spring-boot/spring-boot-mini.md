@@ -1,20 +1,20 @@
 ---
 title: Deploy a Spring Boot application using minikube
 headerTitle: Deploy a Spring Boot application using minikube
-linkTitle: minikube
-description: Deploy a Spring Boot application (PetClinic) on Kubernetes using minikube.
+linkTitle: Deploy on minikube
+description: Deploy a Spring application connected to Yugabyte Cloud on Kubernetes locally using minikube.
 menu:
   latest:
     parent: spring-boot
     name: Minikube
     identifier: spring-boot-mini
-    weight: 624
+    weight: 40
 type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-Deploy a Spring Boot application connected to Yugabyte Cloud on Kubernetes locally using minikube by following the steps below.
+Deploy a Spring application connected to Yugabyte Cloud on Kubernetes locally using minikube by following the steps below.
 
 This example uses the PetClinic application, connected to Yugabyte Cloud and containerized using Docker; refer to [Connect a Spring Boot application](../../../cloud-basics/connect-application/).
 

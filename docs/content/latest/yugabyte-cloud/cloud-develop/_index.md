@@ -26,6 +26,18 @@ showAsideToc: true
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="connect-ycql-application/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="title">Connect a YCQL application</div>
+      </div>
+      <div class="body">
+        Connect a YCQL Java application.
+      </div>
+    </a>
+  </div>
 <!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="../cloud-basics/connect-application/">

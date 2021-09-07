@@ -1,7 +1,7 @@
 ---
-title: Connect a Spring Boot application
-linkTitle: Connect an application
-description: Connect a Spring Boot application to Yugabyte Cloud and containerize it in Docker.
+title: Connect a Spring Data YugabyteDB application
+linkTitle: Connect a Spring application
+description: Connect a Spring Spring Data YugabyteDB application to Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,143 +13,103 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.
+The example on this page shows how you can connect a Spring application to Yugabyte Cloud, using a version of the Spring PetClinic sample application that has been updated with a domain and persistence layer built with [Spring Data YugabyteDB](https://github.com/yugabyte/spring-data-yugabytedb).
 
-The example on this page shows how you can connect a Spring Boot application to Yugabyte Cloud, using a version of the Spring Boot PetClinic sample application that has been updated with a profile making it compatible with YugabyteDB. 
+In addition to using Spring Data YugabyteDB, the application uses the following:
 
-The repository for the application is at <https://github.com/yugabyte/spring-petclinic>. Instructions for connecting this application to YugabyteDB are also provided in the `petclinic_db_setup_yugabytedb.md` file in this repository.
+- [Flyway](https://flywaydb.org/) to manage the database schema and initial data loading.
+- [SpringFox](https://springfox.github.io/springfox/) to deliver Swagger/OpenAPI docs.
+
+The repository for the application is at <https://github.com/yugabyte/petclinic-spring-data-yugabytedb>. Instructions for connecting this application to YugabyteDB are also provided in the `readme.md` file in this repository.
 
 In this walkthrough, you will:
 
-- Download the Spring Boot PetClinic application
-- Connect the application to Yugabyte Cloud
-- Containerize the application in Docker
+- Download the Spring PetClinic application
+- Obtain your cluster connection string
+- Update and run the application locally
 
 ## Prerequisites
 
-- Java 8 or newer (full JDK)
 - Git
-- Docker
-- Yugabyte Cloud cluster, with your computer IP address [whitelisted in an IP allow list](../add-connections/)
+- Yugabyte Cloud cluster, with your computer IP address whitelisted in an [IP allow list](../../cloud-basics/add-connections/)
 
-## Download and connect the PetClinic application
+## Clone the Spring Data YugabyteDB PetClinic application
 
-1. On your computer, clone the Spring Boot PetClinic sample application: 
+1. On your computer, clone the Spring PetClinic sample application built with Spring Data YugabyteDB: 
 
     ```sh
-    $ git clone https://github.com/yugabyte/spring-petclinic.git
+    $ git clone https://github.com/yugabyte/petclinic-spring-data-yugabytedb.git
     ```
 
     ```output
-    Cloning into 'spring-petclinic'...
-    remote: Enumerating objects: 8616, done.
-    remote: Counting objects: 100% (18/18), done.
-    remote: Compressing objects: 100% (18/18), done.
-    remote: Total 8616 (delta 1), reused 13 (delta 0), pack-reused 8598
-    Receiving objects: 100% (8616/8616), 7.29 MiB | 19.03 MiB/s, done.
-    Resolving deltas: 100% (3268/3268), done.
+    Cloning into 'petclinic-spring-data-yugabytedb'...
+    remote: Enumerating objects: 177, done.
+    remote: Counting objects: 100% (177/177), done.
+    remote: Compressing objects: 100% (121/121), done.
+    remote: Total 177 (delta 43), reused 171 (delta 37), pack-reused 0
+    Receiving objects: 100% (177/177), 1.02 MiB | 1.28 MiB/s, done.
+    Resolving deltas: 100% (43/43), done.
     ```
 
-1. Go to the `spring-petclinic` directory.
+1. Go to the `petclinic-spring-data-yugabytedb` directory.
 
     ```sh
-    $ cd spring-petclinic
+    $ cd petclinic-spring-data-yugabytedb
     ```
 
-1. Open the file `spring-petclinic/src/main/resources/db/yugabytedb/user.sql` and copy the contents.
+## Install the certificate and copy the connection string
 
-1. Sign in to Yugabyte Cloud and select your cluster, and note the host and port details.
+1. Sign in to Yugabyte Cloud, select your cluster, and click **Connect**.
 
-1. Click **Connect** and choose **Launch Cloud Shell**.
+1. Click **Connect to your Application**.
 
-1. Paste the contents of the `user.sql` file into the Cloud Shell to create the application database and user.
-
-    ```sql
-    yugabyte=# DROP DATABASE IF EXISTS "petclinic";
-    yugabyte=# DROP USER IF EXISTS "petclinic";
-    yugabyte=# CREATE DATABASE "petclinic";
-    yugabyte=# CREATE USER "petclinic" WITH PASSWORD 'petclinic';
-    yugabyte=# GRANT ALL PRIVILEGES ON DATABASE "petclinic" to "petclinic";
-    ```
-
-    ```output
-    NOTICE:  database "petclinic" does not exist, skipping
-    DROP DATABASE
-    NOTICE:  role "petclinic" does not exist, skipping
-    DROP ROLE
-    CREATE DATABASE
-    CREATE ROLE
-    GRANT
-    ```
-
-1. On your computer, run the PetClinic application using the following command:
+1. Click **Download CA Cert** to download the cluster `root.crt` certificate to your computer, and move the file to the `~/.postgresql` directory.
 
     ```sh
-    $ ./mvnw spring-boot:run \
-    -Dspring-boot.run.profiles=yugabytedb \
-    -Dspring-boot.run.arguments="--YBDB_URL=jdbc:postgresql://[host]:[port]/petclinic?load-balance=true"
+    $ mv ~/Downloads/root.crt ~/.postgresql/root.crt
     ```
 
-    where `[host]` and `[port]` are the host and port number of your Yugabyte Cloud cluster. The `spring-boot.run.profiles` parameter tells the application to use the YugabyteDB database configuration. The `spring-boot.run.arguments` parameter provides the application with the connection string to your Yugabyte Cloud cluster.
+1. Under **Add this connection string into your application**, copy the postgresql connection string.
+
+    The connection string is in the form `postgresql://[host]:[port]/[database]`.
+
+## Connect and run the application
+
+1. On your computer, update the contents of the `spring-petclinic/src/main/resources/application.yml` file by updating the `yugabyte:datasource:url` with the connection string you copied, and username and password with your YugabyteDB database credentials. 
+
+    The connection string replaces the url after `jdbc:` and before `?ssl`, as follows:
+
+    ```yaml
+    yugabyte:
+    datasource:
+        url: jdbc:[postgresql connection string]?ssl=true&sslmode=verify-full
+        load-balance: true
+        username: [user]
+        password: [password]
+    ```
+
+    where `[postgresql connection string]` is the connection string, and `[user]` and `[password]` are the credentials for the database.
+
+1. Run the PetClinic application using the following command:
+
+    ```sh
+    $ ./mvnw spring-boot:run
+    ```
 
     ```output
     [INFO] Scanning for projects...
     [INFO] 
-    [INFO] ------------< org.springframework.samples:spring-petclinic >------------
-    [INFO] Building petclinic 2.4.5
+    [INFO] ----< org.springframework.samples:petclinic-spring-data-yugabytedb >----
+    [INFO] Building petclinic 2.1.0.BUILD-SNAPSHOT
     [INFO] --------------------------------[ jar ]---------------------------------
     [INFO] 
-    [INFO] >>> spring-boot-maven-plugin:2.4.5:run (default-cli) > test-compile @ spring-petclinic >>>
+    [INFO] >>> spring-boot-maven-plugin:2.5.4:run (default-cli) > test-compile @ petclinic-spring-data-yugabytedb >>>
     ```
 
-    {{< note title="Note" >}}
-
-This configuration automatically initializes your database, and will delete and reinitialize the database on every run. To not initialize the database after the first run, use the `--DB_INIT=never` argument:
-
-```sh
-$ ./mvnw spring-boot:run \
-Dspring-boot.run.profiles=yugabytedb \
--Dspring-boot.run.arguments="--YBDB_URL=jdbc:postgresql://[host]:[port]/petclinic?load-balance=true, \
---DB_INIT=never"
-```
-
-    {{< /note >}}
+    Flyway configures the Yugabyte database with the Petclinic schema and loads the sample data.
 
 1. Go to <http://localhost:8080>.
 
 The PetClinic application is now running locally and is connected to your Yugabyte Cloud cluster.
 
-![PetClinic application running](/images/yb-cloud/petclinic.png)
-
-## Containerize the application using Docker and run locally
-
-1. Start Docker on your computer.
-
-1. Containerize the PetClinic application: 
-
-    ```sh
-    $ ./mvnw spring-boot:build-image
-    ```
-
-1. Tag your image: 
-
-    ```sh
-    $ docker tag [image_id] spring-petclinic
-    ```
-    
-    You can find the image id by running `docker image ls`.
-
-1. Run the image as a container in Docker to make sure it’s working correctly: 
-
-    ```sh
-    $ docker run -d --name=spring-petclinic -p 8080:8080 -e \
-    JAVA_OPTS="-Dspring.profiles.active=yugabytedb \
-    -Dspring.datasource.url=jdbc:postgresql://[host]:[port]/petclinic?load-balance=true \
-    -Dspring.datasource.initialization-mode=never" spring-petclinic
-    ```
-
-    where `[host]` and `[port]` are the host and port number of your Yugabyte Cloud cluster.
-
-1. Go to <http://localhost:8080>.
-
-The PetClinic sample application is now connected to your Yugabyte Cloud cluster and running locally on Docker.
+![PetClinic application running](/images/yb-cloud/petclinic-springdata.png)
