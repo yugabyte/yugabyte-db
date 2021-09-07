@@ -1,12 +1,11 @@
 ---
-title: Deploy a Spring Boot application on GKE
-headerTitle: Deploy a Spring Boot application on GKE
+title: Deploy a Spring application on GKE
+headerTitle: Deploy a Spring application on GKE
 linkTitle: Deploy on GKE
 description: Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE).
 menu:
   latest:
     parent: spring-boot
-    name: Google Kubernetes Engine
     identifier: spring-boot-gke
     weight: 30
 type: page

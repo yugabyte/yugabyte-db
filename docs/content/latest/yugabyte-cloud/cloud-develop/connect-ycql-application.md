@@ -147,7 +147,7 @@ import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 public class YBCqlHelloWorld {
-    private static final String YUGABYTE_TRUSTSTORE_PATH = "src/main/resource/ybtruststore ";
+    private static final String YUGABYTE_TRUSTSTORE_PATH = "src/main/resource/ybtruststore";
     private static final String YUGABYTE_TRUSTSTORE_PASSWORD = "";
     private static final String YCQL_USER = "";
     private static final String YCQL_PASSWORD = "";
