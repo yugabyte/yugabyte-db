@@ -131,7 +131,7 @@ In GCP, do the following:
     -Dspring.datasource.initialization-mode=never
     ```
 
-    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster.
+    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster. To obtain your cluster connection parameters, sign in to Yugabyte Cloud, select your cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
 
 1. Click **Continue**.
 

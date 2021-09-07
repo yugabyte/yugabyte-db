@@ -170,7 +170,7 @@ To deploy the application, you first point your shell to minikube’s Docker dae
               -Dspring.datasource.initialization-mode=never"
     ```
 
-    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster.
+    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster. To obtain your cluster connection parameters, sign in to Yugabyte Cloud, select you cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
 
 1. Create the service and deployment in minikube using the manifest file.
 

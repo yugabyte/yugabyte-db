@@ -206,7 +206,9 @@ After your cluster has been created, do the following:
               value: "-Dspring.profiles.active=yugabytedb -Dspring.datasource.url=jdbc:postgresql://[host]:[port]/petclinic?load-balance=true -Dspring.datasource.initialization-mode=never"
     ```
 
-    Replace `[aws_acct_id]` with your AWS account ID, and `[aws_region]` with the region you selected in AWS. Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster.
+    Replace `[aws_acct_id]` with your AWS account ID, and `[aws_region]` with the region you selected in AWS. 
+    \
+    Replace `[host]` and `[port]` with the host and port number of your Yugabyte Cloud cluster. To obtain your cluster connection parameters, sign in to Yugabyte Cloud, select your cluster and navigate to [Settings](../../../cloud-clusters/configure-clusters).
 
 1. Create the Service and Deployment on your EKS cluster.
 

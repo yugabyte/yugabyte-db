@@ -55,15 +55,9 @@ A Yugabyte Cloud account is limited to a single Free cluster; you can add as man
 
 Currently self-service migration is not supported. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for help with migration.
 
-### How do I check the status of Yugabyte Cloud?
-
-Ask Juan Tellez.
-
 ### What regions in AWS and GCP are available?
 
-Yugabyte Cloud runs in Amazon Elastic Kubernetes Service (EKS) and Google Kubernetes Engine (GKE), which are managed Kubernetes platforms, and Yugabyte Cloud supports all the regions that the platforms offer. If a particular region is not available, the respective cloud provider does not support managed Kubernetes in that region. Refer to the list of [EKS regions](https://aws.amazon.com/about-aws/global-infrastructure/regional-product-services/) and [GKE regions](https://cloud.google.com/about/locations/) for details.
-
-We are continuously improving region coverage, so if there are any regions you would like us to support reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. Regions where load balancers, certain VMs, or other resources are harder to obtain have not yet been added. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 ### How do I connect to my cluster?
 
