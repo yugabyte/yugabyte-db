@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.5.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.5.1.0-b0
+-- Dumped from database version 11.2-YB-2.9.1.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.9.1.0-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -282,6 +282,19 @@ CREATE TABLE public.tbl9 (
 ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
 
 --
+-- Name: uaccount; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+CREATE TABLE public.uaccount (
+    pguser name NOT NULL,
+    seclv integer,
+    CONSTRAINT uaccount_pkey PRIMARY KEY(pguser ASC)
+);
+
+
+ALTER TABLE public.uaccount OWNER TO regress_rls_alice;
+
+--
 -- Name: tbl1 a; Type: DEFAULT; Schema: public; Owner: yugabyte_test
 --
 
@@ -426,6 +439,14 @@ COPY public.tbl9 (a, b, c) FROM stdin;
 
 
 --
+-- Data for Name: uaccount; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.uaccount (pguser, seclv) FROM stdin;
+\.
+
+
+--
 -- Name: tbl1_a_seq; Type: SEQUENCE SET; Schema: public; Owner: yugabyte_test
 --
 
@@ -475,6 +496,13 @@ CREATE INDEX tbl8_idx5 ON public.tbl8 USING lsm (c HASH);
 
 
 --
+-- Name: uaccount account_policies; Type: POLICY; Schema: public; Owner: regress_rls_alice
+--
+
+CREATE POLICY account_policies ON public.uaccount USING ((pguser = CURRENT_USER));
+
+
+--
 -- Name: rls_public p1; Type: POLICY; Schema: public; Owner: yugabyte_test
 --
 
@@ -506,6 +534,12 @@ ALTER TABLE public.rls_private ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.rls_public ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: uaccount; Type: ROW SECURITY; Schema: public; Owner: regress_rls_alice
+--
+
+ALTER TABLE public.uaccount ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: TABLE rls_private; Type: ACL; Schema: public; Owner: yugabyte_test
