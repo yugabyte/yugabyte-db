@@ -52,7 +52,7 @@ public class AlertChannelSlack implements AlertChannelInterface {
     } catch (IOException e) {
       throw new PlatformNotificationException(
           String.format(
-              "Error sending Slack message for alert %s: %s", alert.getUuid(), e.getMessage()),
+              "Error sending Slack message for alert %s: %s", alert.getName(), e.getMessage()),
           e);
     }
   }
