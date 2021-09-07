@@ -27,11 +27,11 @@ import play.mvc.Http;
 import play.mvc.Result;
 
 @Singleton
-public final class PlatformErrorHandler extends DefaultHttpErrorHandler {
-  public static final Logger LOG = LoggerFactory.getLogger(PlatformErrorHandler.class);
+public final class YWErrorHandler extends DefaultHttpErrorHandler {
+  public static final Logger LOG = LoggerFactory.getLogger(YWErrorHandler.class);
 
   @Inject
-  public PlatformErrorHandler(
+  public YWErrorHandler(
       Config config,
       Environment environment,
       OptionalSourceMapper sourceMapper,
