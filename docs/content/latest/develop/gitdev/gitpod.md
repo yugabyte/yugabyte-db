@@ -23,8 +23,8 @@ Gitpod doesn't require anything in your local workstation other than a code edit
 ## Getting Started with a boot app
 You can find the source at [Spring Boot todo on GitHub](https://github.com/srinivasa-vasu/todo). 
 
-- The easy way to get started with Gitpod is to simply fork this source repo 
-and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]`. '[REPO_URL]' should be replaced with your forked repository url. 
+- The easy way to get started with Gitpod is to simply fork this [source repo](https://github.com/srinivasa-vasu/todo) 
+and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. '[REPO_URL]' should be replaced with your forked repository url and you should already have been conneted to the Gitpod account before launching the browser url. 
 - If you want to set this up from scratch, then follow the below instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/srinivasa-vasu/todo).
 
 ### Initialize the base project structure

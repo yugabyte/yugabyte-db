@@ -23,8 +23,8 @@ Codespaces doesn't require anything in your local workstation other than a code 
 ## Getting Started with a boot app
 You can find the source at [Spring Boot todo on GitHub](https://github.com/srinivasa-vasu/todo).
 
-- The easy way to get started with Codespaces is to simply fork this source repo and jump on to the [Setting up the Codespace environment](#setting-up-the-codespace-environment) section to launch the Codespaces environment for your forked repository. 
-- If you want to set this up from scratch, then follow the below instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo]((https://github.com/srinivasa-vasu/todo)).
+- The easy way to get started with Codespaces is to simply fork this [source repo](https://github.com/srinivasa-vasu/todo) and jump on to the [Setting up the Codespace environment](#setting-up-the-codespace-environment) section to launch the Codespaces environment for your forked repository. 
+- If you want to set this up from scratch, then follow the below instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/srinivasa-vasu/todo).
 
 ### Initialize the base project structure
 Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Codespaces experience are agnostic of the language/framework. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
