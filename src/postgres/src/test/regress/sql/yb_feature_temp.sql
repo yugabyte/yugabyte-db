@@ -301,5 +301,8 @@ SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
 INSERT INTO temptest VALUES (100, 200, 300);
 INSERT INTO temptest VALUES (100, 200, 300);
 INSERT INTO temptest VALUES (101, 201, 301), (101, 201, 301);
-
 DROP TABLE temptest;
+
+-- test temp table with primary index scan.
+CREATE TEMP TABLE temptest (a INT PRIMARY KEY);
+EXPLAIN (COSTS OFF) SELECT a FROM temptest WHERE a = 1;

@@ -60,7 +60,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
-  @ApiModel(value = "Multi-table backup parameters", description = "")
+  @ApiModel(value = "MultiTableBackupParams", description = "Multi-table backup parameters")
   public static class Params extends BackupTableParams {
     public UUID customerUUID;
     public List<UUID> tableUUIDList = new ArrayList<>();
@@ -78,7 +78,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     tableBackupParams.ignoreErrors = true;
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendTarget(universe);
+    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
@@ -207,12 +207,12 @@ public class MultiTableBackup extends UniverseTaskBase {
             tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
           }
         }
-        ybService.closeClient(client, masterAddresses);
       } catch (Exception e) {
         log.error("Failed to get list of tables in universe " + params().universeUUID, e);
-        ybService.closeClient(client, masterAddresses);
         unlockUniverseForUpdate();
         throw new RuntimeException(e);
+      } finally {
+        ybService.closeClient(client, masterAddresses);
       }
 
       updateBackupState(true);
@@ -379,7 +379,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       schedule.stopSchedule();
       return;
     }
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendTarget(universe);
+    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     Map<String, String> config = universe.getConfig();
     boolean shouldTakeBackup =

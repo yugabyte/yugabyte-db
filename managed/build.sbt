@@ -121,6 +121,12 @@ name := "yugaware"
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
   .disablePlugins(PlayLayoutPlugin)
+  .settings(commands += Command.command("deflake") { state =>
+    "test" :: "deflake" :: state
+  })
+  .settings(commands += Command.args("deflakeOne", "<arg>") { (state, args) =>
+    "testOnly " + args.mkString(" ") :: "deflakeOne " + args.mkString(" "):: state
+  })
 
 scalaVersion := "2.12.10"
 version := (sys.process.Process("cat version.txt").lineStream_!.head)
@@ -137,6 +143,8 @@ libraryDependencies ++= Seq(
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.postgresql" % "postgresql" % "42.2.23",
   "commons-io" % "commons-io" % "2.4",
+  "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",

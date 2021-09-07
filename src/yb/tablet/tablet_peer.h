@@ -244,14 +244,14 @@ class TabletPeer : public consensus::ConsensusContext,
     return tablet_;
   }
 
-  const RaftGroupStatePB state() const {
+  RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);
   }
 
-  const TabletDataState data_state() const;
+  TabletDataState data_state() const;
 
   // Returns the current Raft configuration.
-  const consensus::RaftConfigPB RaftConfig() const;
+  consensus::RaftConfigPB RaftConfig() const;
 
   TabletStatusListener* status_listener() const {
     return status_listener_.get();

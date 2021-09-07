@@ -45,9 +45,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
-import java.util.ArrayList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -119,7 +117,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           // ResizeNode cannot change the number of volumes
           if (deviceInfo.numVolumes != null
-              && primIntent.deviceInfo.numVolumes != deviceInfo.numVolumes) {
+              && !deviceInfo.numVolumes.equals(primIntent.deviceInfo.numVolumes)) {
             throw new IllegalArgumentException(
                 "ResizeNode cannot change the number of volumes. It was "
                     + primIntent.deviceInfo.numVolumes
@@ -466,7 +464,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
               CreateRootVolumes.Params params = new CreateRootVolumes.Params();
               UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-              fillSetupParamsForNode(params, userIntent, node);
+              fillCreateParamsForNode(params, userIntent, node);
               params.numVolumes = numVolumes;
               params.machineImage = machineImage;
               params.bootDisksPerZone = replacementRootVolumes;
@@ -678,7 +676,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
       // Conditional Provisioning
-      createSetupServerTasks(nodeList, false, true /* isSystemdUpgrade */)
+      createSetupServerTasks(nodeList, true /* isSystemdUpgrade */)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       // Conditional Configuring
       createConfigureServerTasks(nodeList, false, false, false, true /* isSystemdUpgrade */)
@@ -786,8 +784,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<NodeDetails> nodeList = Collections.singletonList(node);
 
-        createSetupServerTasks(nodeList, true)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+        createSetupServerTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
         createConfigureServerTasks(nodeList, false /* isShell */, false, false)
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 

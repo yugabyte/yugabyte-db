@@ -20,8 +20,9 @@ export default class AlertsList extends Component {
     const tableBodyContainer = { marginBottom: '1%', paddingBottom: '1%' };
 
     const getAlertName = function (cell, row) {
-      return row.labels.filter(label => label.name === 'definition_name')
-        .map(label => label.value)
+      return row.labels
+        .filter((label) => label.name === 'definition_name')
+        .map((label) => label.value)
         .shift();
     };
 

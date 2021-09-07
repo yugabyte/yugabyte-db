@@ -91,6 +91,8 @@ class PgWrapper {
 
  private:
   static std::string GetPostgresExecutablePath();
+  static std::string GetPostgresLibPath();
+  static std::string GetPostgresThirdPartyLibPath();
   static std::string GetInitDbExecutablePath();
   static CHECKED_STATUS CheckExecutableValid(const std::string& executable_path);
 

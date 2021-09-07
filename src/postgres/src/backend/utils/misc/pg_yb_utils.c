@@ -61,6 +61,8 @@
 #include "tcop/utility.h"
 #include "utils/datum.h"
 
+#include "lib/stringinfo.h"
+
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 uint64_t YBGetActiveCatalogCacheVersion() {
@@ -104,7 +106,7 @@ CheckIsYBSupportedRelationByKind(char relkind)
 	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
-		  relkind == RELKIND_PARTITIONED_INDEX))
+		  relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_FOREIGN_TABLE))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -1473,4 +1475,100 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	/* hash the contents of the buffer and return */
 	uint16_t hashed_val = YBCCompoundHash(arg_buf, total_bytes);
 	PG_RETURN_UINT16(hashed_val);
+}
+
+/*---------------------------------------------------------------------------*/
+/* Deterministic DETAIL order                                                */
+/*---------------------------------------------------------------------------*/
+
+static int yb_detail_sort_comparator(const void *a, const void *b)
+{
+	return strcmp(*(const char **) a, *(const char **) b);
+}
+
+typedef struct {
+	char **lines;
+	int length;
+} DetailSorter;
+
+void detail_sorter_from_list(DetailSorter *v, List *litems, int capacity)
+{
+	v->lines = (char **)palloc(sizeof(char *) * capacity);
+	v->length = 0;
+	ListCell *lc;
+	foreach (lc, litems)
+	{
+		if (v->length < capacity)
+		{
+			v->lines[v->length++] = (char *)lfirst(lc);
+		}
+	}
+}
+
+char **detail_sorter_lines_sorted(DetailSorter *v)
+{
+	qsort(v->lines, v->length,
+		sizeof (const char *), yb_detail_sort_comparator);
+	return v->lines;
+}
+
+void detail_sorter_free(DetailSorter *v)
+{
+	pfree(v->lines);
+}
+
+char *YBDetailSorted(char *input)
+{
+	if (input == NULL)
+		return input;
+
+	// this delimiter is hard coded in backend/catalog/pg_shdepend.c,
+	// inside of the storeObjectDescription function:
+	char delimiter[2] = "\n";
+
+	// init stringinfo used for concatenation of the output:
+	StringInfoData s;
+	initStringInfo(&s);
+
+	// this list stores the non-empty tokens, extra counter to know how many:
+	List *line_store = NIL;
+	int line_count = 0;
+
+	char *token;
+	token = strtok(input, delimiter);
+	while (token != NULL)
+	{
+		if (strcmp(token, "") != 0)
+		{
+			line_store = lappend(line_store, token);
+			line_count++;
+		}
+		token = strtok(NULL, delimiter);
+	}
+
+	DetailSorter sorter;
+	detail_sorter_from_list(&sorter, line_store, line_count);
+
+	if (line_count == 0)
+	{
+		// put the original input in:
+		appendStringInfoString(&s, input);
+	}
+	else
+	{
+		char **sortedLines = detail_sorter_lines_sorted(&sorter);
+		for (int i=0; i<line_count; i++)
+		{
+			if (sortedLines[i] != NULL) {
+				if (i > 0)
+					appendStringInfoString(&s, delimiter);
+				appendStringInfoString(&s, sortedLines[i]);
+			}
+		}
+	}
+
+	detail_sorter_free(&sorter);
+	list_free(line_store);
+
+	return s.data;
 }

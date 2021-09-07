@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -41,14 +41,14 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     super.verifyParams(universe);
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "Only ROLLING_UPGRADE option is supported for OS upgrades.");
     }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     CloudType provider = userIntent.providerType;
     if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
     }
@@ -64,12 +64,12 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
       }
     }
     if (hasEphemeralStorage) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }
 
     if (machineImages.isEmpty()) {
-      throw new YWServiceException(Status.BAD_REQUEST, "machineImages param is required.");
+      throw new PlatformServiceException(Status.BAD_REQUEST, "machineImages param is required.");
     }
 
     nodeToRegion.clear();
@@ -80,12 +80,12 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                 .map(az -> az.region)
                 .orElseThrow(
                     () ->
-                        new YWServiceException(
+                        new PlatformServiceException(
                             Status.BAD_REQUEST,
                             "Could not find region for AZ " + node.cloudInfo.az));
 
         if (!machineImages.containsKey(region.uuid)) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               Status.BAD_REQUEST, "No VM image was specified for region " + node.cloudInfo.region);
         }
 

@@ -346,7 +346,7 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
       controller.set_timeout(30s);
       RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
 
-      req.set_is_compaction(true);
+      req.set_operation(tserver::FlushTabletsRequestPB::COMPACT);
       controller.Reset();
       RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
     }
@@ -493,7 +493,7 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   }, deadline, "Deleted table cleanup"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(Pgsql),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -514,7 +514,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(Pgsql),
   ASSERT_EQ(res, "before");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateTable),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateTable),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -535,7 +535,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateTable),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateIndex),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -558,7 +558,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateIndex),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropTable),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropTable),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -580,7 +580,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropTable),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropIndex),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -605,7 +605,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropIndex),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddColumn),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1107,7 +1107,7 @@ TEST_F(YbAdminSnapshotScheduleTest, DropKeyspaceAndSchedule) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
-  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, kInterval * 4));
 
   auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
 
@@ -1120,8 +1120,19 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
     ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'value')"));
     Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
     ASSERT_OK(conn.ExecuteQuery("CREATE UNIQUE INDEX test_table_idx ON test_table (value)"));
+    std::this_thread::sleep_for(kInterval * 2);
     ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
   }
+
+  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
+  std::string id = ASSERT_RESULT(Get(snapshots[0], "id")).get().GetString();
+  ASSERT_OK(WaitFor([this, &id]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
+    auto current_id = VERIFY_RESULT(Get(snapshots[0], "id")).get().GetString();
+    return current_id != id;
+  }, kInterval * 3, "Wait first snapshot to be deleted"));
 }
 
 }  // namespace tools

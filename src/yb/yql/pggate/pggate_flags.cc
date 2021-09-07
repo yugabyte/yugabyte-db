@@ -48,8 +48,8 @@ DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
 DEFINE_int32(ysql_request_limit, 1024,
              "Maximum number of requests to be sent at once");
 
-DEFINE_int32(ysql_prefetch_limit, 1024,
-             "Maximum number of rows to prefetch");
+DEFINE_uint64(ysql_prefetch_limit, 1024,
+              "Maximum number of rows to prefetch");
 
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");

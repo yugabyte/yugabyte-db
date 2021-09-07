@@ -20,7 +20,7 @@ When the optional `RECURSIVE` keyword is used, the [`common_table_expression`](.
 
 ```
 with
-  recursive <name>(c1, c2, ...) as (
+  recursive r(c1, c2, ...) as (
 
     -- Non-recursive term.
     (
@@ -29,12 +29,12 @@ with
 
     union [all]
 
-    -- Recursive term (notice the recursive self-reference to <name>.
+    -- Recursive term. Notice the so-called recursive self-reference to r.
     (
-      select ... from <name> ...
+      select ... from r ...
     )
   )
-select ... from <name> ...;
+select ... from r ...;
 ```
 The following minimal example is found in very many articles and in the documentation for several SQL databases.
 
@@ -328,27 +328,27 @@ In informal prose:
 
 ### Pseudocode definition of the semantics
 
-A compact, and exact, formulation is given by using pseudocode. The _"RECURSIVE_CTE_RESULTS"_ table, the _"WORKING_RESULTS"_ table, and the _"TEMP_RESULTS"_ table are transient, statement-duration, structures.
+A compact, and exact, formulation is given by using pseudocode. The _final_results_ table, the _previous_results_ table, and the _"TEMP_RESULTS"_ table are transient, statement-duration, structures.
 
-> - **Purge the RECURSIVE_CTE_RESULTS table and the WORKING_RESULTS table.**
+> - **Purge the _final_results_ table and the _previous_results_ table.**
 >
-> - **Evaluate the non-recursive term, inserting the resulting rows into the WORKING_RESULTS table.**
+> - **Evaluate the non-recursive term, inserting the resulting rows into the _previous_results_ table.**
 >
-> - **Insert the contents of the WORKING_RESULTS table into the RECURSIVE_CTE_RESULTS table.**
+> - **Insert the contents of the _previous_results_ table into the _final_results_ table.**
 >
-> - **while the WORKING_RESULTS table is not empty loop**
+> - **while the _previous_results_ table is not empty loop**
 >
->   - **Purge the TEMP_RESULTS table.**
+>   - **Purge the _temp_results_ table.**
 >   
->   - **Evaluate the recursive term using the current contents of the WORKING_RESULTS table for the recursive self-reference, inserting the resulting rows into the TEMP_RESULTS table.**
+>   - **Evaluate the recursive term using the current contents of the _previous_results_ table for the recursive self-reference, inserting the resulting rows into the _temp_results_ table.**
 >   
->   - **Purge the WORKING_RESULTS table and insert the contents of the TEMP_RESULTS table.**
+>   - **Purge the _previous_results_ table and insert the contents of the _temp_results_ table.**
 >   
->   - **Append the contents of the TEMP_RESULTS table into the RECURSIVE_CTE_RESULTS table.**
+>   - **Append the contents of the _temp_results_ table into the _final_results_ table.**
 >   
 >- **end loop**
 > 
->- **Deliver the present contents of the RECURSIVE_CTE_RESULTS table as the final result.**
+>- **Deliver the present contents of the _final_results_ table so that whatever follows the recursive CTE can use them.**
 
 ### PL/pgSQL procedure implementation of the pseudocode : example 1
 
@@ -358,12 +358,12 @@ This pseudocode can be easily implemented, as a PL/pgSQL procedure, for the mini
 set client_min_messages = warning;
 
 drop procedure if exists recursive_with_semantics_1 cascade;
-drop table if exists recursive_cte_results cascade;
-drop table if exists working_results cascade;
+drop table if exists final_results cascade;
+drop table if exists previous_results cascade;
 drop table if exists temp_results cascade;
 
-create table recursive_cte_results(n int primary key);
-create table working_results(n int primary key);
+create table final_results(n int primary key);
+create table previous_results(n int primary key);
 create table temp_results(n int primary key);
 ```
 Now create the procedure:
@@ -374,21 +374,21 @@ create procedure recursive_with_semantics_1(max_n in int)
 as $body$
 begin
   -- Emulate the non-recursive term.
-  delete from recursive_cte_results;
-  delete from working_results;
-  insert into working_results(n) values(1);
-  insert into recursive_cte_results(n) select n from working_results;
+  delete from final_results;
+  delete from previous_results;
+  insert into previous_results(n) values(1);
+  insert into final_results(n) select n from previous_results;
 
   -- Emulate the recursive term.
-  while ((select count(*) from working_results) > 0) loop
+  while ((select count(*) from previous_results) > 0) loop
     delete from temp_results;
     insert into temp_results
-    select n + 1 from working_results
+    select n + 1 from previous_results
     where n < max_n;
 
-    delete from working_results;
-    insert into working_results(n) select n from temp_results;
-    insert into recursive_cte_results(n) select n from temp_results;
+    delete from previous_results;
+    insert into previous_results(n) select n from temp_results;
+    insert into final_results(n) select n from temp_results;
   end loop;
 end;
 $body$;
@@ -400,11 +400,11 @@ Notice that the [PostgreSQL Version 11 documentation](https://www.postgresql.org
 
 This is a somewhat dubious claim because, in any language, recursion is implemented at a lower level in the hierarchy of abstractions, as iteration. The code of the PL/pgSQL procedure, because it uses a `WHILE` loop, makes this point explicitly.
 
-Now invoke the procedure and observe the contents of the _"RECURSIVE_CTE_RESULTS"_ table:
+Now invoke the procedure and observe the contents of the _final_results_ table:
 
 ```plpgsql
 call recursive_with_semantics_1(5);
-select n from recursive_cte_results order by 1;
+select n from final_results order by 1;
 ```
 
 The result is identical to that produced by the SQL implementation that it emulates (shown in the [Syntax](#syntax) section above).
@@ -467,19 +467,19 @@ The procedural implementation that emulates the pseudocode is a natural extensio
 set client_min_messages = warning;
 
 drop procedure if exists recursive_with_semantics_2 cascade;
-drop table if exists recursive_cte_results cascade;
-drop table if exists working_results cascade;
+drop table if exists final_results cascade;
+drop table if exists previous_results cascade;
 drop table if exists temp_results cascade;
 
-create table recursive_cte_results(
+create table final_results(
   c1 int not null,
   c2 int not null,
   constraint recursive_cte_results_pk primary key(c1, c2));
 
-create table working_results(
+create table previous_results(
   c1 int not null,
   c2 int not null,
-  constraint working_results_pk primary key(c1, c2));
+  constraint previous_results_pk primary key(c1, c2));
 
 create table temp_results(
   c1 int not null,
@@ -494,21 +494,21 @@ create procedure recursive_with_semantics_2(max_c1 in int)
 as $body$
 begin
   -- Emulate the non-recursive term.
-  delete from recursive_cte_results;
-  delete from working_results;
-  insert into working_results(c1, c2) values (0, 1), (0, 2), (0, 3);
-  insert into recursive_cte_results(c1, c2) select c1, c2 from working_results;
+  delete from final_results;
+  delete from previous_results;
+  insert into previous_results(c1, c2) values (0, 1), (0, 2), (0, 3);
+  insert into final_results(c1, c2) select c1, c2 from previous_results;
 
   -- Emulate the recursive term.
-  while ((select count(*) from working_results) > 0) loop
+  while ((select count(*) from previous_results) > 0) loop
     delete from temp_results;
     insert into temp_results
-    select c1 + 1, c2 + 1 from working_results
+    select c1 + 1, c2 + 1 from previous_results
     where c1 < max_c1;
 
-    delete from working_results;
-    insert into working_results(c1, c2) select c1, c2 from temp_results;
-    insert into recursive_cte_results(c1, c2) select c1, c2 from temp_results;
+    delete from previous_results;
+    insert into previous_results(c1, c2) select c1, c2 from temp_results;
+    insert into final_results(c1, c2) select c1, c2 from temp_results;
   end loop;
 end;
 $body$;
@@ -516,11 +516,11 @@ $body$;
 
 Notice that, here, each iteration accumulates _three_ rows.
 
-Now invoke the procedure and observe the contents of the _"RECURSIVE_CTE_RESULTS"_ table:
+Now invoke the procedure and observe the contents of the _final_results_ table:
 
 ```plpgsql
 call recursive_with_semantics_2(4);
-select c1, c2 from recursive_cte_results order by c1, c2;
+select c1, c2 from final_results order by c1, c2;
 ```
 
 The result is identical to that produced by the SQL implementation that it emulates.

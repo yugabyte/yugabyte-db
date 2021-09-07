@@ -7,11 +7,12 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -59,7 +60,7 @@ public class NodeInstanceController extends AuthenticatedController {
   public Result get(UUID customerUuid, UUID nodeUuid) {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
-    return YWResults.withData(node);
+    return PlatformResults.withData(node);
   }
 
   /**
@@ -79,9 +80,9 @@ public class NodeInstanceController extends AuthenticatedController {
 
     try {
       List<NodeInstance> nodes = NodeInstance.listByZone(zoneUuid, null /* instanceTypeCode */);
-      return YWResults.withData(nodes);
+      return PlatformResults.withData(nodes);
     } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 
@@ -94,9 +95,9 @@ public class NodeInstanceController extends AuthenticatedController {
     try {
       regionList = NodeInstance.listByProvider(providerUUID);
     } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return YWResults.withData(regionList);
+    return PlatformResults.withData(regionList);
   }
 
   /**
@@ -135,9 +136,9 @@ public class NodeInstanceController extends AuthenticatedController {
     }
     if (nodes.size() > 0) {
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return YWResults.withData(nodes);
+      return PlatformResults.withData(nodes);
     }
-    throw new YWServiceException(
+    throw new PlatformServiceException(
         BAD_REQUEST, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
   }
 
@@ -164,11 +165,11 @@ public class NodeInstanceController extends AuthenticatedController {
       auditService().createAuditEntry(ctx(), request());
       return Results.status(OK);
     } else {
-      throw new YWServiceException(BAD_REQUEST, "Node Not Found");
+      throw new PlatformServiceException(BAD_REQUEST, "Node Not Found");
     }
   }
 
-  @ApiOperation(value = "Update a node", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Update a node", response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Node action",
@@ -215,14 +216,14 @@ public class NodeInstanceController extends AuthenticatedController {
                 "The certificate %s needs info. Update the cert" + " and retry.",
                 CertificateInfo.get(taskParams.rootCA).label);
         LOG.error(errMsg);
-        throw new YWServiceException(BAD_REQUEST, errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
     }
 
     if (nodeAction == NodeActionType.QUERY) {
       String errMsg = "Node action not allowed for this action type.";
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     LOG.info(
@@ -248,6 +249,6 @@ public class NodeInstanceController extends AuthenticatedController {
         universe.name,
         nodeName);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 }

@@ -159,6 +159,9 @@
   - name: Install linux packages we need on our YugaByte clusters on aarch64 architecture
     become: yes
     become_method: sudo
+    module_defaults:
+      yum:
+        lock_timeout: 600
     package:
       name: "{{ item }}"
       state: latest

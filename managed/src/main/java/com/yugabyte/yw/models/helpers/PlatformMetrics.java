@@ -77,13 +77,14 @@ public enum PlatformMetrics {
   ALERT_CONFIG_WRITTEN("Alert rule files written", Unit.COUNT),
   ALERT_CONFIG_REMOVED("Alert rule files removed", Unit.COUNT),
   ALERT_MANAGER_STATUS("Common alert manager status for customer", Unit.STATUS),
-  ALERT_MANAGER_RECEIVER_STATUS("Alert manager receiver status", Unit.STATUS),
+  ALERT_MANAGER_CHANNEL_STATUS("Alert manager channel status", Unit.STATUS),
   METRIC_PROCESSOR_STATUS("Platform metrics processor status", Unit.STATUS),
 
   UNIVERSE_EXISTS("Flag, indicating that universe exists", Unit.STATUS),
   UNIVERSE_PAUSED("Flag, indicating that universe is paused", Unit.STATUS),
   UNIVERSE_UPDATE_IN_PROGRESS("Flag, indicating that universe update is in progress", Unit.STATUS),
-  UNIVERSE_BACKUP_IN_PROGRESS("Flag, indicating that universe backup is in progress", Unit.STATUS);
+  UNIVERSE_BACKUP_IN_PROGRESS("Flag, indicating that universe backup is in progress", Unit.STATUS),
+  UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS);
 
   private final String help;
   private final Unit unit;

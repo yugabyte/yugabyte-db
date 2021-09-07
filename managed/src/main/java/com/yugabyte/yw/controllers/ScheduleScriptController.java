@@ -6,20 +6,20 @@ import com.cronutils.model.definition.CronDefinition;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeType;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.Authorization;
 import java.io.File;
@@ -31,8 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import play.mvc.Http;
-import play.mvc.Result;
 import play.mvc.Http.MultipartFormData;
+import play.mvc.Result;
 
 @Api(
     value = "ScheduleExternalScript",
@@ -69,7 +69,7 @@ public class ScheduleScriptController extends AuthenticatedController {
 
     // Check if a script is already scheduled for this universe.
     if (config.hasPath(PLT_EXT_SCRIPT_SCHEDULE)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "A External Script is already scheduled for this universe.");
     }
 
@@ -86,7 +86,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     // execution should not pick up partially inserted keys.
     Util.setLockedMultiKeyConfig(config, configKeysMap);
 
-    return YWResults.withData(schedule);
+    return PlatformResults.withData(schedule);
   }
 
   public Result stopScheduledScript(UUID customerUUID, UUID universeUUID) throws IOException {
@@ -101,7 +101,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     try {
       scheduleUUID = UUID.fromString(config.getString(PLT_EXT_SCRIPT_SCHEDULE));
     } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, "No script is scheduled for this universe.");
+      throw new PlatformServiceException(BAD_REQUEST, "No script is scheduled for this universe.");
     }
     Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
     schedule.stopSchedule();
@@ -112,7 +112,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Deleting the set of keys in synchronized way as they are interconnected and the task in
     // execution should not call partially deleted set of keys.
     Util.deleteLockedMultiKeyConfig(config, configKeysList);
-    return YWResults.withData(schedule);
+    return PlatformResults.withData(schedule);
   }
 
   public Result updateScheduledScript(UUID customerUUID, UUID universeUUID) throws IOException {
@@ -141,7 +141,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     try {
       scheduleUUID = UUID.fromString(config.getString(PLT_EXT_SCRIPT_SCHEDULE));
     } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, "No script is scheduled for this universe.");
+      throw new PlatformServiceException(BAD_REQUEST, "No script is scheduled for this universe.");
     }
     Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
 
@@ -154,13 +154,13 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Inserting the set of keys in synchronized way as they are interconnected and the task in
     // execution should not extract partially inserted keys.
     Util.setLockedMultiKeyConfig(config, configKeysMap);
-    return YWResults.withData(schedule);
+    return PlatformResults.withData(schedule);
   }
 
   private String extractScriptString(MultipartFormData<File> body) throws IOException {
     MultipartFormData.FilePart<File> file = body.getFile("script");
     if (file == null || file.getFilename().length() == 0) {
-      throw new YWServiceException(BAD_REQUEST, "Script file not found");
+      throw new PlatformServiceException(BAD_REQUEST, "Script file not found");
     }
     return new String(Files.readAllBytes(file.getFile().toPath()));
   }
@@ -185,7 +185,7 @@ public class ScheduleScriptController extends AuthenticatedController {
       }
       return scriptParams;
     } catch (Exception e) {
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }
 
@@ -200,17 +200,17 @@ public class ScheduleScriptController extends AuthenticatedController {
         Cron quartzCron = parser.parse(cronExpression);
         quartzCron.validate();
       } catch (Exception e) {
-        throw new YWServiceException(BAD_REQUEST, "Please provide a valid cronExpression");
+        throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid cronExpression");
       }
     } else {
-      throw new YWServiceException(BAD_REQUEST, "No cronExpression found");
+      throw new PlatformServiceException(BAD_REQUEST, "No cronExpression found");
     }
     return cronExpression;
   }
 
   private long extractTimeLimitMins(MultipartFormData<File> body) {
     if (body.asFormUrlEncoded().get("timeLimitMins") == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Please provide a time limit in mins for script execution.");
     }
     long timeLimitMins = 0L;
@@ -221,7 +221,7 @@ public class ScheduleScriptController extends AuthenticatedController {
       }
       return timeLimitMins;
     } catch (Exception e) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Please provide a valid time limit in mins for script execution.");
     }
   }

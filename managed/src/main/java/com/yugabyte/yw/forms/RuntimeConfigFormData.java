@@ -12,7 +12,7 @@ package com.yugabyte.yw.forms;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -44,7 +44,9 @@ public class RuntimeConfigFormData {
 
   @ApiModel(description = "Scoped configuration")
   public static class ScopedConfig {
-    @ApiModelProperty(value = "Scope type")
+    @ApiModelProperty(
+        value = "Scope type",
+        allowableValues = "GLOBAL, CUSTOMER, UNIVERSE, PROVIDER")
     public final ScopeType type;
 
     @ApiModelProperty(value = "Scope UIID")
@@ -53,7 +55,9 @@ public class RuntimeConfigFormData {
      * global scope is mutable only if user is super admin other scopes can be mutated by the
      * customer
      */
-    @ApiModelProperty(value = "Is scope mutable")
+    @ApiModelProperty(
+        value =
+            "Mutability of the scope. Only super admin users can change global scope; other scopes are customer-mutable.")
     public final boolean mutableScope;
 
     @ApiModelProperty(value = "List of configurations")
@@ -91,7 +95,8 @@ public class RuntimeConfigFormData {
         case PROVIDER:
           return factory.forProvider(Provider.get(uuid));
       }
-      throw new YWServiceException(Http.Status.INTERNAL_SERVER_ERROR, "Unexpected Type " + type);
+      throw new PlatformServiceException(
+          Http.Status.INTERNAL_SERVER_ERROR, "Unexpected Type " + type);
     }
   }
 
@@ -102,7 +107,7 @@ public class RuntimeConfigFormData {
      * defined in customer scope but may be defined in global scope will be returned with inherited
      * set to true.
      */
-    @ApiModelProperty(value = "Is this configuration inherited")
+    @ApiModelProperty(value = "Is this configuration inherited?")
     public final boolean inherited;
 
     @ApiModelProperty(value = "Configuration key")

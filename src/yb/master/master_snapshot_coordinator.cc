@@ -305,7 +305,7 @@ class MasterSnapshotCoordinator::Impl {
       const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (snapshot_id.IsNil()) {
-      for (const auto& p : snapshots_) {
+      for (const auto& p : snapshots_.get<ScheduleTag>()) {
         if (!list_deleted) {
           auto aggreaged_state = p->AggregatedState();
           if (aggreaged_state.ok() && *aggreaged_state == SysSnapshotEntryPB::DELETED) {
@@ -677,7 +677,8 @@ class MasterSnapshotCoordinator::Impl {
         &mutex_, snapshots_, operation.snapshot_id, operation.tablet_id,
         std::bind(&Impl::UpdateSnapshot, this, _1, leader_term, _2));
     if (!tablet_info) {
-      callback(STATUS_FORMAT(NotFound, "Tablet info not found for $0", operation.tablet_id));
+      callback(STATUS_EC_FORMAT(NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING),
+                                "Tablet info not found for $0", operation.tablet_id));
       return;
     }
     auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
@@ -754,22 +755,24 @@ class MasterSnapshotCoordinator::Impl {
           TryDeleteSnapshot(snapshot.get(), data);
         }
       } else {
-        auto* first_snapshot = BoundingSnapshot(p->id(), Bound::kFirst);
-        auto* last_snapshot = BoundingSnapshot(p->id(), Bound::kLast);
-        if (first_snapshot) {
-          if (first_snapshot != last_snapshot) {
-            auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
-            if (first_snapshot->snapshot_hybrid_time() < gc_limit) {
-              TryDeleteSnapshot(first_snapshot, data);
-            }
-          }
+        auto& index = snapshots_.get<ScheduleTag>();
+        auto range = index.equal_range(p->id());
+        if (range.first != range.second) {
+          --range.second;
+          auto& first_snapshot = **range.first;
           data->schedule_min_restore_time[p->id()] =
-              first_snapshot->previous_snapshot_hybrid_time()
-                  ? first_snapshot->previous_snapshot_hybrid_time()
-                  : first_snapshot->snapshot_hybrid_time();
+              first_snapshot.previous_snapshot_hybrid_time()
+                  ? first_snapshot.previous_snapshot_hybrid_time()
+                  : first_snapshot.snapshot_hybrid_time();
+          auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+          for (; range.first != range.second; ++range.first) {
+            if ((**range.first).snapshot_hybrid_time() >= gc_limit) {
+              break;
+            }
+            TryDeleteSnapshot(range.first->get(), data);
+          }
+          last_snapshot_time = (**range.second).snapshot_hybrid_time();
         }
-        last_snapshot_time = last_snapshot ? last_snapshot->snapshot_hybrid_time()
-                                           : HybridTime::kInvalid;
       }
       p->PrepareOperations(last_snapshot_time, now, &data->schedule_operations);
     }

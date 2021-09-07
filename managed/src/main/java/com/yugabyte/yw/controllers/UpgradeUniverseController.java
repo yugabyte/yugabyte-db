@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -12,7 +12,7 @@ import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -112,7 +112,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
 
     if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
-      throw new YWServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
+      throw new PlatformServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
     }
 
     return requestHandler(
@@ -140,6 +140,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
 
     UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     auditService().createAuditEntryWithReqBody(ctx(), taskUuid);
-    return new YWResults.YWTask(taskUuid, universe.universeUUID).asResult();
+    return new YBPTask(taskUuid, universe.universeUUID).asResult();
   }
 }

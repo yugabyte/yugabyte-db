@@ -59,7 +59,7 @@ public class AlertDefinition extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  private UUID groupUUID;
+  private UUID configurationUUID;
 
   @Constraints.Required
   @Column(nullable = false)
@@ -82,7 +82,7 @@ public class AlertDefinition extends Model {
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());
     }
-    appendInClause(query, "groupUUID", filter.getGroupUuids());
+    appendInClause(query, "configurationUUID", filter.getConfigurationUuids());
     if (filter.getConfigWritten() != null) {
       query.eq("configWritten", filter.getConfigWritten());
     }
@@ -106,16 +106,18 @@ public class AlertDefinition extends Model {
   }
 
   public List<AlertDefinitionLabel> getEffectiveLabels(
-      AlertDefinitionGroup group, AlertDefinitionGroup.Severity severity) {
+      AlertConfiguration configuration, AlertConfiguration.Severity severity) {
     List<AlertDefinitionLabel> effectiveLabels = new ArrayList<>();
     effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.GROUP_UUID, group.getUuid().toString()));
+        new AlertDefinitionLabel(
+            this, KnownAlertLabels.CONFIGURATION_UUID, configuration.getUuid().toString()));
     effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.GROUP_TYPE, group.getTargetType().name()));
+        new AlertDefinitionLabel(
+            this, KnownAlertLabels.CONFIGURATION_TYPE, configuration.getTargetType().name()));
     effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
     effectiveLabels.add(
-        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, group.getName()));
+        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, configuration.getName()));
     effectiveLabels.add(
         new AlertDefinitionLabel(this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
     effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
@@ -123,7 +125,7 @@ public class AlertDefinition extends Model {
         new AlertDefinitionLabel(
             this,
             KnownAlertLabels.THRESHOLD,
-            doubleToString(group.getThresholds().get(severity).getThreshold())));
+            doubleToString(configuration.getThresholds().get(severity).getThreshold())));
     effectiveLabels.addAll(labels);
     return effectiveLabels;
   }

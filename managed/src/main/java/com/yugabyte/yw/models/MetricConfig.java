@@ -22,7 +22,7 @@ import javax.persistence.Id;
 import javax.persistence.Transient;
 import play.libs.Json;
 
-@ApiModel(description = "Metric config")
+@ApiModel(description = "Metric configuration key and value for Prometheus")
 @Entity
 public class MetricConfig extends Model {
   public static class Layout {
@@ -46,7 +46,7 @@ public class MetricConfig extends Model {
   @Transient public Layout layout = new Layout();
   @Transient public String operator;
 
-  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Metrics configuration key", accessMode = READ_ONLY)
   @Id
   @Column(length = 100)
   private String config_key;
@@ -60,7 +60,7 @@ public class MetricConfig extends Model {
   }
 
   // TODO : update this field once json cleanup is done.
-  @ApiModelProperty(value = "Metric config UUID", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Metrics configuration value", accessMode = READ_WRITE)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode config;

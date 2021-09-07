@@ -1387,7 +1387,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   TSTabletManager::TabletPtrs tablet_ptrs;
 
   if (req->all_tablets()) {
-    server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
+    tablet_peers = server_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
   } else {
     for (const TabletId& id : req->tablet_ids()) {
       auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
@@ -1399,22 +1399,32 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       }
     }
   }
-  if (req->is_compaction()) {
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-        server_->tablet_manager()->TriggerCompactionAndWait(tablet_ptrs), resp, &context);
-  } else {
-    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-      resp->set_failed_tablet_id(tablet->tablet_id());
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
-      resp->clear_failed_tablet_id();
-    }
+  switch (req->operation()) {
+    case FlushTabletsRequestPB::FLUSH:
+      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
 
-    // Wait for end of all flush operations.
-    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-      resp->set_failed_tablet_id(tablet->tablet_id());
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
-      resp->clear_failed_tablet_id();
-    }
+      // Wait for end of all flush operations.
+      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
+    case FlushTabletsRequestPB::COMPACT:
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+          server_->tablet_manager()->TriggerCompactionAndWait(tablet_ptrs), resp, &context);
+      break;
+    case FlushTabletsRequestPB::LOG_GC:
+      for (const auto& tablet : tablet_peers) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->RunLogGC(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
   }
 
   context.RespondSuccess();
@@ -1424,9 +1434,8 @@ void TabletServiceAdminImpl::CountIntents(
     const CountIntentsRequestPB* req,
     CountIntentsResponsePB* resp,
     rpc::RpcContext context) {
-  TabletPeers tablet_peers;
   TSTabletManager::TabletPtrs tablet_ptrs;
-  server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
+  TabletPeers tablet_peers = server_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
   int64_t total_intents = 0;
   // TODO: do this in parallel.
   // TODO: per-tablet intent counts.
@@ -2236,7 +2245,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       break;
     }
     if (!read_context->allow_retry) {
-      // The read time is specified, than we read as part of transaction. So we should restart
+      // If the read time is specified, then we read as part of a transaction. So we should restart
       // whole transaction. In this case we report restart time and abort reading.
       read_context->resp->Clear();
       auto restart_read_time = read_context->resp->mutable_restart_read_time();
@@ -2788,8 +2797,7 @@ void TabletServiceImpl::Publish(
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {
-  TabletPeers peers;
-  server_->tablet_manager()->GetTabletPeers(&peers);
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
@@ -2820,8 +2828,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
                                                    ListTabletsForTabletServerResponsePB* resp,
                                                    rpc::RpcContext context) {
   // Replicating logic from path-handlers.
-  TabletPeers peers;
-  server_->tablet_manager()->GetTabletPeers(&peers);
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
   for (const TabletPeerPtr& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);

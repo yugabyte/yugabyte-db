@@ -418,13 +418,15 @@ class UniverseForm extends Component {
         }
       } else {
         if (isDefinedNotNull(formValues.primary)) {
-          clusterIntent.tserverGFlags = formValues.primary.tserverGFlags
-            .filter((tserverFlag) => {
-              return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
-            })
-            .map((tserverFlag) => {
-              return { name: tserverFlag.name, value: tserverFlag.value.trim() };
-            });
+          clusterIntent.tserverGFlags = (
+              formValues.primary.tserverGFlags && formValues.primary.tserverGFlags
+              .filter((tserverFlag) => {
+                return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
+              })
+              .map((tserverFlag) => {
+                return { name: tserverFlag.name, value: tserverFlag.value.trim() };
+              })
+            ) || {};
         } else {
           const existingTserverGFlags = getPrimaryCluster(universeDetails.clusters).userIntent
             .tserverGFlags;
@@ -501,6 +503,16 @@ class UniverseForm extends Component {
         }
       ];
     }
+
+    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map(nodeDetail => {
+      return {
+        ...nodeDetail,
+        cloudInfo: {
+          ...nodeDetail.cloudInfo,
+          assignPublicIP: formValues["primary"].assignPublicIP
+        }
+      }
+    })
 
     submitPayload.clusters = submitPayload.clusters.filter((c) => c.userIntent !== null);
     // filter clusters array if configuring(adding only) Read Replica due to server side validation

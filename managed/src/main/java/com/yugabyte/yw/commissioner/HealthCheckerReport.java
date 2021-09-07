@@ -33,6 +33,17 @@ public class HealthCheckerReport {
 
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheckerReport.class);
 
+  private static final String BADGE_TEMPLATE =
+      "<span style=\"font-size:0.8em;"
+          + "background-color:%s;color:%s;border-radius:2px;margin-right:8px;"
+          + "padding:2px 4px;font-weight:400;\">\n%s</span>\n";
+
+  private static final String ERROR_BADGE =
+      String.format(BADGE_TEMPLATE, "#E8473F", "#ffffff", "Failed");
+
+  private static final String WARNING_BADGE =
+      String.format(BADGE_TEMPLATE, "#EBEB3E", "#000000", "Warning");
+
   // @formatter:off
   private static final String STYLE_FONT =
       "font-family: SF Pro Display, SF Pro, Helvetica Neue, Helvetica, sans-serif;";
@@ -125,6 +136,7 @@ public class HealthCheckerReport {
     boolean clusterNameAdded = false;
     for (String nodeName : nodeNames) {
       boolean nodeHasError = false;
+      boolean nodeHasWarning = false;
       boolean isFirstCheck = true;
       StringBuilder nodeContentData = new StringBuilder();
 
@@ -144,7 +156,12 @@ public class HealthCheckerReport {
         nodeIp = jsonNode.get("node").asText();
         if (jsonNode.get("has_error").asBoolean()) {
           nodeHasError = true;
-        } else if (reportOnlyErrors) {
+        }
+        if (jsonNode.get("has_warning").asBoolean()) {
+          nodeHasWarning = true;
+        }
+
+        if (!nodeHasError && reportOnlyErrors) {
           continue;
         }
 
@@ -157,17 +174,19 @@ public class HealthCheckerReport {
         continue;
       }
 
-      String nodeHeaderFgColor = nodeHasError ? "#ffffff;" : "#289b42;";
-      String nodeHeaderBgColor = nodeHasError ? "#E8473F;" : "#ffffff";
+      String nodeHeaderFgColor =
+          nodeHasError ? "#ffffff" : (nodeHasWarning ? "#000000" : "#289b42");
+      String nodeHeaderBgColor =
+          nodeHasError ? "#E8473F" : (nodeHasWarning ? "#EBEB3E" : "#ffffff");
       String nodeHeaderStyleColors =
           String.format("background-color:%s;color:%s", nodeHeaderBgColor, nodeHeaderFgColor);
-      String badgeCaption = nodeHasError ? "Error" : "Running fine";
+      String badgeCaption = nodeHasError ? "Error" : (nodeHasWarning ? "Warning" : "Running fine");
 
       String badgeStyle =
           String.format(
               "style=\"font-weight:400;margin-left:10px;\n"
                   + "font-size:0.6em;vertical-align:middle;\n"
-                  + "%s\n"
+                  + "%s;\n"
                   + "border-radius:4px;padding:2px 6px;\"",
               nodeHeaderStyleColors);
 
@@ -264,10 +283,8 @@ public class HealthCheckerReport {
     // @formatter:off
     String badge =
         rowData.get("has_error").asBoolean()
-            ? "<span style=\"font-size:0.8em;background-color:#E8473F;color:#ffffff;\n"
-                + "border-radius:2px;margin-right:8px;padding:2px 4px;font-weight:400;\">\n"
-                + "Failed</span>\n"
-            : "";
+            ? ERROR_BADGE
+            : (rowData.get("has_warning").asBoolean() ? WARNING_BADGE : "");
     // @formatter:on
 
     String detailsContentOk = "<div style=\"padding:11px 0;\">Ok</div>";
@@ -311,7 +328,7 @@ public class HealthCheckerReport {
 
     for (int i = data.size() - 1; i >= 0; i--) {
       JsonNode item = data.get(i);
-      if (!item.path("has_error").asBoolean()) {
+      if (!item.path("has_error").asBoolean() && !item.path("has_warning").asBoolean()) {
         data.remove(i);
       }
     }

@@ -12,10 +12,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.XClusterReplicationHandler;
 import com.yugabyte.yw.forms.XClusterReplicationFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.AsyncReplicationRelationship;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -42,7 +42,10 @@ public class XClusterReplicationController extends AuthenticatedController {
    *
    * @return Result
    */
-  @ApiOperation(value = "Create xCluster Replication", response = YWResults.YWTask.class)
+  @ApiOperation(
+      nickname = "create_xcluster",
+      value = "Create xCluster Replication",
+      response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "xcluster_replication_form_data",
@@ -61,7 +64,7 @@ public class XClusterReplicationController extends AuthenticatedController {
         xClusterReplicationHandler.createReplication(customer, formData, targetUniverseUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   /**
@@ -69,7 +72,7 @@ public class XClusterReplicationController extends AuthenticatedController {
    *
    * @return Result
    */
-  @ApiOperation(value = "Edit xCluster Replication", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Edit xCluster Replication", response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "xcluster_replication_form_data",
@@ -88,7 +91,7 @@ public class XClusterReplicationController extends AuthenticatedController {
         xClusterReplicationHandler.editReplication(customer, formData, targetUniverseUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   /**
@@ -96,7 +99,10 @@ public class XClusterReplicationController extends AuthenticatedController {
    *
    * @return Result
    */
-  @ApiOperation(value = "Delete xCluster Replication", response = YWResults.YWTask.class)
+  @ApiOperation(
+      nickname = "delete_xcluster",
+      value = "Delete xCluster Replication",
+      response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "xcluster_replication_form_data",
@@ -115,7 +121,7 @@ public class XClusterReplicationController extends AuthenticatedController {
         xClusterReplicationHandler.deleteReplication(customer, formData, targetUniverseUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   /**
@@ -123,7 +129,7 @@ public class XClusterReplicationController extends AuthenticatedController {
    *
    * @return Result
    */
-  @ApiOperation(value = "Pause xCluster Replication", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Pause xCluster Replication", response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "xcluster_replication_form_data",
@@ -142,7 +148,7 @@ public class XClusterReplicationController extends AuthenticatedController {
         xClusterReplicationHandler.pauseReplication(customer, formData, targetUniverseUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   /**
@@ -150,7 +156,7 @@ public class XClusterReplicationController extends AuthenticatedController {
    *
    * @return Result
    */
-  @ApiOperation(value = "Resume xCluster Replication", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Resume xCluster Replication", response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "xcluster_replication_form_data",
@@ -169,7 +175,7 @@ public class XClusterReplicationController extends AuthenticatedController {
         xClusterReplicationHandler.resumeReplication(customer, formData, targetUniverseUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   private XClusterReplicationFormData getFormData() {
@@ -179,7 +185,7 @@ public class XClusterReplicationController extends AuthenticatedController {
     try {
       formData = mapper.treeToValue(request().body().asJson(), XClusterReplicationFormData.class);
     } catch (RuntimeException | JsonProcessingException e) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid JSON");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid JSON");
     }
 
     return formData;
@@ -199,7 +205,7 @@ public class XClusterReplicationController extends AuthenticatedController {
         AsyncReplicationRelationship.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
 
     if (results.isEmpty() == replicationShouldExist) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "xCluster replication between source universe "
               + sourceUniverseUUID

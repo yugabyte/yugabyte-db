@@ -14,7 +14,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyObject;
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -32,7 +31,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.util.HashMap;
@@ -203,7 +202,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
     ObjectNode body =
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
-    doThrow(new YWServiceException(BAD_REQUEST, "Some Error"))
+    doThrow(new PlatformServiceException(BAD_REQUEST, "Some Error"))
         .when(mockReleaseManager)
         .addReleaseWithMetadata(any(), any());
     Result result = assertYWSE(() -> createRelease(customer.uuid, body));
@@ -274,7 +273,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetReleaseWithGetReleaseMetadataException() {
-    doThrow(new YWServiceException(BAD_REQUEST, "Some Error"))
+    doThrow(new PlatformServiceException(BAD_REQUEST, "Some Error"))
         .when(mockReleaseManager)
         .getReleaseMetadata();
     Result result = assertYWSE(() -> getReleases(customer.uuid));
@@ -374,7 +373,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUpdateReleaseWithReleaseManagerException() {
-    doThrow(new YWServiceException(BAD_REQUEST, "Some Error"))
+    doThrow(new PlatformServiceException(BAD_REQUEST, "Some Error"))
         .when(mockReleaseManager)
         .getReleaseByVersion("0.0.2");
     ObjectNode body = Json.newObject();

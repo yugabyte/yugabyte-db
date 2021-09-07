@@ -12,7 +12,7 @@ export class AlertsPolicy extends Component {
    * TODO: Source and values of actual list may differ.
    */
   severityTypes = [
-    <option key={0} />,
+    <option key={0}>Select Severity</option>,
     <option key={1} value="SEVERE">
       Severe
     </option>,
@@ -26,7 +26,7 @@ export class AlertsPolicy extends Component {
    * TODO: Source and values of actual list may differ.
    */
   conditionTypes = [
-    <option key={0} />,
+    <option key={0}>Select Condition</option>,
     <option key={1} value="GREATER_THAN">
       Greater Than
     </option>,
@@ -66,15 +66,21 @@ export class AlertsPolicy extends Component {
 
     let metricUnit = '';
 
-    switch (currentMetric) {
+    switch (currentMetric?.thresholdUnit) {
       case 'MILLISECOND':
         metricUnit = 'ms';
+        break;
+      case 'SECOND':
+        metricUnit = 'sec';
+        break;
+      case 'DAY':
+        metricUnit = 'day';
         break;
       case 'PERCENT':
         metricUnit = '%';
         break;
       default:
-        metricUnit = '%';
+        metricUnit = '';
     }
     return (
       <div className="condition-row-container">

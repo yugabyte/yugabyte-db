@@ -44,8 +44,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
       tserver::TabletServer* ts = cluster_->mini_tablet_server(i)->server();
       ts->maintenance_manager()->Shutdown();
       tserver::TSTabletManager* tm = ts->tablet_manager();
-      vector<std::shared_ptr<TabletPeer> > peers;
-      tm->GetTabletPeers(&peers);
+      auto peers = tm->GetTabletPeers();
       for (const std::shared_ptr<TabletPeer>& peer : peers) {
         Tablet* tablet = peer->tablet();
         if (peer->LeaderTerm()) {
