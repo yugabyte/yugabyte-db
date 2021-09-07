@@ -51,6 +51,7 @@ class YQLTablesVTable : public YQLVirtualTable {
   static constexpr const char* const kReadRepairChance = "read_repair_chance";
   static constexpr const char* const kSpeculativeRetry = "speculative_retry";
   static constexpr const char* const kTransactions = "transactions";
+  static constexpr const char* const kNumTablets = "tablets";
 };
 
 }  // namespace master

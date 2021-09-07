@@ -75,6 +75,11 @@ Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
         schema.table_properties().DefaultTimeToLive() / MonoTime::kMillisecondsPerSecond);
     RETURN_NOT_OK(SetColumnValue(kDefaultTimeToLive, cql_ttl, &row));
 
+    if (schema.table_properties().HasNumTablets()) {
+      int32_t num_tablets = schema.table_properties().num_tablets();
+      RETURN_NOT_OK(SetColumnValue(kNumTablets, num_tablets, &row));
+    }
+
     QLValue txn;
     txn.set_map_value();
     txn.add_map_key()->set_string_value("enabled");
@@ -113,6 +118,7 @@ Schema YQLTablesVTable::CreateSchema() const {
   CHECK_OK(builder.AddColumn(kSpeculativeRetry, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kTransactions,
                              QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kNumTablets, QLType::Create(DataType::INT32)));
   return builder.Build();
 }
 
