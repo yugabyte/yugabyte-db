@@ -46,7 +46,6 @@ Use the **Free** cluster to get started with YugabyteDB. Although not suitable f
 **Paid** clusters support multi-node and highly available deployments and include the following features:
 
 - no limit on cluster size - choose any cluster size based on your use case
-- 100 GB base storage with no limit
 - horizontal and vertical scaling - add or remove nodes and add storage to suit your production loads
 - VPC peering support
 - automated and on-demand backups
@@ -110,7 +109,7 @@ After you complete the wizard, the [**Clusters**](../../cloud-clusters/) page ap
 
 Once the cluster is ready, the cluster [Overview](../../cloud-clusters/overview) is displayed.
 
-You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the credentials you specified to connect to the YugabyteDB database, which is named 'yugabyte'.
+You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the credentials you specified.
 
 ## Next steps
 

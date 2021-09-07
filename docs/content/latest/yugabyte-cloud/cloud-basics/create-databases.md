@@ -15,9 +15,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Sample datasets that you can use to test out YugabyteDB are available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. The following exercise shows how you can create a database, load the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) sample dataset, and run a simple query.
+Sample datasets that you can use to test out YugabyteDB are located in the `share` directory of your YugabyteDB Client Shell installation. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). The following exercise shows how you can create a database, load the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) sample dataset, and run a simple query.
 
-Create a directory called `share` and download the following files to this directory.
+The following files will be used:
 
 - [schema.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/schema.sql) — Database schema, creates tables and other database objects
 - [orders.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/orders.sql) — Orders table

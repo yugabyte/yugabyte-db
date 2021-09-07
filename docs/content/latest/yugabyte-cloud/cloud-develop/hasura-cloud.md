@@ -16,6 +16,8 @@ Use the [Hasura GraphQL Engine](https://hasura.io) with Yugabyte Cloud to power 
 
 This page describes how to connect a Yugabyte Cloud cluster to a Hasura project.
 
+For an example of how to deploy an application on Hasura Cloud and Yugabyte Cloud once they are connected, refer to [Deploy Realtime Poll Application on Hasura Cloud](../hasura-sample-app/).
+
 ## Obtain your Yugabyte cluster connection info
 
 Sign up for Yugabyte Cloud and create a Free Tier cluster by following the steps in the cloud [Quick Start](../../cloud-quickstart).

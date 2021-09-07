@@ -23,7 +23,7 @@ You can connect to a cluster in the following ways:
 
 {{< note title="Note" >}}
 
-You must configure [Network Access](../../cloud-network/) before you can connect from a remote shell or an application.
+You must configure [Network Access](../../cloud-network/) before you can connect from a remote YugabyteDB client shell or an application.
 
 {{< /note >}}
 
@@ -85,7 +85,9 @@ If you enter an incorrect password, the cloud shell session is terminated immedi
 
 ## Connect via Client Shell
 
-You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. 
+You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer.
+
+You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
 
 Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](add-connections/).
 
