@@ -163,6 +163,11 @@ TEST_F(TabletSplitTest, SplitTablet) {
   }
 
   for (auto split_tablet : split_tablets) {
+    {
+      RaftGroupReplicaSuperBlockPB super_block;
+      split_tablet->metadata()->ToSuperBlock(&super_block);
+      ASSERT_EQ(split_tablet->tablet_id(), super_block.kv_store().kv_store_id());
+    }
     const auto split_docdb_dump_str = split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);
 
     // Before compaction underlying DocDB dump should be the same.
