@@ -115,7 +115,7 @@ Before you can connect using a client shell, you need to have an IP allow list o
   </div>
 </div>
 
-You are now ready to [Create and explore a database](create-databases/).
+You are now ready to [Create and explore a database](../create-databases/).
 
 ## Connect an application
 

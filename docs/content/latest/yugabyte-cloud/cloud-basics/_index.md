@@ -18,7 +18,7 @@ Follow these steps to learn how to add, configure, and connect to clusters:
 1. [Create an account](add-account/)
     \
     Create a Yugabyte Cloud account and sign in.
-1. [Add paid clusters](create-clusters/)
+1. [Add clusters](create-clusters/)
     \
     Provision any number of paid clusters.
 1. [Add IP access lists](add-connections/)

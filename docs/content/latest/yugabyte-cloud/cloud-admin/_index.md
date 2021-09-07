@@ -79,7 +79,7 @@ Only the cloud account Admin user can perform Admin tasks.
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="billing/">
+    <a class="section-link icon-offset" href="cloud-billing-costs/">
       <div class="head">
         <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
         <div class="title">Cluster costs</div>

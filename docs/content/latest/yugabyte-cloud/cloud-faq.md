@@ -94,21 +94,9 @@ Clusters have SSL (encryption in-transit) enabled so make sure your driver detai
 
 Your data is processed at the Yugabyte Cloud account level, and each cloud account is a single tenant, meaning it runs its components for only one customer. Clusters in your cloud are isolated from each other in a separate VPC, and access is limited to the IP addresses you specify in allow lists assigned to each cluster. Resources are not shared between clusters.
 
-Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure.
-
-Encryption at rest is enabled using the default implementation of the cloud provider where you created the cluster.
-
-Encryption in transit is secured using TLS certificates that you can download and install.
+Yugabyte Cloud uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure, and provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 
 Yugabyte Cloud uses a shared responsibility model for cloud security. For more information on Yugabyte Cloud security, refer to [Cloud security](../cloud-security/).
-
-### Does my cluster share resources with other clusters?
-
-No resources are shared between clusters.
-
-### Who has access to my cluster data?
-
-The Yugabyte Cloud support team has direct access to cluster data. They adhere to the confidentiality agreement described in our Terms and Conditions.
 
 ## Cluster configuration and management
 
@@ -119,7 +107,7 @@ From the cloud console you can create single region clusters that can be deploye
 The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failues and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
 
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
-- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1. 
+- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1. 
 - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
 Free clusters are limited to a single node in a single region.
