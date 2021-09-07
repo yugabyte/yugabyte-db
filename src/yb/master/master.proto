@@ -1939,11 +1939,13 @@ message CreateCDCStreamResponsePB {
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
+  repeated bytes not_found_stream_ids = 2;
 }
 
 message ListCDCStreamsRequestPB {
@@ -2067,10 +2069,13 @@ message SetupUniverseReplicationResponsePB {
 
 message DeleteUniverseReplicationRequestPB {
   optional string producer_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
+  // In case force is set, then still return any ignored warnings.
+  repeated AppStatusPB warnings = 2;
 }
 
 message AlterUniverseReplicationRequestPB {

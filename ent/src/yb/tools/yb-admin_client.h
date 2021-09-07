@@ -94,7 +94,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                           const std::vector<TableId>& tables,
                                           const std::vector<std::string>& producer_bootstrap_ids);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id);
+  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id, bool force = false);
 
   CHECKED_STATUS AlterUniverseReplication(const std::string& producer_uuid,
                                           const std::vector<std::string>& producer_addresses,

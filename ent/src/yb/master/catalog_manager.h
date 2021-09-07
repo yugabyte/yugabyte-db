@@ -370,7 +370,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                              std::function<void()> on_success_cb = nullptr);
 
   void MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> info);
-  void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
+  CHECKED_STATUS DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe,
                                      const Status& failure_status);
 

@@ -1416,7 +1416,9 @@ void YBClient::GetCDCStream(const CDCStreamId& stream_id,
   data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
 }
 
-Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams) {
+Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
+                                 bool force,
+                                 master::DeleteCDCStreamResponsePB* ret) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
   }
@@ -1427,9 +1429,15 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams) {
   for (const auto& stream : streams) {
     req.add_stream_id(stream);
   }
+  req.set_force(force);
 
-  DeleteCDCStreamResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
+  if (ret) {
+    CALL_SYNC_LEADER_MASTER_RPC(req, (*ret), DeleteCDCStream);
+  } else {
+    DeleteCDCStreamResponsePB resp;
+    CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
+  }
+
   return Status::OK();
 }
 
