@@ -14,21 +14,31 @@ showAsideToc: true
 
 Use the [Hasura GraphQL Engine](https://hasura.io) with Yugabyte Cloud to power your GraphQL applications with a distributed SQL database.
 
-This page describes how to connect a Yugabyte Cloud cluster to a Hasura project.
+This page describes how to connect a Yugabyte Cloud cluster to a Hasura Cloud project.
 
-For an example of how to deploy an application on Hasura Cloud and Yugabyte Cloud once they are connected, refer to [Deploy Realtime Poll Application on Hasura Cloud](../hasura-sample-app/).
+For an example of how to deploy a GraphQL application for a Hasura Cloud project connected to Yugabyte Cloud, refer to [Deploy a GraphQL application](../hasura-sample-app/).
 
 ## Obtain your Yugabyte cluster connection info
 
 Sign up for Yugabyte Cloud and create a Free Tier cluster by following the steps in the cloud [Quick Start](../../cloud-quickstart).
 
-The cluster has a default database called `yugabyte`. You'll use this along with your database credentials (username and password) in your connection with the Hasura project. To connect, you'll also need the cluster's host address and port number.
+The cluster has a default database called `yugabyte`. You'll use this along with your database credentials (username and password) in your connection with the Hasura project. To connect, you'll also need the the connection string with the cluster's host address and port number.
 
 To get these details, in the Yugabyte Cloud Console:
 
-1. On the **Clusters** page, select the cluster you will use for the application, and click **Settings**.
+1. On the **Clusters** page, select the cluster you will use for the application, and click **Connect**.
 
-1. Under **Network Access**, record the host and YSQL port (5433).
+1. Click  **Connect to your Application**.
+
+1. Select **Optimize for Hasura Cloud**.
+
+1. Copy and record the YSQL connection string, replacing `<DB USER>` and `<DB PASSWORD>` with your cluster database credentials.
+
+{{< warning title="Important" >}}
+
+The connection string is a URL; be sure to encode any special characters in the hostname or password of the connection string.
+
+{{< /warning >}}
 
 ## Create a Hasura Cloud project
 
@@ -78,27 +88,16 @@ Yugabyte Cloud restricts access to clusters to IP addresses whitelisted in IP al
     * **Data Source Driver**: PostgreSQL
     * **Connect Database Via**: Database URL
 
-1. Set the **Database URL**. The URL is in the form
-
-    ```url
-    postgresql://username:password@hostname:port/database?ssl=true&sslmode=require
-    ```
-
-    Set the URL as follows:
-
-    * Use your database credentials for `username` and `password`.
-    * Use the host and port from your Yugabyte Cloud cluster connection info, recorded earlier, for `hostname` and `port`.
-    * Finally, use the name of your database for `database`.
-    * Be sure to encode any special characters in the hostname or password when you add them to the URL.
+1. Set the **Database URL** using your YSQL connection string. Be sure to encode any special characters in the string.
 
     For example
 
     ```url
-    postgresql://admin:qwerty@1234%20cloud.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
+    postgresql://admin:qwerty@1234%20.cloud.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
     ```
 
     \
-    ![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-cloud-connect-database.png)
+    ![Connect Hasura database](/images/yb-cloud/hasura-cloud-connect-database.png)
 
 1. Click **Connect Database** and wait for confirmation that the database has connected.
 

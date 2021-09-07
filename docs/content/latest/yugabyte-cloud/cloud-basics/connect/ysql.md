@@ -14,17 +14,17 @@ To connect to a cluster using `ysqlsh`:
     ```sh
     ./ysqlsh "host=740ce33e-4242-4242-a424-cc4242c4242b.cloud.yugabyte.com \
     user=<DB USER> \
-    dbname=<database name> \
+    dbname=yugabyte \
     sslmode=verify-full \
-    sslrootcert=<path to the CA Cert file>"
+    sslrootcert=<ROOT_CERT_PATH>"
     ```
 
 1. On your computer, change directories to the directory where you installed the client shell.
 1. Paste and run the command, replacing 
 
     - `<DB USER>` with your database username.
-    - `<database name>` with the name of the database (the default name is `yugabyte`).
-    - `<path to the CA Cert file>` with the path to the location where you installed the certificate on your computer.
+    - If you are connecting to a database other than the default (`yugabyte`), replace yugabyte with the database name.
+    - `<ROOT_CERT_PATH>` with the path to the location where you installed the certificate on your computer.
 
 The `ysqlsh` shell opens connected to the remote cluster.
 

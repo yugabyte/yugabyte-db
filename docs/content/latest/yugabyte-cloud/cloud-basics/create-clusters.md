@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-As a fully-managed YugabyteDB-as-a-service, Yugabyte Cloud makes it easy for you to create YugabyteDB clusters.
+As a fully managed YugabyteDB-as-a-service, Yugabyte Cloud makes it easy for you to create YugabyteDB clusters.
 
 To create a cluster, on the **Clusters** page, click **Add Cluster** to start the **Create Cluster** wizard.
 

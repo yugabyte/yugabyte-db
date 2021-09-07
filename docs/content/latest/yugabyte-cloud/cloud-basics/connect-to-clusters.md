@@ -119,9 +119,11 @@ You are now ready to [Create and explore a database](create-databases/).
 
 ## Connect an application
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps). 
+Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
 
-Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, do one of the following:
+For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
+
+Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, do one of the following:
 
 - Add the public IP addresses to the [cluster IP access list](../add-connections).
 - Use [VPC peering](../../cloud-network/vpc-peers) to add private IP addresses.
@@ -136,7 +138,41 @@ To connect a cluster to an application:
 1. Click **Download CA Cert** and install the certificate on the computer running the application.
 1. Add the appropriate YSQL or YCQL connection string to your application.
 
-For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
+### YSQL
+
+Here's an example of the generated `ysqlsh` string:
+
+```sh
+postgresql://<DB USER>:<DB PASSWORD>@e53ea424-424a-4db5-aece-3bebe4242424.cloud.yugabyte.com:5433/yugabyte? \
+ssl=true& \
+sslmode=verify-full& \
+sslrootcert=<ROOT_CERT_PATH>
+```
+
+Add the string to your application, replacing
+
+- `<DB USER>` with your database username.
+- `<DB PASSWORD>` with your database username.
+- If you are connecting to a database other than the default (yugabyte), replace yugabyte with the database name.
+- `<ROOT_CERT_PATH>` with the path to the location where you installed the certificate on your computer.
+
+If you are connecting to a Hasura Cloud project, which does not use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-develop/hasura-cloud/).
+
+### YCQL
+
+Here's an example of the generated `ycqlsh` string:
+
+```sh
+cassandra://<DB USER>:<DB PASSWORD>@e53ea9b6-424a-4db5-aece-3bebe4242424.cloud.yugabyte.com:9042/yugabyte
+```
+
+Add the string to your application, replacing
+
+- `<DB USER>` with your database username.
+- `<DB PASSWORD>` with your database username.
+- If you are connecting to a database other than the default (yugabyte), replace yugabyte with the database name.
+
+For an example of building a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/).
 
 <!--
 ## Run the sample application

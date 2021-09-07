@@ -198,13 +198,15 @@ public class YBCqlHelloWorld {
 }
 ```
 
-Set the following variables in `YBCqlHelloWorld.java`:
+Replace the following variables in `YBCqlHelloWorld.java` with the appropriate values:
 
-- LocalDatacenter - us-west-1 (select * from system.peers)
-- YUGABYTE_CLOUD_HOSTNAME - the host of your Yugabyte Cloud cluster
-- YUGABYTE_TRUSTSTORE_PASSWORD - the truststore password you created
-- YCQL_USER - your Yugabyte database user name
-- YCQL_PASSWORD - your Yugabyte database password
+| Variable | Description |
+|----------|-------------|
+| LocalDatacenter | us-west-1 (select * from system.peers) |
+| YUGABYTE_CLOUD_HOSTNAME | The hostname of your Yugabyte Cloud cluster |
+| YUGABYTE_TRUSTSTORE_PASSWORD | The password for the truststore |
+| YCQL_USER | Your Yugabyte database user name |
+| YCQL_PASSWORD | Your Yugabyte database password |
 
 ### Add the trustore to the project
 

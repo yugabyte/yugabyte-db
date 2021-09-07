@@ -17,7 +17,7 @@ showAsideToc: true
 
 ### What is Yugabyte Cloud?
 
-Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Amazon Web Services (AWS), and Microsoft Azure (coming soon).
+Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Amazon Web Services (AWS), and Microsoft Azure (coming soon).
 
 Yugabyte Cloud clusters are accessed via [YSQL](../../api/ysql) and [YCQL](../../api/ysql) client APIs, and administered using the Yugabyte Cloud Console.
 

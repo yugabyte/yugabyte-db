@@ -12,7 +12,7 @@ menu:
 weight: 800
 ---
 
-Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more coming soon. It consists of management and data planes. The management plane is a centralized management service deployed on GCP, and is responsible for creating and managing customer data planes. The data plane is the customer YugabyteDB clusters deployed on public cloud provider infrastructure. 
+Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more coming soon. It consists of management and data planes. The management plane is a centralized management service deployed on GCP, and is responsible for creating and managing customer data planes. The data plane is the customer YugabyteDB clusters deployed on public cloud provider infrastructure. 
 
 ![Yugabyte Cloud high-level architecture](/images/yb-cloud/cloud-security-diagram.png)
 
