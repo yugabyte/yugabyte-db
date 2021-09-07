@@ -194,6 +194,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
     const auto & table_properties = schema.table_properties();
+
+    if (table_properties.HasNumTablets()) {
+      int32_t num_tablets = table_properties.num_tablets();
+      RETURN_NOT_OK(SetColumnValue(kNumTablets, num_tablets, &row));
+    }
+
     QLValue txn;
     txn.set_map_value();
     txn.add_map_key()->set_string_value("enabled");
@@ -225,6 +231,7 @@ Schema YQLIndexesVTable::CreateSchema() const {
   CHECK_OK(builder.AddColumn(kTransactions,
                              QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
   CHECK_OK(builder.AddColumn(kIsUnique, QLType::Create(DataType::BOOL)));
+  CHECK_OK(builder.AddColumn(kNumTablets, QLType::Create(DataType::INT32)));
 
   return builder.Build();
 }
