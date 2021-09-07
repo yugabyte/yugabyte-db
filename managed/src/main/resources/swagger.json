@@ -531,9 +531,19 @@
           "readOnly" : true,
           "type" : "number"
         },
+        "thresholdReadOnly" : {
+          "description" : "Is alert threshold read-only or configurable",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "thresholdUnit" : {
           "description" : "Threshold unit",
           "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND", "SECOND", "DAY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "thresholdUnitName" : {
+          "description" : "Threshold unit name",
           "readOnly" : true,
           "type" : "string"
         },

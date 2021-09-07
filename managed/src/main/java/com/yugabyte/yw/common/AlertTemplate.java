@@ -2,15 +2,25 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.AlertConfiguration.Severity.SEVERE;
+import static com.yugabyte.yw.models.AlertConfiguration.Severity.WARNING;
+import static com.yugabyte.yw.models.common.Unit.COUNT;
+import static com.yugabyte.yw.models.common.Unit.DAY;
+import static com.yugabyte.yw.models.common.Unit.MILLISECOND;
+import static com.yugabyte.yw.models.common.Unit.PERCENT;
+import static com.yugabyte.yw.models.common.Unit.STATUS;
+
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
-import com.yugabyte.yw.models.AlertConfigurationThreshold.Condition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.Map;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Value;
 
@@ -31,10 +41,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.replication_lag_ms")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.MILLISECOND),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.replication_lag_ms")
+          .defaultThresholdUnit(MILLISECOND)
+          .build()),
 
   CLOCK_SKEW(
       "Clock Skew",
@@ -47,10 +58,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_clock_skew_ms")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.MILLISECOND),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_clock_skew_ms")
+          .defaultThresholdUnit(MILLISECOND)
+          .build()),
 
   MEMORY_CONSUMPTION(
       "Memory Consumption",
@@ -73,10 +85,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}%",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_memory_cons_pct")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.PERCENT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_memory_cons_pct")
+          .defaultThresholdUnit(PERCENT)
+          .build()),
 
   HEALTH_CHECK_ERROR(
       "Health Check Error",
@@ -86,10 +99,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   HEALTH_CHECK_NOTIFICATION_ERROR(
       "Health Check Notification Error",
@@ -100,10 +111,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   BACKUP_FAILURE(
       "Backup Failure",
@@ -113,10 +122,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   BACKUP_SCHEDULE_FAILURE(
       "Backup Schedule Failure",
@@ -128,10 +135,8 @@ public enum AlertTemplate {
           + " failed due to other backup or universe operation is in progress.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   INACTIVE_CRON_NODES(
       "Inactive Cronjob Nodes",
@@ -142,10 +147,12 @@ public enum AlertTemplate {
           + " for universe '{{ $labels.source_name }}'.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.inactive_cronjob_nodes")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.inactive_cronjob_nodes")
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("node(s)")
+          .build()),
 
   ALERT_QUERY_FAILED(
       "Alert Query Failed",
@@ -155,10 +162,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.PLATFORM,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   ALERT_CONFIG_WRITING_FAILED(
       "Alert Rules Sync Failed",
@@ -168,10 +173,8 @@ public enum AlertTemplate {
           + " {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.PLATFORM,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   ALERT_NOTIFICATION_ERROR(
       "Alert Notification Failed",
@@ -181,10 +184,8 @@ public enum AlertTemplate {
           + " failed: {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.PLATFORM,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   ALERT_NOTIFICATION_CHANNEL_ERROR(
       "Alert Channel Failed",
@@ -195,10 +196,8 @@ public enum AlertTemplate {
           + " failed: {{ $labels.error_message }}",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER, DefinitionSettings.SKIP_TARGET_LABELS),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.statusOk()),
       TargetType.PLATFORM,
-      Condition.LESS_THAN,
-      Unit.STATUS),
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   NODE_DOWN(
       "DB node down",
@@ -211,10 +210,12 @@ public enum AlertTemplate {
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("node(s)")
+          .build()),
 
   NODE_RESTART(
       "DB node restart",
@@ -227,12 +228,13 @@ public enum AlertTemplate {
           + " during last 30 minutes",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.WARNING, DefaultThreshold.from(0D),
-          Severity.SEVERE, DefaultThreshold.from(2D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(WARNING, 0D)
+          .defaultThreshold(SEVERE, 2D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("restart(s)")
+          .build()),
 
   NODE_CPU_USAGE(
       "DB node CPU usage",
@@ -246,12 +248,12 @@ public enum AlertTemplate {
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.WARNING, DefaultThreshold.from("yb.alert.max_cpu_usage_pct_warn"),
-          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_cpu_usage_pct_severe")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.PERCENT),
+      ThresholdSettings.builder()
+          .defaultThreshold(WARNING, "yb.alert.max_cpu_usage_pct_warn")
+          .defaultThreshold(SEVERE, "yb.alert.max_cpu_usage_pct_severe")
+          .defaultThresholdUnit(PERCENT)
+          .build()),
 
   NODE_DISK_USAGE(
       "DB node disk usage",
@@ -265,11 +267,11 @@ public enum AlertTemplate {
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_disk_usage_pct_severe")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.PERCENT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_node_disk_usage_pct_severe")
+          .defaultThresholdUnit(PERCENT)
+          .build()),
 
   NODE_FILE_DESCRIPTORS_USAGE(
       "DB node file descriptors usage",
@@ -281,11 +283,11 @@ public enum AlertTemplate {
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_fd_usage_pct_severe")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.PERCENT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_node_fd_usage_pct_severe")
+          .defaultThresholdUnit(PERCENT)
+          .build()),
 
   DB_VERSION_MISMATCH(
       "DB version mismatch",
@@ -297,45 +299,59 @@ public enum AlertTemplate {
           + " for {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
       3600,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   DB_INSTANCE_DOWN(
       "DB instance down",
       "DB Master/TServer instance is down for 15 minutes",
-      "count by (node_prefix) (max_over_time("
-          + "up{export_type=~\"master_export|tserver_export\","
-          + "node_prefix=\"__nodePrefix__\"}[15m]) < 1) "
+      "count by (node_prefix) (label_replace(max_over_time("
+          + "up{export_type=~\"master_export|tserver_export\",node_prefix=\"__nodePrefix__\"}[15m])"
+          + ", \"exported_instance\", \"$1\", \"instance\", \"(.*)\") < 1 and on"
+          + " (node_prefix, export_type, exported_instance) (min_over_time("
+          + "ybp_universe_node_function{node_prefix=\"__nodePrefix__\"}[15m]) == 1)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "{{ $value | printf \\\"%.0f\\\" }} DB Master/TServer instance(s) are down "
           + "for more than 15 minutes for universe '{{ $labels.source_name }}'.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   DB_INSTANCE_RESTART(
       "DB Instance restart",
       "Unexpected Master or TServer process restart(s) occurred during last 30 minutes",
-      "max by (universe_uuid) "
-          + "(changes(ybp_health_check_master_boot_time_sec{"
-          + "universe_uuid=\"__universeUuid__\"}[30m])) "
+      "max by (universe_uuid) (label_replace(changes("
+          + "ybp_health_check_master_boot_time_sec{universe_uuid=\"__universeUuid__\"}[30m]) "
+          + "and on (universe_uuid) (max_over_time("
+          + "ybp_universe_update_in_progress{universe_uuid=\"__universeUuid__\"}[30m]) == 0), "
+          + "\"export_type\", \"master_export\", \"universe_uuid\",\".*\") or "
+          + "(label_replace(changes("
+          + "ybp_health_check_tserver_boot_time_sec{universe_uuid=\"__universeUuid__\"}[30m]) "
+          + "and on (universe_uuid) (max_over_time("
+          + "ybp_universe_update_in_progress{universe_uuid=\"__universeUuid__\"}[30m]) == 0), "
+          + "\"export_type\", \"tserver_export\", \"universe_uuid\",\".*\"))) "
           + "{{ query_condition }} {{ query_threshold }}",
       "Universe '{{ $labels.source_name }}'"
           + " Master or TServer is restarted {{ $value | printf \\\"%.0f\\\" }} times"
           + " during last 30 minutes",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.WARNING, DefaultThreshold.from(0D),
-          Severity.SEVERE, DefaultThreshold.from(2D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(WARNING, 0D)
+          .defaultThreshold(SEVERE, 2D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   DB_FATAL_LOGS(
       "DB fatal logs",
@@ -347,10 +363,12 @@ public enum AlertTemplate {
           + " on {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   DB_CORE_FILES(
       "DB core files",
@@ -361,10 +379,12 @@ public enum AlertTemplate {
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   DB_YSQL_CONNECTION(
       "DB YSQLSH connection",
@@ -375,10 +395,12 @@ public enum AlertTemplate {
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   DB_YCQL_CONNECTION(
       "DB CQLSH connection",
@@ -389,10 +411,12 @@ public enum AlertTemplate {
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   DB_REDIS_CONNECTION(
       "DB Redis connection",
@@ -403,10 +427,12 @@ public enum AlertTemplate {
           + " on {{ $value | printf \\\"%.0f\\\" }} TServer instance(s).",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from(0D)),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .build()),
 
   NODE_TO_NODE_CA_CERT_EXPIRY(
       "Node to node CA cert expiry",
@@ -418,11 +444,12 @@ public enum AlertTemplate {
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.DAY),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_node_cert_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
 
   NODE_TO_NODE_CERT_EXPIRY(
       "Node to node cert expiry",
@@ -434,11 +461,12 @@ public enum AlertTemplate {
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.DAY),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_node_cert_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
 
   CLIENT_TO_NODE_CA_CERT_EXPIRY(
       "Client to node CA cert expiry",
@@ -450,11 +478,12 @@ public enum AlertTemplate {
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.DAY),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_node_cert_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
 
   CLIENT_TO_NODE_CERT_EXPIRY(
       "Client to node cert expiry",
@@ -466,11 +495,12 @@ public enum AlertTemplate {
           + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
       15,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
-      ImmutableMap.of(
-          Severity.SEVERE, DefaultThreshold.from("yb.alert.max_node_cert_expiry_days_severe")),
       TargetType.UNIVERSE,
-      Condition.LESS_THAN,
-      Unit.DAY),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_node_cert_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
 
   YSQL_OP_AVG_LATENCY(
       "YSQL average latency is high",
@@ -488,10 +518,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ysql_opavg_latency")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.MILLISECOND),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ysql_opavg_latency")
+          .defaultThresholdUnit(MILLISECOND)
+          .build()),
 
   YCQL_OP_AVG_LATENCY(
       "YCQL average latency is high",
@@ -509,10 +540,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_opavg_latency")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.MILLISECOND),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ycql_opavg_latency")
+          .defaultThresholdUnit(MILLISECOND)
+          .build()),
 
   YSQL_OP_P99_LATENCY(
       "YSQL P99 latency is high",
@@ -526,10 +558,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ysql_p99_latency")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.MILLISECOND),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ysql_p99_latency")
+          .defaultThresholdUnit(MILLISECOND)
+          .build()),
 
   YCQL_OP_P99_LATENCY(
       "YCQL P99 latency is high",
@@ -543,10 +576,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }} ms",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_p99_latency")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.MILLISECOND),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ycql_p99_latency")
+          .defaultThresholdUnit(MILLISECOND)
+          .build()),
 
   HIGH_NUM_YCQL_CONNECTIONS(
       "Number of YCQL connections is high",
@@ -558,10 +592,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_connections")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ycql_connections")
+          .defaultThresholdUnit(COUNT)
+          .build()),
 
   HIGH_NUM_YEDIS_CONNECTIONS(
       "Number of YEDIS connections is high",
@@ -573,10 +608,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_yedis_connections")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_yedis_connections")
+          .defaultThresholdUnit(COUNT)
+          .build()),
 
   YSQL_THROUGHPUT(
       "YSQL throughput is high",
@@ -590,10 +626,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ysql_throughput")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT),
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ysql_throughput")
+          .defaultThresholdUnit(COUNT)
+          .build()),
 
   YCQL_THROUGHPUT(
       "YCQL throughput is high",
@@ -607,10 +644,11 @@ public enum AlertTemplate {
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
       15,
       EnumSet.noneOf(DefinitionSettings.class),
-      ImmutableMap.of(Severity.SEVERE, DefaultThreshold.from("yb.alert.max_ycql_throughput")),
       TargetType.UNIVERSE,
-      Condition.GREATER_THAN,
-      Unit.COUNT);
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ycql_throughput")
+          .defaultThresholdUnit(COUNT)
+          .build());
   // @formatter:on
 
   enum DefinitionSettings {
@@ -642,6 +680,10 @@ public enum AlertTemplate {
 
   private final double thresholdMaxValue;
 
+  private final boolean thresholdReadOnly;
+
+  private final String thresholdUnitName;
+
   public String buildTemplate(Customer customer) {
     return buildTemplate(customer, null);
   }
@@ -664,50 +706,22 @@ public enum AlertTemplate {
       String summaryTemplate,
       int defaultDurationSec,
       EnumSet<DefinitionSettings> settings,
-      Map<Severity, DefaultThreshold> defaultThresholdParamMap,
       TargetType targetType,
-      Condition defaultThresholdCondition,
-      Unit defaultThresholdUnit) {
-    this(
-        name,
-        description,
-        queryTemplate,
-        summaryTemplate,
-        defaultDurationSec,
-        settings,
-        defaultThresholdParamMap,
-        targetType,
-        defaultThresholdCondition,
-        defaultThresholdUnit,
-        defaultThresholdUnit.getMinValue(),
-        defaultThresholdUnit.getMaxValue());
-  }
-
-  AlertTemplate(
-      String name,
-      String description,
-      String queryTemplate,
-      String summaryTemplate,
-      int defaultDurationSec,
-      EnumSet<DefinitionSettings> settings,
-      Map<Severity, DefaultThreshold> defaultThresholdParamMap,
-      TargetType targetType,
-      Condition defaultThresholdCondition,
-      Unit defaultThresholdUnit,
-      double thresholdMinValue,
-      double thresholdMaxValue) {
+      ThresholdSettings thresholdSettings) {
     this.name = name;
     this.description = description;
     this.queryTemplate = queryTemplate;
     this.summaryTemplate = summaryTemplate;
     this.defaultDurationSec = defaultDurationSec;
     this.settings = settings;
-    this.defaultThresholdMap = defaultThresholdParamMap;
     this.targetType = targetType;
-    this.defaultThresholdCondition = defaultThresholdCondition;
-    this.defaultThresholdUnit = defaultThresholdUnit;
-    this.thresholdMinValue = thresholdMinValue;
-    this.thresholdMaxValue = thresholdMaxValue;
+    this.defaultThresholdMap = thresholdSettings.getDefaultThresholdMap();
+    this.defaultThresholdCondition = thresholdSettings.getDefaultThresholdCondition();
+    this.defaultThresholdUnit = thresholdSettings.getDefaultThresholdUnit();
+    this.thresholdMinValue = thresholdSettings.getThresholdMinValue();
+    this.thresholdMaxValue = thresholdSettings.getThresholdMaxValue();
+    this.thresholdReadOnly = thresholdSettings.getThresholdReadOnly();
+    this.thresholdUnitName = thresholdSettings.getThresholdUnitName();
   }
 
   public boolean isCreateForNewCustomer() {
@@ -740,6 +754,54 @@ public enum AlertTemplate {
 
     public boolean isParamName() {
       return paramName != null;
+    }
+  }
+
+  @Value
+  @Builder
+  public static class ThresholdSettings {
+    Map<Severity, DefaultThreshold> defaultThresholdMap;
+    Condition defaultThresholdCondition;
+    Unit defaultThresholdUnit;
+    Double thresholdMinValue;
+    Double thresholdMaxValue;
+    Boolean thresholdReadOnly;
+    String thresholdUnitName;
+
+    public static class ThresholdSettingsBuilder {
+
+      Map<Severity, DefaultThreshold> defaultThresholdMap = new HashMap<>();
+
+      public ThresholdSettingsBuilder defaultThreshold(Severity severity, String paramName) {
+        defaultThresholdMap.put(severity, DefaultThreshold.from(paramName));
+        return this;
+      }
+
+      public ThresholdSettingsBuilder defaultThreshold(Severity severity, double threshold) {
+        defaultThresholdMap.put(severity, DefaultThreshold.from(threshold));
+        return this;
+      }
+
+      public ThresholdSettingsBuilder statusThreshold(Severity severity) {
+        defaultThresholdMap.put(severity, DefaultThreshold.statusOk());
+        defaultThresholdUnit = STATUS;
+        return this;
+      }
+
+      public ThresholdSettings build() {
+        return new ThresholdSettings(
+            ImmutableMap.copyOf(defaultThresholdMap),
+            defaultThresholdCondition != null
+                ? defaultThresholdCondition
+                : defaultThresholdUnit.getThresholdCondition(),
+            defaultThresholdUnit,
+            thresholdMinValue != null ? thresholdMinValue : defaultThresholdUnit.getMinValue(),
+            thresholdMaxValue != null ? thresholdMaxValue : defaultThresholdUnit.getMaxValue(),
+            thresholdReadOnly != null
+                ? thresholdReadOnly
+                : defaultThresholdUnit.isThresholdReadOnly(),
+            thresholdUnitName != null ? thresholdUnitName : defaultThresholdUnit.getDisplayName());
+      }
     }
   }
 }
