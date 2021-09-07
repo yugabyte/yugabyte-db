@@ -2163,6 +2163,7 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
   void SetFlags() override {
     TabletSplitITestBase<ExternalMiniCluster>::SetFlags();
     for (const auto& master_flag : {
+             "--enable_automatic_tablet_splitting=false",
              "--TEST_disable_split_tablet_candidate_processing=true",
              "--tablet_split_low_phase_shard_count_per_node=-1",
              "--tablet_split_high_phase_shard_count_per_node=-1",

@@ -156,8 +156,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     // To speed up tests.
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
-             "--enable_transactional_ddl_gc=false",
-             "--TEST_select_all_tablets_for_split=true", };
+             "--enable_transactional_ddl_gc=false", };
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
@@ -1180,7 +1179,15 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
   }, kInterval * 3, "Wait first snapshot to be deleted"));
 }
 
-TEST_F(YbAdminSnapshotScheduleTest, RestoreAfterSplit) {
+class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    flags.push_back("--TEST_select_all_tablets_for_split=true");
+    return flags;
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreAfterSplit, YbAdminRestoreAfterSplitTest) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
 
   auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
