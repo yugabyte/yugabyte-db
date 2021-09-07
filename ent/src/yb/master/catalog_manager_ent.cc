@@ -2301,11 +2301,23 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
       auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
 
       if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-        return STATUS(NotFound, "CDC stream does not exist", req->ShortDebugString(),
-                      MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+        resp->add_not_found_stream_ids(stream_id);
+        LOG(WARNING) << "CDC stream does not exist: " << stream_id;
+      } else {
+        streams.push_back(stream);
       }
-      streams.push_back(stream);
     }
+  }
+
+  if (!resp->not_found_stream_ids().empty() && !req->force()) {
+    string missing_streams = JoinElementsIterator(resp->not_found_stream_ids().begin(),
+                                                  resp->not_found_stream_ids().end(),
+                                                  ",");
+    return STATUS(
+        NotFound,
+        Substitute("Did not find all requested CDC streams. Missing streams: [$0]. Request: $1",
+                   missing_streams, req->ShortDebugString()),
+        MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
   // Do not delete them here, just mark them as DELETING and the catalog manager background thread
@@ -2326,6 +2338,9 @@ Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
 
 Status CatalogManager::MarkCDCStreamsAsDeleting(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
+  if (streams.empty()) {
+    return Status::OK();
+  }
   std::vector<CDCStreamInfo::WriteLock> locks;
   std::vector<CDCStreamInfo*> streams_to_mark;
   locks.reserve(streams.size());
@@ -3324,6 +3339,21 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
 }
 
+Status ReturnErrorOrAddWarning(const Status& s,
+                               const DeleteUniverseReplicationRequestPB* req,
+                               DeleteUniverseReplicationResponsePB* resp) {
+  if (!s.ok()) {
+    if (req->force()) {
+      // Continue executing, save the status as a warning.
+      AppStatusPB* warning = resp->add_warnings();
+      StatusToPB(s, warning);
+      return Status::OK();
+    }
+    return s.CloneAndAppend("\nUse 'ignore-errors' to ignore this error.");
+  }
+  return s;
+}
+
 Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
                                                  DeleteUniverseReplicationResponsePB* resp,
                                                  rpc::RpcContext* rpc) {
@@ -3374,18 +3404,41 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
     } else {
       auto cdc_rpc = *result;
       vector<CDCStreamId> streams;
+      unordered_map<CDCStreamId, TableId> stream_to_producer_table_id;
       for (const auto& table : l->pb.table_streams()) {
         streams.push_back(table.second);
+        stream_to_producer_table_id.emplace(table.second, table.first);
       }
-      auto s = cdc_rpc->client()->DeleteCDCStream(streams);
-      if (!s.ok()) {
-        LOG(WARNING) << "Unable to delete CDC stream " << s;
+
+      DeleteCDCStreamResponsePB delete_cdc_stream_resp;
+      auto s = cdc_rpc->client()->DeleteCDCStream(streams, req->force(), &delete_cdc_stream_resp);
+
+      if (delete_cdc_stream_resp.not_found_stream_ids().size() > 0) {
+        std::ostringstream missing_streams;
+        for (auto it = delete_cdc_stream_resp.not_found_stream_ids().begin();
+               it != delete_cdc_stream_resp.not_found_stream_ids().end();
+               ++it) {
+          if (it != delete_cdc_stream_resp.not_found_stream_ids().begin()) {
+            missing_streams << ",";
+          }
+          missing_streams << *it << " (table_id: " << stream_to_producer_table_id[*it] << ")";
+        }
+        if (s.ok()) {
+          // Returned but did not find some streams, so still need to warn the user about those.
+          s = STATUS(NotFound,
+                     "Could not find the following streams: [" + missing_streams.str() + "].");
+        } else {
+          s = s.CloneAndPrepend(
+              "Could not find the following streams: [" + missing_streams.str() + "].");
+        }
       }
+
+      RETURN_NOT_OK(ReturnErrorOrAddWarning(s, req, resp));
     }
   }
 
   // Delete universe in the Universe Config.
-  DeleteUniverseReplicationUnlocked(ri);
+  RETURN_NOT_OK(ReturnErrorOrAddWarning(DeleteUniverseReplicationUnlocked(ri), req, resp));
   l.Commit();
 
   LOG(INFO) << "Processed delete universe replication " << ri->ToString()
@@ -3394,28 +3447,26 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
   return Status::OK();
 }
 
-void CatalogManager::DeleteUniverseReplicationUnlocked(
+Status CatalogManager::DeleteUniverseReplicationUnlocked(
     scoped_refptr<UniverseReplicationInfo> universe) {
   // Assumes that caller has locked universe.
-  Status s = sys_catalog_->Delete(leader_ready_term(), universe);
-  if (!s.ok()) {
-    LOG(ERROR) << "An error occurred while updating sys-catalog: " << s
-               << ": universe_id: " << universe->id();
-    return;
-  }
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Delete(leader_ready_term(), universe),
+      Substitute("An error occurred while updating sys-catalog, universe_id: $0", universe->id()));
+
   // Remove it from the map.
   LockGuard lock(mutex_);
   if (universe_replication_map_.erase(universe->id()) < 1) {
-    LOG(ERROR) << "An error occurred while removing replication info from map: " << s
-               << ": universe_id: " << universe->id();
+    LOG(WARNING) << "Failed to remove replication info from map: universe_id: " << universe->id();
   }
   // Also delete all consumer tables from the set.
   for (const auto& table : universe->metadata().state().pb.validated_tables()) {
     if (xcluster_consumer_tables_set_.erase(table.second) < 1) {
-      LOG(ERROR) << "An error occured while trying to remove consumer table from set. "
-                 << "table_id: " << table.second << ": universe_id: " << universe->id();
+      LOG(WARNING) << "Failed to remove consumer table from set. "
+                   << "table_id: " << table.second << ": universe_id: " << universe->id();
     }
   }
+  return Status::OK();
 }
 
 Status CatalogManager::SetUniverseReplicationEnabled(

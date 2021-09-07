@@ -1204,10 +1204,11 @@ Status ClusterAdminClient::SetupUniverseReplication(
   return Status::OK();
 }
 
-Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id) {
+Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id, bool force) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
+  req.set_force(force);
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1216,6 +1217,13 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
   if (resp.has_error()) {
     cout << "Error deleting universe replication: " << resp.error().status().message() << endl;
     return StatusFromPB(resp.error().status());
+  }
+
+  if (resp.warnings().size() > 0) {
+    cout << "Encountered the following warnings while running delete_universe_replication:" << endl;
+    for (const auto& warning : resp.warnings()) {
+      cout << " - " << warning.message() << endl;
+    }
   }
 
   cout << "Replication deleted successfully" << endl;
