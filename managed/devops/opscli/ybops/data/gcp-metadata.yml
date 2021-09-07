@@ -109,12 +109,12 @@ regions:
     image: centos-7-v20210217
     project: centos-cloud
     zones: [ 'a', 'b', 'c' ]
-  asia-northeast3:
+  asia-southeast2:
     cidr_prefix: "10.220"
     image: centos-7-v20210217
     project: centos-cloud
     zones: [ 'a', 'b', 'c' ]
-  asia-southeast2:
+  asia-northeast3:
     cidr_prefix: "10.221"
     image: centos-7-v20210217
     project: centos-cloud
@@ -126,11 +126,6 @@ regions:
     zones: [ 'a', 'b', 'c' ]
   europe-central2:
     cidr_prefix: "10.223"
-    image: centos-7-v20210217
-    project: centos-cloud
-    zones: [ 'a', 'b', 'c' ]
-  asia-south2:
-    cidr_prefix: "10.224"
     image: centos-7-v20210217
     project: centos-cloud
     zones: [ 'a', 'b', 'c' ]
@@ -146,6 +141,11 @@ regions:
     zones: [ 'a', 'b', 'c' ]
   europe-north1:
     cidr_prefix: "10.227"
+    image: centos-7-v20210217
+    project: centos-cloud
+    zones: [ 'a', 'b', 'c' ]
+  asia-south2:
+    cidr_prefix: "10.228"
     image: centos-7-v20210217
     project: centos-cloud
     zones: [ 'a', 'b', 'c' ]
