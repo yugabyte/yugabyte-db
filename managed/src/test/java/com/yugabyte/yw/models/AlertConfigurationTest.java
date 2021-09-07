@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
@@ -115,13 +116,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
     AlertConfiguration configuration = createTestConfiguration();
 
     AlertConfigurationThreshold severeThreshold =
-        new AlertConfigurationThreshold()
-            .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
-            .setThreshold(90D);
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(90D);
     AlertConfigurationThreshold warningThreshold =
-        new AlertConfigurationThreshold()
-            .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
-            .setThreshold(80D);
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(80D);
     Map<AlertConfiguration.Severity, AlertConfigurationThreshold> thresholds =
         ImmutableMap.of(
             AlertConfiguration.Severity.SEVERE, severeThreshold,
@@ -429,7 +426,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
         equalTo(
             new AlertConfigurationThreshold()
                 .setThreshold(90D)
-                .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)));
+                .setCondition(Condition.GREATER_THAN)));
     assertThat(configuration.getThresholds().get(AlertConfiguration.Severity.WARNING), nullValue());
     assertThat(configuration.getUuid(), notNullValue());
     assertThat(configuration.getCreateTime(), notNullValue());

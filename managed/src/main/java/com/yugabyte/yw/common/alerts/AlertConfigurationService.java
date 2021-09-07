@@ -584,7 +584,9 @@ public class AlertConfigurationService {
         .setDefaultConfiguration(configuration)
         .setThresholdMinValue(template.getThresholdMinValue())
         .setThresholdMaxValue(template.getThresholdMaxValue())
-        .setThresholdInteger(template.getDefaultThresholdUnit().isInteger());
+        .setThresholdInteger(template.getDefaultThresholdUnit().isInteger())
+        .setThresholdReadOnly(template.isThresholdReadOnly())
+        .setThresholdUnitName(template.getThresholdUnitName());
   }
 
   private AlertDefinition createEmptyDefinition(AlertConfiguration configuration) {
