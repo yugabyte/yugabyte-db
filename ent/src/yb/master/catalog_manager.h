@@ -239,6 +239,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
                                 const ExternalTableSnapshotDataMap& tables_data);
 
+  // Helper function for ImportTableEntry.
+  Result<bool> CheckTableForImport(
+      scoped_refptr<TableInfo> table,
+      ExternalTableSnapshotData* snapshot_data) REQUIRES_SHARED(mutex_);
+
   CHECKED_STATUS ImportNamespaceEntry(const SysRowEntry& entry,
                                       NamespaceMap* namespace_map);
   CHECKED_STATUS RecreateTable(const NamespaceId& new_namespace_id,
