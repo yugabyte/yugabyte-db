@@ -335,6 +335,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     auto proxy = std::make_unique<tserver::TabletServerServiceProxy>(
         &tserver->server()->proxy_cache(), HostPort::FromBoundEndpoint(endpoint));
 
+    CHECK_EQ(tablet_ids.size(), 1);
     for (const string& tablet_id : tablet_ids) {
       tserver::VerifyTableRowRangeRequestPB req;
       tserver::VerifyTableRowRangeResponsePB resp;
@@ -345,8 +346,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       // read_time: if left empty, the safe time retrieved will be used instead
 
       rpc::RpcController controller;
-      controller.set_timeout(MonoDelta::FromSeconds(5));
-      proxy->VerifyTableRowRange(req, &resp, &controller);
+      controller.set_deadline(deadline);
+      RETURN_NOT_OK(proxy->VerifyTableRowRange(req, &resp, &controller));
 
       if (resp.consistency_stats().size() == 0) {
         return STATUS_FORMAT(
