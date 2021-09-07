@@ -112,14 +112,13 @@ public class FakeApiHelper {
    */
   public static Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder, Application app)
       throws InterruptedException, ExecutionException, TimeoutException {
-    PlatformErrorHandler PlatformErrorHandler =
-        app.injector().instanceOf(PlatformErrorHandler.class);
+    YWErrorHandler YWErrorHandler = app.injector().instanceOf(YWErrorHandler.class);
     CompletableFuture<Result> future =
         CompletableFuture.supplyAsync(() -> route(app, requestBuilder));
     BiFunction<Result, Throwable, CompletionStage<Result>> f =
         (result, throwable) -> {
           if (throwable == null) return CompletableFuture.supplyAsync(() -> result);
-          return PlatformErrorHandler.onServerError(null, throwable);
+          return YWErrorHandler.onServerError(null, throwable);
         };
 
     return future.handleAsync(f).thenCompose(x -> x).get(20000, TimeUnit.MILLISECONDS);
