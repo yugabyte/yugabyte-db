@@ -13,9 +13,9 @@ menu:
     weight: 639
 ---
 
-Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a>.
+Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a> (as of September 2021; Azure coming soon, for information contact Yugabyte Support).
 
-To begin using Yugabyte Cloud, go to [Yugabyte Cloud](http://cloud.yugabyte.com) and [create an account](cloud-basics/add-account/). Creating an account only requires that you provide your work email address, name, company, and a password. All accounts can create a free cluster.
+To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
 
 ## Get started with Yugabyte Cloud
 

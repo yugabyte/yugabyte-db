@@ -19,6 +19,7 @@ This page demonstrates how to deploy an application on Hasura Cloud and Yugabyte
 The example has the following prerequisites:
 
 * You have created a cluster on Yugabyte Cloud
+  * For instructions, refer to [Create a cluster](../../cloud-basics/create-clusters).
 * You have created a Hasura project and connected it to your cluster
   * For instructions, refer to [Connect Hasura Cloud to Yugabyte Cloud](../hasura-cloud/).
 

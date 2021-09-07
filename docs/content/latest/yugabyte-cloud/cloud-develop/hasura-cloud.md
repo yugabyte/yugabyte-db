@@ -26,9 +26,9 @@ The cluster has a default database called `yugabyte`. You'll use this along with
 
 To get these details, in the Yugabyte Cloud Console:
 
-1. On the **Clusters** page, select the cluster you will use for the application.
+1. On the **Clusters** page, select the cluster you will use for the application, and click **Settings**.
 
-1. Under **Network Access**, record the host, YSQL port (5433), and database name (`yugabyte`).
+1. Under **Network Access**, record the host and YSQL port (5433).
 
 ## Create a Hasura Cloud project
 
@@ -38,7 +38,7 @@ For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](htt
 
 To create a project in Hasura Cloud:
 
-1. From the Hasura Cloud dashboard, under **Projects**, click **New Project**. 
+1. From the Hasura Cloud Dashboard, under **Projects**, click **New Project**.
 
 1. Select **Free Tier**, leave the default region, and enter a name for your project.
 
@@ -66,11 +66,11 @@ Yugabyte Cloud restricts access to clusters to IP addresses whitelisted in IP al
 
 ## Connect the cluster to your Hasura Cloud project
 
-1. In the Hasura Cloud dashboard, click **Launch Console**.
+1. In the Hasura Cloud Dashboard, click **Launch Console**.
 
-    This displays the Hasura Cloud console for the project.
+    This displays the Hasura Cloud Console for the project.
 
-1. In the Hasura Cloud console, click the **Data** tab.
+1. In the Hasura Cloud Console, click the **Data** tab.
 
 1. Under **Connect Existing Database**, enter the following details:
 
@@ -78,7 +78,7 @@ Yugabyte Cloud restricts access to clusters to IP addresses whitelisted in IP al
     * **Data Source Driver**: PostgreSQL
     * **Connect Database Via**: Database URL
 
-1. Set the **Database URL**. The URL is in the form 
+1. Set the **Database URL**. The URL is in the form
 
     ```url
     postgresql://username:password@hostname:port/database?ssl=true&sslmode=require

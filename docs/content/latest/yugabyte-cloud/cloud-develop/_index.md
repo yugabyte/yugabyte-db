@@ -19,14 +19,14 @@ showAsideToc: true
     <a class="section-link icon-offset" href="spring-petclinic/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Connect a Spring application</div>
+        <div class="title">Connect a Spring Data YugabyteDB application</div>
       </div>
       <div class="body">
-        Connect the Spring PetClinic application to Yugabyte Cloud.
+        Connect a Spring application implemented with Spring Data YugabyteDB.
       </div>
     </a>
   </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="../cloud-basics/connect-application/">
       <div class="head">
@@ -38,7 +38,8 @@ showAsideToc: true
       </div>
     </a>
   </div>
-
+-->
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="spring-boot/">
       <div class="head">
@@ -50,7 +51,7 @@ showAsideToc: true
       </div>
     </a>
   </div>
-
+-->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="hasura-cloud/">
       <div class="head">
@@ -67,7 +68,7 @@ showAsideToc: true
     <a class="section-link icon-offset" href="hasura-sample-app/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-        <div class="title">Deploy on Hasura Cloud</div>
+        <div class="title">Deploy a GraphQL application</div>
       </div>
       <div class="body">
         Deploy a real-time polling application connected to Yugabyte Cloud on Hasura Cloud.
