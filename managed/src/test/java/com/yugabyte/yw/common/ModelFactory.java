@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -295,7 +296,7 @@ public class ModelFactory {
                 ImmutableMap.of(
                     AlertConfiguration.Severity.SEVERE,
                     new AlertConfigurationThreshold()
-                        .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
+                        .setCondition(Condition.GREATER_THAN)
                         .setThreshold(1D)))
             .setThresholdUnit(Unit.PERCENT)
             .generateUUID();

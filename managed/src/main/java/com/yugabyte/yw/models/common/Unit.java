@@ -9,13 +9,37 @@
  */
 package com.yugabyte.yw.models.common;
 
+import static com.yugabyte.yw.models.common.Condition.GREATER_THAN;
+import static com.yugabyte.yw.models.common.Condition.LESS_THAN;
+
+import lombok.Data;
+import lombok.experimental.Accessors;
+
 public enum Unit {
-  STATUS(Measure.STATUS, "", "", 0, 1, true),
-  COUNT(Measure.COUNT, "", "", 0, Double.MAX_VALUE, true),
-  PERCENT(Measure.PERCENTAGE, "%", "pct", 0, 100, false),
-  MILLISECOND(Measure.TIME, "ms", "ms", 0, Double.MAX_VALUE, true),
-  SECOND(Measure.TIME, "sec", "sec", 0, Double.MAX_VALUE, true),
-  DAY(Measure.TIME, "day", "day", 0, Double.MAX_VALUE, true);
+  STATUS(
+      new UnitBuilder()
+          .measure(Measure.STATUS)
+          .maxValue(1)
+          .integer(true)
+          .thresholdReadOnly(true)
+          .thresholdCondition(LESS_THAN)),
+  COUNT(new UnitBuilder().measure(Measure.COUNT).integer(true)),
+  PERCENT(
+      new UnitBuilder()
+          .measure(Measure.PERCENTAGE)
+          .displayName("%")
+          .metricName("pct")
+          .maxValue(100)),
+  MILLISECOND(
+      new UnitBuilder().measure(Measure.TIME).displayName("ms").metricName("ms").integer(true)),
+  SECOND(
+      new UnitBuilder().measure(Measure.TIME).displayName("sec").metricName("sec").integer(true)),
+  DAY(
+      new UnitBuilder()
+          .measure(Measure.TIME)
+          .displayName("day(s)")
+          .metricName("day")
+          .integer(true));
 
   private final Measure measure;
   private final String displayName;
@@ -23,20 +47,18 @@ public enum Unit {
   private final double minValue;
   private final double maxValue;
   private final boolean integer;
+  private final boolean thresholdReadOnly;
+  private final Condition thresholdCondition;
 
-  Unit(
-      Measure measure,
-      String displayName,
-      String metricName,
-      double minValue,
-      double maxValue,
-      boolean integer) {
-    this.measure = measure;
-    this.displayName = displayName;
-    this.metricName = metricName;
-    this.minValue = minValue;
-    this.maxValue = maxValue;
-    this.integer = integer;
+  Unit(UnitBuilder builder) {
+    this.measure = builder.measure();
+    this.displayName = builder.displayName();
+    this.metricName = builder.metricName();
+    this.minValue = builder.minValue();
+    this.maxValue = builder.maxValue();
+    this.integer = builder.integer();
+    this.thresholdReadOnly = builder.thresholdReadOnly();
+    this.thresholdCondition = builder.thresholdCondition();
   }
 
   public Measure getMeasure() {
@@ -61,5 +83,26 @@ public enum Unit {
 
   public boolean isInteger() {
     return integer;
+  }
+
+  public boolean isThresholdReadOnly() {
+    return thresholdReadOnly;
+  }
+
+  public Condition getThresholdCondition() {
+    return thresholdCondition;
+  }
+
+  @Data
+  @Accessors(chain = true, fluent = true)
+  private static class UnitBuilder {
+    private Measure measure;
+    private String displayName = "";
+    private String metricName = "";
+    private double minValue = 0;
+    private double maxValue = Double.MAX_VALUE;
+    private boolean integer = false;
+    private boolean thresholdReadOnly = false;
+    private Condition thresholdCondition = GREATER_THAN;
   }
 }
