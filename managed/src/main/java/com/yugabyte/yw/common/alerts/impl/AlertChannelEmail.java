@@ -40,13 +40,13 @@ public class AlertChannelEmail implements AlertChannelInterface {
 
     if (CollectionUtils.isEmpty(recipients)) {
       throw new PlatformNotificationException(
-          String.format("Error sending email for alert %s: No recipients found.", alert.getUuid()));
+          String.format("Error sending email for alert %s: No recipients found.", alert.getName()));
     }
 
     if (smtpData == null) {
       throw new PlatformNotificationException(
           String.format(
-              "Error sending email for alert %s: Invalid SMTP settings found.", alert.getUuid()));
+              "Error sending email for alert %s: Invalid SMTP settings found.", alert.getName()));
     }
 
     try {
@@ -58,7 +58,7 @@ public class AlertChannelEmail implements AlertChannelInterface {
           Collections.singletonMap("text/plain; charset=\"us-ascii\"", text));
     } catch (MessagingException e) {
       throw new PlatformNotificationException(
-          String.format("Error sending email for alert %s: %s", alert.getUuid(), e.getMessage()),
+          String.format("Error sending email for alert %s: %s", alert.getName(), e.getMessage()),
           e);
     }
   }
