@@ -1127,6 +1127,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 			targtuple.t_tableOid = RelationGetRelid(onerel);
 			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 			targtuple.t_len = ItemIdGetLength(itemid);
+			targtuple.t_ybctid = (Datum) NULL;
 
 			switch (HeapTupleSatisfiesVacuum(&targtuple,
 											 OldestXmin,
