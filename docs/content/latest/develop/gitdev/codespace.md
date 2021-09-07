@@ -23,13 +23,16 @@ Codespaces doesn't require anything in your local workstation other than a code 
 ## Getting Started with a boot app
 You can find the source at [Spring Boot todo on GitHub](https://github.com/srinivasa-vasu/todo).
 
+- The easy way to get started with Codespaces is to simply fork this source repo and jump on to the [Setting up the Codespace environment](#setting-up-the-codespace-environment) section to launch the Codespaces environment for your forked repository. 
+- If you want to set this up from scratch, then follow the below instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo]((https://github.com/srinivasa-vasu/todo)).
+
 ### Initialize the base project structure
 Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Codespaces experience are agnostic of the language/framework. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
 
 ![set-up the base project abstract](/images/develop/gitdev/codespace/init-sb.png)
 
 ### Complete the CRUD APIs
-Complete the todo-service to handle 'GET', 'POST', 'PUT', and 'DELETE' API requests.
+Complete the todo-service by copying the source and build files from the [source repo]((https://github.com/srinivasa-vasu/todo)) to your repo to handle 'GET', 'POST', 'PUT', and 'DELETE' API requests.
 
 ![complete the api endpoints](/images/develop/gitdev/codespace/complete-api.png)
 
@@ -56,7 +59,7 @@ In the command palette (fn+F1), type `Remote-containers: Add` and select `Add De
 It initializes a `.devcontainer` folder with a JSON metadata file at the root of the source repo. `devcontainer.json` has the info to provision the development environment with all the necessary tools and runtime stack. 
 
 ### Customize the Codespace environment
-You need to customize the default universal image to include the YugabyteDB binary. This is done by defining your own `Dockerfile`.
+You need to customize the default universal image to include the YugabyteDB binary. This is done by defining your own `Dockerfile`. Refer to the [source repo](https://github.com/srinivasa-vasu/todo) for the complete file.
 
 ```docker
 ARG VERSION

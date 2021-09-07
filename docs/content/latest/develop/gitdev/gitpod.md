@@ -21,7 +21,11 @@ Follow the steps below to set up a Gitpod workspace environment with a pre-confi
 Gitpod doesn't require anything in your local workstation other than a code editor and git cli. Much of the development happens in the cloud through a web browser.
 
 ## Getting Started with a boot app
-You can find the source at [Spring Boot todo on GitHub](https://github.com/srinivasa-vasu/todo).
+You can find the source at [Spring Boot todo on GitHub](https://github.com/srinivasa-vasu/todo). 
+
+- The easy way to get started with Gitpod is to simply fork this source repo 
+and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]`. '[REPO_URL]' should be replaced with your forked repository url. 
+- If you want to set this up from scratch, then follow the below instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/srinivasa-vasu/todo).
 
 ### Initialize the base project structure
 Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Gitpod experience are agnostic of the language/framework. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
@@ -29,7 +33,7 @@ Spring todo is a Java Spring Boot reactive app. However, the steps to go through
 ![set-up the base project abstract](/images/develop/gitdev/gitpod/init-sb.png)
 
 ### Complete the CRUD APIs
-Complete the todo-service to handle 'GET', 'POST', 'PUT', and 'DELETE' API requests.
+Complete the todo-service by copying the source and build files from the [source repo]((https://github.com/srinivasa-vasu/todo)) to your repo to handle 'GET', 'POST', 'PUT', and 'DELETE' API requests.
 
 ![complete the api endpoints](/images/develop/gitdev/gitpod/complete-api.png)
 
@@ -53,7 +57,7 @@ To initialize the workspace environment,
 
 
 ### Customize the Gitpod environment
-You need to customize the default universal image to include the YugabyteDB binary. This is done by defining your own `Dockerfile` at `.gitpodcontainer/Dockerfile`.
+You need to customize the default universal image to include the YugabyteDB binary. This is done by defining your own `Dockerfile` at `.gitpodcontainer/Dockerfile`. Refer to the [source repo](https://github.com/srinivasa-vasu/todo) for the complete file.
 
 ```docker
 # default universal image
@@ -119,6 +123,28 @@ tasks:
   - name: app-run
     init: gradle clean build -x test
     command: java -jar build/libs/*.jar
+
+ports:
+  - port: 8080
+    onOpen: notify
+  - port: 7000
+    onOpen: notify
+  - port: 9000
+    onOpen: notify
+  - port: 37843
+    onOpen: ignore
+  - port: 7100
+    onOpen: ignore
+  - port: 9100
+    onOpen: ignore
+  - port: 5433
+    onOpen: ignore
+  - port: 13000
+    onOpen: ignore
+  - port: 9042
+    onOpen: ignore
+  - port: 12000
+    onOpen: ignore    
 ```
 
 If you launch the workspaces environment with the above-updated spec, the development environment gets provisioned with a running YugabyteDB instance. It opens two terminals, one terminal to run the DB task and the other one to compile and run the boot app.
