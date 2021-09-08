@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-faq
     parent: yugabyte-cloud
-    weight: 950
+    weight: 900
 isTocNested: true
 showAsideToc: true
 ---

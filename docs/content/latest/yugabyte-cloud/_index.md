@@ -28,7 +28,7 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
               <div class="title">Quickstart</div>
           </div>
           <div class="body">
-              Sign up, create a free cluster, connect to it, and run an application.
+              Sign up, create a free cluster, connect, and explore YugabyteDB.
           </div>
       </a>
   </div>
