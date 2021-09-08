@@ -405,8 +405,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
 
-        self.preprovision(args)
-
         if not args.skip_preprovision:
             self.preprovision(args)
 
