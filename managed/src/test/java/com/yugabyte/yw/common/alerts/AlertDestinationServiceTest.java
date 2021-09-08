@@ -228,9 +228,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
     assertThat(
         exception.getMessage(),
         equalTo(
-            "Unable to delete default alert destination "
-                + defaultDestination.getUuid()
-                + ", make another destination default at first."));
+            "Unable to delete default alert destination '"
+                + defaultDestination.getName()
+                + "', make another destination default at first."));
   }
 
   @Test
@@ -254,9 +254,9 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
     assertThat(
         exception.getMessage(),
         equalTo(
-            "Unable to delete alert destination: "
-                + destination.getUuid()
-                + ". 1 alert configurations are linked to it. Examples: ["
+            "Unable to delete alert destination '"
+                + destination.getName()
+                + "'. 1 alert configurations are linked to it. Examples: ["
                 + configuration.getName()
                 + "]"));
   }

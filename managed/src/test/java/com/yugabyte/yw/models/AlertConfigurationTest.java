@@ -41,7 +41,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -372,22 +371,19 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
-        uuid -> "Can't change customer UUID for configuration " + uuid);
+        "Can't change customer UUID for configuration 'Memory Consumption'");
   }
 
   private void testValidationCreate(Consumer<AlertConfiguration> modifier, String expectedMessage) {
-    testValidation(modifier, uuid -> expectedMessage, true);
+    testValidation(modifier, expectedMessage, true);
   }
 
-  private void testValidationUpdate(
-      Consumer<AlertConfiguration> modifier, Function<UUID, String> expectedMessageGenerator) {
-    testValidation(modifier, expectedMessageGenerator, false);
+  private void testValidationUpdate(Consumer<AlertConfiguration> modifier, String expectedMessage) {
+    testValidation(modifier, expectedMessage, false);
   }
 
   private void testValidation(
-      Consumer<AlertConfiguration> modifier,
-      Function<UUID, String> expectedMessageGenerator,
-      boolean create) {
+      Consumer<AlertConfiguration> modifier, String expectedMessage, boolean create) {
     AlertConfiguration configuration = createTestConfiguration();
     if (create) {
       alertConfigurationService.delete(configuration.getUuid());
@@ -397,9 +393,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(
         () -> alertConfigurationService.save(configuration),
-        thrown(
-            PlatformServiceException.class,
-            expectedMessageGenerator.apply(configuration.getUuid())));
+        thrown(PlatformServiceException.class, expectedMessage));
   }
 
   private AlertConfiguration createTestConfiguration() {

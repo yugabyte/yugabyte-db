@@ -684,9 +684,9 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken));
     AssertHelper.assertBadRequest(
         result,
-        "Unable to delete default alert destination "
-            + destinationUUID
-            + ", make another destination default at first.");
+        "Unable to delete default alert destination '"
+            + createdDestination.getName()
+            + "', make another destination default at first.");
   }
 
   @Test

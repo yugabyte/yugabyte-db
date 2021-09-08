@@ -332,19 +332,22 @@ public class AlertConfigurationService {
     if (before != null) {
       if (!configuration.getCustomerUUID().equals(before.getCustomerUUID())) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change customer UUID for configuration " + configuration.getUuid());
+            BAD_REQUEST,
+            "Can't change customer UUID for configuration '" + configuration.getName() + "'");
       }
       if (!configuration.getTargetType().equals(before.getTargetType())) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change target type for configuration " + configuration.getUuid());
+            BAD_REQUEST,
+            "Can't change target type for configuration '" + configuration.getName() + "'");
       }
       if (!configuration.getCreateTime().equals(before.getCreateTime())) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change create time for configuration " + configuration.getUuid());
+            BAD_REQUEST,
+            "Can't change create time for configuration '" + configuration.getName() + "'");
       }
     } else if (!configuration.isNew()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Can't update missing configuration " + configuration.getUuid());
+          BAD_REQUEST, "Can't update missing configuration '" + configuration.getName() + "'");
     }
   }
 

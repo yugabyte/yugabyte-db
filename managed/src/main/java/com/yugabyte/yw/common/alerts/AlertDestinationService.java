@@ -50,9 +50,9 @@ public class AlertDestinationService {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Unable to delete default alert destination %s,"
+              "Unable to delete default alert destination '%s',"
                   + " make another destination default at first.",
-              destinationUUID));
+              destination.getName()));
     }
 
     AlertConfigurationFilter configurationFilter =
@@ -61,9 +61,9 @@ public class AlertDestinationService {
     if (!configurations.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Unable to delete alert destination: "
-              + destinationUUID
-              + ". "
+          "Unable to delete alert destination '"
+              + destination.getName()
+              + "'. "
               + configurations.size()
               + " alert configurations are linked to it. Examples: "
               + configurations
@@ -74,7 +74,7 @@ public class AlertDestinationService {
     }
     if (!destination.delete()) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete alert destination: " + destinationUUID);
+          INTERNAL_SERVER_ERROR, "Unable to delete alert destination: " + destination.getName());
     }
     log.info("Deleted alert destination {} for customer {}", destinationUUID, customerUUID);
   }
