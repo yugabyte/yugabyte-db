@@ -83,6 +83,8 @@ admin@ycqlsh:yugabyte>
 
 If you enter an incorrect password, the cloud shell session is terminated immediately and you must start a new session.
 
+Once connected, one or more entries for the cloud shell session are added to the cluster IP allow list. After the session is closed, these are cleaned up automatically within five minutes.
+
 ## Connect via Client Shell
 
 You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer.

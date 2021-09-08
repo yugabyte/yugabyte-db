@@ -120,20 +120,33 @@ $ mkdir -p src/main/java/com/yugabyte/sample/apps
 Initialize a custom SSLContext by loading the truststore created with the Yugabyte Cloud root certificate. You do this by adding the following `YugabyteSSLContext` class to your project. Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YugabyteSSLContext.java`.
 
 ```java
-public class YugabyteSSLContext {
-    public SSLContext getSSLcontext(String trustStorePath, String trustStorePassword) throws Exception {
-        TrustManagerFactory tmf = null;
-        try (InputStream tsf = Files.newInputStream(Paths.get(trustStorePath))) {
-            KeyStore ts = KeyStore.getInstance("JKS");
-            ts.load(tsf, trustStorePassword.toCharArray());
-            tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            tmf.init(ts);
-        }
-        SSLContext sslContext = SSLContext.getInstance("SSL");
-        sslContext.init(null, tmf != null ? tmf.getTrustManagers() : null, new SecureRandom());
+package com.yugabyte.sample.apps;
 
-        return sslContext;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.KeyStore;
+import java.security.SecureRandom;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+
+public class YugabyteSSLContext {
+
+  public SSLContext getSSLcontext(String trustStorePath, String trustStorePassword) throws Exception {
+    TrustManagerFactory tmf = null;
+    try (InputStream tsf = Files.newInputStream(Paths.get(trustStorePath))) {
+      KeyStore ts = KeyStore.getInstance("JKS");
+      ts.load(tsf, trustStorePassword.toCharArray());
+      tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+      tmf.init(ts);
     }
+    
+    SSLContext sslContext = SSLContext.getInstance("SSL");
+    sslContext.init(null, tmf != null ? tmf.getTrustManagers() : null, new SecureRandom());
+    
+    return sslContext;
+  }
 }
 ```
 
@@ -202,11 +215,17 @@ Replace the following variables in `YBCqlHelloWorld.java` with the appropriate v
 
 | Variable | Description |
 |----------|-------------|
-| LocalDatacenter | us-west-1 (select * from system.peers) |
+| LocalDatacenter | The name of the local data center |
 | YUGABYTE_CLOUD_HOSTNAME | The hostname of your Yugabyte Cloud cluster |
 | YUGABYTE_TRUSTSTORE_PASSWORD | The password for the truststore |
 | YCQL_USER | Your Yugabyte database user name |
 | YCQL_PASSWORD | Your Yugabyte database password |
+
+To determine the `local` data center to use, run the following YCQL query from Yugabyte Cloud Shell:
+
+```sql
+yugabyte=# SELECT * FROM system.local;
+```
 
 ### Add the trustore to the project
 
