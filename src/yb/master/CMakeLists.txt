@@ -70,6 +70,7 @@ set(MASTER_SRCS
   catalog_loaders.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
+  cluster_balance_util.cc
   encryption_manager.cc
   permissions_manager.cc
   flush_manager.cc
