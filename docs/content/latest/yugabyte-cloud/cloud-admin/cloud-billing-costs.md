@@ -1,4 +1,4 @@
----
+<!--
 title: Cluster costs
 linkTitle: Cluster costs
 description: Yugabyte Cloud cluster configuration costs.
@@ -11,7 +11,7 @@ menu:
     weight: 300
 isTocNested: true
 showAsideToc: true
----
+-->
 
 Yugabyte offers two billing options: pay-as-you-go (PAYG) billing and subscription billing. The pricing for the two options is provided below:
 
@@ -23,7 +23,7 @@ Yugabyte offers two billing options: pay-as-you-go (PAYG) billing and subscripti
 
 Yugabyte Cloud supports deploying clusters onto Amazon Web Services (AWS) and Google Cloud Platform (GCP). The choice of cloud service provider and region or regions for a cluster affects the cost of running the cluster.
 
-Multi-region cluster costs depend on the number of and location of the selected regions. When creating a cluster, the displayed cost is based on only the Preferred Region of the cluster. You can see the total cost of running the cluster in the Cluster Overview.
+Multi-region cluster costs depend on the number of and location of the selected regions. When creating a cluster, the displayed cost is based on only the Preferred Region of the cluster. You can see the total cost of running the cluster in the [Edit Infrastructure](../../cloud-clusters/configure-clusters/#infrastructure) dialog.
 
 ## Data transfer
 

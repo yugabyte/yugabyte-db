@@ -24,7 +24,7 @@ Yugabyte bills for its services as follows:
 - tabulates costs daily
 - displays your current monthly costs under **Invoices** on the **Billing** tab
  
-Invoices are sent to the email provided in the billing profile. Refer to [Cluster costs](../cloud-billing-costs) for a summary of how cluster configurations are costed.
+Invoices are sent to the email provided in the billing profile. <!--Refer to [Cluster costs](../cloud-billing-costs) for a summary of how cluster configurations are costed.-->
 
 ![Admin Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
