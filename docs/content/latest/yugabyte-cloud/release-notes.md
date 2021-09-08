@@ -25,28 +25,46 @@ This release includes the following features:
 - Multiple cloud users - invite additional users to your cloud
 - Encryption at rest and in transit
 
-The following regions are supported.
+### Cloud provider regions
 
-|         GCP Region      |  Name          | AWS Region     |  Name |
-|-------------------------|----------------|----------------|---------------|
-| asia-east1              | Taiwan         | | |
-| asia-northeast1         | Tokyo          | ap-northeast-1 | Tokyo |
-| asia-south1             | Mumbai         | ap-south-1     | Mumbai |
-| asia-southeast1         | Singapore      | ap-southeast-1 | Singapore |
-| australia-southeast1    | Sydney         | ap-southeast-2 | Sydney |
-| europe-west1            | Belgium        | eu-west-1      | Ireland |
-| europe-west2            | London         | eu-west-2      | London |
-| europe-west3            | Frankfurt      | eu-central-1   | Frankfurt |
-| europe-west4            | Netherlands    | eu-west-3      | Paris |
-| northamerica-northeast1 | Montreal       | ca-central-1   | Central |
-| southamerica-east1      | Sao Paulo      | sa-east-1      | Sao Paulo |
-| us-central1             | Iowa           | us-east-2      | Ohio |
-| us-east1                | South Carolina | | |
-| us-east4                | N. Virginia    | us-east-1      | N. Virginia |
-| us-west1                | Oregon         | us-west-2      | Oregon |
-| us-west2                | Los Angeles    | us-west-1      | N. California |
-| us-west3                | Salt Lake City | | |
-| us-west4                | Las Vegas      | | |
+The following **GCP regions** are available:
+
+- Taiwan (asia-east1)
+- Tokyo (asia-northeast1)
+- Mumbai (asia-south1)
+- Singapore (asia-southeast1)
+- Sydney (australia-southeast1)
+- Belgium (europe-west1)
+- London (europe-west2)
+- Frankfurt (europe-west3)
+- Netherlands (europe-west4)
+- Montreal (northamerica-northeast1)
+- Sao Paulo (southamerica-east1)
+- Iowa (us-central1)
+- South Carolina (us-east1)
+- N. Virginia (us-east4)
+- Oregon (us-west1)
+- Los Angeles (us-west2)
+- Salt Lake City (us-west3)
+- Las Vegas (us-west4)
+
+The following **AWS regions** are available:
+
+- Tokyo (ap-northeast-1)
+- Mumbai (ap-south-1)
+- Singapore (ap-southeast-1)
+- Sydney (ap-southeast-2)
+- Central (ca-central-1)
+- Frankfurt (eu-central-1)
+- Ireland (eu-west-1)
+- London (eu-west-2)
+- Paris (eu-west-3)
+- Sao Paulo (sa-east-1)
+- N. Virginia (us-east-1)
+- Ohio (us-east-2)
+- N. California (us-west-1)
+- Oregon (us-west-2)
+
 
 ### Limitations
 
