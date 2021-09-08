@@ -1,29 +1,31 @@
 ---
-title: Running Hasura Applications
-headerTitle: Running Hasura Applications
-linkTitle: Hasura Applications
-description: Run applications in Hasura Cloud and Yugabyte Cloud.
+title: Deploy a GraphQL application
+headerTitle: Deploy a GraphQL application
+linkTitle: Deploy a GraphQL application
+description: Deploy the Realtime Poll GraphQL application for Hasura Cloud and Yugabyte Cloud.
+aliases:
+  - /latest/yugabyte-cloud/hasura-sample-app/
 menu:
   latest:
     identifier: hasura-application
-    parent: yugabyte-cloud
-    weight: 710
+    parent: cloud-develop
+    weight: 910
 isTocNested: true
 showAsideToc: true
 ---
 
-This page demonstrates how to deploy an application on Hasura Cloud and Yugabyte Cloud using Hasura's Realtime Poll sample application. This application is built using React and is powered by Hasura GraphQL Engine backed by a Yugabyte Cloud YugabyteDB cluster. It has an interface for users to cast a vote on a poll, and results are updated in an on-screen bar chart in real time.
+This page demonstrates how to deploy a GraphQL application on Hasura Cloud and Yugabyte Cloud using Hasura's Realtime Poll sample application. This application is built using React, powered by the Hasura GraphQL Engine, and backed by a Yugabyte Cloud YugabyteDB cluster. It has an interface for users to cast a vote on a poll, and results are updated in an on-screen bar chart in real time.
 
 ## Prerequisites
 
 The example has the following prerequisites:
 
 * You have created a cluster on Yugabyte Cloud
+  * For instructions, refer to [Create a cluster](../../cloud-basics/create-clusters).
 * You have created a Hasura project and connected it to your cluster
+  * For instructions, refer to [Connect Hasura Cloud to Yugabyte Cloud](../hasura-cloud/).
 
 You will also need the **Admin Secret** of your Hasura project.
-
-For instructions, refer to [Connect Hasura Cloud to Yugabyte Cloud](../hasura-cloud/).
 
 For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](https://hasura.io/docs/latest/graphql/cloud/index.html).
 
