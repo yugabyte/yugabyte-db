@@ -1,4 +1,4 @@
----
+<!--
 title: Deploy a Spring application on GKE
 headerTitle: Deploy a Spring application on GKE
 linkTitle: Deploy on GKE
@@ -11,7 +11,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
----
+-->
 
 Deploy a Spring application connected to Yugabyte Cloud on Google Kubernetes Engine (GKE) by following the steps below.
 

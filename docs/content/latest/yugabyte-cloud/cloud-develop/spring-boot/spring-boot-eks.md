@@ -1,4 +1,4 @@
----
+<!--
 title: Deploy a Spring application on Amazon EKS
 linkTitle: Deploy on Amazon EKS
 description: Deploy a Spring application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS).
@@ -10,7 +10,7 @@ menu:
 type: page
 isTocNested: true
 showAsideToc: true
----
+-->
 
 Deploy a Spring application connected to Yugabyte Cloud on Amazon Elastic Kubernetes Service (EKS) by following the steps below.
 

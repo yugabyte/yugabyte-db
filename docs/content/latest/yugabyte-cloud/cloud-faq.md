@@ -25,11 +25,13 @@ See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
 Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/).
 
+<!--
 ### How is Yugabyte Cloud priced?
 
 ### Is support included in the base price?
 
 ### What SLAs are guaranteed for support and service?
+-->
 
 ### What are the differences between Free and Paid clusters?
 
@@ -63,30 +65,20 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 You can connect to clusters in the following ways:
 
-#### Cloud Shell
+Cloud Shell
+: Run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud shell does not require a CA certificate or any special network access configured.
 
-The Cloud Shell allows you to run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud shell does not require a CA certificate or any special network access configured.
+Client Shell
+: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
 
-For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters#connect-via-cloud-shell). 
+: Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
 
-#### Client Shell
+Applications
+: Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 
 
-You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
+: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections), or use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
 
-Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
-
-For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters#connect-via-client-shell). 
-
-#### Applications
-
-Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 
-
-Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, do one of the following:
-
-- Add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections).
-- Use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
-
-Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
+For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters). 
 
 ## Security
 
@@ -122,7 +114,9 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 - Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify customers of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime. 
 
+<!--
 ### How do I migrate my database to Yugabyte Cloud
+-->
 
 ## Backups
 
