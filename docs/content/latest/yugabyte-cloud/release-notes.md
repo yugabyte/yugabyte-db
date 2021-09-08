@@ -29,22 +29,22 @@ The following regions are supported.
 
 |         GCP Region      |  Name          | AWS Region     |  Name |
 |-------------------------|----------------|----------------|---------------|
-| asia-east1              | Taiwan         | ap-northeast-1 | Tokyo |
-| asia-northeast1         | Tokyo          | ap-south-1     | Mumbai |
-| asia-south1             | Mumbai         | ap-southeast-1 | Singapore |
-| asia-southeast1         | Singapore      | ap-southeast-2 | Sydney |
-| australia-southeast1    | Sydney         | ca-central-1   | Central |
-| europe-west1            | Belgium        | eu-central-1   | Frankfurt |
-| europe-west2            | London         | eu-west-1      | Ireland |
-| europe-west3            | Frankfurt      | eu-west-2      | London |
+| asia-east1              | Taiwan         | | |
+| asia-northeast1         | Tokyo          | ap-northeast-1 | Tokyo |
+| asia-south1             | Mumbai         | ap-south-1     | Mumbai |
+| asia-southeast1         | Singapore      | ap-southeast-1 | Singapore |
+| australia-southeast1    | Sydney         | ap-southeast-2 | Sydney |
+| europe-west1            | Belgium        | eu-west-1      | Ireland |
+| europe-west2            | London         | eu-west-2      | London |
+| europe-west3            | Frankfurt      | eu-central-1   | Frankfurt |
 | europe-west4            | Netherlands    | eu-west-3      | Paris |
-| northamerica-northeast1 | Montreal       | sa-east-1      | Sao Paulo |
-| southamerica-east1      | Sao Paulo      | us-east-1      | N. Virginia |
+| northamerica-northeast1 | Montreal       | ca-central-1   | Central |
+| southamerica-east1      | Sao Paulo      | sa-east-1      | Sao Paulo |
 | us-central1             | Iowa           | us-east-2      | Ohio |
-| us-east1                | South Carolina | us-west-1      | N. California |
-| us-east4                | N. Virginia    | us-west-2      | Oregon |
-| us-west1                | Oregon         | | |
-| us-west2                | Los Angeles    | | |
+| us-east1                | South Carolina | | |
+| us-east4                | N. Virginia    | us-east-1      | N. Virginia |
+| us-west1                | Oregon         | us-west-2      | Oregon |
+| us-west2                | Los Angeles    | us-west-1      | N. California |
 | us-west3                | Salt Lake City | | |
 | us-west4                | Las Vegas      | | |
 
