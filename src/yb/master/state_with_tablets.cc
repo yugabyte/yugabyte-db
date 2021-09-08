@@ -15,6 +15,10 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
+#include "yb/util/flag_tags.h"
+
+DEFINE_test_flag(bool, mark_snasphot_as_failed, false,
+                 "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
 namespace yb {
 namespace master {
@@ -31,6 +35,11 @@ const std::initializer_list<std::pair<SysSnapshotEntryPB::State, SysSnapshotEntr
 SysSnapshotEntryPB::State InitialStateToTerminalState(SysSnapshotEntryPB::State state) {
   for (const auto& initial_and_terminal_states : kStateTransitions) {
     if (state == initial_and_terminal_states.first) {
+      if (PREDICT_FALSE(FLAGS_TEST_mark_snasphot_as_failed)
+          && state == SysSnapshotEntryPB::RESTORING) {
+        LOG(INFO) << "TEST: Mark COMPETE snapshot as FAILED";
+        return SysSnapshotEntryPB::FAILED;
+      }
       return initial_and_terminal_states.second;
     }
   }

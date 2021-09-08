@@ -894,5 +894,32 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
   }
 }
 
+class YBFailSnapshotTest: public YBBackupTest {
+  void SetUp() override {
+    YBBackupTest::SetUp();
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    pgwrapper::PgCommandTestBase::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--TEST_mark_snasphot_as_failed=true");
+  }
+};
+
+TEST_F(YBFailSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRestore)) {
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
+  const string& keyspace = table_.name().namespace_name();
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+  Status s = RunBackupCommand(
+    {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"});
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), ", restoring failed!");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb
