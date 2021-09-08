@@ -224,7 +224,7 @@ Replace the following variables in `YBCqlHelloWorld.java` with the appropriate v
 To determine the `local` data center to use, run the following YCQL query from Yugabyte Cloud Shell:
 
 ```sql
-yugabyte=# SELECT * FROM system.local;
+admin@ycqlsh:yugabyte> SELECT * FROM system.local;
 ```
 
 ### Add the trustore to the project
