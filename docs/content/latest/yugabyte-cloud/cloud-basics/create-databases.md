@@ -6,6 +6,7 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /latest/deploy/yugabyte-cloud/create-databases/
+  - /latest/yugabyte-cloud/create-databases/
 menu:
   latest:
     identifier: create-databases

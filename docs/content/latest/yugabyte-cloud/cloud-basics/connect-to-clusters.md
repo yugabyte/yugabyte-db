@@ -6,6 +6,7 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /latest/deploy/yugabyte-cloud/connect-to-clusters/
+  - /latest/yugabyte-cloud/connect-to-clusters/
 menu:
   latest:
     identifier: connect-to-clusters

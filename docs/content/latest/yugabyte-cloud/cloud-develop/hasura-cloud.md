@@ -3,6 +3,8 @@ title: Hasura Cloud
 headerTitle: Connect Hasura Cloud to Yugabyte Cloud
 linkTitle: Hasura Cloud
 description: Connect Hasura Cloud to Yugabyte Cloud.
+aliases:
+  - /latest/yugabyte-cloud/hasura-cloud/
 menu:
   latest:
     identifier: hasura-cloud

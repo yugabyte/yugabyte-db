@@ -19,7 +19,7 @@ showAsideToc: true
 
 Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP), Amazon Web Services (AWS), and Microsoft Azure (coming soon).
 
-Yugabyte Cloud clusters are accessed via [YSQL](../../api/ysql) and [YCQL](../../api/ysql) client APIs, and administered using the Yugabyte Cloud Console.
+Yugabyte Cloud clusters are accessed via [YSQL](../../api/ysql) and [YCQL](../../api/ysql) client APIs, and administered using the Yugabyte Cloud console.
 
 See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
@@ -104,7 +104,7 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to node
 
 Free clusters are limited to a single node in a single region.
 
-For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact Customer Support.
+For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 ### What is the upgrade policy for clusters?
 

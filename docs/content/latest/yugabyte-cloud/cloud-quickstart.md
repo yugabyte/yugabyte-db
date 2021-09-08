@@ -6,6 +6,7 @@ headcontent:
 image: /images/section_icons/index/quick_start.png
 aliases:
   - /latest/deploy/yugabyte-cloud/free-tier/
+  - /latest/yugabyte-cloud/free-tier/
 menu:
   latest:
     identifier: cloud-quickstart

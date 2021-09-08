@@ -7,6 +7,7 @@ image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 headcontent: Set up network access to your Yugabyte Cloud and clusters.
 aliases:
   - /latest/deploy/yugabyte-cloud/manage-access/
+  - /latest/yugabyte-cloud/manage-access/
 menu:
   latest:
     identifier: cloud-network
