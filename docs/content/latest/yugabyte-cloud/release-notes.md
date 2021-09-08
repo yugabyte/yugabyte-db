@@ -56,4 +56,5 @@ The following regions are supported.
 
 - **Cloud Shell** - No support for Firefox.
 - **Cloud Shell** - The cloud shell cannot display a greater number of lines of output than the page size. For example, if you run a query that returns more rows than there are lines of output in the current browser view, the results will not display.
+- **Cloud Shell** - No support for invited (Developer) users. 
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
