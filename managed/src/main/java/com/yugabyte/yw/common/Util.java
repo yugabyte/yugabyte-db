@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -56,7 +57,7 @@ import play.libs.Json;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
-  private static Map<UUID, Process> processMap = new HashMap<>();
+  private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -326,13 +327,13 @@ public class Util {
     while ((bytesCount = fis.read(byteArray)) != -1) {
       digest.update(byteArray, 0, bytesCount);
     }
-    ;
+
     fis.close();
 
     byte[] bytes = digest.digest();
     StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < bytes.length; i++) {
-      sb.append(Integer.toString((bytes[i] & 0xff) + 0x100, 16).substring(1));
+    for (byte b : bytes) {
+      sb.append(Integer.toString((b & 0xff) + 0x100, 16).substring(1));
     }
     return sb.toString();
   }
@@ -473,6 +474,8 @@ public class Util {
 
   // This will help us in insertion of set of keys in locked synchronized way as no
   // extraction/deletion action should be performed on RunTimeConfig object during the process.
+  // TODO: Fix this locking static method - this locks whole Util class with unrelated methods.
+  //  This should really be using database transactions since runtime config is persisted.
   public static synchronized void setLockedMultiKeyConfig(
       RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
     configKeysMap.forEach(
