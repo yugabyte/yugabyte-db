@@ -9,7 +9,7 @@ export const AddDestinationChannelForm = (props) => {
   const { visible, onHide, onError, defaultChannel } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(true);
-  const [defaultRecipient, setDefaultRecipient] = useState(false);
+  const [defaultRecipients, setDefaultRecipients] = useState(false);
 
   // TODO: Add option for pagerDuty oce API is avaialable
   const channelTypeList = [
@@ -27,7 +27,7 @@ export const AddDestinationChannelForm = (props) => {
   const onModalHide = () => {
     setChannelType(defaultChannel);
     setCustomSMTP(true);
-    setDefaultRecipient(false);
+    setDefaultRecipients(false);
     onHide();
   };
 
@@ -51,7 +51,11 @@ export const AddDestinationChannelForm = (props) => {
       case 'email':
         payload['name'] = values['email_name'];
         payload['params']['channelType'] = 'Email';
-        payload['params']['recipients'] = values.emailIds.split(',');
+        if (!defaultRecipients) {
+          payload['params']['recipients'] = values.emailIds.split(',');
+        } else {
+          payload['params']['defaultRecipients'] = true;
+        }
         if (!customSMTP) {
           payload['params']['smtpData'] = values.smtpData;
         } else {
@@ -88,7 +92,7 @@ export const AddDestinationChannelForm = (props) => {
       setCustomSMTP(!value);
     }
     if (name === 'defaultRecipients') {
-      setDefaultRecipient(value);
+      setDefaultRecipients(value);
     }
   };
 
@@ -98,7 +102,7 @@ export const AddDestinationChannelForm = (props) => {
 
   const validationSchemaEmail = Yup.object().shape({
     email_name: Yup.string().required('Name is Required'),
-    emailIds: !defaultRecipient && Yup.string().required('Email id is Required')
+    emailIds: !defaultRecipients && Yup.string().required('Email id is Required')
   });
 
   const validationSchemaSlack = Yup.object().shape({
@@ -187,11 +191,11 @@ export const AddDestinationChannelForm = (props) => {
                         value: field.value,
                         onChange: field.onChange
                       }}
-                      label="Use Default Recepients"
+                      label="Use Default Recipients"
                     />
                   )}
                 </Field>
-                <div hidden={defaultRecipient}>
+                <div hidden={defaultRecipients}>
                   <Field
                     name="emailIds"
                     type="text"
