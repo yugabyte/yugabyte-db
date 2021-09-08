@@ -49,7 +49,7 @@ To download the TPC-C binaries, run the following commands.
 
 ```sh
 $ cd $HOME
-$ wget https://github.com/yugabyte/tpcc/releases/download/1.6/tpcc.tar.gz
+$ wget https://github.com/yugabyte/tpcc/releases/download/2.0/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
