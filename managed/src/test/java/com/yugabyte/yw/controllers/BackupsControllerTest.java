@@ -111,6 +111,36 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
+  @Test
+  public void testListWithHiddenStorage() {
+    JsonNode features =
+        Json.parse(
+            "{\"universes\": { \"details\": { \"backups\": { \"storageLocation\": \"hidden\"}}}}");
+    defaultCustomer.upsertFeatures(features);
+    assertEquals(features, defaultCustomer.getFeatures());
+
+    BackupTableParams btp = new BackupTableParams();
+    btp.universeUUID = defaultUniverse.universeUUID;
+    btp.storageConfigUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, btp);
+    backup.setTaskUUID(taskUUID);
+    // Patching manually. The broken backups left from previous releases, currently we can't create
+    // such backups through API.
+    btp.storageLocation = null;
+    backup.setBackupInfo(btp);
+    backup.save();
+
+    JsonNode resultJson = listBackups(defaultUniverse.universeUUID);
+    assertEquals(2, resultJson.size());
+    assertValues(
+        resultJson,
+        "backupUUID",
+        ImmutableList.of(defaultBackup.backupUUID.toString(), backup.backupUUID.toString()));
+
+    // Only one storageLocation should be in values as null values are filtered.
+    assertValues(resultJson, "storageLocation", ImmutableList.of("**********"));
+  }
+
   private JsonNode fetchBackupsbyTaskId(UUID universeUUID, UUID taskUUID) {
     String authToken = defaultUser.createAuthToken();
     String method = "GET";
@@ -406,6 +436,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = future.get();
     executorService.shutdown();
     assertEquals(200, result.status());
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 
   @Test
