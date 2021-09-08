@@ -12,17 +12,17 @@ menu:
 weight: 800
 ---
 
-Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more coming soon. It consists of management and data planes. The management plane is a centralized management service deployed on GCP, and is responsible for creating and managing customer data planes. The data plane is the customer YugabyteDB clusters deployed on public cloud provider infrastructure. 
+Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more public cloud provider options coming soon. Yugabyte Cloud consists of management and data planes. The management plane is a centralized management service deployed on GCP; the management plane is responsible for creating and managing customer data planes. The data plane hosts the customer YugabyteDB clusters deployed on public cloud provider infrastructure. 
 
 ![Yugabyte Cloud high-level architecture](/images/yb-cloud/cloud-security-diagram.png)
 
-Yugabyte creates individual dedicated VPCs for each database cluster within your chosen public cloud provider. All VPCs are firewalled from each other and any other outside connection. [Free clusters](../cloud-faq/#what-are-the-differences-between-free-and-paid-clusters) are deployed in a shared VPC.
+Yugabyte creates individual dedicated VPCs for each database cluster within your chosen public cloud provider. For Yugabyte customers that take advantage of a free subscription, clusters are deployed in a shared VPC. All VPCs are firewalled from each other and any other outside connection.
 
 ## The shared responsibility model
 
-Yugabyte Cloud security and compliance is a shared responsibility between the public cloud providers, Yugabyte, and Yugabyte Cloud customers.
+Yugabyte Cloud security and compliance is a shared responsibility between public cloud providers, Yugabyte, and Yugabyte Cloud customers.
 
-Under a shared responsibility model for cloud security, there is a division of responsibility for security aspects of the entire system, including things like network controls, data classification, application controls, identity and access management, and more. The responsibilities for each workload and feature depend on where the workload is hosted - Software as a Service (SaaS), Platform as a Service (PaaS), Infrastructure as a Service (IaaS), or on-premises in your own data center.
+Under the shared responsibility model, there is a division of responsibility for the security aspects of Yugabyte Cloud, including but not limited to things like network controls, data classification, application controls, identity and access management, and more. The responsibilities for each workload and feature depend on where the workload is hosted - Software as a Service (SaaS), Platform as a Service (PaaS), Infrastructure as a Service (IaaS), or on-premises in your own data center.
 
 ![Shared responsibility model](/images/yb-cloud/cloud-shared-responsibility.png)
 

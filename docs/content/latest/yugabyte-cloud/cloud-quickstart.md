@@ -318,13 +318,13 @@ yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
 ```
 
 ```output
- id |     name     |         email          | id |      total       
-----+--------------+------------------------+----+------------------
-  1 | Hudson Borer | borer-hudson@yahoo.com |  3 | 55.6220868196418
-  3 | Lina Heaney  | lina.heaney@yahoo.com  | 14 | 54.6713732241444
-  1 | Hudson Borer | borer-hudson@yahoo.com |  9 | 81.6742695904106
-  3 | Lina Heaney  | lina.heaney@yahoo.com  | 12 | 158.445382304764
-  1 | Hudson Borer | borer-hudson@yahoo.com |  5 | 134.941929352965
+ id |     name           |         email                | id |      total       
+----+--------------------+------------------------------+----+------------------
+  4 | Arnold Adams       | adams.arnold@gmail.com       | 22 | 49.0560710142838
+ 15 | Bertrand Romaguera | romaguera.bertrand@gmail.com | 76 | 28.0989026289413
+  1 | Hudson Borer       | borer-hudson@yahoo.com       |  9 | 81.6742695904106
+ 10 | Tressa White       | white.tressa@yahoo.com       | 54 | 122.116378514938
+  4 | Arnold Adams       | adams.arnold@gmail.com       | 23 | 56.5115886738793
 (5 rows)
 ```
 
@@ -381,9 +381,9 @@ yb_demo=# SELECT * FROM orders WHERE id = (SELECT max(id) FROM orders);
 ```
 
 ```output
-  id   |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
--------+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
- 18761 | 2020-01-30 09:24:29.784078 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
+ id |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
+----+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
+ 77 | 2021-09-08 20:03:12.308302 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
 (1 row)
 ```
 
@@ -444,7 +444,7 @@ yb_demo=# SELECT source,
 ```output
   source  |  percent_sales   
 ----------+------------------
- Facebook | 30.1671732522796
+ Facebook | 31.3725490196078
 (1 row)
 ```
 

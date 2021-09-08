@@ -28,7 +28,7 @@ This release includes the following features:
 The following regions are supported.
 
 |         GCP Region      |  Name          | AWS Region     |  Name |
-|-------------------------|----------------|----------------|----------------|
+|-------------------------|----------------|----------------|---------------|
 | asia-east1              | Taiwan         | ap-northeast-1 | Tokyo |
 | asia-northeast1         | Tokyo          | ap-south-1     | Mumbai |
 | asia-south1             | Mumbai         | ap-southeast-1 | Singapore |
