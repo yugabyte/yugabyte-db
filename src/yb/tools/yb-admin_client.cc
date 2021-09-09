@@ -46,6 +46,7 @@
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/json_util.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
@@ -1197,21 +1198,30 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_tablets) {
+Status ClusterAdminClient::ListTablets(
+    const YBTableName& table_name, int max_tablets, bool json) {
   vector<string> tablet_uuids, ranges;
   std::vector<master::TabletLocationsPB> locations;
   RETURN_NOT_OK(yb_client_->GetTablets(
       table_name, max_tablets, &tablet_uuids, &ranges, &locations));
-  cout << RightPadToUuidWidth("Tablet-UUID") << kColumnSep
-       << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
-       << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
+
+  rapidjson::Document document(rapidjson::kObjectType);
+  rapidjson::Value json_tablets(rapidjson::kArrayType);
+  CHECK(json_tablets.IsArray());
+
+  if (!json) {
+    cout << RightPadToUuidWidth("Tablet-UUID") << kColumnSep
+         << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
+         << RightPadToWidth("Leader-IP", kLongColWidth) << kColumnSep << "Leader-UUID" << endl;
+  }
+
   for (int i = 0; i < tablet_uuids.size(); i++) {
-    string tablet_uuid = tablet_uuids[i];
+    const string& tablet_uuid = tablet_uuids[i];
     string leader_host_port;
     string leader_uuid;
     const auto& locations_of_this_tablet = locations[i];
     for (const auto& replica : locations_of_this_tablet.replicas()) {
-      if (replica.role() == RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
+      if (replica.role() == RaftPeerPB::LEADER) {
         if (leader_host_port.empty()) {
           leader_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           leader_uuid = replica.ts_info().permanent_uuid();
@@ -1221,10 +1231,34 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, int max_ta
         }
       }
     }
-    cout << tablet_uuid << kColumnSep << RightPadToWidth(ranges[i], kPartitionRangeColWidth)
-         << kColumnSep << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep
-         << leader_uuid << endl;
+
+    if (json) {
+      rapidjson::Value json_tablet(rapidjson::kObjectType);
+      AddStringField("id", tablet_uuid, &json_tablet, &document.GetAllocator());
+      const auto& partition = locations_of_this_tablet.partition();
+      AddStringField("partition_key_start",
+                     Slice(partition.partition_key_start()).ToDebugHexString(), &json_tablet,
+                     &document.GetAllocator());
+      AddStringField("partition_key_end",
+                     Slice(partition.partition_key_end()).ToDebugHexString(), &json_tablet,
+                     &document.GetAllocator());
+      rapidjson::Value json_leader(rapidjson::kObjectType);
+      AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
+      AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
+      json_tablet.AddMember(rapidjson::StringRef("leader"), json_leader, document.GetAllocator());
+      json_tablets.PushBack(json_tablet, document.GetAllocator());
+    } else {
+      cout << tablet_uuid << kColumnSep << RightPadToWidth(ranges[i], kPartitionRangeColWidth)
+           << kColumnSep << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep
+           << leader_uuid << endl;
+    }
   }
+
+  if (json) {
+    document.AddMember("tablets", json_tablets, document.GetAllocator());
+    std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
+  }
+
   return Status::OK();
 }
 

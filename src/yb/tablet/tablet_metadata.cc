@@ -904,10 +904,19 @@ OpId RaftGroupMetadata::split_op_id() const {
   return split_op_id_;
 }
 
+OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  if (tablet_data_state_ != TabletDataState::TABLET_DATA_SPLIT_COMPLETED || hidden_) {
+    return OpId::Invalid();
+  }
+  return split_op_id_;
+}
+
 void RaftGroupMetadata::SetSplitDone(
     const OpId& op_id, const TabletId& child1, const TabletId& child2) {
   std::lock_guard<MutexType> lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+  split_op_id_ = op_id;
   split_child_tablet_ids_[0] = child1;
   split_child_tablet_ids_[1] = child2;
 }
@@ -919,6 +928,12 @@ bool RaftGroupMetadata::has_active_restoration() const {
 
 void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
   std::lock_guard<MutexType> lock(data_mutex_);
+  if (tablet_data_state_ == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    tablet_data_state_ = TabletDataState::TABLET_DATA_READY;
+    split_op_id_ = OpId();
+    split_child_tablet_ids_[0] = std::string();
+    split_child_tablet_ids_[1] = std::string();
+  }
   active_restorations_.push_back(restoration_id);
 }
 

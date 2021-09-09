@@ -1576,18 +1576,6 @@ class NotSupportedTabletSplitITest : public TabletSplitITest {
   }
 };
 
-TEST_F(NotSupportedTabletSplitITest, SplittingWithPitr) {
-  // Schedule snapshots on this namespace.
-  auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
-
-  LOG(INFO) << "Scheduled a snapshot for table "
-            << table_.name().table_name() << " with schedule id "
-            << id;
-
-  // Try splitting this tablet.
-  ASSERT_RESULT(SplitTabletAndCheckForNotSupported(false /* restart_server */));
-}
-
 TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),

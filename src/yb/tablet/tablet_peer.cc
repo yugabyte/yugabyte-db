@@ -1263,37 +1263,32 @@ void TabletPeer::StrandEnqueue(rpc::StrandTask* task) {
 }
 
 bool TabletPeer::CanBeDeleted() {
-  if (!IsLeader()) {
+  const auto consensus = shared_raft_consensus();
+  if (!consensus || consensus->LeaderTerm() == OpId::kUnknownTerm) {
     return false;
-  }
-  if (can_be_deleted_) {
-    return can_be_deleted_;
   }
 
   const auto tablet = shared_tablet();
-  const auto consensus = shared_raft_consensus();
-  if (!tablet || !consensus) {
+  if (!tablet) {
     return false;
   }
 
-  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
-  if (tablet_data_state != TABLET_DATA_SPLIT_COMPLETED) {
+  auto op_id = tablet->metadata()->GetOpIdToDeleteAfterAllApplied();
+  if (!op_id.valid()) {
     return false;
   }
 
   const auto all_applied_op_id = consensus->GetAllAppliedOpId();
-  const auto committed_op_id = consensus->GetLastCommittedOpId();
-  if (all_applied_op_id < committed_op_id) {
+  if (all_applied_op_id < op_id) {
     return false;
   }
 
-  can_be_deleted_ = true;
   LOG_WITH_PREFIX(INFO) << Format(
       "Marked tablet $0 as requiring cleanup due to all replicas have been split (all applied op "
-      "ID: $1, committed op ID: $2)",
-      tablet_id(), all_applied_op_id, committed_op_id);
+      "id: $1, split op id: $2)",
+      tablet_id(), all_applied_op_id, op_id);
 
-  return can_be_deleted_;
+  return true;
 }
 
 rpc::Scheduler& TabletPeer::scheduler() const {

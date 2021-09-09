@@ -414,7 +414,7 @@ DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
                  " conforming to the table placement policy during CreateTable API call.");
 TAG_FLAG(TEST_skip_placement_validation_createtable_api, runtime);
 
-DEFINE_bool(enable_tablet_split_of_pitr_tables, false,
+DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
             "When set, it enables automatic tablet splitting of tables covered by "
             "Point In Time Restore schedules.");
 TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
@@ -636,6 +636,18 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
 }
 
 constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
+
+void FillRetainedBySnapshotSchedules(
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
+      const TableId& table_id,
+      RepeatedBytes* retained_by_snapshot_schedules) {
+  for (const auto& entry : schedules_to_tables_map) {
+    if (std::binary_search(entry.second.begin(), entry.second.end(), table_id)) {
+      retained_by_snapshot_schedules->Add()->assign(
+          entry.first.AsSlice().cdata(), entry.first.size());
+    }
+  }
+}
 
 }  // anonymous namespace
 
@@ -2442,9 +2454,15 @@ Status CatalogManager::DeleteNotServingTablet(
 
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
 
-  // TODO(pitr) TODO(tsplit) pass retained_by_snapshot_schedules?
+  auto schedules_to_tables_map = VERIFY_RESULT(
+      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::TABLE));
+  RepeatedBytes retained_by_snapshot_schedules;
+  FillRetainedBySnapshotSchedules(
+      schedules_to_tables_map, table_info->id(), &retained_by_snapshot_schedules);
+
   return DeleteTabletListAndSendRequests(
-      { tablet_info }, "Not serving tablet deleted upon request at " + LocalTimeAsString(), {});
+      { tablet_info }, "Not serving tablet deleted upon request at " + LocalTimeAsString(),
+      retained_by_snapshot_schedules);
 }
 
 Status CatalogManager::DdlLog(
@@ -4421,13 +4439,8 @@ Status CatalogManager::DeleteTableInMemory(
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
-  for (const auto& entry : schedules_to_tables_map) {
-    if (std::binary_search(entry.second.begin(), entry.second.end(), table->id())) {
-      data.retained_by_snapshot_schedules.Add()->assign(
-          entry.first.AsSlice().cdata(), entry.first.size());
-    }
-  }
-
+  FillRetainedBySnapshotSchedules(
+      schedules_to_tables_map, table->id(), &data.retained_by_snapshot_schedules);
   bool hide_only = !data.retained_by_snapshot_schedules.empty();
 
   if (l->started_deleting() || (hide_only && l->started_hiding())) {
