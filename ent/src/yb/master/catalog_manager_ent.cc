@@ -1078,7 +1078,6 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   SchemaPB* const schema = req.mutable_schema();
   *schema = meta.schema();
-  schema->mutable_table_properties()->set_num_tablets(table_data->num_tablets);
 
   // Setup Index info.
   if (table_data->is_index()) {
