@@ -1,8 +1,8 @@
 #!/bin/sh
 
-uname=`which uname`
-sed=`which sed`
-tr=`which tr`
+uname=`command -v uname`
+sed=`command -v sed`
+tr=`command -v tr`
 myuname=''
 newmyuname=''
 trnl=''

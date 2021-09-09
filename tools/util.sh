@@ -158,7 +158,7 @@ err_report() {
 
 find_at_path() (
 export PATH="$1:$PATH" # Unfortunately need to maintain old PATH to be able to find `which` :(
-out=$(which $2)
+out=$(command -v $2)
 [ -n "$out" ] || die 2 "unable to find $2"
 echo $out
 )

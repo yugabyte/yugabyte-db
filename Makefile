@@ -80,7 +80,7 @@ endif
 # We need to do various things with the PostgreSQL version.
 VERSION = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 $(info )
-$(info GNUmake running against Postgres version $(VERSION), with pg_config located at $(shell dirname `which "$(PG_CONFIG)"`))
+$(info GNUmake running against Postgres version $(VERSION), with pg_config located at $(shell dirname `command -v "$(PG_CONFIG)"`))
 $(info )
 
 #
@@ -163,10 +163,10 @@ endif
 
 # We need Perl.
 ifneq (,$(findstring missing,$(PERL)))
-PERL := $(shell which perl)
+PERL := $(shell command -v perl)
 else
 ifndef PERL
-PERL := $(shell which perl)
+PERL := $(shell command -v perl)
 endif
 endif
 

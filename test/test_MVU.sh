@@ -117,8 +117,8 @@ fi
 sudo=''
 if [ "$1" == '-s' ]; then
     # Useful error if we can't find sudo
-    which sudo > /dev/null
-    sudo=$(which sudo)
+    command -v sudo > /dev/null || echo "sudo not found"
+    sudo=$(command -v sudo)
     debug 2 "sudo located at $sudo"
     shift
 fi
@@ -150,7 +150,7 @@ exit_trap() {
     set +e
 
     # Force sudo on a debian system (see below)
-    [ -z "$ctl_separator" ] || sudo=$(which sudo)
+    [ -z "$ctl_separator" ] || sudo=$(command -v sudo)
 
     # Attempt to shut down any running clusters, otherwise we'll get log spew
     # when the temporary directories vanish.
@@ -166,7 +166,7 @@ exit_trap() {
 debug 5 "traps: $(trap -p)"
 
 cluster_name=test_pg_upgrade 
-if which pg_ctlcluster > /dev/null 2>&1; then
+if command -v pg_ctlcluster > /dev/null; then
     # Looks like we're running in a apt / Debian / Ubuntu environment, so use their tooling
     ctl_separator='--'
 
