@@ -77,6 +77,8 @@ service TabletServerService {
 
   // Takes precreated transaction from this tserver.
   rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
+
+  rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -212,4 +214,16 @@ message TakeTransactionRequestPB {
 
 message TakeTransactionResponsePB {
   optional TransactionMetadataPB metadata = 1;
+}
+
+message GetSplitKeyRequestPB {
+  required bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message GetSplitKeyResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional bytes split_partition_key = 2;
+  optional bytes split_encoded_key = 3;
+  optional fixed64 propagated_hybrid_time = 4;
 }
