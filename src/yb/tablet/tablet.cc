@@ -495,7 +495,7 @@ Tablet::Tablet(const TabletInitData& data)
   if (restoration_hybrid_time && transaction_participant_ && FLAGS_consistent_restore) {
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
-  SyncRestoringOperationFilter();
+  SyncRestoringOperationFilter(ResetSplit::kFalse);
 }
 
 Tablet::~Tablet() {
@@ -951,13 +951,13 @@ void Tablet::CompleteShutdown(IsDropTable is_drop_table) {
     transaction_participant_->CompleteShutdown();
   }
 
-  if (completed_split_log_anchor_) {
-    WARN_NOT_OK(log_anchor_registry_->Unregister(completed_split_log_anchor_.get()),
-                "Unregister split anchor");
-  }
-
   {
     std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+
+    if (completed_split_log_anchor_) {
+      WARN_NOT_OK(log_anchor_registry_->Unregister(completed_split_log_anchor_.get()),
+                  "Unregister split anchor");
+    }
 
     if (completed_split_operation_filter_) {
       UnregisterOperationFilterUnlocked(completed_split_operation_filter_.get());
@@ -4162,16 +4162,29 @@ void Tablet::SplitDone() {
           return SplitOperation::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
         });
     operation_filters_.push_back(*completed_split_operation_filter_);
+
+    completed_split_log_anchor_ = std::make_unique<log::LogAnchor>();
+
+    log_anchor_registry_->Register(
+        metadata_->split_op_id().index, "Splitted tablet", completed_split_log_anchor_.get());
   }
-
-  completed_split_log_anchor_ = std::make_unique<log::LogAnchor>();
-
-  log_anchor_registry_->Register(
-      metadata_->split_op_id().index, "Splitted tablet", completed_split_log_anchor_.get());
 }
 
-void Tablet::SyncRestoringOperationFilter() {
+void Tablet::SyncRestoringOperationFilter(ResetSplit reset_split) {
   std::lock_guard<simple_spinlock> lock(operation_filters_mutex_);
+
+  if (reset_split) {
+    if (completed_split_log_anchor_) {
+      WARN_NOT_OK(log_anchor_registry_->Unregister(completed_split_log_anchor_.get()),
+                  "Unregister split anchor");
+      completed_split_log_anchor_ = nullptr;
+    }
+
+    if (completed_split_operation_filter_) {
+      UnregisterOperationFilterUnlocked(completed_split_operation_filter_.get());
+      completed_split_operation_filter_ = nullptr;
+    }
+  }
 
   if (metadata_->has_active_restoration()) {
     if (restoring_operation_filter_) {
@@ -4200,7 +4213,7 @@ Status Tablet::RestoreStarted(const TxnSnapshotRestorationId& restoration_id) {
   metadata_->RegisterRestoration(restoration_id);
   RETURN_NOT_OK(metadata_->Flush());
 
-  SyncRestoringOperationFilter();
+  SyncRestoringOperationFilter(ResetSplit::kTrue);
 
   return Status::OK();
 }
@@ -4216,7 +4229,7 @@ Status Tablet::RestoreFinished(
   }
   RETURN_NOT_OK(metadata_->Flush());
 
-  SyncRestoringOperationFilter();
+  SyncRestoringOperationFilter(ResetSplit::kFalse);
 
   return Status::OK();
 }
@@ -4236,7 +4249,7 @@ Status Tablet::CheckRestorations(const RestorationCompleteTimeMap& restoration_c
   }
 
   RETURN_NOT_OK(metadata_->Flush());
-  SyncRestoringOperationFilter();
+  SyncRestoringOperationFilter(ResetSplit::kFalse);
 
   return Status::OK();
 }

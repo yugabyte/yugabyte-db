@@ -12,6 +12,8 @@
 
 #include "yb/master/async_snapshot_tasks.h"
 
+#include "yb/consensus/consensus_error.h"
+
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -81,7 +83,8 @@ bool AsyncTabletSnapshotOp::RetryAllowed(TabletServerErrorPB::Code code, const S
     case TabletServerErrorPB::INVALID_SNAPSHOT:
       return operation_ != tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET;
     default:
-      return TransactionError(status) != TransactionErrorCode::kSnapshotTooOld;
+      return TransactionError(status) != TransactionErrorCode::kSnapshotTooOld &&
+             consensus::ConsensusError(status) != consensus::ConsensusErrorPB::TABLET_SPLIT;
   }
 }
 

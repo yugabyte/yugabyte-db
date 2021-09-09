@@ -132,31 +132,50 @@ bool IsEqCaseInsensitive(const string& check, const string& expected) {
   return upper_check == upper_expected;
 }
 
+template <class Enum>
+Result<std::pair<int, EnumBitSet<Enum>>> GetValueAndFlags(
+    const CLIArgumentsIterator& begin,
+    const CLIArgumentsIterator& end,
+    const std::initializer_list<Enum>& flags_list) {
+  std::pair<int, EnumBitSet<Enum>> result;
+  bool seen_value = false;
+  for (auto iter = begin; iter != end; iter = ++iter) {
+    bool found_flag = false;
+    for (auto flag : flags_list) {
+      if (IsEqCaseInsensitive(*iter, ToString(flag))) {
+        if (result.second.Test(flag)) {
+          return STATUS_FORMAT(InvalidArgument, "Duplicate flag: $0", flag);
+        }
+        result.second.Set(flag);
+        found_flag = true;
+        break;
+      }
+    }
+    if (found_flag) {
+      continue;
+    }
+
+    if (seen_value) {
+      return STATUS_FORMAT(InvalidArgument, "Multiple values: $0 and $1", result.first, *iter);
+    }
+
+    result.first = VERIFY_RESULT(CheckedStoi(*iter));
+    seen_value = true;
+  }
+
+  return result;
+}
+
+YB_DEFINE_ENUM(AddIndexes, (ADD_INDEXES));
+
 Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
     CLIArgumentsIterator begin,
     const CLIArgumentsIterator& end) {
-  bool add_indexes = false;
-  int timeout_secs = 20;
-  bool seen_timeout_secs = false;
-  for (auto iter = begin; iter != end; iter = next(iter)) {
-    if (IsEqCaseInsensitive(*iter, "ADD_INDEXES")) {
-      if (add_indexes) {
-        return ClusterAdminCli::kInvalidArguments;
-      }
-      add_indexes = true;
-    } else if (!seen_timeout_secs) {
-      auto maybe_timeout_secs = CheckedStoi(*iter);
-      if (!maybe_timeout_secs.ok()) {
-        return ClusterAdminCli::kInvalidArguments;
-      }
-      timeout_secs = maybe_timeout_secs.get();
-      seen_timeout_secs = true;
-    } else {
-      return ClusterAdminCli::kInvalidArguments;
-    }
-  }
-  return make_pair(timeout_secs, add_indexes);
+  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, kAddIndexesList));
+  return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
+
+YB_DEFINE_ENUM(ListTabletsFlags, (JSON));
 
 } // namespace
 
@@ -353,21 +372,19 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <table> [max_tablets] (default 10, set 0 for max)",
+      " <table> [max_tablets] (default 10, set 0 for max) [JSON]",
       [client](const CLIArguments& args) -> Status {
-        int max = -1;
+        std::pair<int, EnumBitSet<ListTabletsFlags>> arguments;
         const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin(), args.end(),
-            [&max](auto i, const auto& end) -> Status {
-              if (std::next(i) == end) {
-                max = VERIFY_RESULT(CheckedStoi(*i));
-                return Status::OK();
-              }
-              return ClusterAdminCli::kInvalidArguments;
+            [&arguments](auto i, const auto& end) -> Status {
+              arguments = VERIFY_RESULT(GetValueAndFlags(i, end, kListTabletsFlagsList));
+              return Status::OK();
             }));
         RETURN_NOT_OK_PREPEND(
-            client->ListTablets(table_name, max),
-            Substitute("Unable to list tablets of table $0", table_name.ToString()));
+            client->ListTablets(
+                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON)),
+            Format("Unable to list tablets of table $0", table_name));
         return Status::OK();
       });
 
