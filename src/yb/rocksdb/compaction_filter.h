@@ -191,7 +191,8 @@ class CompactionFileFilterFactory {
   virtual ~CompactionFileFilterFactory() { }
 
   // Creates a unique pointer to a new CompactionFileFilter.
-  virtual std::unique_ptr<CompactionFileFilter> CreateCompactionFileFilter() = 0;
+  virtual std::unique_ptr<CompactionFileFilter> CreateCompactionFileFilter(
+      const std::vector<FileMetaData*>& input_files) = 0;
 
   // Returns a name that identifies this compaction filter factory.
   virtual const char* Name() const = 0;

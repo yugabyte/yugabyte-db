@@ -39,28 +39,27 @@ inline bool operator==(const ExpirationTime& lhs, const ExpirationTime& rhs) {
   return YB_STRUCT_EQUALS(ttl_expiration_ht, created_ht);
 }
 
+ExpirationTime ExtractExpirationTime(const rocksdb::FileMetaData* file);
+
+bool IsExpired(ExpirationTime expiry, MonoDelta table_ttl, HybridTime now);
+
 // DocDBCompactionFileFilter will check the file's value expiration time
 // and its table schema for table TTL, and during compaction will filter files
 // which have expired.
 class DocDBCompactionFileFilter : public rocksdb::CompactionFileFilter {
  public:
-  DocDBCompactionFileFilter(std::shared_ptr<Schema> schema, const HybridTime filter_ht)
-      : schema_(schema), filter_ht_(filter_ht) {}
-
-  ExpirationTime Extract(const rocksdb::FileMetaData* file);
+  DocDBCompactionFileFilter(
+      const MonoDelta table_ttl, const HybridTime max_ht_to_expire, const HybridTime filter_ht)
+      : table_ttl_(table_ttl), max_ht_to_expire_(max_ht_to_expire), filter_ht_(filter_ht) {}
 
   rocksdb::FilterDecision Filter(const rocksdb::FileMetaData* file) override;
 
   const char* Name() const override;
 
-  // Test function that allows the same filter to be reused without tracking whether a
-  // file has been kept.
-  void TEST_ResetHasKeptFile() { has_kept_file_ = false; }
-
  private:
-  std::shared_ptr<Schema> schema_;
+  const MonoDelta table_ttl_;
+  const HybridTime max_ht_to_expire_;
   const HybridTime filter_ht_;
-  bool has_kept_file_ = false;
 };
 
 // DocDBCompactionFileFilterFactory will create new DocDBCompactionFileFilters, passing
@@ -71,7 +70,8 @@ class DocDBCompactionFileFilterFactory : public rocksdb::CompactionFileFilterFac
       scoped_refptr<server::Clock> clock)
       : schema_(schema), clock_(clock) {}
 
-  std::unique_ptr<rocksdb::CompactionFileFilter> CreateCompactionFileFilter() override;
+  std::unique_ptr<rocksdb::CompactionFileFilter> CreateCompactionFileFilter(
+      const std::vector<rocksdb::FileMetaData*>& inputs) override;
 
   const char* Name() const override;
 
