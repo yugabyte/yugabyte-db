@@ -23,9 +23,11 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -542,5 +544,23 @@ public class Util {
       }
     }
     backupTask.updateBackupState(newState);
+  }
+
+  public static String getHostname() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      LOG.error("Could not determine the hostname", e);
+      return "";
+    }
+  }
+
+  public static String getHostIP() {
+    try {
+      return InetAddress.getLocalHost().getHostAddress().toString();
+    } catch (UnknownHostException e) {
+      LOG.error("Could not determine the host IP", e);
+      return "";
+    }
   }
 }
