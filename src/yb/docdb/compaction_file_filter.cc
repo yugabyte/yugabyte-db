@@ -20,9 +20,14 @@
 
 namespace yb {
 namespace docdb {
-using rocksdb::FilterDecision;
 
-ExpirationTime DocDBCompactionFileFilter::Extract(const rocksdb::FileMetaData* file) {
+using rocksdb::CompactionFileFilter;
+using rocksdb::FileMetaData;
+using rocksdb::FilterDecision;
+using std::unique_ptr;
+using std::vector;
+
+ExpirationTime ExtractExpirationTime(const FileMetaData* file) {
   // If no frontier detected, return an expiration time that will not expire.
   if (!file || !file->largest.user_frontier) {
       return ExpirationTime{};
@@ -42,29 +47,35 @@ ExpirationTime DocDBCompactionFileFilter::Extract(const rocksdb::FileMetaData* f
   };
 }
 
-FilterDecision DocDBCompactionFileFilter::Filter(const rocksdb::FileMetaData* file) {
+bool IsExpired(ExpirationTime expiry, MonoDelta table_ttl, HybridTime now) {
+  auto file_expiry = MaxExpirationFromValueAndTableTTL(
+      expiry.created_ht, table_ttl, expiry.ttl_expiration_ht);
+  return HasExpiredTTL(file_expiry, now);
+}
+
+FilterDecision DocDBCompactionFileFilter::Filter(const FileMetaData* file) {
   // Filtering a file based on TTL expiration needs to be done from the oldest files to
   // the newest in order to prevent conflicts with tombstoned values that have expired,
   // but are referenced in later files or later versions. If any file is "kept" by
   // the file_filter, then we need to stop filtering files at that point.
   //
-  // This logic assumes files are evaluated in order of creation time during compaction.
-  if (has_kept_file_) {
-    VLOG(4) << "Not filtering file, filtering disabled (already kept a file): "
-        << file->ToString();
-    return FilterDecision::kKeep;
-  }
+  // max_ht_to_expire_ indicates the expiration cutoff as determined when the filter was created.
 
-  auto expiration = Extract(file);
-  auto table_ttl = TableTTL(*schema_);
-  auto file_expiry = MaxExpirationFromValueAndTableTTL(
-      expiration.created_ht, table_ttl, expiration.ttl_expiration_ht);
-  if (HasExpiredTTL(file_expiry, filter_ht_)) {
-    VLOG(3) << "Filtering file, TTL expired: " << file->ToString();
+  auto expiry = ExtractExpirationTime(file);
+  // If the created HT is less than the max to expire, then we're clear to expire the file.
+  if (expiry.created_ht < max_ht_to_expire_) {
+    // Sanity check to ensure that we don't accidentally expire a file that should be kept.
+    // This path should never be taken.
+    if (!IsExpired(expiry, table_ttl_, filter_ht_)) {
+      LOG(WARNING) << "Attempted to expire a file that is still needed (kept file): "
+          << file->ToString();
+      return FilterDecision::kKeep;
+    }
+    LOG(INFO) << "Filtering file, TTL expired: " << file->ToString();
     return FilterDecision::kDiscard;
   } else {
-    VLOG(4) << "Not filtering file, TTL not expired: " << file->ToString();
-    has_kept_file_ = true;
+    VLOG(3) << "Keeping file, has a key HybridTime greater than the max to expire ("
+        << max_ht_to_expire_ << "): " << file->ToString();
     return FilterDecision::kKeep;
   }
 }
@@ -73,10 +84,26 @@ const char* DocDBCompactionFileFilter::Name() const {
   return "DocDBCompactionFileFilter";
 }
 
-std::unique_ptr<rocksdb::CompactionFileFilter>
-    DocDBCompactionFileFilterFactory::CreateCompactionFileFilter() {
+unique_ptr<CompactionFileFilter> DocDBCompactionFileFilterFactory::CreateCompactionFileFilter(
+    const vector<FileMetaData*>& input_files) {
   const HybridTime filter_ht = clock_->Now();
-  return std::make_unique<DocDBCompactionFileFilter>(schema_, filter_ht);
+  MonoDelta table_ttl = TableTTL(*schema_);
+  HybridTime min_kept_ht = HybridTime::kMax;
+  // Need to iterate through all files and determine the minimum HybridTime of a file that
+  // will *not* be expired. This will prevent us from expiring a file prematurely and accidentally
+  // exposing old data.
+  for (auto file : input_files) {
+    auto expiry = ExtractExpirationTime(file);
+    if (!IsExpired(expiry, table_ttl, filter_ht)) {
+      VLOG(4) << "File is not expired, updating minimum HybridTime for filter: "
+          << file->ToString();
+      min_kept_ht = min_kept_ht < expiry.created_ht ? min_kept_ht : expiry.created_ht;
+    } else {
+      VLOG(4) << "File is expired (may or may not be filtered during compaction): "
+          << file->ToString();
+    }
+  }
+  return std::make_unique<DocDBCompactionFileFilter>(table_ttl, min_kept_ht, filter_ht);
 }
 
 const char* DocDBCompactionFileFilterFactory::Name() const {
