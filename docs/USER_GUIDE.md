@@ -34,7 +34,7 @@ SELECT * FROM pg_stat_monitor_settings;
 
 
 ```
-Some configuration parameters require the server restart and should be set before the server startup. These must be set in the ``postgresql.conf`` file. Other parameters do not require server restart and can be set permanently either in the ``postgresql.conf`` or from the client (``psql``).
+Some configuration parameters require a server restart and should be set before the server startup. These must be set in the ``postgresql.conf`` file. Other parameters do not require a server restart and can be set permanently either in the ``postgresql.conf`` or from the client (``psql``).
 
 The table below shows set up options for each configuration parameter and whether the server restart is required to apply the parameter's value:
 
@@ -68,7 +68,7 @@ The table below shows set up options for each configuration parameter and whethe
 
 ### Usage
 
-pg_stat_monitor extension contains a view called pg_stat_monitor, which contains all the monitoring information. Find the list of columns in pg_stat_monitor view in the following table. The table also shows whether a particular column is available in pg_stat_statements.
+The ``pg_stat_monitor`` extension contains a view called ``pg_stat_monitor``, which containss all the monitoring information. Find the list of columns in ``pg_stat_monitor`` view in the following table. The table also shows whether a particular column is available in ``pg_stat_statements``.
 
 
 |      Column        |           Type           | pg_stat_monitor      | pg_stat_statements
@@ -153,18 +153,18 @@ bucket |  bucket_start_time  |                                                  
 
 #### Query Information
 
-**`userid`**: An ID of the user to whom that query belongs. pg_stat_monitor collects queries from all the users and uses the `userid` to segregate the queries based on different users.
+**`userid`**: An ID of the user to whom that query belongs. ``pg_stat_monitor`` collects queries from all the users and uses the `userid` to segregate the queries based on different users.
 
-**`dbid`**: The database ID of the query. pg_stat_monitor accumulates queries from all the databases; therefore, this column is used to identify the database.
+**`dbid`**: The database ID of the query. ``pg_stat_monitor`` accumulates queries from all the databases; therefore, this column is used to identify the database.
 
-**`queryid`**:  pg_stat_monitor generates a unique ID for each query (queryid). 
+**`queryid`**: ``pg_stat_monitor`` generates a unique ID for each query (queryid). 
 
 **`query`**: The query column contains the actual text of the query. This parameter depends on the **`pg_stat_monitor.pgsm_normalized_query`** configuration parameters, in which format to show the query.
 
 **`calls`**: Number of calls of that particular query.
 
 
-##### Example 1: Shows the usename, database name, unique queryid hash, query, and the total number of calls of that query.
+##### Example: Shows the usename, database name, unique queryid hash, query, and the total number of calls of that query.
 ```sql
 postgres=# SELECT userid,  datname, queryid, substr(query,0, 50) AS query, calls FROM pg_stat_monitor;
  userid  | datname  |     queryid      |                       query                       | calls 
@@ -186,7 +186,7 @@ postgres=# SELECT userid,  datname, queryid, substr(query,0, 50) AS query, calls
 
 ```
 
-##### Example 4: Shows the connected application_name.
+##### Example: Shows the connected application_name.
 
 ```sql
 SELECT application_name, query FROM pg_stat_monitor;
@@ -295,7 +295,7 @@ postgres=# SELECT * FROM histogram(0, 'F44CD1B4B33A47AF') AS a(range TEXT, freq 
 (10 rows)
 ```
 
-There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_step`** in the field ``resp_calls``. The value in the field shows how many queries run in that period of time.
+There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_step`** in the field ``resp_calls``. The field's value shows how many queries run in that period of time.
 
 
 #### Object Information.
@@ -337,7 +337,7 @@ View definition:
     bar b;
 ```
 
-Now when we query the pg_stat_monitor, it will show the view name and also all the table names in the view.
+Now when we query ``pg_stat_monitor``, it will show the view name and also all the table names in the view.
 ```sql
 SELECT relations, query FROM pg_stat_monitor;
       relations      |                                                query                                                 
