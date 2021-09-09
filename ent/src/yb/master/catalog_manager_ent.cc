@@ -1088,7 +1088,6 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   SchemaPB* const schema = req.mutable_schema();
   *schema = meta.schema();
-  schema->mutable_table_properties()->set_num_tablets(table_data->num_tablets);
 
   // Setup Index info.
   if (table_data->is_index()) {
@@ -1370,10 +1369,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   // However, still do the validation for regular colocated tables.
   if (!is_parent_colocated_table) {
     Schema persisted_schema;
+    int new_num_tablets = 0;
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
       RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+      new_num_tablets = table->NumTablets();
     }
 
     // Ignore 'nullable' attribute - due to difference in implementation
@@ -1395,12 +1396,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
     }
 
-    if (table_data->num_tablets > 0 &&
-        persisted_schema.table_properties().num_tablets() != table_data->num_tablets) {
+    if (table_data->num_tablets > 0 && new_num_tablets != table_data->num_tablets) {
       const string msg = Format(
           "Wrong number of tablets in created $0 table '$1' in namespace id $2: $3 (expected $4)",
           TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
-          persisted_schema.table_properties().num_tablets(), table_data->num_tablets);
+          new_num_tablets, table_data->num_tablets);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
     }

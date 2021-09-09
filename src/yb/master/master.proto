@@ -1008,7 +1008,11 @@ message CreateTableRequestPB {
 
   required string name = 1;
   optional SchemaPB schema = 2;
-  optional int32 num_tablets = 3;  // deprecated
+
+  // Specifies number of tablets to create. If it's not set here
+  // 'SchemaPB::TablePropertiesPB::num_tablets' from 'schema' field will be used.
+  optional int32 num_tablets = 3;
+
   optional PartitionSchemaPB partition_schema = 5;
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];

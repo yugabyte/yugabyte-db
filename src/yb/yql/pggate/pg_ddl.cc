@@ -232,6 +232,9 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
 }
 
 Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
+  if (num_tablets < 0) {
+    return STATUS(InvalidArgument, "num_tablets cannot be less zero");
+  }
   if (num_tablets > FLAGS_max_num_tablets_for_table) {
     return STATUS(InvalidArgument, "num_tablets exceeds system limit");
   }
@@ -303,15 +306,22 @@ Status PgCreateTable::Exec() {
   // Construct schema.
   client::YBSchema schema;
 
-  TableProperties table_properties;
   const char* pg_txn_enabled_env_var = getenv("YB_PG_TRANSACTIONS_ENABLED");
   const bool transactional =
       !pg_txn_enabled_env_var || strcmp(pg_txn_enabled_env_var, "1") == 0;
   LOG(INFO) << Format(
       "PgCreateTable: creating a $0 table: $1",
       transactional ? "transactional" : "non-transactional", table_name_.ToString());
-  if (transactional) {
-    table_properties.SetTransactional(true);
+
+  if (transactional || num_tablets_ > 0) {
+    TableProperties table_properties;
+    if (transactional) {
+      table_properties.SetTransactional(true);
+    }
+    if (num_tablets_ > 0) {
+      table_properties.SetNumTablets(num_tablets_); // User request.
+    }
+
     schema_builder_.SetTableProperties(table_properties);
   }
 
@@ -322,7 +332,6 @@ Status PgCreateTable::Exec() {
   shared_ptr<client::YBTableCreator> table_creator(pg_session_->NewTableCreator());
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
                 .table_id(table_id_.GetYBTableId())
-                .num_tablets(num_tablets_)
                 .schema(&schema)
                 .colocated(colocated_);
   if (is_pg_catalog_table_) {

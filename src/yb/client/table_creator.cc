@@ -269,6 +269,8 @@ Status YBTableCreator::Create() {
   if (num_tablets_ > 0) {
     VLOG(1) << "num_tablets: number of tablets explicitly specified: " << num_tablets_;
   } else if (schema_->table_properties().num_tablets() > 0) {
+    VLOG(1) << "num_tablets: number of tablets specified by user: "
+            << schema_->table_properties().num_tablets();
     num_tablets_ = schema_->table_properties().num_tablets();
   } else {
     if (table_name_.is_system()) {
@@ -278,7 +280,6 @@ Status YBTableCreator::Create() {
       num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(table_type_));
     }
   }
-  req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets_);
   req.set_num_tablets(num_tablets_);
 
   req.mutable_partition_schema()->CopyFrom(partition_schema_);

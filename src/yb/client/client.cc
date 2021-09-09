@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <mutex>
-#include <set>
 #include <unordered_map>
 #include <vector>
 #include <iostream>
@@ -78,12 +77,6 @@
 #include "yb/util/crypt.h"
 
 using yb::master::AlterTableRequestPB;
-using yb::master::AlterTableRequestPB_Step;
-using yb::master::AlterTableResponsePB;
-using yb::master::CreateTableRequestPB;
-using yb::master::CreateTableResponsePB;
-using yb::master::DeleteTableRequestPB;
-using yb::master::DeleteTableResponsePB;
 using yb::master::CreateTablegroupRequestPB;
 using yb::master::CreateTablegroupResponsePB;
 using yb::master::DeleteTablegroupRequestPB;
@@ -92,10 +85,6 @@ using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
-using yb::master::GetTableSchemaRequestPB;
-using yb::master::GetTableSchemaResponsePB;
-using yb::master::GetColocatedTabletSchemaRequestPB;
-using yb::master::GetColocatedTabletSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -117,8 +106,6 @@ using yb::master::ListLiveTabletServersResponsePB;
 using yb::master::ListLiveTabletServersResponsePB_Entry;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
-using yb::master::AlterNamespaceRequestPB;
-using yb::master::AlterNamespaceResponsePB;
 using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
@@ -141,8 +128,6 @@ using yb::master::GetPermissionsRequestPB;
 using yb::master::GetPermissionsResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
 using yb::master::GrantRevokeRoleResponsePB;
-using yb::master::ListUDTypesRequestPB;
-using yb::master::ListUDTypesResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
 using yb::master::GetUDTypeInfoResponsePB;
 using yb::master::GrantRevokePermissionResponsePB;
@@ -160,18 +145,9 @@ using yb::master::DeleteCDCStreamRequestPB;
 using yb::master::DeleteCDCStreamResponsePB;
 using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
-using yb::master::ListCDCStreamsRequestPB;
-using yb::master::ListCDCStreamsResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
-using yb::master::TSInfoPB;
 using yb::rpc::Messenger;
-using yb::rpc::MessengerBuilder;
-using yb::rpc::RpcController;
-using yb::tserver::NoOpRequestPB;
-using yb::tserver::NoOpResponsePB;
-using yb::util::kBcryptHashSize;
-using std::set;
 using std::string;
 using std::vector;
 using google::protobuf::RepeatedPtrField;
