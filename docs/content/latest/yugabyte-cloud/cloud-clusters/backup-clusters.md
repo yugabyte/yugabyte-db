@@ -58,7 +58,6 @@ Before performing a restore, ensure the following:
 
 To restore a backup of a paid cluster:
 
-1. On the **Backups** tab, select a backup in the list and click the **Restore Backup** icon to display the **Restore Backup** dialog.
-1. Select the backup.
+1. On the **Backups** tab, select a backup in the list and click the **Restore** icon to display the **Restore Backup** dialog.
 1. Select the target cluster.
 1. Click **Restore**.

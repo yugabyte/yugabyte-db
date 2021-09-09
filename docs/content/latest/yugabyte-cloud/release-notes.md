@@ -65,7 +65,6 @@ The following **AWS regions** are available:
 - N. California (us-west-1)
 - Oregon (us-west-2)
 
-
 ### Limitations
 
 - Free clusters only. Paid clusters coming soon.

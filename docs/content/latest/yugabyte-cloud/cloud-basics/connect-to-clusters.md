@@ -92,7 +92,7 @@ You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../.
 
 You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
 
-Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](add-connections/).
+Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../add-connections/).
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -122,7 +122,7 @@ You are now ready to [Create and explore a database](../create-databases/).
 
 ## Connect an application
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect an application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
 
@@ -155,7 +155,7 @@ sslrootcert=<ROOT_CERT_PATH>
 Add the string to your application, replacing
 
 - `<DB USER>` with your database username.
-- `<DB PASSWORD>` with your database username.
+- `<DB PASSWORD>` with your database password.
 - If you are connecting to a database other than the default (yugabyte), replace yugabyte with the database name.
 - `<ROOT_CERT_PATH>` with the path to the location where you installed the certificate on your computer.
 
