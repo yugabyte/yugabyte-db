@@ -316,8 +316,8 @@ static void agtype_in_agtype_annotation(void *pstate, char *annotation)
 /* function to handle object typecasts */
 static void agtype_typecast_object(agtype_in_state *state, char *annotation)
 {
-    agtype_value *agtv;
-    agtype_value *last_updated_value;
+    agtype_value *agtv = NULL;
+    agtype_value *last_updated_value = NULL;
     int len;
     bool top = true;
 
@@ -386,8 +386,8 @@ static void agtype_typecast_object(agtype_in_state *state, char *annotation)
 /* function to handle array typecasts */
 static void agtype_typecast_array(agtype_in_state *state, char *annotation)
 {
-    agtype_value *agtv;
-    agtype_value *last_updated_value;
+    agtype_value *agtv = NULL;
+    agtype_value *last_updated_value = NULL;
     int len;
     bool top = true;
 
@@ -2231,6 +2231,8 @@ Datum agtype_to_int8(PG_FUNCTION_ARGS)
     else if (agtv.type == AGTV_STRING)
         result = DatumGetInt64(DirectFunctionCall1(int8in,
                            CStringGetDatum(agtv.val.string.val)));
+    else
+        elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
 
     PG_RETURN_INT64(result);
 }
@@ -2275,6 +2277,8 @@ Datum agtype_to_int4(PG_FUNCTION_ARGS)
     else if (agtv.type == AGTV_STRING)
         result = DatumGetInt32(DirectFunctionCall1(int4in,
                            CStringGetDatum(agtv.val.string.val)));
+    else
+        elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
 
     PG_RETURN_INT32(result);
 }
@@ -2319,6 +2323,8 @@ Datum agtype_to_int2(PG_FUNCTION_ARGS)
     else if (agtv.type == AGTV_STRING)
         result = DatumGetInt16(DirectFunctionCall1(int2in,
                            CStringGetDatum(agtv.val.string.val)));
+    else
+        elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
 
     PG_RETURN_INT16(result);
 }
@@ -2366,6 +2372,8 @@ Datum agtype_to_float8(PG_FUNCTION_ARGS)
     else if (agtv.type == AGTV_NUMERIC)
         result = DatumGetFloat8(DirectFunctionCall1(numeric_float8,
                      NumericGetDatum(agtv.val.numeric)));
+    else
+        elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
 
     PG_RETURN_FLOAT8(result);
 }

@@ -521,8 +521,8 @@ static bool is_an_edge_match(VLE_local_context *vlelctx, edge_entry *ee)
      */
     do
     {
-        agtype_value edge_property_key;
-        agtype_value edge_property_value;
+        agtype_value edge_property_key = {0};
+        agtype_value edge_property_value = {0};
 
         property_index++;
 
@@ -885,14 +885,20 @@ static void load_VLE_global_hashtables(VLE_global_context *vlegctx)
                                    edge_vertex_start_id, edge_vertex_end_id,
                                    edge_label_table_oid);
             /* this insert must not fail */
-            Assert(inserted);
+            if (!inserted)
+            {
+                 elog(ERROR, "insert_edge: failed to insert");
+            }
             /*
              * Insert the vertex (start vertex in the edge) and the edge into
              * vertex hashtable.
              */
             inserted = insert_vertex(vlegctx, edge_vertex_start_id, edge_id);
             /* this insert must not fail */
-            Assert(inserted);
+            if (!inserted)
+            {
+                 elog(ERROR, "insert_vertex: failed to insert");
+            }
             /*
              * Insert the vertex (end vertex in the edge) and the edge into
              * vertex hashtable. UNLESS this is a self loop (start == end
@@ -901,9 +907,12 @@ static void load_VLE_global_hashtables(VLE_global_context *vlegctx)
             if (edge_vertex_start_id != edge_vertex_end_id)
             {
                 inserted = insert_vertex(vlegctx, edge_vertex_end_id, edge_id);
+                /* this insert much not fail */
+                if (!inserted)
+                {
+                     elog(ERROR, "insert_vertex: failed to insert");
+                }
             }
-            /* this insert much not fail */
-            Assert(inserted);
         }
 
         /* end the scan and close the relation */
