@@ -481,7 +481,6 @@ using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 using yb::client::YBTable;
-using yb::client::YBTableCreator;
 using yb::client::YBTableName;
 
 namespace {
@@ -2911,10 +2910,22 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   const ReplicationInfoPB& replication_info = VERIFY_RESULT(
     GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
 
-  // Calculate number of tablets to be used.
-  int num_tablets = req.schema().table_properties().num_tablets();
-  if (num_tablets <= 0) {
-    num_tablets = req.num_tablets();
+  // Calculate number of tablets to be used. Priorities:
+  //   1. Use Internally specified value from 'CreateTableRequestPB::num_tablets'.
+  //   2. Use User specified value from
+  //      'CreateTableRequestPB::SchemaPB::TablePropertiesPB::num_tablets'.
+  //      Note, that the number will be saved in schema stored in the master persistent
+  //      SysCatalog irrespective of which way we choose the number of tablets to create.
+  //      If nothing is specified in this field, nothing will be stored in the table
+  //      TablePropertiesPB for number of tablets
+  //   3. Calculate own value.
+  int num_tablets = 0;
+  if (req.has_num_tablets()) {
+    num_tablets = req.num_tablets(); // Internal request.
+  }
+
+  if (num_tablets <= 0 && schema.table_properties().HasNumTablets()) {
+    num_tablets = schema.table_properties().num_tablets(); // User request.
   }
 
   if (num_tablets <= 0) {
@@ -2969,7 +2980,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   LOG(INFO) << "Set number of tablets: " << num_tablets;
   req.set_num_tablets(num_tablets);
-  schema.mutable_table_properties()->SetNumTablets(num_tablets);
 
   // For index table, populate the index info.
   IndexInfoPB index_info;
@@ -3489,7 +3499,6 @@ Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rp
   if (FLAGS_transaction_table_num_tablets > 0) {
     req.mutable_schema()->mutable_table_properties()->set_num_tablets(
         FLAGS_transaction_table_num_tablets);
-    req.set_num_tablets(FLAGS_transaction_table_num_tablets);
   }
 
   ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
@@ -3522,7 +3531,6 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   if (FLAGS_metrics_snapshots_table_num_tablets > 0) {
     req.mutable_schema()->mutable_table_properties()->set_num_tablets(
         FLAGS_metrics_snapshots_table_num_tablets);
-    req.set_num_tablets(FLAGS_metrics_snapshots_table_num_tablets);
   }
 
   // Schema description: "node" refers to tserver uuid. "entity_type" can be either
