@@ -376,7 +376,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
   TestLargeBackfill(kNumRows);
   int expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
   auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
-  ASSERT_EQ(actual_calls, expected_calls);
+  ASSERT_GE(actual_calls, expected_calls);
 }
 
 class PgIndexBackfillTestChunking : public PgIndexBackfillTest {
