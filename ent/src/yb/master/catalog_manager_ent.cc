@@ -1197,8 +1197,9 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
   // Second, if we still didn't find a match...
   if (table == nullptr) {
-    if (meta.table_type() == TableType::YQL_TABLE_TYPE) {
-      // For YCQL, simply create the missing table.
+    if (meta.table_type() == TableType::YQL_TABLE_TYPE ||
+        meta.table_type() == TableType::REDIS_TABLE_TYPE) {
+      // For YCQL and YEDIS, simply create the missing table.
       RETURN_NOT_OK(RecreateTable(new_namespace_id, table_map, table_data));
     } else if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
       // For YSQL, the table must be created via external call. Therefore, continue the search for
