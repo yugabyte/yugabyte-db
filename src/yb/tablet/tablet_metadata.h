@@ -497,6 +497,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   OpId split_op_id() const;
 
+  // If this tablet should be deleted, returns op id that should be applied to all replicas,
+  // before performing such deletion.
+  OpId GetOpIdToDeleteAfterAllApplied() const;
+
   void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
 
   bool has_active_restoration() const;
