@@ -5,12 +5,11 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyLong;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -30,9 +29,9 @@ import com.yugabyte.yw.common.HealthManager.ClusterInfo;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -72,8 +71,9 @@ import scala.concurrent.ExecutionContext;
 public class HealthCheckerTest extends FakeDBApplication {
 
   private static final String YB_ALERT_TEST_EMAIL = "test@yugabyte.com";
-  private static final String dummyNode = "n";
-  private static final String dummyCheck = "c";
+  private static final String dummyNode = "127.1.1.1";
+  private static final String dummyNodeName = "name";
+  private static final String dummyCheck = "check";
 
   private HealthChecker healthChecker;
 
@@ -118,7 +118,9 @@ public class HealthCheckerTest extends FakeDBApplication {
                     + dummyNode
                     + "'', ''has_error'': true, ''message'':''"
                     + dummyCheck
-                    + "'' } ] }")
+                    + "'', ''has_warning'': true, ''node_name'': ''"
+                    + dummyNodeName
+                    + "'', ''timestamp'': '''' } ] }")
                 .replace("''", "\""));
 
     when(mockHealthManager.runCommand(any(), any(), anyLong(), anyBoolean()))
@@ -618,7 +620,9 @@ public class HealthCheckerTest extends FakeDBApplication {
                     + dummyNode
                     + "'', ''has_error'': false, ''message'':''"
                     + dummyCheck
-                    + "'' } ] }")
+                    + "'', ''has_warning'': false, ''node_name'': ''"
+                    + dummyNodeName
+                    + "'', ''timestamp'': '''' } ] }")
                 .replace("''", "\""));
     when(mockHealthManager.runCommand(any(), any(), anyLong(), anyBoolean()))
         .thenReturn(dummyShellResponse);
