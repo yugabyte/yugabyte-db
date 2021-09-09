@@ -51,7 +51,7 @@ menu:
         <div class="title">Cloud-native development</div>
       </div>
       <div class="body">
-        Ready to code fully integrated, automated code workflow in the cloud
+        Ready-to-code, fully-integrated, automated code workflows in the cloud.
       </div>
     </a>
   </div>
