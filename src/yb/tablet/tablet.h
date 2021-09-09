@@ -148,6 +148,7 @@ class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
 };
 
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
+YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
@@ -814,7 +815,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
 
   // Add or remove restoring operation filter if necessary.
-  void SyncRestoringOperationFilter() EXCLUDES(operation_filters_mutex_);
+  // If reset_split is true, also reset split state.
+  void SyncRestoringOperationFilter(ResetSplit reset_split) EXCLUDES(operation_filters_mutex_);
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
@@ -1016,7 +1018,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<OperationFilter> completed_split_operation_filter_
       GUARDED_BY(operation_filters_mutex_);
-  std::unique_ptr<log::LogAnchor> completed_split_log_anchor_;
+  std::unique_ptr<log::LogAnchor> completed_split_log_anchor_ GUARDED_BY(operation_filters_mutex_);
 
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
 
