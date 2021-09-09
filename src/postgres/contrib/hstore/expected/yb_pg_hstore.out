@@ -1307,7 +1307,8 @@ create index hidx on testhstore using gist(h);
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 create index hidx on testhstore using gin (h);
-ERROR:  index method "gin" not supported yet
+NOTICE:  replacing access method "gin" with "ybgin"
+ERROR:  index method "ybgin" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 -- btree
 create index hidx on testhstore using btree (h);
