@@ -1952,15 +1952,14 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
 
   // Send RPC.
   auto tserver = cluster_->mini_tablet_server(0);
-  auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
-    proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
+  auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+      proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
   tserver::GetSplitKeyRequestPB req;
   req.set_tablet_id(source_tablet_id);
-  req.set_dest_uuid(tablet_peer->permanent_uuid());
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
   tserver::GetSplitKeyResponsePB resp;
-  ASSERT_OK(ts_admin_service_proxy->GetSplitKey(req, &resp, &controller));
+  ASSERT_OK(ts_service_proxy->GetSplitKey(req, &resp, &controller));
 
   // Validate response.
   CHECK(!resp.has_error()) << resp.error().DebugString();

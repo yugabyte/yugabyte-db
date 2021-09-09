@@ -1302,9 +1302,8 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
 }
 
 bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
-  req_.set_dest_uuid(permanent_uuid());
   req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-  ts_admin_proxy_->GetSplitKeyAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  ts_proxy_->GetSplitKeyAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1)
       << "Sent get split key request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
       << req_.DebugString();
