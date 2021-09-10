@@ -50,14 +50,13 @@ In these cases, the database aborts the query and returns a `40001` PostgreSQL e
 
 ## ServerError: Server Error. Unknown keyspace/cf pair (system.peers_v2)
 
-Sometimes when connecting to the YCQL layer, you may get an error like below:
+When connecting to the YCQL layer, you may get an error similar to the following:
 
-```cassandraql
+```output.cql
 ServerError: Server Error. Unknown keyspace/cf pair (system.peers_v2)
 SELECT * FROM system.peers_v2;
 ^^^^^^
  (ql error -2)
 ```
 
-The reason is probably that you're not using one of our forks of the Cassandra client drivers. The `system.peers_v2` table doesn't 
-exist in YugabyteDB. Head over to the [drivers page](../../../reference/drivers/ycql-client-drivers) to find the driver for your client language.
+The reason is probably that you're not using one of our forks of the Cassandra client drivers. The `system.peers_v2` table doesn't exist in YugabyteDB. Check the [drivers page](../../../reference/drivers/ycql-client-drivers) to find a driver for your client language.
