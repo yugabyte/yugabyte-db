@@ -47,3 +47,16 @@ org.postgresql.util.PSQLException: ERROR: Catalog Version Mismatch: A DDL occurr
 A DML query in YSQL may touch multiple servers, and each server has a Catalog Version which is used to track schema changes. When a DDL statement runs in the middle of the DML query, the Catalog Version is changed and the query has a mismatch, causing it to fail.
 
 In these cases, the database aborts the query and returns a `40001` PostgreSQL error code. Errors with this code can be safely retried from the client side. 
+
+## ServerError: Server Error. Unknown keyspace/cf pair (system.peers_v2)
+
+When connecting to the YCQL layer, you may get an error similar to the following:
+
+```output.cql
+ServerError: Server Error. Unknown keyspace/cf pair (system.peers_v2)
+SELECT * FROM system.peers_v2;
+^^^^^^
+ (ql error -2)
+```
+
+The reason is probably that you're not using one of our forks of the Cassandra client drivers. The `system.peers_v2` table doesn't exist in YugabyteDB. Check the [drivers page](../../../reference/drivers/ycql-client-drivers) to find a driver for your client language.
