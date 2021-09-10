@@ -57,11 +57,16 @@ public class AlertDefinitionService {
             .filter(definition -> !definition.isNew())
             .map(AlertDefinition::getUuid)
             .collect(Collectors.toSet());
-    AlertDefinitionFilter filter = AlertDefinitionFilter.builder().uuids(definitionUuids).build();
-    Map<UUID, AlertDefinition> beforeDefinitions =
-        list(filter)
-            .stream()
-            .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
+    Map<UUID, AlertDefinition> beforeDefinitions;
+    if (definitionUuids.size() > 0) {
+      AlertDefinitionFilter filter = AlertDefinitionFilter.builder().uuids(definitionUuids).build();
+      beforeDefinitions =
+          list(filter)
+              .stream()
+              .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
+    } else {
+      beforeDefinitions = Collections.emptyMap();
+    }
 
     Map<EntityOperation, List<AlertDefinition>> toCreateAndUpdate =
         definitions
