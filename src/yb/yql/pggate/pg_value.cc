@@ -106,7 +106,7 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
 
     case YB_YQL_DATA_TYPE_BINARY: {
       SCHECK(ql_value.has_binary_value(), InternalError, "Unexpected type in the QL value");
-      auto size = ql_value.string_value().size();
+      auto size = ql_value.binary_value().size();
       auto val = const_cast<char *>(ql_value.binary_value().c_str());
       *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
       break;

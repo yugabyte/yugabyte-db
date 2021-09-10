@@ -2330,3 +2330,20 @@ SELECT * FROM array_t4 ORDER BY k;
 ---+--------------+--------------------------+---------------
  1 | {0,1,22,4,5} | {0.5,1.5,22.25,4.5,5.25} | {z,a,x,d,e,f}
 (1 row)
+
+-----------------------------------
+-- Test json types.
+CREATE TABLE json_t1(k int PRIMARY KEY, json1 json, json2 jsonb);
+INSERT INTO json_t1 (k, json1, json2) VALUES (1, '["a", 1]'::json, '["b", 2]'::jsonb);
+SELECT * FROM json_t1;
+ k |  json1   |  json2
+---+----------+----------
+ 1 | ["a", 1] | ["b", 2]
+(1 row)
+
+UPDATE json_t1 SET json1 = json1 -> 0, json2 = json2||'["c", 3]'::jsonb WHERE k = 1;
+SELECT * FROM json_t1;
+ k | json1 |      json2
+---+-------+------------------
+ 1 | "a"   | ["b", 2, "c", 3]
+(1 row)
