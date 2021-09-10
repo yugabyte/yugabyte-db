@@ -32,7 +32,7 @@ public class FakeApiHelper {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid);
+      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid, false);
     }
     user = Users.find.query().where().eq("customer_uuid", customer.uuid).findOne();
     return user.createAuthToken();

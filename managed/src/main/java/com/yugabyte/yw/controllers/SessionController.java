@@ -61,9 +61,9 @@ import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import javax.persistence.PersistenceException;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -75,11 +75,11 @@ import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.data.Form;
+import play.db.ebean.Transactional;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
-import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Http.Cookie;
 import play.mvc.Result;
@@ -87,7 +87,8 @@ import play.mvc.Results;
 import play.mvc.With;
 
 @Api(value = "Session management")
-public class SessionController extends Controller {
+@Slf4j
+public class SessionController extends AbstractPlatformController {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
@@ -134,6 +135,7 @@ public class SessionController extends Controller {
   @ApiModel(description = "Session information")
   @RequiredArgsConstructor
   public static class SessionInfo {
+
     @ApiModelProperty(value = "Auth token")
     public final String authToken;
 
@@ -168,6 +170,7 @@ public class SessionController extends Controller {
 
   @Data
   static class CustomerCountResp {
+
     final int count;
   }
 
@@ -389,6 +392,7 @@ public class SessionController extends Controller {
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
+  @Transactional
   public Result register() {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
@@ -423,39 +427,35 @@ public class SessionController extends Controller {
   }
 
   private SessionInfo registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
-    try {
-      Customer cust = Customer.create(data.getCode(), data.getName());
-      Role role = Role.Admin;
-      if (isSuper) {
-        role = Role.SuperAdmin;
-      }
-      passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-      alertDestinationService.createDefaultDestination(cust.uuid);
-
-      List<AlertConfiguration> alertConfigurations =
-          Arrays.stream(AlertTemplate.values())
-              .filter(AlertTemplate::isCreateForNewCustomer)
-              .map(
-                  template -> alertConfigurationService.createConfigurationTemplate(cust, template))
-              .map(AlertConfigurationTemplate::getDefaultConfiguration)
-              .collect(Collectors.toList());
-      alertConfigurationService.save(alertConfigurations);
-
-      Users user =
-          Users.create(
-              data.getEmail(), data.getPassword(), role, cust.uuid, /* Primary user*/ true);
-      String authToken = user.createAuthToken();
-      SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.uuid, user.uuid);
-      response()
-          .setCookie(
-              Http.Cookie.builder(AUTH_TOKEN, authToken)
-                  .withSecure(ctx().request().secure())
-                  .build());
-      return sessionInfo;
-    } catch (PersistenceException pe) {
-      // TODO: This needs to be more granular exception handling
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Customer already registered.");
+    Customer cust = Customer.create(data.getCode(), data.getName());
+    Role role = Role.Admin;
+    if (isSuper) {
+      role = Role.SuperAdmin;
     }
+    passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
+    alertDestinationService.createDefaultDestination(cust.uuid);
+
+    List<AlertConfiguration> alertConfigurations =
+        Arrays.stream(AlertTemplate.values())
+            .filter(AlertTemplate::isCreateForNewCustomer)
+            .map(template -> alertConfigurationService.createConfigurationTemplate(cust, template))
+            .map(AlertConfigurationTemplate::getDefaultConfiguration)
+            .collect(Collectors.toList());
+    alertConfigurationService.save(alertConfigurations);
+
+    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.uuid);
+    String authToken = user.createAuthToken();
+    SessionInfo sessionInfo = new SessionInfo(authToken, null, user.customerUUID, user.uuid);
+    response()
+        .setCookie(
+            Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
+                .withSecure(ctx().request().secure())
+                .build());
+    // When there is no authenticated user in context; we just pretend that the user
+    // created himself for auditing purpose.
+    ctx().args.putIfAbsent("user", user);
+    auditService().createAuditEntry(ctx(), request());
+    return sessionInfo;
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
