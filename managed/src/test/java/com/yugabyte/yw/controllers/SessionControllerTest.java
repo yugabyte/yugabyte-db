@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
@@ -33,19 +34,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.CallHome;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -106,14 +102,7 @@ public class SessionControllerTest {
             .build();
     Helpers.start(app);
 
-    AlertService alertService = new AlertService();
-    AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
-    AlertConfigurationService alertConfigurationService =
-        new AlertConfigurationService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    AlertChannelService alertChannelService = new AlertChannelService();
-    alertDestinationService =
-        new AlertDestinationService(alertChannelService, alertConfigurationService);
+    alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
   }
 
   @After
@@ -244,12 +233,13 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(0, c1.uuid);
+    assertAuditEntry(1, c1.uuid);
     assertNotNull(alertDestinationService.getDefaultDestination(c1.uuid));
   }
 
   @Test
-  public void testRegisterCustomerWrongPassword() {
+  public void testRegisterCustomerWrongPassword()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
@@ -258,13 +248,14 @@ public class SessionControllerTest {
     registerJson.put("name", "Foo");
 
     Result result =
-        assertYWSE(() -> route(fakeRequest("POST", "/api/register").bodyJson(registerJson)));
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson), app);
 
     assertEquals(BAD_REQUEST, result.status());
   }
 
   @Test
-  public void testRegisterMultiCustomer() {
+  public void testRegisterMultiCustomer()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "fb");
@@ -279,6 +270,9 @@ public class SessionControllerTest {
     assertNotNull(json.get("authToken"));
     String authToken = json.get("authToken").asText();
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
+    Users user = Users.get(UUID.fromString(json.get("userUUID").asText()));
+    assertEquals(Role.SuperAdmin, user.getRole());
+    assertAuditEntry(1, c1.uuid);
 
     ObjectNode registerJson2 = Json.newObject();
     registerJson2.put("code", "fb");
@@ -293,9 +287,29 @@ public class SessionControllerTest {
                 .header("X-AUTH-TOKEN", authToken));
     json = Json.parse(contentAsString(result));
 
+    // Register duplicate
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
-    assertAuditEntry(0, c1.uuid);
+    assertAuditEntry(2, c1.uuid);
+    checkCount("count", "2");
+    result =
+        routeWithYWErrHandler(
+            fakeRequest("POST", "/api/register")
+                .bodyJson(registerJson2)
+                .header("X-AUTH-TOKEN", authToken),
+            app);
+    assertConflict(result, "Customer already registered.");
+    checkCount("count", "2"); // Make sure that count stays 2
+    // TODO(amalyshev): also check that alert config was rolled back
+  }
+
+  public void checkCount(String count, String s2) {
+    Result result;
+    JsonNode json;
+    result = route(fakeRequest("GET", "/api/customer_count"));
+    json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, count, s2);
   }
 
   @Test
@@ -380,7 +394,8 @@ public class SessionControllerTest {
   }
 
   @Test
-  public void testRegisterCustomerWithLongerCode() {
+  public void testRegisterCustomerWithLongerCode()
+      throws InterruptedException, ExecutionException, TimeoutException {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
     registerJson.put("code", "abcabcabcabcabcabc");
@@ -389,7 +404,7 @@ public class SessionControllerTest {
     registerJson.put("name", "Foo");
 
     Result result =
-        assertYWSE(() -> route(fakeRequest("POST", "/api/register").bodyJson(registerJson)));
+        routeWithYWErrHandler(fakeRequest("POST", "/api/register").bodyJson(registerJson), app);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
@@ -529,10 +544,7 @@ public class SessionControllerTest {
     assertOk(result);
     assertValue(json, "count", "0");
     ModelFactory.testCustomer("Test Customer 1");
-    result = route(fakeRequest("GET", "/api/customer_count"));
-    json = Json.parse(contentAsString(result));
-    assertOk(result);
-    assertValue(json, "count", "1");
+    checkCount("count", "1");
   }
 
   @Test
