@@ -33,13 +33,13 @@ If you want **to set this up from scratch**, follow the instructions in [Initial
 
 Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Codespaces experience are language- and framework-agnostic. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
 
-![set-up the base project abstract](/images/develop/gitdev/codespace/init-sb.png)
+![Set up the base project abstract](/images/develop/gitdev/codespace/init-sb.png)
 
 ### Complete the CRUD APIs
 
 Complete the todo-service by copying the source and build files from the [source repo](https://github.com/yugabyte/yb-todo-app.git) to your repo to handle GET, POST, PUT, and DELETE API requests.
 
-![complete the api endpoints](/images/develop/gitdev/codespace/complete-api.png)
+![Complete the API endpoints](/images/develop/gitdev/codespace/complete-api.png)
 
 {{< note title="Note" >}}
 The application uses non-blocking reactive APIs to connect to YugabyteDB.
@@ -52,7 +52,8 @@ To get started quickly, you can use one of the appropriate readily available [pr
 ### Set up the Codespaces environment
 
 If the Codespaces feature is enabled for your GitHub organization, you can initialize it at [GitHub Codespaces](https://github.com/codespaces).
-![initalize the codespace environment](/images/develop/gitdev/codespace/init-codespace.png)
+
+![Initalize the codespace environment](/images/develop/gitdev/codespace/init-codespace.png)
 
 If you don't have any codespace-specific files in the source repo, clicking `Create codespace` initializes a default [development environment](https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux) provisioned with a `codespaces-linux` container. This is a universal image with prebuilt language-specific libraries and commonly used utilities; you'll need to customize it to install YugabyteDB. If the default conventions are not enough, you can provide our own configuration.
 
@@ -63,7 +64,7 @@ To initialize the codespace environment, open the source code in a local Visual 
 
 In the command palette, type `Remote-containers: Add` and select `Add Development Container Configuration files`. Type `Ubuntu` at the next prompt.
 
-![initialize the remote containers](/images/develop/gitdev/codespace/find-container.png)
+![Initialize the remote containers](/images/develop/gitdev/codespace/find-container.png)
 
 This creates a `.devcontainer` folder and a JSON metadata file at the root of the source repository. The `devcontainer.json` file contains provisioning information for the development environment, with the necessary tools and runtime stack. 
 
@@ -133,7 +134,7 @@ RUN echo "[[ ! -f $STORE/.init-db.sql.completed ]] && echo 'YugabyteDB is not ru
 
 Run the `Create codespace` command with the preceding spec to provision the development environment with a pre-configured and running YugabyteDB instance.
 
-![install YugabyteDB](/images/develop/gitdev/codespace/install-yb.gif)
+![Install YugabyteDB](/images/develop/gitdev/codespace/install-yb.gif)
 
 {{< note title="Note" >}}
 GitHub codespaces provisions a fully integrated cloud-native development environment with automated port forwarding to develop, build, and test applications right from your browser.
@@ -143,4 +144,4 @@ GitHub codespaces provisions a fully integrated cloud-native development environ
 
 GitHub codespaces provides integrated, pre-configured, and consistent development environments that improve the productivity of distributed teams.
 
-![complete dev environment](/images/develop/gitdev/codespace/complete-dev.png)
+![A complete dev environment](/images/develop/gitdev/codespace/complete-dev.png)

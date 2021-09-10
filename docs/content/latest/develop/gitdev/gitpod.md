@@ -25,21 +25,21 @@ Gitpod doesn't require anything in your local workstation other than a code edit
 
 You can find the source at [Spring Boot todo on GitHub](https://github.com/yugabyte/yb-todo-app.git). 
 
-The easy way to get started with Gitpod is to simply fork this [source repo](https://github.com/yugabyte/yb-todo-app.git) and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. Replace `[REPO_URL]` with your forked repository URL and you should already have been conneted to the Gitpod account before launching the browser URL.
+**The easy way to get started** with Gitpod is to simply fork this [source repo](https://github.com/yugabyte/yb-todo-app.git) and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. Replace `[REPO_URL]` with your forked repository URL and you should already have been connected to the Gitpod account before launching the browser URL.
 
-If you want to set this up from scratch, use the following instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/yugabyte/yb-todo-app.git).
+If you want **to set this up from scratch**, use the following instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/yugabyte/yb-todo-app.git).
 
 ### Initialize the base project structure
 
 Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Gitpod experience are agnostic of the language/framework. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
 
-![set-up the base project abstract](/images/develop/gitdev/gitpod/init-sb.png)
+![Set up the base project abstract](/images/develop/gitdev/gitpod/init-sb.png)
 
 ### Complete the CRUD APIs
 
 Complete the todo-service by copying the source and build files from the [source repo](https://github.com/yugabyte/yb-todo-app.git) to your repo to handle GET, POST, PUT, and DELETE API requests.
 
-![complete the api endpoints](/images/develop/gitdev/gitpod/complete-api.png)
+![Complete the API endpoints](/images/develop/gitdev/gitpod/complete-api.png)
 
 {{< note title="Note" >}}
 The application uses non-blocking reactive APIs to connect to YugabyteDB.
@@ -53,7 +53,7 @@ To get started quickly, you can use the universal image [pre-built containers](h
 
 You initialize the Gitpod workspace environment for a specific repository by invoking `https://gitpod.io/#[REPO_URL]`.
 
-![initalize the workspace environment](/images/develop/gitdev/gitpod/init-workspace.png)
+![Initalize the workspace environment](/images/develop/gitdev/gitpod/init-workspace.png)
 
 You can either use a universal image with pre-configured libraries and commonly used utilities or a language-specific image. Create the integrated YugabyteDB workspace environment by customizing the base universal image.
 
@@ -157,16 +157,16 @@ ports:
 
 Launch the workspaces environment with this updated spec to provision the development environment with a running YugabyteDB instance. It opens two terminals, one terminal to run the DB task, and the other to compile and run the boot app.
 
-![install YugabyteDB](/images/develop/gitdev/gitpod/install-yb.gif)
+![Install YugabyteDB](/images/develop/gitdev/gitpod/install-yb.gif)
 
 {{< note title="Note" >}}
 Gitpod provisions a fully integrated ready-to-code cloud-native development environment with  automated port forwarding to develop, build, and test applications right in your browser.
 {{< /note >}}
 
-![workspace environment](/images/develop/gitdev/gitpod/workspace.png)
+![Workspace environment](/images/develop/gitdev/gitpod/workspace.png)
 
 ## Summary
 
 Gitpod provides fully automated, pre-configured, and consistent development environments that improve the productivity of distributed teams.
 
-![complete dev environment](/images/develop/gitdev/gitpod/complete-dev.png)
+![A complete dev environment](/images/develop/gitdev/gitpod/complete-dev.png)
