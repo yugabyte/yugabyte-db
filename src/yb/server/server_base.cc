@@ -104,6 +104,10 @@ DEFINE_test_flag(bool, simulate_port_conflict_error, false,
 DEFINE_test_flag(int32, nodes_per_cloud, 2,
                  "Number of nodes per cloud to test private and public addresses.");
 
+METRIC_DEFINE_lag(server, server_uptime_ms,
+                  "Server uptime",
+                  "The amount of time a server has been up for.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -443,6 +447,9 @@ void RpcAndWebServerBase::GenerateInstanceID() {
   instance_pb_.reset(new NodeInstancePB);
   instance_pb_->set_permanent_uuid(fs_manager_->uuid());
   auto now = Env::Default()->NowMicros();
+
+  server_uptime_ms_metric_ = metric_entity_->FindOrCreateAtomicMillisLag(&METRIC_server_uptime_ms);
+
   // TODO: maybe actually bump a sequence number on local disk instead of
   // using time.
   instance_pb_->set_instance_seqno(now);

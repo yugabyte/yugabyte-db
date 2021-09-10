@@ -201,6 +201,8 @@ class RpcAndWebServerBase : public RpcServerBase {
   std::string GetEasterEggMessage() const;
   std::string FooterHtml() const;
 
+  scoped_refptr<AtomicMillisLag> server_uptime_ms_metric_;
+
   DISALLOW_COPY_AND_ASSIGN(RpcAndWebServerBase);
 };
 
