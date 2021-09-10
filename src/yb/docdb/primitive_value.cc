@@ -468,7 +468,9 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kRedisSet: return result;
 
     case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kCollString: FALLTHROUGH_INTENDED;
+    case ValueType::kCollString:
+      LOG(DFATAL) << "collation encoded string found for docdb value";
+      FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       // No zero encoding necessary when storing the string in a value.

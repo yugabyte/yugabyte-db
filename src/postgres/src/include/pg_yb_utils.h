@@ -483,4 +483,13 @@ void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr);
  */
 bool YBIsCollationValidNonC(Oid collation_id);
 
+/*
+ * For the column 'attr_num' and its collation id, return the collation id that
+ * will be used to do collation encoding. For example, if the column 'attr_num'
+ * represents a non-key column, we do not need to store the collation key and
+ * this function will return InvalidOid which will disable collation encoding
+ * for the column string value.
+ */
+Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
+
 #endif /* PG_YB_UTILS_H */

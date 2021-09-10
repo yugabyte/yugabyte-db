@@ -285,7 +285,8 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 		 * Postgres could have also converted both collations to the column
 		 * collation but it appears that collation is not part of a type.
 		 */
-		Oid   collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
+		Oid   collation_id = YBEncodingCollation(insert_stmt, attnum,
+			ybc_get_attcollation(RelationGetDescr(rel), attnum));
 		Datum datum   = heap_getattr(tuple, attnum, tupleDesc, &is_null);
 
 		/* Check not-null constraint on primary key early */
@@ -356,7 +357,8 @@ static void PrepareIndexWriteStmt(YBCPgStatement stmt,
 	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
 	{
 		Oid   type_id = GetTypeId(attnum, tupdesc);
-		Oid   collation_id = ybc_get_attcollation(tupdesc, attnum);
+		Oid   collation_id = YBEncodingCollation(stmt, attnum,
+												 ybc_get_attcollation(tupdesc, attnum));
 		Datum value   = values[attnum - 1];
 		bool  is_null = isnull[attnum - 1];
 		has_null_attr = has_null_attr || is_null;
@@ -862,7 +864,7 @@ bool YBCExecuteUpdate(Relation rel,
 		{
 			bool is_null = false;
 			Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
-			int32_t collation_id = att_desc->attcollation;
+			Oid collation_id = YBEncodingCollation(update_stmt, attnum, att_desc->attcollation);
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
@@ -1014,9 +1016,13 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 
 		bool is_null = false;
 		Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
+		/*
+		 * Since we are assign values to non-primary-key columns, pass InvalidOid as
+		 * collation_id to skip computing collation sortkeys.
+		 */
 		YBCPgExpr ybc_expr = YBCNewConstant(
-			update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid,
-			TupleDescAttr(tupleDesc, idx)->attcollation, d, is_null);
+			update_stmt, TupleDescAttr(tupleDesc, idx)->atttypid, InvalidOid /* collation_id */,
+			d, is_null);
 		HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 	}
 

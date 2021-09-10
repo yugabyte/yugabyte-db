@@ -333,7 +333,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 					/* Create MINVALUE in YugaByte format */
 					Form_pg_attribute attr = attrs[idx];
 					exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
-													   attr->attcollation, YB_YQL_DATUM_LIMIT_MAX);
+													   YB_YQL_DATUM_LIMIT_MAX);
 					break;
 				}
 
@@ -342,7 +342,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 					/* Create MINVALUE in YugaByte format */
 					Form_pg_attribute attr = attrs[idx];
 					exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
-													   attr->attcollation, YB_YQL_DATUM_LIMIT_MIN);
+													   YB_YQL_DATUM_LIMIT_MIN);
 					break;
 				}
 			}
@@ -352,7 +352,7 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 		for (; idx < attr_count; idx++) {
 			Form_pg_attribute attr = attrs[idx];
 			exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
-											   attr->attcollation, YB_YQL_DATUM_LIMIT_MIN);
+											   YB_YQL_DATUM_LIMIT_MIN);
 		}
 
 		/* Add the split boundary to CREATE statement */

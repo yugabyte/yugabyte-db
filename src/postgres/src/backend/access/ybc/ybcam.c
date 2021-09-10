@@ -163,7 +163,8 @@ static Oid ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 static void ybcBindColumn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumber attnum, Datum value, bool is_null)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
-	Oid	attcollation = ybc_get_attcollation(bind_desc, attnum);
+	Oid	attcollation = YBEncodingCollation(ybScan->handle, attnum,
+										   ybc_get_attcollation(bind_desc, attnum));
 
 	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, attcollation, value, is_null);
 
@@ -174,7 +175,8 @@ static void ybcBindColumnCondBetween(YbScanDesc ybScan, TupleDesc bind_desc, Att
                                      bool start_valid, Datum value, bool end_valid, Datum value_end)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
-	Oid	attcollation = ybc_get_attcollation(bind_desc, attnum);
+	Oid	attcollation = YBEncodingCollation(ybScan->handle, attnum,
+										   ybc_get_attcollation(bind_desc, attnum));
 
 	YBCPgExpr ybc_expr = start_valid ? YBCNewConstant(ybScan->handle,
 													  atttypid,
@@ -199,7 +201,8 @@ static void ybcBindColumnCondIn(YbScanDesc ybScan, TupleDesc bind_desc, AttrNumb
                                 int nvalues, Datum *values)
 {
 	Oid	atttypid = ybc_get_atttypid(bind_desc, attnum);
-	Oid	attcollation = ybc_get_attcollation(bind_desc, attnum);
+	Oid	attcollation = YBEncodingCollation(ybScan->handle, attnum,
+										   ybc_get_attcollation(bind_desc, attnum));
 
 	YBCPgExpr ybc_exprs[nvalues]; /* VLA - scratch space */
 	for (int i = 0; i < nvalues; i++) {

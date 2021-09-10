@@ -73,6 +73,10 @@ class PgDml : public PgStatement {
 
   virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
 
+  // Get column info on whether the column 'attr_num' is a hash key, a range
+  // key, or neither.
+  Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
+
   bool has_aggregate_targets();
 
   bool has_doc_op() {

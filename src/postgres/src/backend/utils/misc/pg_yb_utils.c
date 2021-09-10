@@ -1786,3 +1786,11 @@ bool YBIsCollationValidNonC(Oid collation_id) {
 		is_valid_non_c = true;
 	return is_valid_non_c;
 }
+
+Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation) {
+	if (attcollation == InvalidOid)
+		return InvalidOid;
+	YBCPgColumnInfo column_info = {false, false};
+	HandleYBStatus(YBCPgDmlGetColumnInfo(handle, attr_num, &column_info));
+	return column_info.is_primary ? attcollation : InvalidOid;
+}

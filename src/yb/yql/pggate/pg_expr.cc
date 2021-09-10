@@ -243,11 +243,10 @@ void PgExpr::TranslateCollateText(
 
   DCHECK(text_len >= 0 && text[text_len] == '\0')
     << "Data received from DocDB does not have expected format";
-  int8_t first_byte = text[0];
-  if (first_byte != '\0') {
-    // We may get the original value directly from DocDB. Remove this FATAL
-    // when DocDB can do that.
-    LOG(FATAL) << "String is not collation encoded: " << text;
+  const bool is_original_value = (text_len == 0 || text[0] != '\0');
+  if (is_original_value) {
+    // This means that we have done storage space optimization to only store the
+    // original value for non-key columns.
     pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
   } else {
     // This is a collation encoded string, we need to fetch the original value.

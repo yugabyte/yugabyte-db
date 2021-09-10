@@ -362,6 +362,9 @@ class PgApiImpl {
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
 
+  // Utility method to get the info for column 'attr_num'.
+  Result<YBCPgColumnInfo> DmlGetColumnInfo(YBCPgStatement handle, int attr_num);
+
   // API for SET clause.
   CHECKED_STATUS DmlAssignColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
@@ -491,7 +494,7 @@ class PgApiImpl {
       YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
       const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
   CHECKED_STATUS NewConstantVirtual(
-      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+      YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
       YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
   CHECKED_STATUS NewConstantOp(
       YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,

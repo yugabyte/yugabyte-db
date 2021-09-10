@@ -348,6 +348,11 @@ typedef struct PgServerDescriptor {
   uint16_t pgPort;
 } YBCServerDescriptor;
 
+typedef struct PgColumnInfo {
+  bool is_primary;
+  bool is_hash;
+} YBCPgColumnInfo;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -323,6 +323,7 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBC
     YBCPgExpr attr_value_end);
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
     YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
@@ -456,7 +457,7 @@ YBCStatus YBCPgNewConstant(
     const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
 // Construct a virtual constant value.
 YBCStatus YBCPgNewConstantVirtual(
-    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
     YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
 // Construct an operator expression on a constant.
 YBCStatus YBCPgNewConstantOp(

@@ -68,16 +68,10 @@ YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Oid collation_id,
 	return expr;
 }
 
-YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id,
-								Oid collation_id, YBCPgDatumKind kind) {
+YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatumKind kind) {
 	YBCPgExpr expr = NULL;
 	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, type_id);
-	YBCPgCollationInfo collation_info;
-	YBGetCollationInfo(collation_id, type_entity, 0 /* datum */, true /* is_null */,
-					   &collation_info);
-	HandleYBStatus(YBCPgNewConstantVirtual(ybc_stmt, type_entity,
-										   collation_info.collate_is_valid_non_c,
-										   kind, &expr));
+	HandleYBStatus(YBCPgNewConstantVirtual(ybc_stmt, type_entity, kind, &expr));
 	return expr;
 }
 
