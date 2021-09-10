@@ -19,7 +19,7 @@ Follow the steps below to set up a codespace environment with a pre-configured Y
 
 ## Requirements
 
-Codespaces doesn't require anything in your local workstation other than a code editor and git CLI. Much of the development happens in the cloud through a web browser though you have the option to use Visual Studio Code locally.
+Codespaces doesn't require anything in your local workstation other than a code editor and Git CLI. Much of the development happens in the cloud through a web browser though you have the option to use Visual Studio Code locally.
 
 ## Getting Started with a boot app
 

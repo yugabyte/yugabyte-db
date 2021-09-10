@@ -19,7 +19,7 @@ Follow the steps on this page to set up a Gitpod workspace environment with a pr
 
 ## Requirements
 
-Gitpod doesn't require anything in your local workstation other than a code editor and git CLI. Much of the development happens in the cloud through a web browser.
+Gitpod doesn't require anything in your local workstation other than a code editor and Git CLI. Much of the development happens in the cloud through a web browser.
 
 ## Getting Started with a boot app
 
