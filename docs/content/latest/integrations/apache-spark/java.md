@@ -109,7 +109,7 @@ For additional examples, see the following:
 
 ## Using JSONB
 
-You can use the `jsonb` data type for your columns. `jsonb` values are processed using the [Spark JSON functions](https://spark.apache.org/docs/3.0.0/sql-ref-functions-builtin.html#json-functions).
+You can use the `jsonb` data type for your columns. JSONB values are processed using the [Spark JSON functions](https://spark.apache.org/docs/3.0.0/sql-ref-functions-builtin.html#json-functions).
 
 The following example shows how to select the phone code using the `get_json_object` function to select the sub-object at the specific path:
 
@@ -130,7 +130,7 @@ Dataset<Row> rows =
 
 You can also use the `.filter()` function provided by Spark to add filtering conditions.
 
-Note that the preceding operators are currently evaluated by Spark and not propagated to YCQL queries (as " -> "  `jsonb` operators). This is tracked by <https://github.com/yugabyte/yugabyte-db/issues/6738>.
+Note that the preceding operators are currently evaluated by Spark and not propagated to YCQL queries (as `->` JSONB operators). This is tracked by [GitHub issue #6738](https://github.com/yugabyte/yugabyte-db/issues/6738).
 
 When the `get_json_object` function is used in the projection clause, only the target sub-object is requested and returned by YugabyteDB, as demonstrated in the following example, where only the sub-object at `key[1].m[2].b` is returned:
 
@@ -141,7 +141,7 @@ String query = "SELECT id, address,
 Dataset<Row> rows = spark.sql(query);
 ```
 
-To confirm the pruning, you can use logging at the database level (such as audit logging) or inspect the execution plan of Spark using the `EXPLAIN` statement. The following example creates the execution plan as a String, then logs it and checks that it contains the expected sub-object in YCQL syntax (such as `phone->'key'->1->'m'->2->'b'`):
+To confirm the pruning, you can use logging at the database level (such as audit logging) or inspect the Spark execution plan using the `EXPLAIN` statement. The following example creates the execution plan as a String, then logs it and checks that it contains the expected sub-object in YCQL syntax (such as `phone->'key'->1->'m'->2->'b'`):
 
 ```java
 // Get the execution plan as text rows
@@ -165,7 +165,7 @@ assertTrue(explain_text.contains(
 
 ### JSONB Upsert
 
-The JSONB Upsert functionality in the YugabyteDB Apache Spark connector supports merging data into existing JSONB columns instead of overwriting the existing data.
+The JSONB upsert functionality in the YugabyteDB Apache Spark connector supports merging data into existing JSONB columns instead of overwriting the existing data.
  
 Data for fields in JSONB columns may be collected at multiple points in time. For subsequent loading of partial data (apart from the first batch), you may not want to overwrite existing data for the fields.
 
@@ -175,7 +175,7 @@ The following example uses `Dataset` to load incremental data.
 
 This sequence of operations can be performed multiple times on different CSV inputs (against the same target table).
 
-```json
+```java
 // Create Spark session
 SparkSession spark = SparkSession.builder().config(conf).withExtensions(new CassandraSparkExtensions())
                 .getOrCreate();
@@ -193,10 +193,10 @@ updatedRows.write().format("org.apache.spark.sql.cassandra")
       .option("keyspace", KEYSPACE)
       .option("table", INPUT_TABLE)
       .option("spark.cassandra.mergeable.json.column.mapping", "code,call,Module:phone")
-        .option("spark.cassandra.json.quoteValueString", "true").mode(SaveMode.Append).save();
+      .option("spark.cassandra.json.quoteValueString", "true").mode(SaveMode.Append).save();
 ```
 
-Here is sample content of the Dataset:
+Here is sample content of the dataset:
 
 ```output
 +---+-----+----------------+--------------------------------------------------------------+
@@ -227,13 +227,9 @@ The JSONB field to column mapping of JSONB values should adopt merge semantics w
  
 Each mapping starts with the field names, separated by comma, then a colon, followed by the JSONB column name. The mappings are separated by semicolons.
 
-Suppose `{"dl": 5, "ul":"foo"}` is stored in the JSONB column `usage`, and `{"x": "foo", "y":"bar"}` is stored in the JSONB column `z`. The mapping would be expressed as follows:
+For example, if `{"dl": 5, "ul":"foo"}` is stored in the JSONB column `usage`, and `{"x": "foo", "y":"bar"}` is stored in the JSONB column `z`, the mapping would be expressed as `dl,ul:usage;x,y:z`.
 
-```json
-dl,ul:usage;x,y:z 
-```
-
-where `dl` and `ul` are fields in `usage`, and `x` and `y` are fields in `z`.
+where `dl` and `ul` are fields in the `usage` column, and `x` and `y` are fields in the `z` column.
  
 This mapping is for dataframe `save()` operations where you specify the JSONB column(s) that the given JSON fields map to. 
  
@@ -241,7 +237,7 @@ When binding individual rows, missing JSONB field values are set to `null`. This
 
 The following example code uses mapping:
 
-```json
+```java
 Dataset<Row> updatedRows = spark
     .sql("select date as gdate,imsi,rsrp,sinr from temp ");
 updatedRows.write().format("org.apache.spark.sql.cassandra").option("keyspace", KEYSPACE)
