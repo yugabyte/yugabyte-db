@@ -15,23 +15,23 @@ Use [GitHub Codespaces](https://github.com/features/codespaces) to provision an 
 
 Codespaces is a configurable cloud development environment accessible via a browser or through a local Visual Studio Code editor. A codespace includes everything developers need to develop for a specific repository, including the Visual Studio Code editing experience, common languages, tools, and utilities. Instantly it sets up a cloud-hosted, containerized, and customizable Visual Studio Code environment.
 
-Follow the steps below to set up a codespace environment with a pre-configured YugabyteDB. For details on GitHub Codespaces, see the [GitHub Codespaces documentation](https://docs.github.com/en/codespaces).
+Follow the steps below to set up a Codespace environment with a pre-configured YugabyteDB. For details on GitHub Codespaces, see the [GitHub Codespaces documentation](https://docs.github.com/en/codespaces).
 
 ## Requirements
 
-Codespaces doesn't require anything in your local workstation other than a code editor and Git CLI. Much of the development happens in the cloud through a web browser though you have the option to use Visual Studio Code locally.
+Codespaces doesn't require anything on your local computer other than a code editor and Git CLI. Much of the development happens in the cloud through a web browser, though you also have the option to use Visual Studio Code locally.
 
-## Getting Started with a boot app
+## Get started with a boot app
 
 You can find the source at [Spring Boot todo on GitHub](https://github.com/yugabyte/yb-todo-app.git).
 
-The easy way to get started with Codespaces is to simply fork this [source repo](https://github.com/yugabyte/yb-todo-app.git) and jump on to the [Setting up the Codespace environment](#set-up-the-codespaces-environment) section to launch the Codespaces environment for your forked repository. 
+**The easy way to get started** with Codespaces is to simply fork the [source repository](https://github.com/yugabyte/yb-todo-app.git) and follow the instructions in [Set up the Codespaces environment](#set-up-the-codespaces-environment) to launch the Codespaces environment for your forked repository. 
 
-If you want to set this up from scratch, then follow the below instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/yugabyte/yb-todo-app.git).
+If you want **to set this up from scratch**, follow the instructions in [Initialize the base project structure](#initialize-the-base-project-structure) to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/yugabyte/yb-todo-app.git).
 
 ### Initialize the base project structure
 
-Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Codespaces experience are agnostic of the language/framework. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
+Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Codespaces experience are language- and framework-agnostic. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
 
 ![set-up the base project abstract](/images/develop/gitdev/codespace/init-sb.png)
 
@@ -47,7 +47,7 @@ The application uses non-blocking reactive APIs to connect to YugabyteDB.
 
 ## Initialize Codespaces
 
-To get started quickly, you can use one of the appropriate readily available [pre-built containers](https://github.com/microsoft/vscode-dev-containers/tree/main/containers). It can be further customized to fit your needs either by extending them or by creating a new one. A simple click provisions the entire development environment in the cloud with an integrated powerful Visual Studio Code editor. The entire config to set up the development environment lives in the same source code repository. Let's go through the steps to set up the codespaces environment.
+To get started quickly, you can use one of the appropriate readily available [pre-built containers](https://github.com/microsoft/vscode-dev-containers/tree/main/containers). It can be further customized to fit your needs either by extending them or by creating a new one. A simple click provisions the entire development environment in the cloud with an integrated powerful Visual Studio Code editor. The entire config to set up the development environment lives in the same source code repository. Next, set up the codespaces environment.
 
 ### Set up the Codespaces environment
 
@@ -56,14 +56,16 @@ If the Codespaces feature is enabled for your GitHub organization, you can initi
 
 If you don't have any codespace-specific files in the source repo, clicking `Create codespace` initializes a default [development environment](https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux) provisioned with a `codespaces-linux` container. This is a universal image with prebuilt language-specific libraries and commonly used utilities; you'll need to customize it to install YugabyteDB. If the default conventions are not enough, you can provide our own configuration.
 
-To initialize the codespace environment, open the source code in a local Visual Studio Code editor. Install the following extensions,
+To initialize the codespace environment, open the source code in a local Visual Studio Code editor. Install the following extensions:
+
 - Remote - Containers
 - GitHub Codespaces
 
 In the command palette, type `Remote-containers: Add` and select `Add Development Container Configuration files`. Type `Ubuntu` at the next prompt.
+
 ![initialize the remote containers](/images/develop/gitdev/codespace/find-container.png)
 
-This creates a `.devcontainer` folder and a JSON metadata file at the root of the source repo. The `devcontainer.json` file contains provisioning information for the development environment, with all the necessary tools and runtime stack. 
+This creates a `.devcontainer` folder and a JSON metadata file at the root of the source repository. The `devcontainer.json` file contains provisioning information for the development environment, with the necessary tools and runtime stack. 
 
 ### Customize the Codespace environment
 
@@ -97,6 +99,7 @@ RUN mkdir -p /var/ybdp \
 ```
 
 Update `devcontainer.json` to refer your customized file:
+
 ```json
 {
   "name": "Yugabyte Codespace",
@@ -111,7 +114,7 @@ Update `devcontainer.json` to refer your customized file:
 }
 ```
 
-The following initializes the YugabyteDB with an app-specific changes:
+The following Docker commands initialize YugabyteDB with an app-specific database:
 
 ```docker
 RUN echo "CREATE DATABASE todo;" > $STORE/init-db.sql \
@@ -128,12 +131,12 @@ RUN echo "[[ ! -f $STORE/.init-db.sql.completed ]] && " \
 RUN echo "[[ ! -f $STORE/.init-db.sql.completed ]] && echo 'YugabyteDB is not running!'" >> ~/.bashrc
 ```
 
-Running the `Create codespace` command with the preceding spec provisions the development environment with a pre-configured and running YugabyteDB instance.
+Run the `Create codespace` command with the preceding spec to provision the development environment with a pre-configured and running YugabyteDB instance.
 
 ![install YugabyteDB](/images/develop/gitdev/codespace/install-yb.gif)
 
 {{< note title="Note" >}}
-GitHub codespaces provisions a fully integrated cloud-native development environment with an automated port forwarding to develop, build, and test applications right from the browser tab.
+GitHub codespaces provisions a fully integrated cloud-native development environment with automated port forwarding to develop, build, and test applications right from your browser.
 {{< /note >}}
 
 ## Summary
