@@ -84,7 +84,7 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email, Role role) {
-    return Users.create(email, "password", role, customer.uuid);
+    return Users.create(email, "password", role, customer.uuid, false);
   }
 
   /*

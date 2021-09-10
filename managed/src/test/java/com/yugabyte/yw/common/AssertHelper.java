@@ -134,8 +134,8 @@ public class AssertHelper {
         .forEachRemaining(field -> assertEquals(expectedJson.get(field), actualJson.get(field)));
   }
 
-  public static void assertAuditEntry(int expectedNumEntries, UUID uuid) {
-    int actual = Audit.getAll(uuid).size();
+  public static void assertAuditEntry(int expectedNumEntries, UUID customerUUID) {
+    int actual = Audit.getAll(customerUUID).size();
     assertEquals(expectedNumEntries, actual);
   }
 
