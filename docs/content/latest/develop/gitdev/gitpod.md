@@ -11,11 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use the [Gitpod](https://www.gitpod.io) workspaces to provision an instant development environment with a pre-configured YugabyteDB.
+Use [Gitpod](https://www.gitpod.io) workspaces to provision an instant development environment with a pre-configured YugabyteDB.
 
-Gitpod is a configurable ready to code cloud development environment accessible via a browser. A Gitpod workspace includes everything developers need to develop for a specific repository, including the `vscode` or `theia` editing experience, common languages, tools, and utilities. Instantly it sets up a cloud-hosted, containerized, and customizable vscode/theia environment.
+Gitpod is a configurable ready-to-code cloud development environment accessible via a browser. A Gitpod workspace includes everything you need to develop for a specific repository, including the Visual Studio Code editing experience, common languages, tools, and utilities. Instantly it sets up a cloud-hosted, containerized, and customizable editing environment.
 
-Follow the steps below to set up a Gitpod workspace environment with a pre-configured YugabyteDB. For details on Gitpod workspaces, see the [Gitpod documentation](https://www.gitpod.io/docs/).
+Follow the steps on this page to set up a Gitpod workspace environment with a pre-configured YugabyteDB. For details on Gitpod workspaces, refer to the [Gitpod documentation](https://www.gitpod.io/docs/).
 
 ## Requirements ⏳
 Gitpod doesn't require anything in your local workstation other than a code editor and git cli. Much of the development happens in the cloud through a web browser.

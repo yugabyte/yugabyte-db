@@ -1,24 +1,24 @@
 ---
 title: Codespaces
 linkTitle: Codespaces
-description: Ready to code GitHub Codespaces integrated dev environment
+description: GitHub Codespaces integrated dev environment
 menu:
   latest:
-    identifier: codespace
+    identifier: codespaces
     parent: gitdev
     weight: 591
 isTocNested: true
 showAsideToc: true
 ---
 
-Use the [GitHub Codespaces](https://github.com/features/codespaces) to provision an instant development environment with a pre-configured YugabyteDB.
+Use [GitHub Codespaces](https://github.com/features/codespaces) to provision an instant development environment with a pre-configured YugabyteDB.
 
 Codespaces is a configurable cloud development environment accessible via a browser or through a local `vscode` editor. A codespace includes everything developers need to develop for a specific repository, including the `vscode` editing experience, common languages, tools, and utilities. Instantly it sets up a cloud-hosted, containerized, and customizable vscode environment.
 
 Follow the steps below to set up a codespace environment with a pre-configured YugabyteDB. For details on GitHub Codespaces, see the [GitHub Codespaces documentation](https://docs.github.com/en/codespaces).
 
 ## Requirements ⏳
-Codespaces doesn't require anything in your local workstation other than a code editor and git cli. Much of the development happens in the cloud through a web browser though you have the option to use vscode locally.
+Codespaces doesn't require anything in your local workstation other than a code editor and git CLI. Much of the development happens in the cloud through a web browser, though you have the option to use Visual Studio Code locally.
 
 ## Getting Started with a boot app
 You can find the source at [Spring Boot todo on GitHub](https://github.com/srinivasa-vasu/todo).
@@ -32,34 +32,38 @@ Spring todo is a Java Spring Boot reactive app. However, the steps to go through
 ![set-up the base project abstract](/images/develop/gitdev/codespace/init-sb.png)
 
 ### Complete the CRUD APIs
-Complete the todo-service by copying the source and build files from the [source repo]((https://github.com/srinivasa-vasu/todo)) to your repo to handle 'GET', 'POST', 'PUT', and 'DELETE' API requests.
+Complete the todo-service by copying the source and build files from the [source repo]((https://github.com/srinivasa-vasu/todo)) to your repo to handle GET, POST, PUT, and DELETE API requests.
 
 ![complete the api endpoints](/images/develop/gitdev/codespace/complete-api.png)
 
 {{< note title="Note" >}}
-📌 It uses non-blocking reactive APIs to connect to the YugabyteDB.
+The application uses non-blocking reactive APIs to connect to YugabyteDB.
 {{< /note >}}
 
 ## Initialize Codespaces
 To get started quickly, you can use one of the appropriate readily available [pre-built containers](https://github.com/microsoft/vscode-dev-containers/tree/main/containers). It can be further customized to fit your needs either by extending them or by creating a new one. A simple click provisions the entire development environment in the cloud with an integrated powerful vscode editor. The entire config to set up the development environment lives in the same source code repository. Let's go through the steps to set up the codespaces environment.
 
-### Setting up the Codespace environment
-As of writing this, Codespaces is still a beta feature. If this feature is enabled for your GitHub account, then the codespace environment is initialized at [GitHub Codespaces](https://github.com/codespaces).
+### Set up the Codespace environment
+
+If the Codespaces feature is enabled for your GitHub organization, you can initialize the codespace environment at [GitHub Codespaces](https://github.com/codespaces).
 ![initalize the codespace environment](/images/develop/gitdev/codespace/init-codespace.png)
 
-If you don't keep any codespace-specific spec in the source repo, then on clicking `Create codespace`, a default [dev environment](https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux) gets provisioned with `codespaces-linux` container. It is a universal image with pre-built language-specific libraries and commonly used utilities. As you need a dev environment with an integrated YugabyteDB, you have to customize the universal image. If the default conventions provided by the codespaces are not sufficient, then you can provide our own configuration.
+If you don't have any codespace-specific specs in the source repo, clicking `Create codespace` creates a default [development environment](https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux) provisioned with a `codespaces-linux` container. This is a universal image with prebuilt language-specific libraries and commonly used utilities; you'll need to customize it to install YugabyteDB. If you like, you can provide your own configuration.
 
-To initialize the codespace environment, open the source code in a local `vscode` editor. Install the following extensions,
+To initialize the codespace environment, open the source code in a local `vscode` editor. Install the following extensions:
+
 - Remote - Containers
 - GitHub Codespaces
 
-In the command palette (fn+F1), type `Remote-containers: Add` and select `Add Development Container Configuration files` and then type `Ubuntu` in the next prompt,
+In the command palette, type `Remote-containers: Add` and select Add Development Container Configuration files. Type `Ubuntu` at the next prompt.
+
 ![initialize the remote containers](/images/develop/gitdev/codespace/find-container.png)
 
-It initializes a `.devcontainer` folder with a JSON metadata file at the root of the source repo. `devcontainer.json` has the info to provision the development environment with all the necessary tools and runtime stack. 
+This creates a `.devcontainer` folder and a JSON metadata file at the root of the source repository. The `devcontainer.json` file contains provisioning information for the development environment, with the necessary tools and runtime stack. 
 
 ### Customize the Codespace environment
-You need to customize the default universal image to include the YugabyteDB binary. This is done by defining your own `Dockerfile`. Refer to the [source repo](https://github.com/srinivasa-vasu/todo) for the complete file.
+
+You need to customize the default universal image to include the YugabyteDB binary. To do this, you define your own `Dockerfile`. Refer to the [source repo](https://github.com/srinivasa-vasu/todo) for the complete file.
 
 ```docker
 ARG VERSION
@@ -71,7 +75,7 @@ ARG ROLE
 USER root
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive && \
-	apt-get install -y netcat --no-install-recommends
+    apt-get install -y netcat --no-install-recommends
 
 RUN curl -sSLo ./yugabyte.tar.gz https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz \
 	&& mkdir yugabyte \
@@ -88,7 +92,8 @@ RUN mkdir -p /var/ybdp \
 	&& chown -R $ROLE:$ROLE /usr/local/yugabyte
 ```
 
-Update the devcontainer.json spec to refer your customized file,
+Update `devcontainer.json` to refer your customized file:
+
 ```json
 {
   "name": "Yugabyte Codespace",
@@ -100,11 +105,13 @@ Update the devcontainer.json spec to refer your customized file,
       "ROLE": "codespace"
     }
   }
+  ...
+}
 ```
 
-The following lines of code are to initialize the YugabyteDB with an app-specific database.
+The following Docker commands initialize YugabyteDB with an app-specific database:
 
-``` docker
+```docker
 RUN echo "CREATE DATABASE todo;" > $STORE/init-db.sql \
 	&& echo "CREATE USER todo WITH PASSWORD 'todo';" >> $STORE/init-db.sql \
 	&& echo "GRANT ALL PRIVILEGES ON DATABASE todo TO todo;" >> $STORE/init-db.sql \
@@ -114,12 +121,12 @@ RUN echo "CREATE DATABASE todo;" > $STORE/init-db.sql \
 RUN echo "/usr/local/yugabyte/bin/post_install.sh 2>&1" >> ~/.bashrc
 RUN echo "yugabyted start --base_dir=$STORE/ybd1 --listen=$LISTEN" >> ~/.bashrc
 RUN echo "[[ ! -f $STORE/.init-db.sql.completed ]] && " \
-	"{ for i in {1..10}; do (nc -vz $LISTEN $PORT >/dev/null 2>&1); [[ \$? -eq 0 ]] && "\
+	"{ for i in {1..10}; do (nc -vz $LISTEN $PORT >/dev/null 2>&1); [[ \$? -eq 0 ]] && " \
 	"{ ysqlsh -f $STORE/init-db.sql; touch $STORE/.init-db.sql.completed; break; } || sleep \$i; done }" >> ~/.bashrc
 RUN echo "[[ ! -f $STORE/.init-db.sql.completed ]] && echo 'YugabyteDB is not running!'" >> ~/.bashrc
 ```
 
-If you run the `Create codespace` with the above-updated spec, the development environment gets provisioned with a running YugabyteDB instance.
+Running the `Create codespace` command with the preceding spec provisions the development environment with a running YugabyteDB instance.
 
 ![install YugabyteDB](/images/develop/gitdev/codespace/install-yb.gif)
 
