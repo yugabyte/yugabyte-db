@@ -893,6 +893,10 @@ Status PgApiImpl::DmlBindTable(PgStatement *handle) {
   return down_cast<PgDml*>(handle)->BindTable();
 }
 
+Result<YBCPgColumnInfo> PgApiImpl::DmlGetColumnInfo(YBCPgStatement handle, int attr_num) {
+  return down_cast<PgDml*>(handle)->GetColumnInfo(attr_num);
+}
+
 CHECKED_STATUS PgApiImpl::DmlAssignColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->AssignColumn(attr_num, attr_value);
 }
@@ -1258,14 +1262,14 @@ Status PgApiImpl::NewConstant(
 }
 
 Status PgApiImpl::NewConstantVirtual(
-    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
     YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   PgExpr::SharedPtr pg_const =
-    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, datum_kind);
+    make_shared<PgConstant>(type_entity, false /* collate_is_valid_non_c */, datum_kind);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();

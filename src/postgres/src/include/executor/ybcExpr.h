@@ -53,7 +53,7 @@ extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id,
 
 // Construct virtual constant expression using the given datatype "type_id" and virtual "datum".
 extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id,
-									   Oid collation_id, YBCPgDatumKind kind);
+									   YBCPgDatumKind kind);
 
 // Construct a generic eval_expr call for given a PG Expr and its expected type and attno.
 extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt, 

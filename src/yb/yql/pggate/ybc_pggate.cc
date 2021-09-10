@@ -591,6 +591,10 @@ YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlBindTable(handle));
 }
 
+YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* column_info) {
+  return ExtractValueFromResult(pgapi->DmlGetColumnInfo(handle, attr_num), column_info);
+}
+
 YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value) {
@@ -766,10 +770,9 @@ YBCStatus YBCPgNewConstant(
 }
 
 YBCStatus YBCPgNewConstantVirtual(
-    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
     YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
-  return ToYBCStatus(pgapi->NewConstantVirtual(
-      stmt, type_entity, collate_is_valid_non_c, datum_kind, expr_handle));
+  return ToYBCStatus(pgapi->NewConstantVirtual(stmt, type_entity, datum_kind, expr_handle));
 }
 
 YBCStatus YBCPgNewConstantOp(
