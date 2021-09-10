@@ -1,4 +1,4 @@
-<!--
+---
 title: Cluster costs
 linkTitle: Cluster costs
 description: Yugabyte Cloud cluster configuration costs.
@@ -11,7 +11,7 @@ menu:
     weight: 300
 isTocNested: true
 showAsideToc: true
--->
+---
 
 Yugabyte offers two billing options: pay-as-you-go (PAYG) billing and subscription billing. The pricing for the two options is provided below:
 
