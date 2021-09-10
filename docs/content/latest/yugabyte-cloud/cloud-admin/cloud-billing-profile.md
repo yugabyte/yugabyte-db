@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Review your cloud charges and manage your billing profile and payment methods using the **Billing** tab. 
+Review your cloud charges and manage your billing profile and payment methods using the **Billing** tab.
 
-Only the cloud account Admin user (the user who created the Yugabyte Cloud account) can access the billing and payment details. 
+Only the cloud account Admin user (the user who created the Yugabyte Cloud account) can access the billing and payment details.
 
 Yugabyte bills for its services as follows:
 
@@ -72,7 +72,7 @@ The **Credits** section displays any credits applied to your account, including 
 
 This section lists your current and past invoices, along with a summary of cloud usage.
 
-Select an invoice in the list to view a detailed breakdown of costs and usage details. 
+Select an invoice in the list to view a detailed breakdown of costs and usage details.
 
 <!--
 ## Cost Estimator
