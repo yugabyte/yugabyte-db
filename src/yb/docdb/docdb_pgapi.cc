@@ -193,7 +193,10 @@ Status ExtractVectorFromQLBinaryValueHelper(
   VLOG(4) << "Number of parsed elements: " << num_elems;
   for (int i = 0; i < num_elems; ++i) {
     QLValuePB ql_val;
-    pggate::PgConstant value(elem_arg_type, datum_elements[i], false /* isNull */);
+    pggate::PgConstant value(elem_arg_type,
+                             false /* collate_is_valid_non_c */,
+                             nullptr /* collation_sortkey */,
+                             datum_elements[i], false /* isNull */);
     RETURN_NOT_OK(value.Eval(&ql_val));
     VLOG(4) << "Parsed value: " << ql_val.string_value();
     result->emplace_back(std::move(ql_val));

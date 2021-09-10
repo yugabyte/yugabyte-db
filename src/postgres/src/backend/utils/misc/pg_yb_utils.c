@@ -34,9 +34,11 @@
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "utils/lsyscache.h"
+#include "utils/pg_locale.h"
 #include "utils/rel.h"
 #include "catalog/pg_database.h"
 #include "utils/builtins.h"
+#include "catalog/pg_collation_d.h"
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
 #include "catalog/ybc_catalog_version.h"
@@ -420,6 +422,19 @@ static const char*
 GetDebugQueryString()
 {
 	return debug_query_string;
+}
+
+/*
+ * Ensure we've defined the correct postgres Oid values. This function only
+ * contains compile-time assertions. It would have been made 'static' but it is
+ * not called anywhere and making it 'static' caused compiler warning which
+ * broke the build.
+ */
+void
+YBCheckDefinedOids()
+{
+	static_assert(kInvalidOid == InvalidOid, "Oid mismatch");
+	static_assert(kByteArrayOid == BYTEAOID, "Oid mismatch");
 }
 
 void
@@ -1322,6 +1337,7 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
 	YBCPgAttrValueDescriptor* last_attr = descr->attrs + descr->nattrs - 1;
 	last_attr->attr_num = YBUniqueIdxKeySuffixAttributeNumber;
 	last_attr->type_entity = YBCDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
+	last_attr->collation_id = InvalidOid;
 	last_attr->is_null = true;
 }
 
@@ -1397,7 +1413,7 @@ yb_servers(PG_FUNCTION_ARGS)
   SRF_RETURN_DONE(funcctx);
 }
 
-bool IsYBSupportedLibcLocale(const char *localebuf) {
+bool YBIsSupportedLibcLocale(const char *localebuf) {
 	/*
 	 * For libc mode, Yugabyte only supports the basic locales.
 	 */
@@ -1571,4 +1587,205 @@ char *YBDetailSorted(char *input)
 	list_free(line_store);
 
 	return s.data;
+}
+
+/*
+ * This function is adapted from code in varlena.c.
+ */
+static const char*
+YBComputeNonCSortKey(Oid collation_id, const char* value, int64_t bytes) {
+	/*
+	 * We expect collation_id is a valid non-C collation.
+	 */
+	pg_locale_t locale = 0;
+	if (collation_id != DEFAULT_COLLATION_OID)
+	{
+		locale = pg_newlocale_from_collation(collation_id);
+		Assert(locale);
+	}
+	static const int kTextBufLen = 1024;
+	Size bsize = -1;
+	bool is_icu_provider = false;
+	const int buflen1 = bytes;
+	char* buf1 = palloc(buflen1 + 1);
+	char* buf2 = palloc(kTextBufLen);
+	int buflen2 = kTextBufLen;
+	memcpy(buf1, value, bytes);
+	buf1[buflen1] = '\0';
+
+#ifdef USE_ICU
+	int32_t		ulen = -1;
+	UChar	   *uchar = NULL;
+#endif
+
+#ifdef USE_ICU
+	/* When using ICU, convert string to UChar. */
+	if (locale && locale->provider == COLLPROVIDER_ICU)
+	{
+		is_icu_provider = true;
+		ulen = icu_to_uchar(&uchar, buf1, buflen1);
+	}
+#endif
+
+	/*
+	 * Loop: Call strxfrm() or ucol_getSortKey(), possibly enlarge buffer,
+	 * and try again.  Both of these functions have the result buffer
+	 * content undefined if the result did not fit, so we need to retry
+	 * until everything fits.
+	 */
+	for (;;)
+	{
+#ifdef USE_ICU
+		if (locale && locale->provider == COLLPROVIDER_ICU)
+		{
+			bsize = ucol_getSortKey(locale->info.icu.ucol,
+									uchar, ulen,
+									(uint8_t *) buf2, buflen2);
+		}
+		else
+#endif
+#ifdef HAVE_LOCALE_T
+		if (locale && locale->provider == COLLPROVIDER_LIBC)
+			bsize = strxfrm_l(buf2, buf1, buflen2, locale->info.lt);
+		else
+#endif
+			bsize = strxfrm(buf2, buf1, buflen2);
+
+		if (bsize < buflen2)
+			break;
+
+		/*
+		 * Grow buffer and retry.
+		 */
+		pfree(buf2);
+		buflen2 = Max(bsize + 1, Min(buflen2 * 2, MaxAllocSize));
+		buf2 = palloc(buflen2);
+	}
+
+#ifdef USE_ICU
+	if (uchar)
+		pfree(uchar);
+#endif
+
+	pfree(buf1);
+	if (is_icu_provider)
+	{
+		Assert(bsize > 0);
+		/*
+		 * Each sort key ends with one \0 byte and does not contain any
+		 * other \0 byte. The terminating \0 byte is included in bsize.
+		 */
+		Assert(buf2[bsize - 1] == '\0');
+	}
+	else
+	{
+		Assert(bsize >= 0);
+		/*
+		 * Both strxfrm and strxfrm_l return the length of the transformed
+		 * string not including the terminating \0 byte.
+		 */
+		Assert(buf2[bsize] == '\0');
+	}
+	return buf2;
+}
+
+void YBGetCollationInfo(
+	Oid collation_id,
+	const YBCPgTypeEntity *type_entity,
+	Datum datum,
+	bool is_null,
+	YBCPgCollationInfo *collation_info) {
+
+	if (!type_entity) {
+		Assert(collation_id == InvalidOid);
+		collation_info->collate_is_valid_non_c = false;
+		collation_info->sortkey = NULL;
+		return;
+	}
+
+	if (type_entity->yb_type != YB_YQL_DATA_TYPE_STRING) {
+		/*
+		 * A character array type is processed as YB_YQL_DATA_TYPE_BINARY but it
+		 * can have a collation. For example:
+		 *   CREATE TABLE t (id text[] COLLATE "en_US.utf8");
+		 */
+		Assert(collation_id == InvalidOid ||
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_BINARY);
+		collation_info->collate_is_valid_non_c = false;
+		collation_info->sortkey = NULL;
+		return;
+	}
+	switch (type_entity->type_oid) {
+		case NAMEOID:
+			/*
+			 * In bootstrap code, postgres 11.2 hard coded to InvalidOid but
+			 * postgres 13.2 hard coded to C_COLLATION_OID. Adjust the assertion
+			 * when we upgrade to postgres 13.2.
+			 */
+			Assert(collation_id == InvalidOid);
+			collation_id = C_COLLATION_OID;
+			break;
+		case TEXTOID:
+		case BPCHAROID:
+		case VARCHAROID:
+			if (collation_id == InvalidOid) {
+				/*
+				 * In postgres, an index can include columns. Included columns
+				 * have no collation. Included character column value will be
+				 * stored as C collation. It can only be stored and retrieved
+				 * as a value in DocDB. Any comparison must be done by the
+				 * postgres layer.
+				 */
+				collation_id = C_COLLATION_OID;
+			}
+			break;
+		case CSTRINGOID:
+			Assert(collation_id == C_COLLATION_OID);
+			break;
+		default:
+			/* Not supported text type. */
+			Assert(false);
+	}
+	collation_info->collate_is_valid_non_c = YBIsCollationValidNonC(collation_id);
+	if (!is_null && collation_info->collate_is_valid_non_c) {
+		char *value;
+		int64_t bytes = type_entity->datum_fixed_size;
+		type_entity->datum_to_yb(datum, &value, &bytes);
+		/*
+		 * Collation sort keys are compared using strcmp so they are null
+		 * terminated and cannot have embedded \0 byte.
+		 */
+		collation_info->sortkey = YBComputeNonCSortKey(collation_id, value, bytes);
+	} else {
+		collation_info->sortkey = NULL;
+	}
+}
+
+void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr) {
+	YBGetCollationInfo(attr->collation_id, attr->type_entity, attr->datum,
+					   attr->is_null, &attr->collation_info);
+}
+
+bool YBIsCollationValidNonC(Oid collation_id) {
+	/*
+	 * For now we only allow database to have C collation. Therefore for
+	 * DEFAULT_COLLATION_OID it cannot be a valid non-C collation. This
+	 * special case for DEFAULT_COLLATION_OID is made here because YB
+	 * PgExpr code is called before Postgres has properly setup the default
+	 * collation to that of the database connected. So lc_collate_is_c can
+	 * return false for DEFAULT_COLLATION_OID which isn't correct.
+	 * We stop support non-C collation if collation support is disabled.
+	 */
+	bool is_valid_non_c = YBIsCollationEnabled() &&
+						  OidIsValid(collation_id) &&
+						  collation_id != DEFAULT_COLLATION_OID &&
+						  !lc_collate_is_c(collation_id);
+	/*
+	 * For testing only, we use en_US.UTF-8 for default collation and
+	 * this is a valid non-C collation.
+	 */
+	Assert(!kTestOnlyUseOSDefaultCollation || YBIsCollationEnabled());
+	if (kTestOnlyUseOSDefaultCollation && collation_id == DEFAULT_COLLATION_OID)
+		is_valid_non_c = true;
+	return is_valid_non_c;
 }

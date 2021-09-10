@@ -2,9 +2,8 @@
 title: Yugabyte Cloud
 linkTitle: Yugabyte Cloud
 description: Yugabyte Cloud
-headcontent: Fully-managed YugabyteDB-as-a-Service running on public clouds.
+headcontent: Fully managed YugabyteDB-as-a-Service running on public clouds.
 image: /images/section_icons/deploy/public-clouds.png
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 section: YUGABYTE CLOUD
 aliases:
   - /latest/deploy/yugabyte-cloud/
@@ -14,82 +13,112 @@ menu:
     weight: 639
 ---
 
-Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on
-<a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a>, 
-<a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a>, and
-<a href="https://azure.microsoft.com/">Microsoft Azure</a> (coming soon). You can use the Free Tier level to get started with YugabyteDB. Although
-not suitable for production workloads, the Free Tier includes enough resources to start exploring the core features available for developing applications with YugabyteDB.
+Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a> (as of September 2021; Azure coming soon, for information contact Yugabyte Support).
+
+To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
+
+## Get started with Yugabyte Cloud
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="free-tier/">
+      <a class="section-link icon-offset" href="cloud-quickstart/">
           <div class="head">
-              <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-              <div class="title">Free tier</div>
+              <img class="icon" src="/images/section_icons/index/quick_start.png" aria-hidden="true" />
+              <div class="title">Quickstart</div>
           </div>
           <div class="body">
-              Explore and learn YugabyteDB using the free Yugabyte Cloud tier.
+              Sign up, create a free cluster, connect, and explore YugabyteDB.
           </div>
       </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="create-clusters/">
+    <a class="section-link icon-offset" href="cloud-basics/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
+        <div class="title">Get Started</div>
+      </div>
+      <div class="body">
+        Learn the basics of managing clusters in Yugabyte Cloud.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+      <a class="section-link icon-offset" href="cloud-develop/">
           <div class="head">
-              <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-              <div class="title">Create clusters</div>
+              <img class="icon" src="/images/section_icons/architecture/core_functions/universe.png" aria-hidden="true" />
+              <div class="title">Tutorials and examples</div>
           </div>
           <div class="body">
-              Create clusters in Yugabyte Cloud cluster.
+              Learn how to deploy applications for your cloud.
           </div>
       </a>
   </div>
 
+</div>
+
+## Reference
+
+<div class="row">
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="monitor-clusters/">
+      <a class="section-link icon-offset" href="cloud-clusters/">
           <div class="head">
-              <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-              <div class="title">Monitor clusters</div>
+              <img class="icon" src="/images/section_icons/architecture/core_functions/universe.png" aria-hidden="true" />
+              <div class="title">Manage clusters</div>
           </div>
           <div class="body">
-              Monitor cluster health and performance using the Yugabyte Cloud Console.
+              Add, scale, and connect to the clusters in your cloud.
+          </div>
+      </a>
+  </div>
+<!--
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+      <a class="section-link icon-offset" href="cloud-analytics/">
+          <div class="head">
+              <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+              <div class="title">Performance</div>
+          </div>
+          <div class="body">
+              Create charts of cluster metrics and build custom dashboards to track performance.
+          </div>
+      </a>
+  </div>
+-->  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+      <a class="section-link icon-offset" href="cloud-network/">
+          <div class="head">
+              <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
+              <div class="title">Networking</div>
+          </div>
+          <div class="body">
+              Set up network security for your cluster.
           </div>
       </a>
   </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="create-databases/">
+      <a class="section-link icon-offset" href="cloud-security/">
           <div class="head">
-              <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-              <div class="title">Create databases</div>
+              <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
+              <div class="title">Security</div>
           </div>
           <div class="body">
-              Create databases in your cluster.
+              Learn about how your cloud and clusters are secured.
           </div>
       </a>
   </div>
   
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="manage-access/">
+      <a class="section-link icon-offset" href="cloud-admin/">
           <div class="head">
-              <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-              <div class="title">Manage database access</div>
+              <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
+              <div class="title">Administer your cloud</div>
           </div>
           <div class="body">
-              View users, add or delete users, and view user details.
-          </div>
-      </a>
-  </div>
-  
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="connect-to-clusters/">
-          <div class="head">
-              <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-              <div class="title">Connect to clusters</div>
-          </div>
-          <div class="body">
-              Connect to clusters using cloud shells, remote clients, and third party clients.
+              Manage cloud users and billing.
           </div>
       </a>
   </div>

@@ -11,14 +11,10 @@ ERROR:  Value other than default or false for is_template option is not yet supp
 LINE 1: CREATE DATABASE test IS_TEMPLATE = TRUE;
                              ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-CREATE DATABASE test LC_COLLATE = C;
-ERROR:  Value other than 'C' for lc_collate option is not yet supported
-LINE 1: CREATE DATABASE test LC_COLLATE = C;
-                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-CREATE DATABASE test LC_CTYPE = C;
+CREATE DATABASE test LC_COLLATE = "C";
+CREATE DATABASE test LC_CTYPE = "C";
 ERROR:  Value other than 'en_US.UTF-8' for lc_ctype option is not yet supported
-LINE 1: CREATE DATABASE test LC_CTYPE = C;
+LINE 1: CREATE DATABASE test LC_CTYPE = "C";
                              ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 CREATE DATABASE test ENCODING = LATIN5;

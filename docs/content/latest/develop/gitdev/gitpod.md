@@ -1,7 +1,7 @@
 ---
 title: Gitpod
 linkTitle: Gitpod
-description: Ready to code Gitpod integrated dev environment
+description: Gitpod integrated development environment
 menu:
   latest:
     identifier: gitpod
@@ -13,7 +13,7 @@ showAsideToc: true
 
 Use [Gitpod](https://www.gitpod.io) workspaces to provision an instant development environment with a pre-configured YugabyteDB.
 
-Gitpod is a configurable ready-to-code cloud development environment accessible via a browser. A Gitpod workspace includes everything you need to develop for a specific repository, including the Visual Studio Code editing experience, common languages, tools, and utilities. Instantly it sets up a cloud-hosted, containerized, and customizable editing environment.
+Gitpod is a configurable ready-to-code cloud development environment accessible via a browser. A Gitpod workspace includes everything you need to develop for a specific repository, including the Visual Studio Code editing experience, common languages, tools, and utilities. Instantly this sets up a cloud-hosted, containerized, and customizable editing environment.
 
 Follow the steps on this page to set up a Gitpod workspace environment with a pre-configured YugabyteDB. For details on Gitpod workspaces, refer to the [Gitpod documentation](https://www.gitpod.io/docs/).
 
@@ -21,14 +21,13 @@ Follow the steps on this page to set up a Gitpod workspace environment with a pr
 
 Gitpod doesn't require anything in your local workstation other than a code editor and Git CLI. Much of the development happens in the cloud through a web browser.
 
-## Getting Started with a boot app
+## Get started with a boot app
 
-You can find the source at [Spring Boot todo on GitHub](https://github.com/srinivasa-vasu/todo). 
+You can find the source at [Spring Boot todo on GitHub](https://github.com/yugabyte/yb-todo-app.git). 
 
-The easy way to get started with Gitpod is to simply fork this [source repo](https://github.com/srinivasa-vasu/todo) 
-and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. '[REPO_URL]' should be replaced with your forked repository url and you should already have been conneted to the Gitpod account before launching the browser url. 
+The easy way to get started with Gitpod is to simply fork this [source repo](https://github.com/yugabyte/yb-todo-app.git) and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. Replace `[REPO_URL]` with your forked repository URL and you should already have been conneted to the Gitpod account before launching the browser URL.
 
-If you want to set this up from scratch, use the following instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/srinivasa-vasu/todo).
+If you want to set this up from scratch, use the following instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/yugabyte/yb-todo-app.git).
 
 ### Initialize the base project structure
 
@@ -38,7 +37,7 @@ Spring todo is a Java Spring Boot reactive app. However, the steps to go through
 
 ### Complete the CRUD APIs
 
-Complete the todo-service by copying the source and build files from the [source repo]((https://github.com/srinivasa-vasu/todo)) to your repo to handle 'GET', 'POST', 'PUT', and 'DELETE' API requests.
+Complete the todo-service by copying the source and build files from the [source repo](https://github.com/yugabyte/yb-todo-app.git) to your repo to handle GET, POST, PUT, and DELETE API requests.
 
 ![complete the api endpoints](/images/develop/gitdev/gitpod/complete-api.png)
 
@@ -48,24 +47,24 @@ The application uses non-blocking reactive APIs to connect to YugabyteDB.
 
 ## Initialize Gitpod
 
-To get started quickly, you can use the universal image [pre-built containers](https://www.gitpod.io/docs/quickstart) or a language-specific image. It can be further customized to fit your needs either by extending them or by creating a new one. A simple click provisions the entire development environment in the cloud with an integrated powerful vscode/theia editor. The entire config to set up the development environment lives in the same source code repository. Let's go through the steps to set up the Gitpod environment.
+To get started quickly, you can use the universal image [pre-built containers](https://www.gitpod.io/docs/quickstart) or a language-specific image. It can be further customized to fit your needs either by extending them or by creating a new one. A simple click provisions the entire development environment in the cloud with an integrated powerful Visual Studio Code editor. The entire config to set up the development environment lives in the same source code repository. Follow the steps in the next sections to set up your Gitpod environment.
 
-### Setting up the Gitpod environment
+### Set up the Gitpod environment
 
-Gitpod workspace environment is initialized for a specific repository by invoking `https://gitpod.io/#[REPO_URL]`
+You initialize the Gitpod workspace environment for a specific repository by invoking `https://gitpod.io/#[REPO_URL]`.
 
 ![initalize the workspace environment](/images/develop/gitdev/gitpod/init-workspace.png)
 
-You can either use a universal image with pre-configured libraries and commonly used utilities or a language specific image. Let's create the integrated YugabuteDB workspace environment by customizing the base universal image.
+You can either use a universal image with pre-configured libraries and commonly used utilities or a language-specific image. Create the integrated YugabyteDB workspace environment by customizing the base universal image.
 
 To initialize the workspace environment:
 
-- create `.gitpod.yml` file at the root of the source repo
-- create `.gitpodcontainer` folder at the root of the source repo to keep the customized `Dockerfile`
+- create a `.gitpod.yml` file at the root of the source repo
+- create a `.gitpodcontainer` folder at the root of the source repo to hold the customized `Dockerfile`
 
 ### Customize the Gitpod environment
 
-You need to customize the default universal image to include the YugabyteDB binary. This is done by defining your own `Dockerfile` at `.gitpodcontainer/Dockerfile`. Refer to the [source repo](https://github.com/srinivasa-vasu/todo) for the complete file.
+You need to customize the default universal image to include the YugabyteDB binary. You do this by defining your own `Dockerfile` at `.gitpodcontainer/Dockerfile`. Refer to the [source repo](https://github.com/yugabyte/yb-todo-app.git) for the complete file.
 
 ```docker
 # default universal image
@@ -81,13 +80,13 @@ RUN apt-get update && apt-get install -y \
 # download and initialize the file structure
 RUN curl -sSLo ./yugabyte.tar.gz https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz \
   && mkdir yugabyte \
-    && tar -xvf yugabyte.tar.gz -C yugabyte --strip-components=1 \
-    && mv ./yugabyte /usr/local/ \
-    && ln -s /usr/local/yugabyte/bin/yugabyted /usr/local/bin/yugabyted \
-    && ln -s /usr/local/yugabyte/bin/ysqlsh /usr/local/bin/ysqlsh \
-    && chmod +x /usr/local/bin/yugabyted \
-    && chmod +x /usr/local/bin/ysqlsh \
-    && rm ./yugabyte.tar.gz
+  && tar -xvf yugabyte.tar.gz -C yugabyte --strip-components=1 \
+  && mv ./yugabyte /usr/local/ \
+  && ln -s /usr/local/yugabyte/bin/yugabyted /usr/local/bin/yugabyted \
+  && ln -s /usr/local/yugabyte/bin/ysqlsh /usr/local/bin/ysqlsh \
+  && chmod +x /usr/local/bin/yugabyted \
+  && chmod +x /usr/local/bin/ysqlsh \
+  && rm ./yugabyte.tar.gz
 
 RUN mkdir -p /var/ybdp \
   && chown -R $ROLE:$ROLE /var/ybdp \
@@ -161,7 +160,7 @@ Launch the workspaces environment with this updated spec to provision the develo
 ![install YugabyteDB](/images/develop/gitdev/gitpod/install-yb.gif)
 
 {{< note title="Note" >}}
-Gitpod provisions a fully integrated ready to code cloud-native development environment with an automated port forwarding to develop, build, and test applications right from the browser tab.
+Gitpod provisions a fully integrated ready-to-code cloud-native development environment with  automated port forwarding to develop, build, and test applications right in your browser.
 {{< /note >}}
 
 ![workspace environment](/images/develop/gitdev/gitpod/workspace.png)

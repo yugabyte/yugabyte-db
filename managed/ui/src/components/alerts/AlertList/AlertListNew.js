@@ -5,6 +5,9 @@ import AlertsTable from './AlertsTable';
 
 import './AlertListNew.scss';
 
+/**
+ * Whenever you change the keys of FILTER_TYPES, make sure you change it in the Alertable's useEffect to reset the page count.
+ */
 const FILTER_TYPES = {
   states: {
     label: 'Target State',
@@ -16,9 +19,9 @@ const FILTER_TYPES = {
     values: ['Severe', 'Warning']
   },
 
-  groupTypes: {
+  configurationTypes: {
     label: 'Group Type',
-    values: ['Customer', 'Universe']
+    values: ['Platform', 'Universe']
   }
 };
 
