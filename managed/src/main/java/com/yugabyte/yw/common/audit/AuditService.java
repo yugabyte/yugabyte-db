@@ -30,8 +30,6 @@ import play.mvc.Http;
 @Singleton
 public class AuditService {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AuditService.class);
-
   public static final String SECRET_REPLACEMENT = "REDACTED";
   // List of json paths to any secret fields we want to redact in audit entries.
   // More on json path format can be found here: https://goessner.net/articles/JsonPath/
@@ -105,7 +103,7 @@ public class AuditService {
     createAuditEntry(ctx, ctx.request(), ctx.request().body().asJson(), taskUUID);
   }
 
-  // TODO make this internal method and use WithReqBody
+  // TODO make this internal method and use createAuditEntryWithReqBody
   @Deprecated
   public void createAuditEntry(
       Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {

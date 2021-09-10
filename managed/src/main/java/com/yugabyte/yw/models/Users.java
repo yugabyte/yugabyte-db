@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -30,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
+import play.mvc.Http.Status;
 
 @Entity
 @ApiModel(description = "A user associated with a customer")
@@ -186,19 +188,37 @@ public class Users extends Model {
     this.creationDate = new Date();
   }
 
-  public static Users create(String email, String password, Role role, UUID customerUUID) {
-    return Users.create(email, password, role, customerUUID, false);
-  }
-
   /**
    * Create new Users, we encrypt the password before we store it in the DB
    *
-   * @param name
    * @param email
    * @param password
    * @return Newly Created Users
    */
   public static Users create(
+      String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
+    try {
+      return createInternal(email, password, role, customerUUID, isPrimary);
+    } catch (DuplicateKeyException pe) {
+      throw new PlatformServiceException(Status.CONFLICT, "User already exists");
+    }
+  }
+
+  /**
+   * Create first Users associated to a customer, we encrypt the password before we store it in the
+   * DB
+   *
+   * @return Newly Created Primary User
+   */
+  public static Users createPrimary(String email, String password, Role role, UUID customerUUID) {
+    try {
+      return createInternal(email, password, role, customerUUID, true);
+    } catch (DuplicateKeyException pe) {
+      throw new PlatformServiceException(Status.CONFLICT, "Customer already registered.");
+    }
+  }
+
+  static Users createInternal(
       String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
     Users users = new Users();
     users.email = email.toLowerCase();

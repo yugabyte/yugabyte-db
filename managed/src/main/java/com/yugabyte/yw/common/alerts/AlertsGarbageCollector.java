@@ -56,7 +56,6 @@ public class AlertsGarbageCollector {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.executionContext = executionContext;
     this.alertService = alertService;
-    start();
   }
 
   public void start() {

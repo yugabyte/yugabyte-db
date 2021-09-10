@@ -10,9 +10,9 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
-import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.Api;
@@ -94,7 +94,8 @@ public class UsersController extends AuthenticatedController {
     UserRegisterFormData formData = form.get();
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     Users user =
-        Users.create(formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID);
+        Users.create(
+            formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID, false);
     updateFeatures(user);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
     return PlatformResults.withData(user);

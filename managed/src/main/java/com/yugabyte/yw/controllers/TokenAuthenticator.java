@@ -9,6 +9,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -110,6 +111,7 @@ public class TokenAuthenticator extends Action.Simple {
       if (!checkAccessLevel(endPoint, user, requestType)) {
         return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
       }
+      // TODO: withUsername returns new request that is ignored. Maybe a bug.
       ctx.request().withUsername(user.getEmail());
       ctx.args.put("customer", cust);
       ctx.args.put("user", user);
@@ -130,6 +132,9 @@ public class TokenAuthenticator extends Action.Simple {
       user = Users.authWithToken(token);
     }
     if (user != null) {
+      // So we can audit any super admin actions.
+      // If there is a use case also lookup customer and put it in context
+      ctx.args.put("user", user);
       return user.getRole() == Role.SuperAdmin;
     }
     return false;
