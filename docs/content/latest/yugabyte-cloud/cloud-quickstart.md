@@ -46,9 +46,9 @@ Once the Sign up process completes, the **Getting Started** page of the Yugabyte
 
 1. Choose the provider (AWS or GCP), enter a name for the cluster, and choose the region, then click **Next**.
 
-1. Choose the credentials you will use to connect to your YugabyteDB database in the cloud. You can choose the default set with a database user named "admin", or create your own.
+1. Choose the credentials you'll use to connect to your YugabyteDB database in the cloud. You can choose the default set with a database user named "admin", or create your own.
 
-1. Click **Copy credentials** save your credentials in a secure location.
+1. Click **Copy credentials** and save your credentials in a secure location.
 
 1. Select the **I have copied the admin credentials** option and click **Create Cluster**.
 

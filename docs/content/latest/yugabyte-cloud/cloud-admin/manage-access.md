@@ -61,15 +61,15 @@ To delete a user, click **Delete** next to the username in the list, then click 
 
 ## Reset your password
 
-To reset your password, got to the [login screen](https://cloud.yugabyte.com/login) and click **Forgot your password?** to display the the **Reset your password** page. You will be sent a verification email with instructions to reset your password. You have 60 minutes in which to reset your password, and your old password is no longer valid.
+To reset your password, click **Forgot your password?** on the [login screen](https://cloud.yugabyte.com/login). You'll receive a verification email with instructions to reset your password. You have 60 minutes in which to reset your password, and your old password is no longer valid.
 
-If you did not receive the reset email, click **Resend password reset mail** on the **Reset your password** page. You can always get to this page by clicking **Forgot your password?** on the login page.
+If you don't receive the reset email, click **Resend password reset mail** on the **Reset your password** page. You can always get to this page by clicking **Forgot your password?** on the login page.
 
 If your reset link has expired, request a new password again by clicking **Forgot your password?** on the login page.
 
-You can't change or request a password reset within 60 minutes of changing the old password.
+You can't change your password, or request a password reset, within 60 minutes of changing the old password.
 
-If you request a password reset for a non-existing user, the request will fail silently for security reasons.
+If you request a password reset for a non-existent user, the request fails silently for security reasons.
 
 <!--
 ## View user details

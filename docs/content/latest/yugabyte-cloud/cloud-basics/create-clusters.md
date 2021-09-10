@@ -38,11 +38,11 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-Use the **Free** cluster to get started with YugabyteDB. Although not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
+Use the **Free** cluster to get started with YugabyteDB. Although it's not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
 
 - Single node
-- Depending on the cloud provider, up to 2 vCPUs and 10 GB of storage
-- Limit of one per account
+- Up to 2 vCPUs and 10 GB of storage, depending on the cloud provider
+- Limit of one free cluster per account
 
 **Paid** clusters support multi-node and highly available deployments and include the following features:
 
@@ -52,7 +52,7 @@ Use the **Free** cluster to get started with YugabyteDB. Although not suitable f
 - Automated and on-demand backups
 - Create as many as you need
 
-If you have not already provided payment information, you will need to add it before you can create a paid cluster.
+If you haven't already provided payment information, you'll need to add it before you can create a paid cluster.
 
 ![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster1-type.png)
 

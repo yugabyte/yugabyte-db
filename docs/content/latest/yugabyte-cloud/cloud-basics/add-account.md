@@ -55,7 +55,7 @@ The console has the following main sections, accessed via the left menu:
 
 - [Clusters](../../cloud-clusters/)
     \
-    Add clusters, and view and configure settings of existing clusters. 
+    Add clusters, and view and configure settings for existing clusters. 
 
 - [Network Access](../../cloud-network)
     \
