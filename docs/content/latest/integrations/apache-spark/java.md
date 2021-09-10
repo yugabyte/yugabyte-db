@@ -249,4 +249,4 @@ updatedRows.write().format("org.apache.spark.sql.cassandra").option("keyspace", 
 
 Set to true to cause all null values to be left as unset rather than bound.
 
-For example, for `{"dl": null, "ul":"foo"}`, if `spark.cassandra.output.ignoreNulls` is specified, the value null would be omitted for field `dl` when writing (merging) into the corresponding JSONB column, as though field `dl` didn't appear in the input.
+For example, for `{"dl": null, "ul":"foo"}`, if `spark.cassandra.output.ignoreNulls` is specified, only the `ul` field gets written (merged) into the corresponding JSONB column, and the `dl` field is ignored.
