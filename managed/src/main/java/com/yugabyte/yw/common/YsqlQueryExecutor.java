@@ -5,7 +5,9 @@ import static play.libs.Json.toJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -30,6 +32,9 @@ public class YsqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YsqlQueryExecutor.class);
   private static final String DEFAULT_DB_USER = "yugabyte";
   private static final String DEFAULT_DB_PASSWORD = "yugabyte";
+  private static final String DB_ADMIN_ROLE_NAME = "yb_superuser";
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   private String getQueryType(String queryString) {
     String[] queryParts = queryString.split(" ");
@@ -103,20 +108,75 @@ public class YsqlQueryExecutor {
     return response;
   }
 
-  public void createUser(Universe universe, DatabaseUserFormData data) {
+  public JsonNode runQueryUtil(Universe universe, DatabaseUserFormData data, String query) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     // Create user for customer YSQL.
-    ysqlQuery.query =
-        String.format(
-            "CREATE USER \"%s\" SUPERUSER INHERIT CREATEROLE "
-                + "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD '%s'",
-            data.username, Util.escapeSingleQuotesOnly(data.password));
+    ysqlQuery.query = query;
     ysqlQuery.db_name = data.dbName;
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
-    LOG.info("Creating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
       throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+    }
+    return ysqlResponse;
+  }
+
+  public void createUser(Universe universe, DatabaseUserFormData data) {
+
+    boolean isCloudEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    JsonNode ysqlResponse;
+
+    if (isCloudEnabled) {
+      // Create admin role if it doesn't exist already
+      ysqlQuery.query =
+          String.format(
+              "CREATE ROLE \"%s\" INHERIT CREATEROLE CREATEDB BYPASSRLS", DB_ADMIN_ROLE_NAME);
+      ysqlQuery.db_name = data.dbName;
+      ysqlResponse =
+          executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
+      LOG.info("Creating YSQL admin role, result: " + ysqlResponse.toString());
+      if (ysqlResponse.has("error")) {
+        String roleError = ysqlResponse.get("error").asText();
+        if (!roleError.toUpperCase().contains("ALREADY EXISTS")) {
+          throw new YWServiceException(Http.Status.BAD_REQUEST, roleError);
+        } else {
+          LOG.info(
+              "Creating YSQL admin role, ignoring error for existing role: {}",
+              ysqlResponse.toString());
+        }
+      } else {
+        ysqlResponse =
+            runQueryUtil(
+                universe,
+                data,
+                String.format("GRANT pg_signal_backend TO \"%s\"", DB_ADMIN_ROLE_NAME));
+        LOG.info("GRANT privs to admin role, result {}", ysqlResponse.toString());
+      }
+    }
+
+    ysqlResponse =
+        runQueryUtil(
+            universe,
+            data,
+            String.format(
+                "CREATE USER \"%s\" INHERIT CREATEROLE CREATEDB LOGIN BYPASSRLS PASSWORD '%s'",
+                data.username, Util.escapeSingleQuotesOnly(data.password)));
+    LOG.info("Creating YSQL user {}, result: {}", data.username, ysqlResponse.toString());
+    if (ysqlResponse.has("error")) {
+      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+    }
+
+    if (isCloudEnabled) {
+      ysqlResponse =
+          runQueryUtil(
+              universe,
+              data,
+              String.format(
+                  "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username));
+      LOG.info("Grant admin role to user {}, result: {}", data.username, ysqlResponse.toString());
     }
   }
 
