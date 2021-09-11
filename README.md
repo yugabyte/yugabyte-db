@@ -2,6 +2,9 @@
 ![pg12-test](https://github.com/percona/pg_stat_monitor/workflows/pg12-test/badge.svg)
 ![pg13-test](https://github.com/percona/pg_stat_monitor/workflows/pg13-test/badge.svg)
 ![pg14-test](https://github.com/percona/pg_stat_monitor/workflows/pg14-test/badge.svg)
+![pg11package-test](https://github.com/percona/pg_stat_monitor/workflows/pg11package-test/badge.svg)
+![pg12package-test](https://github.com/percona/pg_stat_monitor/workflows/pg12package-test/badge.svg)
+![pg13package-test](https://github.com/percona/pg_stat_monitor/workflows/pg13package-test/badge.svg)
 
 [![Coverage Status](https://coveralls.io/repos/github/percona/pg_stat_monitor/badge.svg)](https://coveralls.io/github/percona/pg_stat_monitor)
 
