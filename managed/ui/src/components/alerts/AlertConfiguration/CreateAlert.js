@@ -19,6 +19,8 @@ import { connect } from 'react-redux';
 import '../CreateAlerts.scss';
 import { AlertsPolicy } from './AlertsPolicy';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { getAlertConfigByName } from '../../../actions/customers';
+import { toast } from 'react-toastify';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
@@ -112,8 +114,17 @@ const CreateAlert = (props) => {
    * @param {Formvalues} values
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
-  const handleOnSubmit = (values) => {
+  const handleOnSubmit = async (values) => {
     const cUUID = localStorage.getItem('customerId');
+
+    if(values.type !== 'update' || values['ALERT_CONFIGURATION_NAME'] !== initialValues['ALERT_CONFIGURATION_NAME']){
+      const alertListByName = await getAlertConfigByName(values['ALERT_CONFIGURATION_NAME'])
+      if(alertListByName.data.length !== 0){
+        toast.error(`Alert with name "${values['ALERT_CONFIGURATION_NAME']}" already exists!`)
+        return;
+      }
+    }
+
     const payload = {
       uuid: values.type === 'update' ? values.uuid : null,
       customerUUID: cUUID,
