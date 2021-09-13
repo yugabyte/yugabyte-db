@@ -2935,6 +2935,14 @@ void TabletServiceImpl::GetSplitKey(
   });
 }
 
+void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
+                                      GetSharedDataResponsePB* resp,
+                                      rpc::RpcContext context) {
+  auto& data = dynamic_cast<DbServerBase*>(server_)->shared_object();
+  resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 
@@ -2971,7 +2979,6 @@ void TabletServerForwardServiceImpl::Read(const ReadRequestPB* req,
     std::make_shared<ForwardReadRpc>(req, resp, std::move(context), server_->client());
   forward_rpc->SendRpc();
 }
-
 
 }  // namespace tserver
 }  // namespace yb
