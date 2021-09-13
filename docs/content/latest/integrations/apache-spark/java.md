@@ -166,7 +166,7 @@ assertTrue(explain_text.contains(
 ### JSONB Upsert
 
 The JSONB upsert functionality in the YugabyteDB Apache Spark connector supports merging data into existing JSONB columns instead of overwriting the existing data.
- 
+
 Data for fields in JSONB columns may be collected at multiple points in time. For subsequent loading of partial data (apart from the first batch), you may not want to overwrite existing data for the fields.
 
 Using the upsert functionality, subsequent data can be merged with existing data (for the given row key). This provides flexibility to aggregate data after multiple rounds of loading.
@@ -210,9 +210,9 @@ Here is sample content of the dataset:
 #### Configuring JSONB upsert
 
 ##### spark.cassandra.json.quoteValueString
- 
+
 Specifies whether the JSONB field values should be quoted as string. Defaults to false (since this is not space efficient).
- 
+
 The option allows you to preserve floating point precision for JSONB fields. For un-quoted non-numeric values, double quotes are added. Otherwise the values would be rejected by YCQL.
 
 Here is an example - note the quotes around 100.1:
@@ -229,17 +229,15 @@ Here is an example - note the quotes around 100.1:
 ```
 
 ##### spark.cassandra.mergeable.json.column.mapping
- 
+
 The JSONB field to column mapping of JSONB values should adopt merge semantics when writing.
- 
+
 Each mapping starts with the field names, separated by comma, then a colon, followed by the JSONB column name. The mappings are separated by semicolons.
 
-For example, if `{"dl": 5, "ul":"foo"}` is stored in the JSONB column `usage`, and `{"x": "foo", "y":"bar"}` is stored in the JSONB column `z`, the mapping would be expressed as `dl,ul:usage;x,y:z`.
+For example, if `{"dl": 5, "ul":"foo"}` is stored in the JSONB column `usage`, and `{"x": "foo", "y":"bar"}` is stored in the JSONB column `z`, the mapping would be expressed as `dl,ul:usage;x,y:z`, where `dl` and `ul` are fields in the `usage` column, and `x` and `y` are fields in the `z` column.
 
-where `dl` and `ul` are fields in the `usage` column, and `x` and `y` are fields in the `z` column.
- 
 This mapping is for dataframe `save()` operations where you specify the JSONB column(s) that the given JSON fields map to. 
- 
+
 When binding individual rows, missing JSONB field values are set to `null`. This allows data in the csv file to load uninterrupted. To turn off this behaviour, use `spark.cassandra.output.ignoreNulls`.
 
 The following example code uses mapping:
