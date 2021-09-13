@@ -78,7 +78,6 @@ Only the cloud account Admin user can perform Admin tasks.
     </a>
   </div>
 
-<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-billing-costs/">
       <div class="head">
@@ -90,7 +89,7 @@ Only the cloud account Admin user can perform Admin tasks.
       </div>
     </a>
   </div>
--->
+
 <!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="reports/">
