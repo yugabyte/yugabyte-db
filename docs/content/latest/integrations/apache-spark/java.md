@@ -218,7 +218,14 @@ The option allows you to preserve floating point precision for JSONB fields. For
 Here is an example - note the quotes around 100.1:
 
 ```json
-"dl":1122,"rsrp":["abc","rsrq":null,"sinr":"100.1"]
+{
+  "dl":1122,
+  "rsrp": [
+    "abc",
+    { "rsrq": null },
+    { "sinr":"100.1" }
+  ]
+}
 ```
 
 ##### spark.cassandra.mergeable.json.column.mapping
