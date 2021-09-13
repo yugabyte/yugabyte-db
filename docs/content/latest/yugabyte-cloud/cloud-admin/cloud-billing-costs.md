@@ -35,6 +35,10 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 | Data transfer – Cross Region (Other regions) | 10 GB |
 | Data transfer – Internet | 10 GB |
 
+You can see the approximate cost for your vCPUs when creating and editing clusters, as shown in the following illustration. Refer to [Creating a cluster](../../cloud-basics/create-clusters) and [Scale and configure clusters](../../cloud-clusters/configure-clusters).
+
+![Cloud Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
+
 ## Instance vCPU capacity costs
 
 Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your cloud account. 
@@ -45,7 +49,7 @@ $0.25/hour ($.00416666666/minute)
 
 {{< /tip >}}
 
-To reduce this cost, create your cluster to use fewer resources. You can see the approximate cost for your vCPUs while creating and editing a cluster.
+To reduce this cost, reduce the number of vCPUs. This may impact performance.
 
 ### Calculating instance minutes
 
