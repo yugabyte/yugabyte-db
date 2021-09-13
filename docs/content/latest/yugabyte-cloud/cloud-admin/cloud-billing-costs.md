@@ -24,7 +24,7 @@ Your bill is calculated based on your usage of the following cloud dimensions:
 - Backup storage
 - Data transfer
 
-Instance vCPU capacity makes up the majority of your bill, and is the easiest to understand and control. It's purely a function of your total number of vCPUs used and the time they have been running for. The cluster's per-hour charge includes free allowances for disk storage, backup storage, and data transfer. If you use beyond the free allowance, you incur overages on top of the base vCPU capacity cost. 
+Instance vCPU capacity makes up the majority of your bill, and is the easiest to understand and control. It's purely a function of your total number of vCPUs used and the amount of time they have been running. The cluster's per-hour charge includes free allowances for disk storage, backup storage, and data transfer. If you use beyond the free allowance, you incur overages on top of the base vCPU capacity cost. 
 
 | Dimension | Allowance/vCPU per month |
 |---|---|
@@ -49,7 +49,7 @@ $0.25/hour ($.00416666666/minute)
 
 {{< /tip >}}
 
-To reduce this cost, reduce the number of vCPUs. This may impact performance.
+You can reduce the cost by reducing the number of vCPUs, which may have a negative impact on performance.
 
 ### Calculating instance minutes
 
