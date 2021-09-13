@@ -129,6 +129,7 @@ public class BackupsController extends AuthenticatedController {
     }
 
     taskParams.universeUUID = universeUUID;
+    taskParams.customerUuid = customerUUID;
 
     // Change the BackupTableParams in list to be "RESTORE" action type
     if (taskParams.backupList != null) {
@@ -152,7 +153,6 @@ public class BackupsController extends AuthenticatedController {
           BAD_REQUEST, "Restore table request must specify keyspace.");
     }
 
-    Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     LOG.info(
         "Submitted task to RESTORE table backup to {}.{} with config {} from {}, task uuid = {}.",
@@ -161,7 +161,6 @@ public class BackupsController extends AuthenticatedController {
         storageConfig.configName,
         taskParams.storageLocation,
         taskUUID);
-    newBackup.setTaskUUID(taskUUID);
     if (taskParams.getTableName() != null) {
       CustomerTask.create(
           customer,

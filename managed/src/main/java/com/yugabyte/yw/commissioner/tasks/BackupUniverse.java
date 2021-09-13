@@ -100,7 +100,6 @@ public class BackupUniverse extends UniverseTaskBase {
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
@@ -109,6 +108,11 @@ public class BackupUniverse extends UniverseTaskBase {
       // already having a backup in progress.
       if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {
         lockedUpdateBackupState(taskParams().universeUUID, this, true);
+      } else {
+        // Check if the backup is in progress while other backup operations.
+        if (universe.getUniverseDetails().backupInProgress) {
+          throw new RuntimeException("A backup for this universe is already in progress.");
+        }
       }
       try {
         UserTaskDetails.SubTaskGroupType groupType;

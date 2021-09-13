@@ -81,6 +81,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST105");
     backupTableParams.storageConfigUUID = customerConfig.configUUID;
+    backupTableParams.customerUuid = defaultCustomer.uuid;
     defaultBackup = Backup.create(defaultCustomer.uuid, backupTableParams);
     defaultBackup.setTaskUUID(taskUUID);
   }
@@ -342,11 +343,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
     assertEquals(Restore, ct.getType());
-    Backup backup = Backup.fetchAllBackupsByTaskUUID(fakeTaskUUID).get(0);
-    assertNotEquals(b.backupUUID, backup.backupUUID);
-    assertNotNull(backup);
-    assertEquals(backup.getBackupInfo().actionType, RESTORE);
-    assertEquals(backup.getBackupInfo().storageLocation, "s3://foo/bar");
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 

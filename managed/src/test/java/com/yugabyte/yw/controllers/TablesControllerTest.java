@@ -48,13 +48,11 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
@@ -636,20 +634,11 @@ public class TablesControllerTest extends FakeDBApplication {
     System.out.println(result);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
-    String storageRegex =
-        "s3://foo/univ-"
-            + universe.universeUUID
-            + "/backup-"
-            + "\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
-    assertThat(taskParams.getValue().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    Backup backup = Backup.fetchAllBackupsByTaskUUID(fakeTaskUUID).get(0);
-    assertNotNull(backup);
-    assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -684,19 +673,11 @@ public class TablesControllerTest extends FakeDBApplication {
         FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
-    String storageRegex =
-        "s3://foo/univ-"
-            + universe.universeUUID
-            + "/backup-\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\-\\d+/table-foo.bar-[a-zA-Z0-9]*";
-    assertThat(taskParams.getValue().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    Backup backup = Backup.fetchAllBackupsByTaskUUID(fakeTaskUUID).get(0);
-    assertNotNull(backup);
-    assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
     assertAuditEntry(1, customer.uuid);
   }
 
