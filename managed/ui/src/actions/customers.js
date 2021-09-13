@@ -580,6 +580,11 @@ export function deleteAlertConfig(uuid) {
   };
 }
 
+export function getAlertConfigByName(name) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, {name});
+}
+
 export function getAlertChannels() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alert_channels`);
