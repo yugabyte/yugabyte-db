@@ -33,6 +33,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
@@ -526,6 +527,11 @@ class PgApiImpl {
 
   // YBClient is to communicate with either master or tserver.
   yb::client::AsyncClientInitialiser async_client_init_;
+
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+
+  // TODO Rename to client_ when YBClient is removed.
+  PgClient pg_client_;
 
   // TODO(neil) Map for environments (we should have just one ENV?). Environments should contain
   // all the custom flags the PostgreSQL sets. We ignore them all for now.
