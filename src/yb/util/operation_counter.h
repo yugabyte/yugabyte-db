@@ -149,7 +149,7 @@ class ScopedRWOperation {
   void Reset();
 
   std::string resource_name() const {
-    return data_.resource_name_;
+    return data_.counter_ ? data_.counter_->resource_name() : "null";
   }
  private:
   struct Data {
@@ -186,6 +186,10 @@ class ScopedRWOperationPause {
   ~ScopedRWOperationPause();
 
   void Reset();
+
+  std::string resource_name() const {
+    return data_.counter_ ? data_.counter_->resource_name() : "null";
+  }
 
   void operator=(ScopedRWOperationPause&& p) {
     Reset();
