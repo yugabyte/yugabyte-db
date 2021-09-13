@@ -1192,7 +1192,8 @@ class YBBackup:
                     '{}/{}:{}'.format(
                         k8s_details.namespace, k8s_details.pod_name, self.get_tmp_dir()),
                     '-c',
-                    k8s_details.container
+                    k8s_details.container,
+                    '--no-preserve=true'
                 ], env=k8s_details.env_config)
             elif not self.args.no_ssh:
                 if self.needs_change_user():
