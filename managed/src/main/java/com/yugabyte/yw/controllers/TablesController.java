@@ -496,6 +496,7 @@ public class TablesController extends AuthenticatedController {
 
     taskParams.universeUUID = universeUUID;
     taskParams.tableUUID = tableUUID;
+    taskParams.customerUuid = customerUUID;
 
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule =
@@ -514,14 +515,12 @@ public class TablesController extends AuthenticatedController {
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return PlatformResults.withData(schedule);
     } else {
-      Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
       LOG.info(
           "Submitted task to backup table {}:{}, task uuid = {}.",
           tableUUID,
           taskParams.getTableName(),
           taskUUID);
-      backup.setTaskUUID(taskUUID);
       CustomerTask.create(
           customer,
           taskParams.universeUUID,
@@ -536,7 +535,7 @@ public class TablesController extends AuthenticatedController {
           taskParams.getTableNames(),
           taskParams.getTableName());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-      return new YBPTask(taskUUID, backup.backupUUID).asResult();
+      return new YBPTask(taskUUID).asResult();
     }
   }
 
