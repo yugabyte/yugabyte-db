@@ -21,6 +21,7 @@
 #include "yb/client/client.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/mini_master.h"
+#include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/test_util.h"
 #include "yb/util/memory/mc_types.h"
@@ -80,6 +81,7 @@ class PggateTest : public YBTest {
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;
+  tserver::TServerSharedObject tserver_shared_object_;
 };
 
 //--------------------------------------------------------------------------------------------------

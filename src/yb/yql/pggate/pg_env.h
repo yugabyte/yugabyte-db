@@ -24,79 +24,12 @@
 #include <memory>
 #include <string>
 
-#include <boost/functional/hash/hash.hpp>
-
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {
-
-// Postgres object identifier (OID).
-typedef uint32_t PgOid;
-static constexpr PgOid kPgInvalidOid = 0;
-static constexpr PgOid kPgByteArrayOid = 17;
-
-// A struct to identify a Postgres object by oid and the database oid it belongs to.
-struct PgObjectId {
-  PgOid database_oid = kPgInvalidOid;
-  PgOid object_oid = kPgInvalidOid;
-
-  PgObjectId(PgOid db_oid, PgOid obj_oid)
-      : database_oid(db_oid), object_oid(obj_oid) {}
-  PgObjectId()
-      : database_oid(kPgInvalidOid), object_oid(kPgInvalidOid) {}
-  explicit PgObjectId(const TableId& table_id) {
-    auto res = GetPgsqlDatabaseOidByTableId(table_id);
-    if (res.ok()) {
-      database_oid = res.get();
-    }
-    res = GetPgsqlTableOid(table_id);
-    if (res.ok()) {
-      object_oid = res.get();
-    } else {
-      // Reset the previously set database_oid.
-      database_oid = kPgInvalidOid;
-    }
-  }
-
-  bool IsValid() const {
-    return database_oid != kPgInvalidOid && object_oid != kPgInvalidOid;
-  }
-
-  TableId GetYBTableId() const {
-    return GetPgsqlTableId(database_oid, object_oid);
-  }
-
-  TablegroupId GetYBTablegroupId() const {
-    return GetPgsqlTablegroupId(database_oid, object_oid);
-  }
-
-  TablespaceId GetYBTablespaceId() const {
-    return GetPgsqlTablespaceId(object_oid);
-  }
-
-  std::string ToString() const {
-    return Format("{$0, $1}", database_oid, object_oid);
-  }
-
-  bool operator== (const PgObjectId& other) const {
-    return database_oid == other.database_oid && object_oid == other.object_oid;
-  }
-
-  friend std::size_t hash_value(const PgObjectId& id) {
-    std::size_t value = 0;
-    boost::hash_combine(value, id.database_oid);
-    boost::hash_combine(value, id.object_oid);
-    return value;
-  }
-};
-
-typedef boost::hash<PgObjectId> PgObjectIdHash;
-
-inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
-  return out << id.ToString();
-}
 
 //------------------------------------------------------------------------------------------------
 

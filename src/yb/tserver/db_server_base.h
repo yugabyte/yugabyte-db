@@ -42,11 +42,11 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
   virtual client::LocalTabletFilter CreateLocalTabletFilter() = 0;
 
- protected:
   tserver::TServerSharedData& shared_object() {
     return *shared_object_;
   }
 
+ protected:
   // Shared memory owned by the tablet server.
   tserver::TServerSharedObject shared_object_;
 

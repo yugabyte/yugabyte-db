@@ -388,7 +388,7 @@ void Peer::ProcessResponse() {
     return;
   }
 
-  auto s = StatusFromResponse(response_);
+  auto s = ResponseStatus(response_);
   if (!s.ok() &&
       tserver::TabletServerError(s) == tserver::TabletServerErrorPB::TABLET_NOT_RUNNING &&
       tablet::RaftGroupStateError(s) == tablet::RaftGroupStatePB::FAILED) {

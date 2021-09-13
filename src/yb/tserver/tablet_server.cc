@@ -53,6 +53,7 @@
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
@@ -131,6 +132,7 @@ DEFINE_bool(start_pgsql_proxy, false,
 
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 DECLARE_int32(num_concurrent_backfills_allowed);
+DECLARE_int32(svc_queue_length_default);
 
 namespace yb {
 namespace tserver {
@@ -337,6 +339,12 @@ Status TabletServer::RegisterServices() {
   LOG(INFO) << "yb::tserver::ForwardServiceImpl created at " << forward_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
                                                      std::move(forward_service)));
+
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      FLAGS_svc_queue_length_default,
+      std::make_unique<PgClientServiceImpl>(
+          tablet_manager_->client_future(), std::bind(&TabletServer::TransactionPool, this),
+          metric_entity())));
 
   return Status::OK();
 }

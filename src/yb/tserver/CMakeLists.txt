@@ -71,6 +71,25 @@ ADD_YB_LIBRARY(backup_proto
   NONLINK_DEPS ${BACKUP_YRPC_TGTS})
 
 #########################################
+# pg_client_proto
+#########################################
+
+YRPC_GENERATE(
+  PG_CLIENT_YRPC_SRCS PG_CLIENT_YRPC_HDRS PG_CLIENT_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES pg_client.proto)
+set(PG_CLIENT_YRPC_LIBS
+  master_proto
+  pgsql_protocol_proto
+  wire_protocol_proto
+  yrpc)
+ADD_YB_LIBRARY(pg_client_proto
+  SRCS ${PG_CLIENT_YRPC_SRCS}
+  DEPS ${PG_CLIENT_YRPC_LIBS}
+  NONLINK_DEPS ${PG_CLIENT_YRPC_TGTS})
+
+#########################################
 # tserver_proto
 #########################################
 
@@ -180,6 +199,7 @@ set(TSERVER_SRCS
   heartbeater_factory.cc
   metrics_snapshotter.cc
   mini_tablet_server.cc
+  pg_client_service.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc

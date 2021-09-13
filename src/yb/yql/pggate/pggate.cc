@@ -217,11 +217,19 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
     });
   }
   async_client_init_.Start();
+
+  if (tserver_shared_object_) {
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_holder_.messenger.get());
+    pg_client_.Start(proxy_cache_.get(), *tserver_shared_object_);
+  }
 }
 
 PgApiImpl::~PgApiImpl() {
   messenger_holder_.messenger->Shutdown();
   async_client_init_.client()->Shutdown();
+  if (tserver_shared_object_) {
+    pg_client_.Shutdown();
+  }
 }
 
 const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
@@ -250,6 +258,7 @@ Status PgApiImpl::InitSession(const PgEnv *pg_env,
                               const string& database_name) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(client(),
+                                               &pg_client_,
                                                database_name,
                                                pg_txn_manager_,
                                                clock_,
@@ -461,7 +470,10 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
                               const uint32_t count,
                               PgOid *begin_oid,
                               PgOid *end_oid) {
-  return pg_session_->ReserveOids(database_oid, next_oid, count, begin_oid, end_oid);
+  auto p = VERIFY_RESULT(pg_client_.ReserveOids(database_oid, next_oid, count));
+  *begin_oid = p.first;
+  *end_oid = p.second;
+  return Status::OK();
 }
 
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {

@@ -33,6 +33,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
+#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
@@ -111,6 +112,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(client::YBClient* client,
+            PgClient* pg_client,
             const string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
@@ -144,12 +146,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
   client::YBNamespaceAlterer *NewNamespaceAlterer(const std::string& namespace_name,
                                                   PgOid database_oid);
-
-  CHECKED_STATUS ReserveOids(PgOid database_oid,
-                             PgOid nexte_oid,
-                             uint32_t count,
-                             PgOid *begin_oid,
-                             PgOid *end_oid);
 
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
@@ -343,6 +339,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
+  PgClient& pg_client() const {
+    return pg_client_;
+  }
+
  private:
   using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;
 
@@ -401,6 +401,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // YBSession to execute operations.
   std::shared_ptr<client::YBSession> session_;
+
+  PgClient& pg_client_;
 
   // Connected database.
   std::string connected_database_;

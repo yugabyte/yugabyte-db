@@ -317,9 +317,29 @@ struct MinRunningRequestIdTag : yb::IntegralErrorTag<int64_t> {
 
 typedef yb::StatusErrorCodeImpl<MinRunningRequestIdTag> MinRunningRequestIdStatusData;
 
-template <class Resp>
-CHECKED_STATUS StatusFromResponse(const Resp& resp) {
-  return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
+HAS_MEMBER_FUNCTION(error);
+HAS_MEMBER_FUNCTION(status);
+
+template<class Response>
+CHECKED_STATUS ResponseStatus(
+    const Response& response,
+    typename std::enable_if<HasMemberFunction_error<Response>::value, void*>::type = nullptr) {
+  // Response has has_error method, use status from it.
+  if (response.has_error()) {
+    return StatusFromPB(response.error().status());
+  }
+  return Status::OK();
+}
+
+template<class Response>
+CHECKED_STATUS ResponseStatus(
+    const Response& response,
+    typename std::enable_if<HasMemberFunction_status<Response>::value &&
+                            !HasMemberFunction_error<Response>::value, void*>::type = nullptr) {
+  if (response.has_status()) {
+    return StatusFromPB(response.status());
+  }
+  return Status::OK();
 }
 
 struct SplitChildTabletIdsTag : yb::StringVectorBackedErrorTag {
