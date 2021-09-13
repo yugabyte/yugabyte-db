@@ -184,7 +184,7 @@ Yugabyte meters and bills data transfer using the following three dimensions.
 
 This accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
 
-Single-node (fault tolerance of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
+Single-node ([fault tolerance](../../cloud-basics/create-clusters#cluster-settings) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
 
 {{< tip title="Rate card" >}}
 
@@ -196,7 +196,7 @@ You receive a free allowance of 1000 GB per month for every 1 vCPU per month use
 
 ### Cross region 
 
-This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using VPC peering but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions. 
+This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC peering](../../cloud-network/vpc-peers/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions. 
 
 {{< tip title="Rate card" >}}
 
@@ -224,7 +224,7 @@ You receive a free allowance of 10GB per month for every 1 vCPU per month used i
 
 - Ensure that queries originate from the same cloud region and provider as your database deployment whenever possible.
 
-  - Avoid data out internet costs by using VPC Peering (insert link) and not allowing any client applications to connect over the public internet.
+  - Avoid data out internet costs by using [VPC peering](../../cloud-network/vpc-peers/) and not allowing any client applications to connect over the public internet.
 
   - Minimize data out cross region costs by making sure your client application and database cluster are deployed in the same cloud and region and connected using VPC Peering.
 
