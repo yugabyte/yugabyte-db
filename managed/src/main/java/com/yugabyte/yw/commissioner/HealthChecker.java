@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import java.util.ArrayList;
@@ -640,7 +641,9 @@ public class HealthChecker {
       LOG.warn("Skipping universe " + params.universe.name + " as it is in the paused state...");
       return;
     }
-    if (details.updateInProgress) {
+    if (details.updateInProgress
+        && details.updatingTask != TaskType.BackupTable
+        && details.updatingTask != TaskType.MultiTableBackup) {
       LOG.warn("Skipping universe " + params.universe.name + " due to task in progress...");
       return;
     }

@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,7 +38,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       log.info(
           "Delete Node with name {} from universe {}",
           taskParams().nodeName,

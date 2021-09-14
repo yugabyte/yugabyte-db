@@ -45,7 +45,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;

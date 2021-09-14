@@ -19,7 +19,6 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.common.Util.lockedUpdateBackupState;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
-import static org.yb.Common.TableType;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -46,6 +45,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.Common.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
