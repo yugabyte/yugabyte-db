@@ -29,6 +29,8 @@ from six import string_types, PY2, PY3
 
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
+ALERT_ENHANCEMENTS_RELEASE = "2.6.0.0"
+RELEASE_VERSION_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)(.*)"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -317,6 +319,7 @@ class NodeChecker():
         return self._remote_check_output(remote_cmd)
 
     def check_certificate_expiration(self, cert_name, cert_path):
+        logging.info("Checking {} certificate on node {}".format(cert_name, self.node))
         e = self._new_entry(cert_name + " Cert Expiry Days")
         ssl_installed = self.additional_info.get("ssl_installed:" + self.node)
         if ssl_installed is not None and not ssl_installed:
@@ -399,7 +402,8 @@ class NodeChecker():
             message = str(ex)
             return "Error querying for version: " + message
 
-    def check_yb_version(self, ip_address, port, expected):
+    def check_yb_version(self, ip_address, process, port, expected):
+        logging.info("Checking YB Version on node {} process {}".format(self.node, process))
         e = self._new_entry("YB Version")
 
         output = self.get_yb_version('{}:{}'.format(ip_address, port))
@@ -421,10 +425,12 @@ class NodeChecker():
         return e.fill_and_return_entry([version])
 
     def check_master_yb_version(self, process):
-        return self.check_yb_version(self.node, self.master_http_port, self.universe_version)
+        return self.check_yb_version(
+            self.node, process, self.master_http_port, self.universe_version)
 
     def check_tserver_yb_version(self, process):
-        return self.check_yb_version(self.node, self.tserver_http_port, self.universe_version)
+        return self.check_yb_version(
+            self.node, process, self.tserver_http_port, self.universe_version)
 
     def check_for_fatal_logs(self, process):
         logging.info("Checking for fatals on node {}".format(self.node))
@@ -689,6 +695,31 @@ def local_time():
     return datetime.utcnow().replace(tzinfo=tz.tzutc())
 
 
+def is_equal_or_newer_release(current_version, threshold_version):
+    if not current_version:
+        return False
+
+    c_match = re.match(RELEASE_VERSION_PATTERN, current_version)
+    t_match = re.match(RELEASE_VERSION_PATTERN, threshold_version)
+
+    if c_match is None:
+        raise RuntimeError("Invalid universe version format: {}".format(current_version))
+    if t_match is None:
+        raise RuntimeError("Invalid threshold version format: {}".format(threshold_version))
+
+    for i in range(1, 5):
+        c = int(c_match.group(i))
+        t = int(t_match.group(i))
+        if c < t:
+            # If any component is behind, the whole version is older.
+            return False
+        elif c > t:
+            # If any component is ahead, the whole version is newer.
+            return True
+    # If all components were equal, then the versions are compatible.
+    return True
+
+
 ###################################################################################################
 # Multi-threaded handling and main
 ###################################################################################################
@@ -841,6 +872,8 @@ def main():
         # Technically, each cluster can have its own version, but in practice,
         # we disallow that in YW.
         universe_version = universe.clusters[0].yb_version if universe.clusters else None
+        alert_enhancements_version = is_equal_or_newer_release(
+            universe_version, ALERT_ENHANCEMENTS_RELEASE)
         report = Report(universe_version)
         for c in universe.clusters:
             master_nodes = c.master_nodes
@@ -862,12 +895,14 @@ def main():
                 if node in master_nodes:
                     coordinator.add_check(
                         checker, "check_uptime_for_process", "yb-master")
-                    coordinator.add_check(checker, "check_master_yb_version", "yb-master")
+                    if alert_enhancements_version:
+                        coordinator.add_check(checker, "check_master_yb_version", "yb-master")
                     coordinator.add_check(checker, "check_for_fatal_logs", "yb-master")
                 if node in tserver_nodes:
                     coordinator.add_check(
                         checker, "check_uptime_for_process", "yb-tserver")
-                    coordinator.add_check(checker, "check_tserver_yb_version", "yb-tserver")
+                    if alert_enhancements_version:
+                        coordinator.add_check(checker, "check_tserver_yb_version", "yb-tserver")
                     coordinator.add_check(checker, "check_for_fatal_logs", "yb-tserver")
                     # Only need to check redis-cli/cqlsh for tserver nodes
                     # to be docker/k8s friendly.
