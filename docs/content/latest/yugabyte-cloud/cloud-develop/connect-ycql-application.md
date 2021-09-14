@@ -33,9 +33,11 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have the following:
 
-- A Yugabyte Cloud cluster, with your database credentials (username and password).
-- Installed JDK version 1.8 or later.
-- Installed Maven 3.3 or later.
+- A Yugabyte Cloud cluster, with your database credentials (username and password)
+- JDK version 1.8 or later
+- Maven 3.3 or later
+
+Add your computer to the cluster IP allow list. Refer to [Assign IP allow lists](../../cloud-basics/add-connections).
 
 You also need to download and install your Yugabyte Cloud cluster CA certificate as follows:
 
@@ -44,14 +46,6 @@ You also need to download and install your Yugabyte Cloud cluster CA certificate
 1. Click **Connect to your Application**.
 
 1. Click **Download CA Cert** to download the cluster `root.crt` certificate to your computer.
-
-1. Generate a truststore using the downloaded root certificate.
-
-    ```sh
-    $ keytool -keystore ybtruststore -alias ybtruststore -import -file root.crt
-    ```
-
-1. Note the truststore password, it will be needed during application implementation.
 
 ### Create the project's POM
 
@@ -117,75 +111,81 @@ Create the appropriate directory structure as expected by Maven.
 $ mkdir -p src/main/java/com/yugabyte/sample/apps
 ```
 
-Initialize a custom SSLContext by loading the truststore created with the Yugabyte Cloud root certificate. You do this by adding the following `YugabyteSSLContext` class to your project. Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YugabyteSSLContext.java`.
-
-```java
-package com.yugabyte.sample.apps;
-
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.security.KeyStore;
-import java.security.SecureRandom;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManagerFactory;
-
-public class YugabyteSSLContext {
-
-  public SSLContext getSSLcontext(String trustStorePath, String trustStorePassword) throws Exception {
-    TrustManagerFactory tmf = null;
-    try (InputStream tsf = Files.newInputStream(Paths.get(trustStorePath))) {
-      KeyStore ts = KeyStore.getInstance("JKS");
-      ts.load(tsf, trustStorePassword.toCharArray());
-      tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-      tmf.init(ts);
-    }
-    
-    SSLContext sslContext = SSLContext.getInstance("SSL");
-    sslContext.init(null, tmf != null ? tmf.getTrustManagers() : null, new SecureRandom());
-    
-    return sslContext;
-  }
-}
-```
-
 Copy the following contents into the file `src/main/java/com/yugabyte/sample/apps/YBCqlHelloWorld.java`.
 
 ```java
 package com.yugabyte.sample.apps;
+import java.io.FileInputStream;
 import java.net.InetSocketAddress;
+import java.security.KeyStore;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.List;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
+
 public class YBCqlHelloWorld {
-    private static final String YUGABYTE_TRUSTSTORE_PATH = "src/main/resource/ybtruststore";
-    private static final String YUGABYTE_TRUSTSTORE_PASSWORD = "";
-    private static final String YCQL_USER = "";
-    private static final String YCQL_PASSWORD = "";
-    private static final String YUGABYTE_CLOUD_HOSTNAME = "";
+    // Load the Yugabyte cloud root certificate
+    private static SSLContext createSSLHandler(String certfile) {
+        try {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            FileInputStream fis = new FileInputStream(certfile);
+            X509Certificate ca;
+            try {
+              ca = (X509Certificate) cf.generateCertificate(fis);
+            } catch (Exception e) {
+              System.err.println("Exception generating certificate from input file: " + e);
+              return null;
+            } finally {
+              fis.close();
+            }
+
+            // Create a KeyStore containing our trusted CAs
+            String keyStoreType = KeyStore.getDefaultType();
+            KeyStore keyStore = KeyStore.getInstance(keyStoreType);
+            keyStore.load(null, null);
+            keyStore.setCertificateEntry("ca", ca);
+
+            // Create a TrustManager that trusts the CAs in our KeyStore
+            String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
+            tmf.init(keyStore);
+
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, tmf.getTrustManagers(), null);
+            return sslContext;
+        } catch (Exception e) {
+            System.err.println("Exception creating sslContext: " + e);
+            return null;
+        }
+    }
+
     public static void main(String[] args) {
         try {
-            // Instantiate YugabyteSSLContext and pass in the truststore details.
-            YugabyteSSLContext ybSSLContext = new YugabyteSSLContext();
-            SSLContext sslContext = ybSSLContext.getSSLcontext(YUGABYTE_TRUSTSTORE_PATH, YUGABYTE_TRUSTSTORE_PASSWORD);
+            if (args.length != 4) {
+                System.out.println("Usage YBCqlHelloWorld " +
+                    "<ip-address> <ssl_cert_path> <username> <password>");
+                System.exit(-1);
+            }
 
             // Create a YCQL client.
             CqlSession session = CqlSession
                 .builder()
-                .addContactPoint(new InetSocketAddress(YUGABYTE_CLOUD_HOSTNAME, 9042))
+                .addContactPoint(new InetSocketAddress(args[0], 9042))
+                .withSslContext(createSSLHandler(args[1]))
+                .withAuthCredentials(args[2], args[3])
                 .withLocalDatacenter("datacenter1")
-                .withSslContext(sslContext)
-                .withAuthCredentials(YCQL_USER, YCQL_PASSWORD)
                 .build();
             // Create keyspace 'ybdemo' if it does not exist.
             String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS ybdemo;";
             session.execute(createKeyspace);
             System.out.println("Created keyspace ybdemo");
             // Create table 'employee', if it does not exist.
-            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " + "name varchar, " +
-                "age int, " + "language varchar);";
+            String createTable = "CREATE TABLE IF NOT EXISTS ybdemo.employee (id int PRIMARY KEY, " + 
+                "name varchar, " + "age int, " + "language varchar);";
             session.execute(createTable);
             System.out.println("Created table employee");
             // Insert a row.
@@ -200,8 +200,8 @@ public class YBCqlHelloWorld {
             String name = rows.get(0).getString(0);
             int age = rows.get(0).getInt(1);
             String language = rows.get(0).getString(2);
-            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name + ", age=" + age +
-                ", language: " + language);
+            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name +
+                ", age=" + age + ", language: " + language);
             // Close the client.
             session.close();
         } catch (Exception e) {
@@ -211,31 +211,21 @@ public class YBCqlHelloWorld {
 }
 ```
 
-Replace the following variables in `YBCqlHelloWorld.java` with the appropriate values:
-
-| Variable | Description |
-|----------|-------------|
-| LocalDatacenter | The name of the local data center |
-| YUGABYTE_CLOUD_HOSTNAME | The hostname of your Yugabyte Cloud cluster |
-| YUGABYTE_TRUSTSTORE_PASSWORD | The password for the truststore |
-| YCQL_USER | Your Yugabyte database user name |
-| YCQL_PASSWORD | Your Yugabyte database password |
-
-To determine the `local` data center to use, run the following YCQL query from Yugabyte Cloud Shell:
+Edit the `.withLocalDatacenter` line (replace "datacenter1") to add the correct datacenter. To find the datacenter name, run the following YCQL query from Yugabyte Cloud Shell, and copy the `data_center` value:
 
 ```sql
 admin@ycqlsh:yugabyte> SELECT * FROM system.local;
 ```
 
-### Add the trustore to the project
+### Add the root certificate to the project
 
-To add the truststore you created to the application project, create a `resources` directory in your Java project.
+To add the root certificate you downloaded to the application project, create a `resources` directory in your Java project.
 
 ```sh
 $ mkdir -p src/main/resources
 ```
 
-Then copy the truststore `ybtruststore` into the `src/main/resources` directory.
+Then copy the root certificate `root.crt` into the `src/main/resources` directory.
 
 ### Build the project
 
@@ -252,10 +242,29 @@ You should see a `BUILD SUCCESS` message.
 To use the application, run the following command.
 
 ```sh
-$ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBCqlHelloWorld
+$ java -cp "target/hello-world-1.0.jar:target/lib/*" \
+    com.yugabyte.sample.apps.YBCqlHelloWorld \
+    [YUGABYTE_CLOUD_HOSTNAME] [ROOT_CERT_PATH] [YCQL_USER] [YCQL_PASSWORD]
 ```
 
-You should see the following as the output.
+Replace the following command line variables with the appropriate values:
+
+| Variable | Description |
+| :------- | :---------- |
+| YUGABYTE_CLOUD_HOSTNAME | The hostname of your Yugabyte Cloud cluster |
+| ROOT_CERT_PATH | The path to root.crt |
+| YCQL_USER | Your Yugabyte database username |
+| YCQL_PASSWORD | Your Yugabyte database password |
+
+For example:
+
+```sh
+$ java -cp "target/hello-world-1.0.jar:target/lib/*" \
+    com.yugabyte.sample.apps.YBCqlHelloWorld \
+    424242-cloud.yugabyte.com admin qwerty src/main/resources/root.crt
+```
+
+You should see the following output:
 
 ```output
 Created keyspace ybdemo
