@@ -72,26 +72,24 @@ The **Credits** section displays any credits applied to your account, including 
 
 ## Invoices
 
-At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed automatically to the address on the billing profile. If you are using a payment method other than credit card, the invoice will be settled out of band.
+At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed to the address on the billing profile. If you are using a payment method other than credit card, the invoice will be settled out of band.
 
-This section lists your current and past invoices, along with a summary of cloud usage.
-
-Select an invoice in the list to view a detailed breakdown of costs and usage details.
+This section lists your active and past invoices, along with a summary of cloud usage.
 
 ### Active Invoice
 
 Shows the billing details for the current billing cycle, including:
 
-- Running Total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
+- Running total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
 - Billing option - your billing plan (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
-- Previous invoice amount - the previous invoice paid amount.
+- Previous invoice - the amount of the previous invoice.
 - Last billed on - the date of the previous invoice.
-- This time last month: the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
+- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
 
 ### Invoice History
 
-Shows the invoice history with following details:
+Lists your invoices with following details:
 
 - Status - one of the following:
   - RUNNING - the invoice is for the current billing period.
@@ -104,9 +102,36 @@ Shows the invoice history with following details:
 - Invoice Period - billing period for the invoice.
 - Subtotal - total invoiced amount to be paid.
 
-To download the invoice as a PDF, click **Download PDF**.
+Select an invoice in the list to view the invoice **Summary**, which includes a detailed breakdown of costs and usage details. These details are also included on the invoice that is emailed to the billing address.
 
-### Usage summary
+To download the invoice as a PDF, click the **Download** icon.
+
+### Invoice summary
+
+To view invoice details, select an invoice in the **Invoice History** to display the **Summary**.
+
+To download the invoice as a PDF, click **Download Invoice**.
+
+The **Summary** shows the following invoice details:
+
+- Running total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
+- Billing option - your billing plan (pay-as-you-go or subscription).
+- Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
+- Previous invoice - the amount of the previous invoice.
+- Last billed on - the date of the previous invoice.
+- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
+- Payment status - whether the invoice was paid.
+- Payment date - the date the invoice was paid.
+- Payment method - the payment method used to pay the invoice.
+
+In addition, the **Summary by Usage** shows a breakdown of costs for each dimension, including:
+
+- The instance minutes, price, and amount.
+- Data storage overage in GB-hours, price, and amount.
+- Backup storage overage in GB-hours, price, and amount.
+- Data transfer overages in GB, price, and amount.
+
+For information on how your invoice is costed, refer to [Cluster costs](../cloud-billing-costs).
 
 <!--
 ## Cost Estimator
