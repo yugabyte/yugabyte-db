@@ -8,6 +8,8 @@ menu:
     identifier: apache-spark-3-python
     parent: integrations
     weight: 572
+showAsideToc: true
+isTocNested: true
 
 ---
 
