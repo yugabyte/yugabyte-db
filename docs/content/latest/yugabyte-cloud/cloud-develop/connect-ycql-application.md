@@ -33,9 +33,11 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have the following:
 
-- A Yugabyte Cloud cluster, with your database credentials (username and password).
-- Installed JDK version 1.8 or later.
-- Installed Maven 3.3 or later.
+- A Yugabyte Cloud cluster, with your database credentials (username and password)
+- JDK version 1.8 or later
+- Maven 3.3 or later
+
+Add your computer to the cluster IP allow list. Refer to [Assign IP allow lists](../../cloud-basics/add-connections).
 
 You also need to download and install your Yugabyte Cloud cluster CA certificate as follows:
 
@@ -164,8 +166,8 @@ public class YBCqlHelloWorld {
     public static void main(String[] args) {
         try {
             if (args.length != 4) {
-                System.out.println("Usage YBCqlHelloWorld 
-                    <ip-address> <ssl_cert_path> <username> <password>");
+                System.out.println("Usage YBCqlHelloWorld " +
+                    "<ip-address> <ssl_cert_path> <username> <password>");
                 System.exit(-1);
             }
 
@@ -198,8 +200,8 @@ public class YBCqlHelloWorld {
             String name = rows.get(0).getString(0);
             int age = rows.get(0).getInt(1);
             String language = rows.get(0).getString(2);
-            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name + ", age=" + age +
-                ", language: " + language);
+            System.out.println("Query returned " + rows.size() + " row: " + "name=" + name +
+                ", age=" + age + ", language: " + language);
             // Close the client.
             session.close();
         } catch (Exception e) {
@@ -209,7 +211,7 @@ public class YBCqlHelloWorld {
 }
 ```
 
-To determine the local data center to pass in for `withLocalDatacenter`, run the following YCQL query from Yugabyte Cloud Shell:
+Edit the `.withLocalDatacenter` line (replace "datacenter1") to add the correct datacenter. To find the datacenter name, run the following YCQL query from Yugabyte Cloud Shell, and copy the `data_center` value:
 
 ```sql
 admin@ycqlsh:yugabyte> SELECT * FROM system.local;
@@ -241,25 +243,25 @@ To use the application, run the following command.
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" \
-com.yugabyte.sample.apps.YBCqlHelloWorld \
-[YUGABYTE_CLOUD_HOSTNAME] [YCQL_USER] [YCQL_PASSWORD] [ROOT_CERT_PATH]
+    com.yugabyte.sample.apps.YBCqlHelloWorld \
+    [YUGABYTE_CLOUD_HOSTNAME] [ROOT_CERT_PATH] [YCQL_USER] [YCQL_PASSWORD]
 ```
 
 Replace the following command line variables with the appropriate values:
 
 | Variable | Description |
-|----------|-------------|
+| :------- | :---------- |
 | YUGABYTE_CLOUD_HOSTNAME | The hostname of your Yugabyte Cloud cluster |
-| YCQL_USER | Your Yugabyte database user name |
-| YCQL_PASSWORD | Your Yugabyte database password |
 | ROOT_CERT_PATH | The path to root.crt |
+| YCQL_USER | Your Yugabyte database username |
+| YCQL_PASSWORD | Your Yugabyte database password |
 
 For example:
 
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" \
-com.yugabyte.sample.apps.YBCqlHelloWorld \
-424242-cloud.yugabyte.com admin qwerty src/main/resources/root.crt
+    com.yugabyte.sample.apps.YBCqlHelloWorld \
+    424242-cloud.yugabyte.com admin qwerty src/main/resources/root.crt
 ```
 
 You should see the following output:
