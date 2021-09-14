@@ -31,11 +31,11 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 ### Prerequisites
 
-This tutorial assumes that you have:
+This tutorial assumes that you have the following:
 
-- a Yugabyte Cloud cluster, with your database credentials (username and password).
-- installed JDK version 1.8 or later.
-- installed Maven 3.3 or later.
+- A Yugabyte Cloud cluster, with your database credentials (username and password).
+- Installed JDK version 1.8 or later.
+- Installed Maven 3.3 or later.
 
 You also need to download and install your Yugabyte Cloud cluster CA certificate as follows:
 
