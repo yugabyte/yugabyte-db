@@ -15,13 +15,15 @@ showAsideToc: true
 
 Review your cloud charges and manage your billing profile and payment methods using the **Billing** tab.
 
-Only the cloud account Admin user (the user who created the Yugabyte Cloud account) can access the billing and payment details.
+You must be signed in as the Admin user (the user who created the Yugabyte Cloud account) to perform Admin tasks. Developer (invited) users cannot view the billing profile.
 
 Yugabyte bills for its services as follows:
 
 - Charges by the minute for your Yugabyte Cloud clusters.
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Billing** tab.
+
+**Invoices are sent to the email provided in the billing profile**.
 
 Yugabyte Cloud Billing is based on your actual usage across the following dimensions:
 
@@ -30,7 +32,7 @@ Yugabyte Cloud Billing is based on your actual usage across the following dimens
 - Backup Storage
 - Data Transfer
  
-**Invoices are sent to the email provided in the billing profile**. Refer to [Cluster costs](../cloud-billing-costs) for a summary of how cluster configurations are costed.
+For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs).
 
 ![Admin Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
@@ -70,6 +72,8 @@ The **Credits** section displays any credits applied to your account, including 
 
 ## Invoices
 
+At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed automatically to the address on the billing profile. If you are using a payment method other than credit card, the invoice will be settled out of band.
+
 This section lists your current and past invoices, along with a summary of cloud usage.
 
 Select an invoice in the list to view a detailed breakdown of costs and usage details.
@@ -79,7 +83,7 @@ Select an invoice in the list to view a detailed breakdown of costs and usage de
 Shows the billing details for the current billing cycle, including:
 
 - Running Total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
-- Billing option - your billing plan.
+- Billing option - your billing plan (pay-as-you-go or subscription).
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
 - Previous invoice amount - the previous invoice paid amount.
 - Last billed on - the date of the previous invoice.
@@ -101,10 +105,6 @@ Shows the invoice history with following details:
 - Subtotal - total invoiced amount to be paid.
 
 To download the invoice as a PDF, click **Download PDF**.
-
-At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed automatically to the address on the billing profile.
-
-If you are using a payment method other than credit card, the invoice will be settled out of band.
 
 ### Usage summary
 
