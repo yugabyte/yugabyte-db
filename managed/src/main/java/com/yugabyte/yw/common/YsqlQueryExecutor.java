@@ -34,6 +34,16 @@ public class YsqlQueryExecutor {
   private static final String DEFAULT_DB_PASSWORD = "yugabyte";
   private static final String DB_ADMIN_ROLE_NAME = "yb_superuser";
 
+  private static final String DEL_PG_ROLES_CMD_1 =
+      "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
+          + "DELETE FROM pg_shdepend WHERE refclassid IN "
+          + "(SELECT oid FROM pg_class WHERE relname='pg_authid')"
+          + " AND refobjid IN (SELECT oid FROM pg_roles WHERE rolname IN "
+          + "('pg_execute_server_program', 'pg_read_server_files', "
+          + "'pg_write_server_files' )); ";
+  private static final String DEL_PG_ROLES_CMD_2 =
+      "DROP ROLE pg_execute_server_program, pg_read_server_files, pg_write_server_files;";
+
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   private String getQueryType(String queryString) {
@@ -116,7 +126,9 @@ public class YsqlQueryExecutor {
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
     if (ysqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+      String errorMsg = ysqlResponse.get("error").asText();
+      LOG.error("Error executing query: {}", errorMsg);
+      throw new YWServiceException(Http.Status.BAD_REQUEST, errorMsg);
     }
     return ysqlResponse;
   }
@@ -152,8 +164,15 @@ public class YsqlQueryExecutor {
             runQueryUtil(
                 universe,
                 data,
-                String.format("GRANT pg_signal_backend TO \"%s\"", DB_ADMIN_ROLE_NAME));
+                String.format(
+                    "GRANT pg_read_all_stats, pg_signal_backend TO \"%s\"", DB_ADMIN_ROLE_NAME));
         LOG.info("GRANT privs to admin role, result {}", ysqlResponse.toString());
+
+        ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_1);
+        LOG.info("Delete pg roles 1 result: {}", ysqlResponse.toString());
+
+        ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_2);
+        LOG.info("Delete pg roles 2 result: {}", ysqlResponse.toString());
       }
     }
 
@@ -165,9 +184,6 @@ public class YsqlQueryExecutor {
                 "CREATE USER \"%s\" INHERIT CREATEROLE CREATEDB LOGIN BYPASSRLS PASSWORD '%s'",
                 data.username, Util.escapeSingleQuotesOnly(data.password)));
     LOG.info("Creating YSQL user {}, result: {}", data.username, ysqlResponse.toString());
-    if (ysqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
-    }
 
     if (isCloudEnabled) {
       ysqlResponse =
