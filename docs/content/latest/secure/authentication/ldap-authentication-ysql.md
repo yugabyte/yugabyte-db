@@ -1,11 +1,13 @@
 ---
-title: LDAP Authentication
-headerTitle: LDAP Authentication
+title: LDAP Authentication in YSQL
+headerTitle: LDAP Authentication in YSQL
 linkTitle: LDAP Authentication
 description: Configuring YugabyteDB to use an external LDAP authentication service.
+aliases:
+- /latest/secure/authentication/ldap-authentication
 menu:
   latest:
-    identifier: ldap-authentication
+    identifier: ldap-authentication-ysql
     parent: authentication
     weight: 732
 isTocNested: false
@@ -14,9 +16,15 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/ldap-authentication" class="nav-link active">
+    <a href="/latest/secure/authentication/ldap-authentication-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
+    </a>
+  </li>
+  <li >
+    <a href="/latest/secure/authentication/ldap-authentication-ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 </ul>
