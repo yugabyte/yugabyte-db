@@ -24,7 +24,7 @@ Your bill is calculated based on your usage of the following cloud dimensions:
 - Backup storage
 - Data transfer
 
-Instance vCPU capacity makes up the majority of your bill, and is the easiest to understand and control. It's purely a function of your total number of vCPUs used and the amount of time they have been running. The cluster's per-hour charge includes free allowances for disk storage, backup storage, and data transfer. If you use beyond the free allowance, you incur overages on top of the base vCPU capacity cost. 
+Instance vCPU capacity makes up the majority of your bill, and is the easiest to understand and control. It's purely a function of your total number of vCPUs used and how long they have been running. The cluster's per-hour charge includes free allowances for disk storage, backup storage, and data transfer. If you use more than the free allowance, you incur overages on top of the base vCPU capacity cost. 
 
 | Dimension | Allowance/vCPU per month |
 |---|---|
@@ -57,27 +57,29 @@ Yugabyte measures vCPU use in “Instance-Minutes,” which are added up at the 
 
 Pricing is per instance minute consumed for each instance, from the time an instance is launched until it is terminated.
 
-Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 days in September, and then scale up to 6 nodes x 2 vCPUs (12 vCPUs) for the final 15 days in September. 
+Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 days in September, and then scale up to 6 nodes x 2 vCPUs (12 vCPUs) for the final 15 days in September.
 
-At the end of September, you would have the following usage in Instance-Minutes:
+At the end of September, you would have the following usage in instance-minutes:
 
 ```output
-[(6 vCPUs * 15 days * 24 hours * 60 min) + (12 vCPUs * 15 days * 24 hours * 60 min)] 
+[(6 vCPUs * 15 days * 24 hours * 60 min) + (12 vCPUs * 15 days * 24 hours * 60 min)]
 = 388800 instance-minutes
 
 Total vCPU cost/month = Total instance minutes * Per minute base rate 
-Total vCPU cost/month = 388800 * $.00416666666 ~ $1619.99 
+Total vCPU cost/month = 388800 * $.00416666666 ~ $1619.99
 ```
 
 ## Disk storage cost
 
-Disk storage costs are tied to the cost of storing the data on disk in the underlying IaaS storage (for example, EBS on AWS). You receive a free allowance of 50 GB/month of disk storage for every 1 vCPU per month used in a cluster. Whenever you exceed the 50 GB/month/vCPU threshold, you are billed for the storage used in excess of the free allowance.
+Disk storage costs are tied to the cost of storing the data on disk in the underlying IaaS storage (for example, EBS on AWS). 
 
 {{< tip title="Rate card" >}}
 
 $0.10/GB per month ($0.0001388888889/hr)
 
 {{< /tip >}}
+
+The free allowance for disk storage is 50 GB/month for every 1 vCPU per month used in a cluster. Whenever you exceed the 50 GB/month/vCPU threshold, you are billed for the storage used in excess of the free allowance.
 
 You can also specify a custom value greater than free allowance storage capacity. You can customize your cluster storage capacity independently of your cluster vCPU capacity. If you customize an amount of disk storage greater than the free allowance, you are only charged for the amount exceeding the free allowance.
 
@@ -116,11 +118,14 @@ Total vCPUs
 388800 instance-minutes / ( 30 days * 24 hours * 60 minutes ) 
 = 9 vCPUs
 
-Free allowance (GB/month) = 9 vCPUs * 50 GB/month = 450 GB
-Free allowance (GB-hours) = 450 GB * 30 days * 24 hours = 324000 GB-hours
+Free allowance (GB/month)
+9 vCPUs * 50 GB/month = 450 GB
+
+Free allowance (GB-hours)
+450 GB * 30 days * 24 hours = 324000 GB-hours
  
-Disk storage overages = 648000 GB-hours - 324000 GB-hours 
-= 324000 GB-hours
+Disk storage overages
+648000 GB-hours - 324000 GB-hours = 324000 GB-hours
 
 Total disk storage cost/month = Total overages (GB-hours) * Per hour base rate
 Total disk storage cost/month = 324000 * 0.0001388888889 = $45
@@ -136,11 +141,11 @@ Rate card:  $0.025/GB per month ($ 0.00003472222222/hr)
 
 {{< /tip >}}
 
-You receive a free allowance of 100 GB/month of backup storage for every 1 vCPU per month used in a cluster. Any metered storage usage below that amount will not be billed. Whenever you exceed the 100 GB/month/vCPU threshold, you are billed for the backup storage used in excess of the free allowance. For example, a 3 node x 2 vCPU (6 vCPUs) cluster includes a total free allowance of 600 GB/month (6 vCPUs x 100 GB).
-
-Backup storage size is calculated by metering the storage space (GBs) occupied per cluster. The same unit price applies to all regions and clouds.
+The free allowance for backup storage is 100 GB/month for every 1 vCPU per month used in a cluster. Whenever you exceed the 100 GB/month/vCPU threshold, you are billed for the backup storage used in excess of the free allowance. For example, a 3 node x 2 vCPU (6 vCPUs) cluster includes a total free allowance of 600 GB/month (6 vCPUs x 100 GB).
 
 By default, every cluster is configured with 24 hour backups with an 8 day retention period. You can customize your backup schedule and retention period per cluster. Taking frequent backups and retaining for a long period of time can lead to overages. Refer to [Back up clusters](../../cloud-clusters/backup-clusters).
+
+Backup storage size is calculated by metering the storage space (GBs) occupied per cluster. The same unit price applies to all regions and clouds.
 
 ### Calculating backup storage cost
 
@@ -151,6 +156,8 @@ Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 day
 At the end of September, you would have the following total backup cost:
 
 ```output
+Assume an actual backup usage of 720000 GB-hours.
+
 Total instance-minutes
 [(6 vCPUs * 15 days * 24 hours * 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]
 = 388800 instance-minutes
@@ -165,10 +172,8 @@ Free allowance (GB-month)
 Free allowance (GB-hours)
 900 GB x 30 days x 24 hours = 648000 GB-hours
 
-Assume an actual backup usage of 720000 GB-hours.
-
-Backup storage overages = 720000 GB-hours - 648000 GB-hours
-= 72000 GB-hours
+Backup storage overages
+720000 GB-hours - 648000 GB-hours = 72000 GB-hours
 
 Total backup storage cost/month = Total overages (GB-hours) x Per hour base rate
 Total disk storage cost/month = 72000 x 0.00003472222222 = $2.5
@@ -180,7 +185,7 @@ Data Transfer accounts for the volume of data going into, out of, and between th
 
 Yugabyte meters and bills data transfer using the following three dimensions.
 
-### Same region 
+### Same region
 
 This accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
 
@@ -192,9 +197,9 @@ $.01/GB
 
 {{< /tip >}}
 
-You receive a free allowance of 1000 GB per month for every 1 vCPU per month used in a cluster. You are charged for any data transfer used in excess of the free allowance.
+The free allowance for same region transfers is 1000 GB per month for every 1 vCPU per month used in a cluster. You are charged for any data transfer used in excess of the free allowance.
 
-### Cross region 
+### Cross region
 
 This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC peering](../../cloud-network/vpc-peers/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions. 
 
@@ -206,7 +211,7 @@ Other regions $0.02/GB
 
 {{< /tip >}}
 
-You receive a free allowance of 10 GB per month for every 1 vCPU per month used in a cluster. You are charged for any data transfer used in excess of the free allowance.
+The free allowance for cross region transfers is 10 GB per month for every 1 vCPU per month used in a cluster. You are charged for any data transfer used in excess of the free allowance.
 
 ### Data out (Internet)
 
@@ -218,7 +223,7 @@ $.10/GB
 
 {{< /tip >}}
 
-You receive a free allowance of 10GB per month for every 1 vCPU per month used in a cluster. You are charged for any data transfer used in excess of the free allowance.
+The free allowance for data out transfers is 10GB per month for every 1 vCPU per month used in a cluster. You are charged for any data transfer used in excess of the free allowance.
 
 ### Controlling data transfer costs
 
