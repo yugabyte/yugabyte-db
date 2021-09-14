@@ -74,6 +74,40 @@ This section lists your current and past invoices, along with a summary of cloud
 
 Select an invoice in the list to view a detailed breakdown of costs and usage details.
 
+### Active Invoice
+
+Shows the billing details for the current billing cycle, including:
+
+- Running Total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
+- Billing option - your billing plan.
+- Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
+- Previous invoice amount - the previous invoice paid amount.
+- Last billed on - the date of the previous invoice.
+- This time last month: the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
+
+### Invoice History
+
+Shows the invoice history with following details:
+
+- Status - one of the following:
+  - RUNNING - the invoice is for the current billing period.
+  - INVOICED - the invoice has been finalized by Yugabyte and has been emailed to the billing email address on record.
+  - PENDING - includes charges for the current subscription cycle; you should never have more than one invoice in this state.
+  - DISPUTE - the invoice is disputed and not yet been resolved.
+  - FORGIVEN - 100% of the invoice charge has been forgiven and, if the charge succeeded, has been refunded by Yugabyte.
+- Invoice number - the invoice serial number.
+- Invoice Date - date the invoice was generated.
+- Invoice Period - billing period for the invoice.
+- Subtotal - total invoiced amount to be paid.
+
+To download the invoice as a PDF, click **Download PDF**.
+
+At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed automatically to the address on the billing profile.
+
+If you are using a payment method other than credit card, the invoice will be settled out of band.
+
+### Usage summary
+
 <!--
 ## Cost Estimator
 
