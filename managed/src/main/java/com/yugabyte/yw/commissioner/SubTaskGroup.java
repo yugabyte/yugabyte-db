@@ -122,9 +122,9 @@ public class SubTaskGroup implements Runnable {
   }
 
   public void addTask(AbstractTaskBase task) {
-    LOG.info("Adding task #" + taskMap.size() + ": " + task.getName());
+    log.info("Adding task #" + taskMap.size() + ": " + task.getName());
     JsonNode redactedTask = RedactingService.filterSecretFields(task.getTaskDetails());
-    LOG.debug(
+    log.debug(
         "Details for task #" + taskMap.size() + ": " + task.getName() + "details=" + redactedTask);
 
     // Set up corresponding TaskInfo.
