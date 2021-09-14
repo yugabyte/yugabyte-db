@@ -114,13 +114,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
 
       boolean userIntentChange = false;
-      boolean isNumNodeChange = false;
-      boolean isFirstIteration = true;
       boolean masterChange = false;
 
       // Check if number of nodes changed.
       if (currIntent.numNodes != userIntent.numNodes) {
-        isNumNodeChange = true;
         currIntent.numNodes = userIntent.numNodes;
       }
 
@@ -150,7 +147,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             universeDetails.communicationPorts.masterRpcPort);
 
         // Update master addresses to the latest required ones.
-        createMoveMasterTasks(new ArrayList(mastersToAdd), new ArrayList(mastersToRemove));
+        createMoveMasterTasks(new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove));
       }
 
       // Bring up new tservers.
@@ -202,7 +199,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (!tserversToRemove.isEmpty()) {
         removeDeployments(
             newPI, provider, userIntentChange, universeDetails.communicationPorts.masterRpcPort);
-        createModifyBlackListTask(new ArrayList(tserversToRemove), false /* isAdd */)
+        createModifyBlackListTask(new ArrayList<>(tserversToRemove), false /* isAdd */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
