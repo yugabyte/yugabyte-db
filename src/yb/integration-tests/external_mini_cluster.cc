@@ -1943,11 +1943,6 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   // inherited from test script
   argv.push_back("--log_dir=");
 
-  // Then the "extra flags" passed into the ctor (from the ExternalMiniCluster
-  // options struct). These come at the end so they can override things like
-  // web port or RPC bind address if necessary.
-  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
-
   // Tell the server to dump its port information so we can pick it up.
   const string info_path = GetServerInfoPath();
   argv.push_back("--server_dump_info_path=" + info_path);
@@ -1999,6 +1994,13 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 
   argv.push_back(Format("--minicluster_daemon_id=$0", daemon_id_));
 
+  // Finally, extra flags to override.
+  // - extra_flags_ is taken from ExternalMiniCluster.opts_, which is often set by test subclasses'
+  //   UpdateMiniClusterOptions.
+  // - extra daemon flags is supplied by the user, either through environment variable or
+  //   yb_build.sh --extra_daemon_flags (or --extra_daemon_args), so it should take highest
+  //   precedence.
+  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
   AddExtraFlagsFromEnvVar("YB_EXTRA_DAEMON_FLAGS", &argv);
 
   std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
