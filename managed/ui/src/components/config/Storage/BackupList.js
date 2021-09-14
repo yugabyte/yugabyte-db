@@ -94,8 +94,10 @@ export const BackupList = (props) => {
           <MenuItem
             disabled={inUse}
             onClick={() => {
-              setConfigData(configUUID);
-              showDeleteStorageConfig(name);
+              if (!inUse) {
+                setConfigData(configUUID);
+                showDeleteStorageConfig(name);
+              }
             }}
           >
             {!inUse && (
