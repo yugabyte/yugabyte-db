@@ -25,7 +25,7 @@ When a cluster is added, an admin user is created for the database. You must add
 
 To add a database user:
 
-1. [Connect to the cluster](../../cloud-basics/connect-to-clusters/) using `ysqlsh` or `ysqlsh`.
+1. [Connect to the cluster](../../cloud-basics/connect-to-clusters/) using `ysqlsh` or `ycqlsh`.
 
 1. Add a user using the `CREATE ROLE` statement.
 
