@@ -2922,6 +2922,10 @@ void TabletServiceImpl::GetSplitKey(
   PerformAtLeader(req, resp, &context,
       [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
+
+        if (tablet->MayHaveOrphanedPostSplitData()) {
+          return STATUS(IllegalState, "Tablet has orphaned post-split data");
+        }
         const auto split_encoded_key = VERIFY_RESULT(tablet->GetEncodedMiddleSplitKey());
         resp->set_split_encoded_key(split_encoded_key);
         const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(split_encoded_key));
