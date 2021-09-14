@@ -28,7 +28,9 @@ public enum KnownAlertLabels {
   NODE_NAME,
   NODE_PREFIX,
   INSTANCE,
-  EXPORT_TYPE;
+  EXPORT_TYPE,
+  TASK_TYPE,
+  RESULT;
 
   public String labelName() {
     return name().toLowerCase();
