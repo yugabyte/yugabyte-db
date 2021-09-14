@@ -36,7 +36,7 @@ The various methods for authenticating users supported by YugabyteDB are listed 
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ldap-authentication/">
+    <a class="section-link icon-offset" href="ldap-authentication-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
         <div class="title">LDAP Authentication</div>
