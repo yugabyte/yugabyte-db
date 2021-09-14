@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Cloud only allows client connections to clusters from entries in IP allow lists that have been explicitly assigned to the cluster. Each entry in the lists is either a single IP address or a CIDR-notated range of addresses.
+Yugabyte Cloud only allows client connections to clusters from entries in IP allow lists that have been explicitly assigned to the cluster. Each entry can either be a single IP address, a CIDR-notated range of addresses, or a comma-delimited list of addresses.
 
 The IP allow lists assigned to a cluster are listed under **Network Access** on the cluster **Settings** tab.
 

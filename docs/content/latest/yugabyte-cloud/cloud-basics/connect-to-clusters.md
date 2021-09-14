@@ -92,7 +92,7 @@ You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../.
 
 You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
 
-Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](add-connections/).
+Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../add-connections/).
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -122,7 +122,7 @@ You are now ready to [Create and explore a database](../create-databases/).
 
 ## Connect an application
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Before you can connect an application, you need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
 
@@ -146,7 +146,7 @@ To connect a cluster to an application:
 Here's an example of the generated `ysqlsh` string:
 
 ```sh
-postgresql://<DB USER>:<DB PASSWORD>@e53ea424-424a-4db5-aece-3bebe4242424.cloud.yugabyte.com:5433/yugabyte? \
+postgresql://<DB USER>:<DB PASSWORD>@4242424.cloud.yugabyte.com:5433/yugabyte? \
 ssl=true& \
 sslmode=verify-full& \
 sslrootcert=<ROOT_CERT_PATH>
@@ -155,25 +155,32 @@ sslrootcert=<ROOT_CERT_PATH>
 Add the string to your application, replacing
 
 - `<DB USER>` with your database username.
-- `<DB PASSWORD>` with your database username.
-- If you are connecting to a database other than the default (yugabyte), replace yugabyte with the database name.
-- `<ROOT_CERT_PATH>` with the path to the location where you installed the certificate on your computer.
+- `<DB PASSWORD>` with your database password.
+- `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
+- `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
 
-If you are connecting to a Hasura Cloud project, which does not use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-develop/hasura-cloud/).
+For example:
+
+```sh
+postgresql://admin:qwerty@4242424.cloud.yugabyte.com:5433/yugabyte?ssl=true& \
+sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
+```
+
+If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-develop/hasura-cloud/).
 
 ### YCQL
 
 Here's an example of the generated `ycqlsh` string:
 
 ```sh
-cassandra://<DB USER>:<DB PASSWORD>@e53ea9b6-424a-4db5-aece-3bebe4242424.cloud.yugabyte.com:9042/yugabyte
+cassandra://<DB USER>:<DB PASSWORD>@4242424.cloud.yugabyte.com:9042/yugabyte
 ```
 
 Add the string to your application, replacing
 
 - `<DB USER>` with your database username.
-- `<DB PASSWORD>` with your database username.
-- If you are connecting to a database other than the default (yugabyte), replace yugabyte with the database name.
+- `<DB PASSWORD>` with your database password.
+- `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 
 For an example of building a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/).
 

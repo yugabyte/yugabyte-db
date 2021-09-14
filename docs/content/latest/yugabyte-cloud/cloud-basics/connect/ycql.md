@@ -21,7 +21,7 @@ To connect to a cluster using `ycqlsh`:
 1. On your computer, change directories to the directory where you installed the client shell.
 1. Paste and run the command, replacing 
 
-    - `<ROOT_CERT_PATH>` with the path to the location where you installed the certificate on your computer.
+    - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
     - `<DB USER>` with your database username.
 
 The `ycqlsh` shell opens connected to the remote cluster.

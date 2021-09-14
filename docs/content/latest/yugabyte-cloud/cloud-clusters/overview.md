@@ -22,8 +22,8 @@ The following **Key Metrics** are tracked on the **Overview** tab:
 - Operations/sec - Shows the read and write operations on the cluster over time.
 - Average Latency - Shows the average amount of time in milliseconds taken for read and write operations.
 - CPU Usage - Shows the percentage of CPU use for the cluster.
-- Disk Usage - Shows the amount of disk space used by the cluster.
+- Disk Usage - Shows the amount of disk space provisioned for and used by the cluster.
 
-Metrics can be displayed over the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
+You can show metrics for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
 To change or scale your cluster, refer to [Scale and configure clusters](../configure-clusters/).

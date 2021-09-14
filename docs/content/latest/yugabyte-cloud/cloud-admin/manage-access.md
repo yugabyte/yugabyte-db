@@ -49,15 +49,27 @@ To invite a user:
 1. Enter the email address of the person you're inviting.
 1. Click **Invite**.
 
-The user will receive a verification email with a link to create their account and set up a password.
+The user will receive a verification email with a link to create their account and set up a password. Invitations expire after 24 hours.
 
-For users that have not responded to their invitation (their status is Invited), you can click **Resend Invite**.
+For users that have not responded to their invitation (their status is Invited), you can click **Resend Invite** to send a fresh invitation. 
 
 ## Delete a user
 
 Only the Admin user can delete users. The Admin account cannot be deleted.
 
 To delete a user, click **Delete** next to the username in the list, then click **Confirm**.
+
+## Reset your password
+
+To reset your password, click **Forgot your password?** on the [login screen](https://cloud.yugabyte.com/login). You'll receive a verification email with instructions to reset your password. You have 60 minutes in which to reset your password, and your old password is no longer valid.
+
+If you don't receive the reset email, click **Resend password reset mail** on the **Reset your password** page. You can always get to this page by clicking **Forgot your password?** on the login page.
+
+If your reset link has expired, request a new password again by clicking **Forgot your password?** on the login page.
+
+You can't change your password, or request a password reset, within 60 minutes of changing the old password.
+
+If you request a password reset for a non-existent user, the request fails silently for security reasons.
 
 <!--
 ## View user details

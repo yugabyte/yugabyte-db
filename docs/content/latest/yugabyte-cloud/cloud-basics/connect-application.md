@@ -86,7 +86,7 @@ In this walkthrough, you will:
 
 ## Connect and run the application
 
-1. On your computer, update the contents of the `spring-petclinic/src/main/resources/application.yml` file by updating the `yugabyte:datasource:url` with the YSQL connection string you modified, and username and password with your YugabyteDB database credentials. 
+1. On your computer, update the contents of the `spring-petclinic/src/main/resources/application.yml` file by updating the `yugabyte:datasource:url` with the modified YSQL connection string, and username and password with your YugabyteDB database credentials. 
 
     The connection string replaces the url after `jdbc:`, as follows:
 
@@ -99,7 +99,7 @@ In this walkthrough, you will:
         password: [password]
     ```
 
-    where `[modified YSQL connection string]` is the modified connection string you obtained from Yugabyte Cloud, and `[user]` and `[password]` are the credentials for the database.
+    where `[modified YSQL connection string]` is the modified YSQL connection string, and `[user]` and `[password]` are the credentials for the database.
 
 1. Run the PetClinic application using the following command:
 
