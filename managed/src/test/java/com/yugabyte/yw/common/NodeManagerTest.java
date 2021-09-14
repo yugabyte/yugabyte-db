@@ -607,8 +607,32 @@ public class NodeManagerTest extends FakeDBApplication {
                     Universe.getOrBadRequest(configureParams.universeUUID)
                         .getNode(configureParams.nodeName)
                         .ysqlServerRpcPort));
+            if (configureParams.enableYSQLAuth) {
+              gflags.put("ysql_enable_auth", "true");
+              gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
+            } else {
+              gflags.put("ysql_enable_auth", "false");
+            }
           } else {
             gflags.put("enable_ysql", "false");
+          }
+          if (configureParams.enableYCQL) {
+            gflags.put("start_cql_proxy", "true");
+            gflags.put(
+                "cql_proxy_bind_address",
+                String.format(
+                    "%s:%s",
+                    configureParams.nodeName,
+                    Universe.getOrBadRequest(configureParams.universeUUID)
+                        .getNode(configureParams.nodeName)
+                        .yqlServerRpcPort));
+            if (configureParams.enableYCQLAuth) {
+              gflags.put("use_cassandra_authentication", "true");
+            } else {
+              gflags.put("use_cassandra_authentication", "false");
+            }
+          } else {
+            gflags.put("start_cql_proxy", "false");
           }
           if (configureParams.callhomeLevel != null) {
             gflags.put(

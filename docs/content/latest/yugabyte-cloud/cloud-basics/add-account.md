@@ -53,15 +53,15 @@ The console has the following main sections, accessed via the left menu:
     \
     Create your free cluster and access documentation.
 
-- [Clusters](../cloud-clusters/)
+- [Clusters](../../cloud-clusters/)
     \
-    Add clusters, and view and configure settings of existing clusters. 
+    Add clusters, and view and configure settings for existing clusters. 
 
-- [Network Access](../cloud-network)
+- [Network Access](../../cloud-network)
     \
     Set up IP allow lists for connecting to your clusters.
 
-- [Admin](../cloud-admin/)
+- [Admin](../../cloud-admin/)
     \
     Manage billing and payment methods and cloud users.
 

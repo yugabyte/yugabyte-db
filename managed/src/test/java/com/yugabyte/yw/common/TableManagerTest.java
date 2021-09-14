@@ -103,6 +103,7 @@ public class TableManagerTest extends FakeDBApplication {
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
+    // userIntent.enableYSQLAuth = false;
     if (enableTLS) {
       userIntent.enableNodeToNodeEncrypt = true;
     }

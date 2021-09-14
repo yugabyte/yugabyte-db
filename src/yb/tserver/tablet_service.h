@@ -145,6 +145,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                        TakeTransactionResponsePB* resp,
                        rpc::RpcContext context) override;
 
+  void GetSharedData(const GetSharedDataRequestPB* req,
+                     GetSharedDataResponsePB* resp,
+                     rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

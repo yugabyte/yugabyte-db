@@ -62,6 +62,7 @@
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/server/default-path-handlers.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/remote_bootstrap_service.h"
@@ -243,6 +244,13 @@ Status Master::RegisterServices() {
           fs_manager_.get(), catalog_manager_.get(), metric_entity()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
+
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      FLAGS_master_svc_queue_length,
+      std::make_unique<tserver::PgClientServiceImpl>(
+          client_future(), std::bind(&Master::TransactionPool, this),
+          metric_entity())));
+
   return Status::OK();
 }
 

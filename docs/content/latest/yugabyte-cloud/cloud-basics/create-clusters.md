@@ -38,21 +38,21 @@ The **Create Cluster** wizard has the following three pages:
 
 ### Select Cluster Type
 
-Use the **Free** cluster to get started with YugabyteDB. Although not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
+Use the **Free** cluster to get started with YugabyteDB. Although it's not suitable for production workloads, the free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB, including:
 
-- single node
-- depending on the cloud provider, up to 2 vCPUs and 10 GB of storage
-- limit of one per account
+- Single node
+- Up to 2 vCPUs and 10 GB of storage, depending on the cloud provider
+- Limit of one free cluster per account
 
 **Paid** clusters support multi-node and highly available deployments and include the following features:
 
-- no limit on cluster size - choose any cluster size based on your use case
-- horizontal and vertical scaling - add or remove nodes and add storage to suit your production loads
+- No limit on cluster size - choose any cluster size based on your use case
+- Horizontal and vertical scaling - add or remove nodes and add storage to suit your production loads
 - VPC peering support
-- automated and on-demand backups
-- create as many as you need
+- Automated and on-demand backups
+- Create as many as you need
 
-If you have not already provided payment information, you will need to add it before you can create a paid cluster.
+If you haven't already provided payment information, you'll need to add it before you can create a paid cluster.
 
 ![Add Cluster Wizard - Select Type](/images/yb-cloud/cloud-addcluster1-type.png)
 
@@ -84,7 +84,7 @@ If you are creating a **Paid** cluster, set the following additional options:
   - vCPU/Node - enter the number of virtual CPUs per node.
   - Disk size/Node - enter the disk size per node in GB.
 
-  Paid clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../configure-clusters#infrastructure). <!--For cluster configuration costs, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/).-->
+  Paid clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure). <!--For cluster configuration costs, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/).-->
 
 ### Database Admin Credentials
 

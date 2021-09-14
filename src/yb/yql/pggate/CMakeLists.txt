@@ -23,6 +23,7 @@ set(PGGATE_SRCS
     ybc_pggate_tool.cc
     pggate.cc
     pggate_thread_local_vars.cc
+    pg_client.cc
     pg_sample.cc
     pg_session.cc
     pg_statement.cc
@@ -55,7 +56,8 @@ set(PGGATE_LIBS
     tserver_util
     yb_pggate_util
     yb_pggate_flags
-    tablet_error)
+    tablet_error
+    pg_client_proto)
 
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}

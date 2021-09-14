@@ -29,8 +29,8 @@ import play.mvc.Http;
 @Singleton
 public class YcqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YcqlQueryExecutor.class);
-  private static final String DEFAULT_DB_USER = "cassandra";
-  private static final String DEFAULT_DB_PASSWORD = "cassandra";
+  private static final String DEFAULT_DB_USER = Util.DEFAULT_YCQL_USERNAME;
+  private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YCQL_PASSWORD;
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
     // Create user for customer CQL.

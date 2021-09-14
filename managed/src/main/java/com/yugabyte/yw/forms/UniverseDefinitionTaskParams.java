@@ -356,7 +356,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean useTimeSync = false;
 
-    @ApiModelProperty() public boolean enableYSQL = false;
+    @ApiModelProperty() public boolean enableYCQL = true;
+
+    @ApiModelProperty() public String ysqlPassword;
+
+    @ApiModelProperty() public String ycqlPassword;
+
+    @ApiModelProperty() public boolean enableYSQLAuth = false;
+
+    @ApiModelProperty() public boolean enableYCQLAuth = false;
+
+    @ApiModelProperty() public boolean enableYSQL = true;
 
     @ApiModelProperty(notes = "default: true")
     public boolean enableYEDIS = true;
@@ -451,6 +461,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableYCQL = enableYCQL;
+      newUserIntent.enableYSQLAuth = enableYSQLAuth;
+      newUserIntent.enableYCQLAuth = enableYCQLAuth;
+      newUserIntent.ysqlPassword = ysqlPassword;
+      newUserIntent.ycqlPassword = ycqlPassword;
       newUserIntent.enableYEDIS = enableYEDIS;
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;

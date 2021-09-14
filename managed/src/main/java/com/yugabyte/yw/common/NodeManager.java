@@ -556,11 +556,13 @@ public class NodeManager extends DevopsBase {
         extra_gflags.put("metric_node_name", taskParam.nodeName);
         // TODO: add a shared path to massage flags across different flavors of configure.
         String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
+        String cqlProxyBindAddress = node.cloudInfo.private_ip;
 
         if (useHostname) {
           subcommand.add("--server_broadcast_addresses");
           subcommand.add(node.cloudInfo.private_ip);
           pgsqlProxyBindAddress = "0.0.0.0";
+          cqlProxyBindAddress = "0.0.0.0";
         }
 
         if (taskParam.enableYSQL) {
@@ -568,8 +570,29 @@ public class NodeManager extends DevopsBase {
           extra_gflags.put(
               "pgsql_proxy_bind_address",
               String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
+          if (taskParam.enableYSQLAuth) {
+            extra_gflags.put("ysql_enable_auth", "true");
+            extra_gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
+          } else {
+            extra_gflags.put("ysql_enable_auth", "false");
+          }
         } else {
           extra_gflags.put("enable_ysql", "false");
+        }
+
+        // For YCQL flag
+        if (taskParam.enableYCQL) {
+          extra_gflags.put("start_cql_proxy", "true");
+          extra_gflags.put(
+              "cql_proxy_bind_address",
+              String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
+          if (taskParam.enableYCQLAuth) {
+            extra_gflags.put("use_cassandra_authentication", "true");
+          } else {
+            extra_gflags.put("use_cassandra_authentication", "false");
+          }
+        } else {
+          extra_gflags.put("start_cql_proxy", "false");
         }
 
         if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
