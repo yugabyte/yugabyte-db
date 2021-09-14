@@ -179,7 +179,7 @@ cassandra://<DB USER>:<DB PASSWORD>@4242424.cloud.yugabyte.com:9042/yugabyte
 Add the string to your application, replacing
 
 - `<DB USER>` with your database username.
-- `<DB PASSWORD>` with your database username.
+- `<DB PASSWORD>` with your database password.
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 
 For an example of building a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/).
