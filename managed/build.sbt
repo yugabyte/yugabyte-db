@@ -138,6 +138,8 @@ libraryDependencies ++= Seq(
   "org.postgresql" % "postgresql" % "9.4.1208",
   "commons-io" % "commons-io" % "2.4",
   "org.apache.commons" % "commons-compress" % "1.20",
+  "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
