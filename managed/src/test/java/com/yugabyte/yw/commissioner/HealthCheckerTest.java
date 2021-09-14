@@ -56,6 +56,7 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
 import io.prometheus.client.CollectorRegistry;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,6 +104,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private CollectorRegistry testRegistry;
   private HealthCheckerReport report;
+  private HealthCheckMetrics healthMetrics;
 
   @Mock private EmailHelper mockEmailHelper;
 
@@ -138,6 +140,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     testRegistry = new CollectorRegistry();
     report = spy(new HealthCheckerReport());
+    healthMetrics = new HealthCheckMetrics(testRegistry);
 
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
 
@@ -151,12 +154,12 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockConfig,
             mockExecutionContext,
             mockHealthManager,
-            testRegistry,
             report,
             mockEmailHelper,
             metricService,
             mockruntimeConfigFactory,
-            null) {
+            null,
+            healthMetrics) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);
@@ -201,7 +204,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode());
   }
 
-  private void setupAlertingData(
+  private AlertingData setupAlertingData(
       String alertingEmail, boolean sendAlertsToYb, boolean reportOnlyErrors) {
 
     AlertingData data = new AlertingData();
@@ -216,6 +219,7 @@ public class HealthCheckerTest extends FakeDBApplication {
       customerConfig.data = (ObjectNode) Json.toJson(data);
       customerConfig.update();
     }
+    return data;
   }
 
   private Universe setupDisabledAlertsConfig(String email, long disabledUntilSecs) {
@@ -248,17 +252,16 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(expectedEmail, false, false);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, expectedEmail));
+            u, defaultCustomer, true, false, false, expectedEmail));
     verifyHealthManager(invocationsCount);
 
     String[] labels = {
-      HealthChecker.kUnivUUIDLabel,
-      HealthChecker.kUnivNameLabel,
-      HealthChecker.kNodeLabel,
-      HealthChecker.kCheckLabel
+      HealthCheckMetrics.kUnivUUIDLabel, HealthCheckMetrics.kUnivNameLabel,
+      HealthCheckMetrics.kNodeLabel, HealthCheckMetrics.kCheckLabel
     };
     String[] labelValues = {u.universeUUID.toString(), u.name, dummyNode, dummyCheck};
-    Double val = testRegistry.getSampleValue(HealthChecker.kUnivMetricName, labels, labelValues);
+    Double val =
+        testRegistry.getSampleValue(HealthCheckMetrics.kUnivMetricName, labels, labelValues);
     if (shouldFail) {
       assertNull(val);
     } else {
@@ -268,7 +271,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private void testSingleK8sUniverse(Universe u) {
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
     verifyK8sHealthManager();
   }
 
@@ -307,7 +310,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, true);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, false, true, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, false, true, false, YB_ALERT_TEST_EMAIL));
     verify(mockHealthManager, times(1))
         .runCommand(eq(defaultProvider), any(), eq(0L), anyBoolean());
 
@@ -318,7 +321,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, false, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, false, false, false, YB_ALERT_TEST_EMAIL));
     verify(mockHealthManager, times(2))
         .runCommand(eq(defaultProvider), any(), eq(0L), anyBoolean());
   }
@@ -382,8 +385,8 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testCheckAllUniverses_TwoUniverses() {
     Universe u1 = setupUniverse("univ1");
     Universe u2 = setupUniverse("univ2");
-    setupAlertingData(null, false, false);
-    healthChecker.checkAllUniverses(defaultCustomer, customerConfig, true);
+    AlertingData alertingData = setupAlertingData(null, false, false);
+    healthChecker.checkAllUniverses(defaultCustomer, alertingData, true, false);
     try {
       // Wait for scheduled health checks to run.
       while (!healthChecker.runningHealthChecks.get(u1.universeUUID).isDone()
@@ -447,7 +450,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, false, false);
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, false, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, false, false, false, YB_ALERT_TEST_EMAIL));
     verify(mockHealthManager, times(shouldCheck ? 1 : 0))
         .runCommand(eq(defaultProvider), any(), eq(0L), anyBoolean());
   }
@@ -477,16 +480,23 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testTimingLogic() {
+  public void testTimingLogic() throws MessagingException {
+    when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
+        .thenReturn(EmailFixtures.createSmtpData());
+    when(mockEmailHelper.getDestinations(defaultCustomer.uuid))
+        .thenReturn(Collections.singletonList(YB_ALERT_TEST_EMAIL));
+    setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
+
     // Setup some waits.
     long waitMs = 500;
     // Wait one cycle between checks.
     when(mockConfig.getLong("yb.health.check_interval_ms")).thenReturn(waitMs);
     // Wait two cycles between status updates.
     when(mockConfig.getLong("yb.health.status_interval_ms")).thenReturn(2 * waitMs);
+
     // Default prep.
     Universe u = setupUniverse("test");
-    setupAlertingData(null, false, false);
+
     // First time we both check and send update.
     healthChecker.checkCustomer(defaultCustomer);
     try {
@@ -494,14 +504,17 @@ public class HealthCheckerTest extends FakeDBApplication {
     } catch (Exception ignored) {
     }
     verify(mockHealthManager, times(1)).runCommand(any(), any(), anyLong(), anyBoolean());
-    // If we run right afterwards, none of the timers should be hit again, so total hit with any
-    // args should still be 1.
+    verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
+
     healthChecker.checkCustomer(defaultCustomer);
     try {
       while (!healthChecker.runningHealthChecks.get(u.universeUUID).isDone()) {}
     } catch (Exception ignored) {
     }
-    verify(mockHealthManager, times(1)).runCommand(any(), any(), anyLong(), anyBoolean());
+    verify(mockHealthManager, times(2)).runCommand(any(), any(), anyLong(), anyBoolean());
+    // Should be onlyMetrics.
+    verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
+
     try {
       Thread.sleep(waitMs);
     } catch (InterruptedException e) {
@@ -513,7 +526,9 @@ public class HealthCheckerTest extends FakeDBApplication {
       while (!healthChecker.runningHealthChecks.get(u.universeUUID).isDone()) {}
     } catch (Exception ignored) {
     }
-    verify(mockHealthManager, times(2)).runCommand(any(), any(), anyLong(), anyBoolean());
+    verify(mockHealthManager, times(3)).runCommand(any(), any(), anyLong(), anyBoolean());
+    verify(mockEmailHelper, times(2)).sendEmail(any(), any(), any(), any(), any());
+
     // Another cycle later, we should be running yet another test, but now with status update.
     try {
       Thread.sleep(waitMs);
@@ -526,7 +541,8 @@ public class HealthCheckerTest extends FakeDBApplication {
       while (!healthChecker.runningHealthChecks.get(u.universeUUID).isDone()) {}
     } catch (Exception ignored) {
     }
-    verify(mockHealthManager, times(3)).runCommand(any(), any(), anyLong(), anyBoolean());
+    verify(mockHealthManager, times(4)).runCommand(any(), any(), anyLong(), anyBoolean());
+    verify(mockEmailHelper, times(3)).sendEmail(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -567,7 +583,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
 
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
     ArgumentCaptor<List> expectedClusters = ArgumentCaptor.forClass(List.class);
     verify(mockHealthManager, times(1))
         .runCommand(any(), expectedClusters.capture(), anyLong(), anyBoolean());
@@ -590,7 +606,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     // To check that metric is created.
@@ -615,7 +631,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         .thenReturn(EmailFixtures.createSmtpData());
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
 
     verify(mockEmailHelper, times(1)).sendEmail(any(), any(), any(), any(), any());
     verify(report, times(1)).asHtml(eq(u), any(), anyBoolean());
@@ -655,7 +671,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
-            u, defaultCustomer, true, false, YB_ALERT_TEST_EMAIL));
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
 
     AssertHelper.assertMetricValue(
         metricService,
@@ -701,7 +717,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
 
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
     verify(mockHealthManager, never()).runCommand(any(), any(), anyLong(), anyBoolean());
 
     Metric metric =
@@ -734,7 +750,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     setupAlertingData(null, true, false);
 
     healthChecker.checkSingleUniverse(
-        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
     verify(mockHealthManager, never()).runCommand(any(), any(), anyLong(), anyBoolean());
 
     Metric metric =
@@ -774,5 +790,17 @@ public class HealthCheckerTest extends FakeDBApplication {
           univ.setUniverseDetails(details);
         });
     assertFalse(HealthChecker.canHealthCheckUniverse(u.universeUUID));
+  }
+
+  @Test
+  public void testCheckSingleUniverse_EmailNotSentIfMetricsOnly() throws MessagingException {
+    Universe u = setupUniverse("test");
+    when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
+        .thenReturn(EmailFixtures.createSmtpData());
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, true, YB_ALERT_TEST_EMAIL));
+
+    verify(mockEmailHelper, times(0)).sendEmail(any(), any(), any(), any(), any());
   }
 }
