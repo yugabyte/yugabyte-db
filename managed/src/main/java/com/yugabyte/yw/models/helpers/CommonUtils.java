@@ -21,6 +21,7 @@ import io.ebean.PagedList;
 import io.ebean.Query;
 import io.ebean.common.BeanList;
 import io.jsonwebtoken.lang.Collections;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
@@ -391,6 +392,23 @@ public class CommonUtils {
 
   public static Date nowPlusWithoutMillis(long amount, TemporalUnit timeUnit) {
     return Date.from(Instant.now().plus(amount, timeUnit).truncatedTo(ChronoUnit.SECONDS));
+  }
+
+  public static Date nowMinusWithoutMillis(long amount, TemporalUnit timeUnit) {
+    return Date.from(Instant.now().minus(amount, timeUnit).truncatedTo(ChronoUnit.SECONDS));
+  }
+
+  public static Date nowPlus(long amount, TemporalUnit timeUnit) {
+    return Date.from(Instant.now().plus(amount, timeUnit));
+  }
+
+  public static Date nowMinus(long amount, TemporalUnit timeUnit) {
+    return Date.from(Instant.now().minus(amount, timeUnit));
+  }
+
+  public static long getDurationSeconds(Date startTime, Date endTime) {
+    Duration duration = Duration.between(startTime.toInstant(), endTime.toInstant());
+    return duration.getSeconds();
   }
 
   @FunctionalInterface

@@ -2,18 +2,26 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Summary;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.api.Play;
@@ -24,6 +32,25 @@ import play.api.Play;
  * object that actually performs the work specific to the current task type.
  */
 public class TaskRunner implements Runnable {
+
+  // Metric names
+  private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
+      "ybp_commissioner_task_waiting_sec";
+  private static final String COMMISSIONER_TASK_EXECUTION_SEC_METRIC =
+      "ybp_commissioner_task_execution_sec";
+
+  // Metrics
+  public static final Summary COMMISSIONER_TASK_WAITING_SEC =
+      buildSummary(
+          COMMISSIONER_TASK_WAITING_SEC_METRIC,
+          "Duration between task creation and execution",
+          KnownAlertLabels.TASK_TYPE.labelName());
+  public static final Summary COMMISSIONER_TASK_EXECUTION_SEC =
+      buildSummary(
+          COMMISSIONER_TASK_EXECUTION_SEC_METRIC,
+          "Duration of task execution",
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          KnownAlertLabels.RESULT.labelName());
 
   public static final Logger LOG = LoggerFactory.getLogger(TaskRunner.class);
 
@@ -56,6 +83,15 @@ public class TaskRunner implements Runnable {
     }
     taskTypeToTaskClassMap = Collections.unmodifiableMap(typeMap);
     LOG.debug("Done loading tasks.");
+  }
+
+  static Summary buildSummary(String name, String description, String... labelNames) {
+    return Summary.build(name, description)
+        .quantile(0.5, 0.05)
+        .quantile(0.9, 0.01)
+        .maxAgeSeconds(TimeUnit.HOURS.toSeconds(1))
+        .labelNames(labelNames)
+        .register(CollectorRegistry.defaultRegistry);
   }
 
   /**
@@ -138,6 +174,8 @@ public class TaskRunner implements Runnable {
   public void run() {
     LOG.debug("Running task {}", getTaskUUID());
     task.setUserTaskUUID(getTaskUUID());
+    Date executionStart = new Date();
+    writeTaskWaitMetric();
     updateTaskState(TaskInfo.State.Running);
     try {
       // Run the task.
@@ -145,11 +183,12 @@ public class TaskRunner implements Runnable {
 
       // Update the task state to success and checkpoint it.
       updateTaskState(TaskInfo.State.Success);
-
+      writeTaskSuccessMetric(executionStart);
     } catch (Throwable t) {
       LOG.error("Error running task", t);
       // Update the task state to failure and checkpoint it.
       updateTaskState(TaskInfo.State.Failure);
+      writeTaskFailedMetric(executionStart);
     } finally {
       // Update the customer task to a completed state.
       CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfo.getTaskUUID());
@@ -168,8 +207,26 @@ public class TaskRunner implements Runnable {
     }
   }
 
-  public String getState() {
-    return taskInfo.getTaskState().toString();
+  private void writeTaskWaitMetric() {
+    COMMISSIONER_TASK_WAITING_SEC
+        .labels(getTaskType())
+        .observe(getDurationSeconds(taskInfo.getCreationTime(), new Date()));
+  }
+
+  private void writeTaskSuccessMetric(Date executionStart) {
+    COMMISSIONER_TASK_EXECUTION_SEC
+        .labels(getTaskType(), State.Success.name())
+        .observe(getDurationSeconds(executionStart, new Date()));
+  }
+
+  private void writeTaskFailedMetric(Date executionStart) {
+    COMMISSIONER_TASK_EXECUTION_SEC
+        .labels(getTaskType(), State.Failure.name())
+        .observe(getDurationSeconds(executionStart, new Date()));
+  }
+
+  private String getTaskType() {
+    return taskInfo.getTaskType().name();
   }
 
   /**
