@@ -34,9 +34,9 @@ showAsideToc: true
   
 </ul>
 
-## Create a database and load the dataset
+## Create a keyspace and add a table
 
-To create a database and load the Retail Analytics dataset, do the following:
+To create a keyspace and add a table, do the following:
 
 1. Connect to your cluster using `ycqlsh` using the [Client Shell](../connect-to-clusters#connect-via-client-shell) from your computer.
 
