@@ -171,7 +171,11 @@ class UniverseForm extends Component {
         useTimeSync: formValues[clusterType].useTimeSync,
         assignPublicIP: formValues[clusterType].assignPublicIP,
         enableYSQL: formValues[clusterType].enableYSQL,
+        enableYSQLAuth: formValues[clusterType].enableYSQLAuth,
+        ysqlPassword: formValues[clusterType].ysqlPassword,
         enableYCQL: formValues[clusterType].enableYCQL,
+        enableYCQLAuth: formValues[clusterType].enableYCQLAuth,
+        ycqlPassword: formValues[clusterType].ycqlPassword,
         enableIPV6: formValues[clusterType].enableIPV6,
         enableExposingService: formValues[clusterType].enableExposingService,
         enableYEDIS: formValues[clusterType].enableYEDIS,
@@ -321,6 +325,26 @@ class UniverseForm extends Component {
     return null;
   };
 
+  getYSQLAuthstate = () => {
+    const { formValues, universe } = this.props;
+
+    if (isNonEmptyObject(formValues['primary'])) {
+      return formValues['primary'].enableYSQLAuth;
+    }
+
+    const {
+      currentUniverse: {
+        data: { universeDetails }
+      }
+    } = universe;
+    if (isNonEmptyObject(universeDetails)) {
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      return primaryCluster.userIntent.enableYSQLAuth;
+    }
+    // We shouldn't get here!!!
+    return null;
+  };
+
   getYCQLstate = () => {
     const { formValues, universe } = this.props;
 
@@ -336,6 +360,26 @@ class UniverseForm extends Component {
     if (isNonEmptyObject(universeDetails)) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       return primaryCluster.userIntent.enableYCQL;
+    }
+    // We shouldn't get here!!!
+    return null;
+  };
+
+  getYCQLAuthstate = () => {
+    const { formValues, universe } = this.props;
+
+    if (isNonEmptyObject(formValues['primary'])) {
+      return formValues['primary'].enableYCQLAuth;
+    }
+
+    const {
+      currentUniverse: {
+        data: { universeDetails }
+      }
+    } = universe;
+    if (isNonEmptyObject(universeDetails)) {
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      return primaryCluster.userIntent.enableYCQLAuth;
     }
     // We shouldn't get here!!!
     return null;
@@ -389,7 +433,11 @@ class UniverseForm extends Component {
         assignPublicIP: formValues[clusterType].assignPublicIP,
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: self.getYSQLstate(),
+        enableYSQLAuth: self.getYSQLAuthstate(),
+        ysqlPassword: formValues[clusterType].ysqlPassword,
         enableYCQL: self.getYCQLstate(),
+        enableYCQLAuth: self.getYCQLAuthstate(),
+        ycqlPassword: formValues[clusterType].ycqlPassword,
         enableYEDIS: self.getYEDISstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
@@ -996,7 +1044,11 @@ class PrimaryClusterFields extends Component {
           'primary.useSystemd',
           'primary.useTimeSync',
           'primary.enableYSQL',
-          'primary.enableYSQL',
+          'primary.enableYSQLAuth',
+          'primary.ysqlPassword',
+          'primary.enableYCQL',
+          'primary.enableYCQLAuth',
+          'primary.ycqlPassword',
           'primary.enableIPV6',
           'primary.enableExposingService',
           'primary.enableYEDIS',
@@ -1035,7 +1087,9 @@ class ReadOnlyClusterFields extends Component {
           'async.useSystemd',
           'async.useTimeSync',
           'async.enableYSQL',
+          'async.enableYSQLAuth',
           'async.enableYCQL',
+          'async.enableYCQLAuth',
           'async.enableIPV6',
           'async.enableExposingService',
           'async.enableYEDIS',
