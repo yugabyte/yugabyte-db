@@ -119,7 +119,7 @@ lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
 name := "yugaware"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
+  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
   .disablePlugins(PlayLayoutPlugin)
 
 scalaVersion := "2.12.10"
@@ -175,7 +175,9 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
   "org.projectlombok" % "lombok" % "1.18.20",
-  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
+  "io.kamon" %% "kamon-bundle" % "2.2.2",
+  "io.kamon" %% "kamon-prometheus" % "2.2.2"
 )
 // Clear default resolvers.
 appResolvers := None

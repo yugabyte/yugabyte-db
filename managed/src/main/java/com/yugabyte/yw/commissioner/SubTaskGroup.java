@@ -2,12 +2,18 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.commissioner.TaskRunner.COMMISSIONER_TASK_EXECUTION_SEC;
+import static com.yugabyte.yw.commissioner.TaskRunner.COMMISSIONER_TASK_WAITING_SEC;
+import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -16,13 +22,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import lombok.Data;
+import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+@Slf4j
 public class SubTaskGroup implements Runnable {
-
-  public static final Logger LOG = LoggerFactory.getLogger(SubTaskGroup.class);
 
   // User facing subtask. If this field is 'Invalid', the state of this task list  should
   // not be exposed to the user. Note that multiple task lists can be combined into a single user
@@ -37,10 +43,10 @@ public class SubTaskGroup implements Runnable {
   private final String name;
 
   // The list of tasks in this task list.
-  private final Map<AbstractTaskBase, TaskInfo> taskMap;
+  private final Map<AbstractTaskBase, TaskInfoWithStats> taskMap;
 
   // The list of futures to wait for.
-  private final Map<Future<?>, TaskInfo> futuresMap;
+  private final Map<Future<?>, TaskInfoWithStats> futuresMap;
 
   private final AtomicInteger numTasksCompleted;
 
@@ -81,7 +87,8 @@ public class SubTaskGroup implements Runnable {
 
   public synchronized void setSubTaskGroupType(UserTaskDetails.SubTaskGroupType subTaskGroupType) {
     this.subTaskGroupType = subTaskGroupType;
-    for (TaskInfo taskInfo : taskMap.values()) {
+    for (TaskInfoWithStats taskInfoWithStats : taskMap.values()) {
+      TaskInfo taskInfo = taskInfoWithStats.getTaskInfo();
       taskInfo.setSubTaskGroupType(subTaskGroupType);
       taskInfo.save();
     }
@@ -93,7 +100,8 @@ public class SubTaskGroup implements Runnable {
 
   public synchronized void setUserSubTaskState(TaskInfo.State userTaskState) {
     this.userSubTaskState = userTaskState;
-    for (TaskInfo taskInfo : taskMap.values()) {
+    for (TaskInfoWithStats taskInfoWithStats : taskMap.values()) {
+      TaskInfo taskInfo = taskInfoWithStats.getTaskInfo();
       taskInfo.setTaskState(userTaskState);
       taskInfo.save();
     }
@@ -113,8 +121,8 @@ public class SubTaskGroup implements Runnable {
   }
 
   public void addTask(AbstractTaskBase task) {
-    LOG.info("Adding task #" + taskMap.size() + ": " + task.getName());
-    LOG.debug("Details for task #" + taskMap.size() + ": " + task.toString());
+    log.info("Adding task #" + taskMap.size() + ": " + task.getName());
+    log.debug("Details for task #" + taskMap.size() + ": " + task.toString());
 
     // Set up corresponding TaskInfo.
     TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
@@ -125,7 +133,7 @@ public class SubTaskGroup implements Runnable {
     try {
       hostname = InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      LOG.error("Could not determine the hostname", e);
+      log.error("Could not determine the hostname", e);
     }
     taskInfo.setOwner(hostname);
     // Set the SubTaskGroupType in TaskInfo
@@ -133,7 +141,7 @@ public class SubTaskGroup implements Runnable {
       taskInfo.setSubTaskGroupType(this.subTaskGroupType);
     }
     taskInfo.save();
-    taskMap.put(task, taskInfo);
+    taskMap.put(task, new TaskInfoWithStats(taskInfo));
   }
 
   public int getNumTasks() {
@@ -145,7 +153,8 @@ public class SubTaskGroup implements Runnable {
   }
 
   public void setTaskContext(int position, UUID userTaskUUID) {
-    for (TaskInfo taskInfo : taskMap.values()) {
+    for (TaskInfoWithStats taskInfoWithStats : taskMap.values()) {
+      TaskInfo taskInfo = taskInfoWithStats.getTaskInfo();
       taskInfo.setPosition(position);
       taskInfo.setParentUuid(userTaskUUID);
       taskInfo.save();
@@ -159,15 +168,28 @@ public class SubTaskGroup implements Runnable {
   @Override
   public void run() {
     if (taskMap.isEmpty()) {
-      LOG.error("No tasks in task list {}.", getName());
+      log.error("No tasks in task list {}.", getName());
       tasksDone = true;
       return;
     }
-    LOG.info("Running task list {}.", getName());
-    for (AbstractTaskBase task : taskMap.keySet()) {
-      Future<?> future = executor.submit(task);
+    log.info("Running task list {}.", getName());
+    for (Map.Entry<AbstractTaskBase, TaskInfoWithStats> entry : taskMap.entrySet()) {
+      TaskInfoWithStats taskInfoWithStats = entry.getValue();
+      taskInfoWithStats.setScheduledTime(new Date());
+      Future<?> future =
+          executor.submit(
+              () -> {
+                try {
+                  taskInfoWithStats.setExecutionStartedTime(new Date());
+                  writeTaskWaitMetric(taskInfoWithStats);
+                  entry.getKey().run();
+                } finally {
+                  taskInfoWithStats.setExecutionFinishedTime(new Date());
+                }
+              });
       // TODO: looks like race condition. Investigate further
-      futuresMap.put(future, taskMap.get(task));
+
+      futuresMap.put(future, taskInfoWithStats);
     }
   }
 
@@ -175,7 +197,8 @@ public class SubTaskGroup implements Runnable {
     boolean hasErrored = false;
     // TODO: looks like race condition. Investigate further
     for (Future<?> future : futuresMap.keySet()) {
-      TaskInfo taskInfo = futuresMap.get(future);
+      TaskInfoWithStats taskInfoWithStats = futuresMap.get(future);
+      TaskInfo taskInfo = taskInfoWithStats.getTaskInfo();
 
       // Wait for each future to finish.
       String errorString = null;
@@ -198,7 +221,7 @@ public class SubTaskGroup implements Runnable {
                   + taskInfo.toString()
                   + " "
                   + taskInfo.getTaskUUID().toString();
-          LOG.error(errorString);
+          log.error(errorString);
         }
       } catch (Exception e) {
         errorString =
@@ -207,7 +230,7 @@ public class SubTaskGroup implements Runnable {
                 + ", hit error "
                 + StringUtils.abbreviateMiddle(e.getMessage(), "...", 3000)
                 + ".";
-        LOG.error(
+        log.error(
             "Failed to execute task type {} UUID {} details {}, hit error.",
             taskInfo.getTaskType().toString(),
             taskInfo.getTaskUUID().toString(),
@@ -222,8 +245,85 @@ public class SubTaskGroup implements Runnable {
           taskInfo.setTaskDetails(details);
           taskInfo.save();
         }
+        if (taskInfoWithStats.getExecutionStartedTime() == null) {
+          writeTaskWaitMetric(taskInfoWithStats);
+        }
+        if (hasErrored) {
+          writeTaskFailedMetric(taskInfoWithStats);
+        } else {
+          writeTaskSuccessMetric(taskInfoWithStats);
+        }
       }
     }
     return !hasErrored;
+  }
+
+  private void writeTaskWaitMetric(TaskInfoWithStats taskInfoWithStats) {
+    Date executionStartedTime =
+        taskInfoWithStats.getExecutionStartedTime() != null
+            ? taskInfoWithStats.getExecutionStartedTime()
+            : new Date();
+    COMMISSIONER_TASK_WAITING_SEC
+        .labels(taskInfoWithStats.getName())
+        .observe(getDurationSeconds(taskInfoWithStats.getScheduledTime(), executionStartedTime));
+  }
+
+  private void writeTaskSuccessMetric(TaskInfoWithStats taskInfoWithStats) {
+    if (taskInfoWithStats.getExecutionStartedTime() != null
+        && taskInfoWithStats.getExecutionFinishedTime() != null) {
+      COMMISSIONER_TASK_EXECUTION_SEC
+          .labels(taskInfoWithStats.getName(), State.Success.name())
+          .observe(
+              getDurationSeconds(
+                  taskInfoWithStats.getExecutionStartedTime(),
+                  taskInfoWithStats.getExecutionFinishedTime()));
+    } else {
+      log.warn("Started or finished time does not exist for task {}", taskInfoWithStats);
+    }
+  }
+
+  private void writeTaskFailedMetric(TaskInfoWithStats taskInfoWithStats) {
+    if (taskInfoWithStats.getExecutionStartedTime() != null) {
+      Date executionFinishedTime =
+          taskInfoWithStats.getExecutionFinishedTime() != null
+              ? taskInfoWithStats.getExecutionFinishedTime()
+              : new Date();
+      COMMISSIONER_TASK_EXECUTION_SEC
+          .labels(taskInfoWithStats.getName(), State.Failure.name())
+          .observe(
+              getDurationSeconds(
+                  taskInfoWithStats.getExecutionStartedTime(), executionFinishedTime));
+    } else {
+      log.trace("Started time does not exist for task {}", taskInfoWithStats);
+    }
+  }
+
+  @Data
+  @ToString
+  private static class TaskInfoWithStats {
+    private final TaskInfo taskInfo;
+    private Date scheduledTime;
+    private Date executionStartedTime;
+    private Date executionFinishedTime;
+
+    TaskInfoWithStats(TaskInfo taskInfo) {
+      this.taskInfo = taskInfo;
+    }
+
+    String getName() {
+      return taskInfo.getTaskType().name();
+    }
+
+    public synchronized void setScheduledTime(Date scheduledTime) {
+      this.scheduledTime = scheduledTime;
+    }
+
+    public synchronized void setExecutionStartedTime(Date executionStartedTime) {
+      this.executionStartedTime = executionStartedTime;
+    }
+
+    public synchronized void setExecutionFinishedTime(Date executionFinishedTime) {
+      this.executionFinishedTime = executionFinishedTime;
+    }
   }
 }

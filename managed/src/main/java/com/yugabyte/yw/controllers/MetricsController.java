@@ -3,10 +3,13 @@
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.common.YWServiceException;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricLabel;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.prometheus.client.Collector;
@@ -18,27 +21,44 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStreamWriter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.mvc.Controller;
 import play.mvc.Result;
 import play.mvc.Results;
 
 @Api(value = "Metrics", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class MetricsController extends Controller {
+
+  private static final String KAMON_EMBEDDED_SERVER_HOST =
+      "kamon.prometheus.embedded-server.hostname";
+  private static final String KAMON_EMBEDDED_SERVER_PORT = "kamon.prometheus.embedded-server.port";
 
   @Inject private MetricService metricService;
 
-  @ApiOperation(value = "index", response = String.class, nickname = "MetricsDetail")
+  @Inject ApiHelper apiHelper;
+
+  @Inject Config config;
+
+  private Date lastKamonErrorPrinted = null;
+
+  @ApiOperation(
+      value = "Get Prometheus metrics",
+      response = String.class,
+      nickname = "MetricsDetail")
   public Result index() {
     final ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
     try {
@@ -47,6 +67,8 @@ public class MetricsController extends Controller {
       TextFormat.write004(osw, CollectorRegistry.defaultRegistry.metricFamilySamples());
       // Write persisted metrics
       TextFormat.write004(osw, Collections.enumeration(getPersistedMetrics()));
+      // Write Kamon metrics
+      osw.write(getKamonMetrics());
 
       osw.flush();
       osw.close();
@@ -57,6 +79,22 @@ public class MetricsController extends Controller {
     }
 
     return Results.status(OK, response.toString());
+  }
+
+  private String getKamonMetrics() {
+    try {
+      String host = config.getString(KAMON_EMBEDDED_SERVER_HOST);
+      int port = config.getInt(KAMON_EMBEDDED_SERVER_PORT);
+      String url = "http://" + host + ":" + port + "/metrics";
+      return apiHelper.getBody(url);
+    } catch (Exception e) {
+      if (lastKamonErrorPrinted == null
+          || lastKamonErrorPrinted.before(CommonUtils.nowMinus(1, ChronoUnit.HOURS))) {
+        log.error("Failed to retrieve Kamon metrics", e);
+        lastKamonErrorPrinted = new Date();
+      }
+    }
+    return StringUtils.EMPTY;
   }
 
   private List<Collector.MetricFamilySamples> getPersistedMetrics() {

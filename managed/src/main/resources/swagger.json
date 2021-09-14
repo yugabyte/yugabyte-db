@@ -9414,7 +9414,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "index",
+        "summary" : "Get Prometheus metrics",
         "tags" : [ "Metrics" ]
       }
     },
