@@ -1258,68 +1258,74 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   // Second, if we still didn't find a match...
   if (table == nullptr) {
     VLOG_WITH_PREFIX(3) << "Begin second search";
-    if (meta.table_type() == TableType::YQL_TABLE_TYPE ||
-        meta.table_type() == TableType::REDIS_TABLE_TYPE) {
-      // For YCQL and YEDIS, simply create the missing table.
-      RETURN_NOT_OK(RecreateTable(new_namespace_id, table_map, table_data));
-    } else if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
-      // For YSQL, the table must be created via external call. Therefore, continue the search for
-      // the table, this time checking for name matches rather than id matches.
-
-      if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
-        // For the parent colocated table we need to generate the new_table_id ourselves
-        // since the names will not match.
-        // For normal colocated tables, we are still able to follow the normal table flow, so no
-        // need to generate the new_table_id ourselves.
-        table_data->new_table_id = new_namespace_id + kColocatedParentTableIdSuffix;
-        is_parent_colocated_table = true;
-      } else {
-        if (!table_data->new_table_id.empty()) {
-          return STATUS_FORMAT(InternalError, "$0 expected empty new table id but $1 found",
-                               __func__, table_data->new_table_id);
-        }
-        SharedLock lock(mutex_);
-
-        for (const auto& entry : *table_ids_map_) {
-          table = entry.second;
-
-          if (new_namespace_id != table->namespace_id()) {
-            VLOG_WITH_FUNC(3) << "Namespace ids do not match: "
-                              << table->namespace_id() << " vs " << new_namespace_id
-                              << " for " << table->ToString();
-            continue;
-          }
-          if (!VERIFY_RESULT(CheckTableForImport(table, table_data))) {
-            // Some other check failed.
-            continue;
-          }
-
-          // Found the new YSQL table by name.
-          if (table_data->new_table_id.empty()) {
-            VLOG_WITH_PREFIX(1)
-                << __func__ << " found existing table " << entry.first << " for "
-                << new_namespace_id << "/" << meta.name() << " with schema "
-                << table_data->pg_schema_name;
-            table_data->new_table_id = entry.first;
-          } else if (table_data->new_table_id != entry.first) {
-            return STATUS(InvalidArgument,
-                          Format("Found 2 YSQL tables with the same name: $0 - $1, $2",
-                                meta.name(), table_data->new_table_id, entry.first),
-                          MasterError(MasterErrorPB::SNAPSHOT_FAILED));
-          }
-        }
-
-        if (table_data->new_table_id.empty()) {
-          return STATUS_EC_FORMAT(
-              InvalidArgument, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-              "YSQL table not found: $0", meta.name());
-        }
+    switch (meta.table_type()) {
+      case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
+      case TableType::REDIS_TABLE_TYPE: {
+        // For YCQL and YEDIS, simply create the missing table.
+        RETURN_NOT_OK(RecreateTable(new_namespace_id, table_map, table_data));
+        break;
       }
-    } else {
-      return STATUS(
-          InvalidArgument,
-          Format("Unexpected table type: $0", TableType_Name(meta.table_type())),
-          MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+      case TableType::PGSQL_TABLE_TYPE: {
+        // For YSQL, the table must be created via external call. Therefore, continue the search for
+        // the table, this time checking for name matches rather than id matches.
+
+        if (meta.colocated() && IsColocatedParentTableId(table_data->old_table_id)) {
+          // For the parent colocated table we need to generate the new_table_id ourselves
+          // since the names will not match.
+          // For normal colocated tables, we are still able to follow the normal table flow, so no
+          // need to generate the new_table_id ourselves.
+          table_data->new_table_id = new_namespace_id + kColocatedParentTableIdSuffix;
+          is_parent_colocated_table = true;
+        } else {
+          if (!table_data->new_table_id.empty()) {
+            return STATUS_FORMAT(InternalError, "$0 expected empty new table id but $1 found",
+                                 __func__, table_data->new_table_id);
+          }
+          SharedLock lock(mutex_);
+
+          for (const auto& entry : *table_ids_map_) {
+            table = entry.second;
+
+            if (new_namespace_id != table->namespace_id()) {
+              VLOG_WITH_FUNC(3) << "Namespace ids do not match: "
+                                << table->namespace_id() << " vs " << new_namespace_id
+                                << " for " << table->ToString();
+              continue;
+            }
+            if (!VERIFY_RESULT(CheckTableForImport(table, table_data))) {
+              // Some other check failed.
+              continue;
+            }
+
+            // Found the new YSQL table by name.
+            if (table_data->new_table_id.empty()) {
+              VLOG_WITH_PREFIX(1)
+                  << __func__ << " found existing table " << entry.first << " for "
+                  << new_namespace_id << "/" << meta.name() << " with schema "
+                  << table_data->pg_schema_name;
+              table_data->new_table_id = entry.first;
+            } else if (table_data->new_table_id != entry.first) {
+              return STATUS(InvalidArgument,
+                            Format("Found 2 YSQL tables with the same name: $0 - $1, $2",
+                                  meta.name(), table_data->new_table_id, entry.first),
+                            MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+            }
+          }
+
+          if (table_data->new_table_id.empty()) {
+            return STATUS_EC_FORMAT(
+                InvalidArgument, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+                "YSQL table not found: $0", meta.name());
+          }
+        }
+        break;
+      }
+      case TableType::TRANSACTION_STATUS_TABLE_TYPE: {
+        return STATUS(
+            InvalidArgument,
+            Format("Unexpected table type: $0", TableType_Name(meta.table_type())),
+            MasterError(MasterErrorPB::INVALID_TABLE_TYPE));
+      }
     }
   } else {
     table_data->new_table_id = table_data->old_table_id;
