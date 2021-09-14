@@ -378,7 +378,7 @@ CREATE TABLE on_hand (
 
 ### 3. Insert a row
 
-To insert a row, use the `RUN` keyword, as follows:
+To insert a row, use the `ROW` keyword, as follows:
 
 ```sql
 INSERT INTO on_hand VALUES (ROW('fuzzy dice', 42, 1.99), 1000);
