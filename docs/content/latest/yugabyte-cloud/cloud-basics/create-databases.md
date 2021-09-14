@@ -1,20 +1,41 @@
 ---
 title: Create and explore a database
+headerTitle: Create and explore a database
 linkTitle: Create a database
-description: Create and explore a database.
+description: Create and explore a database using YSQL.
 headcontent:
-image: /images/section_icons/deploy/enterprise.png
+image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
   - /latest/deploy/yugabyte-cloud/create-databases/
   - /latest/yugabyte-cloud/create-databases/
 menu:
   latest:
-    identifier: create-databases
     parent: cloud-basics
+    name: Create a database
+    identifier: create-databases-1-ysql
     weight: 60
+type: page
 isTocNested: true
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="../create-databases/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+ <li >
+    <a href="../create-databases-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+  
+</ul>
 
 Sample datasets that you can use to test out YugabyteDB are located in the `share` directory of your YugabyteDB Client Shell installation. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). The following exercise shows how you can create a database, load the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) sample dataset, and run a simple query.
 
