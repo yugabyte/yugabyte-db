@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.Collections;
 import java.util.Date;
+import java.util.UUID;
 import javax.mail.MessagingException;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -194,21 +195,41 @@ public class AlertManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSendNotification_AlertWoDefinition_SendEmailOldManner()
-      throws PlatformNotificationException {
-    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
+  public void testSendNotification_NoDestinations() throws MessagingException {
+    configuration.setDefaultDestination(false);
+    alertConfigurationService.save(configuration);
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
     am.sendNotificationForState(alert, State.ACTIVE, report);
 
-    ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
-    verify(emailChannel, times(1)).sendNotification(eq(defaultCustomer), captor.capture(), any());
-    assertThat(captor.getValue().getUuid(), is(alert.getUuid()));
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(0));
+    assertThat(alert.getNextNotificationTime(), nullValue());
   }
 
   @Test
-  public void testSendNotification_NoDestinations() throws MessagingException {
+  public void testSendNotification_NoConfig() throws MessagingException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+    alert.setLabel(KnownAlertLabels.CONFIGURATION_UUID, UUID.randomUUID().toString());
+
     am.sendNotificationForState(alert, State.ACTIVE, report);
+
     verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(0));
+    assertThat(alert.getNextNotificationTime(), nullValue());
+  }
+
+  @Test
+  public void testSendNotification_DefaultDestinationMissing() throws MessagingException {
+    defaultDestination.setDefaultDestination(false);
+    defaultDestination.save();
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(1));
+    assertThat(alert.getNextNotificationTime().after(new Date()), equalTo(true));
   }
 
   @Test

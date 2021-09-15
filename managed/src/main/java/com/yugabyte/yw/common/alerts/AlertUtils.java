@@ -9,7 +9,6 @@ import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.lang.reflect.InvocationTargetException;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -59,23 +58,12 @@ public class AlertUtils {
   public static String getNotificationText(Alert alert, AlertChannel channel) {
     String template = channel.getParams().textTemplate;
     if (StringUtils.isEmpty(template)) {
-      if (alert.getDefinitionUuid() == null) {
-        return getDefaultNotificationText(alert);
-      }
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
       if (alert.getState() == State.ACTIVE) {
         template = template + "\n\n" + StringUtils.abbreviate(alert.getMessage(), 1000);
       }
     }
     return alertSubstitutions(alert, template);
-  }
-
-  @VisibleForTesting
-  static String getDefaultNotificationText(Alert alert) {
-    String targetType = alert.getLabelValue(KnownAlertLabels.SOURCE_TYPE);
-    return String.format(
-        "Common failure for %s '%s', state: %s\nFailure details:\n\n%s",
-        targetType, alert.getSourceName(), alert.getState().getAction(), alert.getMessage());
   }
 
   public static Class<?> getAlertParamsClass(ChannelType channelType) {

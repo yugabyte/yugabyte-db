@@ -40,10 +40,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.AllArgsConstructor;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -86,31 +87,40 @@ public class AlertManager {
     this.metricService = metricService;
   }
 
-  private Optional<AlertDestination> getDestinationByAlert(Alert alert) {
+  private NotificationStrategy getNotificationStrategy(Alert alert) {
     String configurationUuid = alert.getLabelValue(KnownAlertLabels.CONFIGURATION_UUID);
     if (configurationUuid == null) {
-      return Optional.empty();
+      log.warn("Missing configuration UUID in alert {}", alert.getUuid());
+      return new NotificationStrategy();
     }
     AlertConfiguration configuration =
         alertConfigurationService.get(UUID.fromString(configurationUuid));
     if (configuration == null) {
       log.warn("Missing configuration {} for alert {}", configurationUuid, alert.getUuid());
-      return Optional.empty();
+      return new NotificationStrategy();
     }
+    AlertDestination destination;
+    boolean defaultDestination = false;
     if (configuration.getDestinationUUID() == null) {
-      return Optional.empty();
+      if (!configuration.isDefaultDestination()) {
+        return new NotificationStrategy();
+      }
+      log.debug("Using default destination {} for alert {}", configurationUuid, alert.getUuid());
+      defaultDestination = true;
+      destination = alertDestinationService.getDefaultDestination(configuration.getCustomerUUID());
+    } else {
+      destination =
+          alertDestinationService.get(
+              configuration.getCustomerUUID(), configuration.getDestinationUUID());
     }
-    AlertDestination destination =
-        alertDestinationService.get(
-            configuration.getCustomerUUID(), configuration.getDestinationUUID());
     if (destination == null) {
       log.warn(
           "Missing destination {} for alert {}",
           configuration.getDestinationUUID(),
           alert.getUuid());
-      return Optional.empty();
     }
-    return Optional.of(destination);
+
+    return new NotificationStrategy(destination, defaultDestination);
   }
 
   @VisibleForTesting
@@ -199,16 +209,15 @@ public class AlertManager {
     Customer customer = Customer.get(alert.getCustomerUUID());
 
     boolean atLeastOneSucceeded = false;
-    Optional<AlertDestination> destination = getDestinationByAlert(alert);
-    List<AlertChannel> channels =
-        new ArrayList<>(
-            destination.map(AlertDestination::getChannelsList).orElse(Collections.emptyList()));
+    NotificationStrategy strategy = getNotificationStrategy(alert);
 
-    if (channels.isEmpty()) {
-      // Getting channels from the default destination.
-      AlertDestination defaultDestination =
-          alertDestinationService.getDefaultDestination(alert.getCustomerUUID());
-      if (defaultDestination == null) {
+    if (!strategy.isShouldSend()) {
+      log.debug("Skipping notification for alert {}", alert.getUuid());
+      return SendNotificationResult.SUCCEEDED;
+    }
+
+    if (strategy.getDestination() == null) {
+      if (strategy.isDefaultDestinationUsed()) {
         log.warn(
             "Unable to notify about alert {}, there is no default destination specified.",
             alert.getUuid());
@@ -216,29 +225,29 @@ public class AlertManager {
             MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
             "Unable to notify about alert(s), there is no default destination specified.");
         return SendNotificationResult.FAILED_TO_RESCHEDULE;
+      } else {
+        log.error(
+            "Unable to notify about alert {}, destination is missing from DB.", alert.getUuid());
+        return SendNotificationResult.FAILED_NO_RESCHEDULE;
       }
-
-      List<AlertChannel> defaultChannels = defaultDestination.getChannelsList();
-      if ((defaultChannels.size() == 1)
-          && ("Email".equals(AlertUtils.getJsonTypeName(defaultChannels.get(0).getParams())))
-          && ((AlertChannelEmailParams) defaultChannels.get(0).getParams()).defaultRecipients
-          && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
-
-        metricService.setStatusMetric(
-            MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
-            "Unable to notify about alert(s) using default destination, "
-                + "there are no recipients configured in the customer's profile.");
-        return SendNotificationResult.FAILED_TO_RESCHEDULE;
-      }
-
-      log.debug(
-          "For alert {} no destinations/channels found, using default destination.",
-          alert.getUuid());
-      channels.addAll(defaultChannels);
-
-      metricService.setOkStatusMetric(
-          MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
     }
+
+    List<AlertChannel> channels = new ArrayList<>(strategy.getDestination().getChannelsList());
+
+    if ((channels.size() == 1)
+        && ("Email".equals(AlertUtils.getJsonTypeName(channels.get(0).getParams())))
+        && ((AlertChannelEmailParams) channels.get(0).getParams()).defaultRecipients
+        && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
+
+      metricService.setStatusMetric(
+          MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
+          "Unable to notify about alert(s) using default destination, "
+              + "there are no recipients configured in the customer's profile.");
+      return SendNotificationResult.FAILED_TO_RESCHEDULE;
+    }
+
+    metricService.setOkStatusMetric(
+        MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
 
     // Not going to save the alert, only to use with another state for the
     // notification.
@@ -311,5 +320,21 @@ public class AlertManager {
         .setName(metric.getMetricName())
         .setSourceUuid(channel.getUuid())
         .setLabels(MetricLabelsBuilder.create().appendSource(channel).getMetricLabels());
+  }
+
+  @Value
+  @AllArgsConstructor
+  private static class NotificationStrategy {
+    boolean shouldSend;
+    AlertDestination destination;
+    boolean defaultDestinationUsed;
+
+    NotificationStrategy() {
+      this(false, null, false);
+    }
+
+    NotificationStrategy(AlertDestination destination, boolean isDefault) {
+      this(true, destination, isDefault);
+    }
   }
 }

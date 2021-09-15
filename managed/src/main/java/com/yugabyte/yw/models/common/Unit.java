@@ -13,8 +13,10 @@ import static com.yugabyte.yw.models.common.Condition.GREATER_THAN;
 import static com.yugabyte.yw.models.common.Condition.LESS_THAN;
 
 import lombok.Data;
+import lombok.Getter;
 import lombok.experimental.Accessors;
 
+@Getter
 public enum Unit {
   STATUS(
       new UnitBuilder()
@@ -22,6 +24,7 @@ public enum Unit {
           .maxValue(1)
           .integer(true)
           .thresholdReadOnly(true)
+          .thresholdConditionReadOnly(true)
           .thresholdCondition(LESS_THAN)),
   COUNT(new UnitBuilder().measure(Measure.COUNT).integer(true)),
   PERCENT(
@@ -29,17 +32,29 @@ public enum Unit {
           .measure(Measure.PERCENTAGE)
           .displayName("%")
           .metricName("pct")
-          .maxValue(100)),
+          .maxValue(100)
+          .thresholdConditionReadOnly(true)),
   MILLISECOND(
-      new UnitBuilder().measure(Measure.TIME).displayName("ms").metricName("ms").integer(true)),
+      new UnitBuilder()
+          .measure(Measure.TIME)
+          .displayName("ms")
+          .metricName("ms")
+          .integer(true)
+          .thresholdConditionReadOnly(true)),
   SECOND(
-      new UnitBuilder().measure(Measure.TIME).displayName("sec").metricName("sec").integer(true)),
+      new UnitBuilder()
+          .measure(Measure.TIME)
+          .displayName("sec")
+          .metricName("sec")
+          .integer(true)
+          .thresholdConditionReadOnly(true)),
   DAY(
       new UnitBuilder()
           .measure(Measure.TIME)
           .displayName("day(s)")
           .metricName("day")
-          .integer(true));
+          .integer(true)
+          .thresholdConditionReadOnly(true));
 
   private final Measure measure;
   private final String displayName;
@@ -48,6 +63,7 @@ public enum Unit {
   private final double maxValue;
   private final boolean integer;
   private final boolean thresholdReadOnly;
+  private final boolean thresholdConditionOnly;
   private final Condition thresholdCondition;
 
   Unit(UnitBuilder builder) {
@@ -58,35 +74,8 @@ public enum Unit {
     this.maxValue = builder.maxValue();
     this.integer = builder.integer();
     this.thresholdReadOnly = builder.thresholdReadOnly();
+    this.thresholdConditionOnly = builder.thresholdConditionReadOnly();
     this.thresholdCondition = builder.thresholdCondition();
-  }
-
-  public Measure getMeasure() {
-    return measure;
-  }
-
-  public String getDisplayName() {
-    return displayName;
-  }
-
-  public String getMetricName() {
-    return metricName;
-  }
-
-  public double getMinValue() {
-    return minValue;
-  }
-
-  public double getMaxValue() {
-    return maxValue;
-  }
-
-  public boolean isInteger() {
-    return integer;
-  }
-
-  public boolean isThresholdReadOnly() {
-    return thresholdReadOnly;
   }
 
   public Condition getThresholdCondition() {
@@ -103,6 +92,7 @@ public enum Unit {
     private double maxValue = Double.MAX_VALUE;
     private boolean integer = false;
     private boolean thresholdReadOnly = false;
+    private boolean thresholdConditionReadOnly = false;
     private Condition thresholdCondition = GREATER_THAN;
   }
 }

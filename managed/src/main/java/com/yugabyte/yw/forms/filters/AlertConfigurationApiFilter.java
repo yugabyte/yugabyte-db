@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter.AlertConfigurationFilterBuilder;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter.DestinationType;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
@@ -27,6 +28,7 @@ public class AlertConfigurationApiFilter {
   private Boolean active;
   private AlertConfiguration.TargetType targetType;
   private AlertTemplate template;
+  private DestinationType destinationType;
   private UUID destinationUuid;
 
   public AlertConfigurationFilter toFilter() {
@@ -45,6 +47,9 @@ public class AlertConfigurationApiFilter {
     }
     if (template != null) {
       builder.template(template);
+    }
+    if (destinationType != null) {
+      builder.destinationType(destinationType);
     }
     if (destinationUuid != null) {
       builder.destinationUuid(destinationUuid);

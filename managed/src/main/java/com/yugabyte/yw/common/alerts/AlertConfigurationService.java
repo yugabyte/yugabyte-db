@@ -289,11 +289,16 @@ public class AlertConfigurationService {
     if (MapUtils.isEmpty(configuration.getThresholds())) {
       throw new PlatformServiceException(BAD_REQUEST, "Query thresholds are mandatory");
     }
-    if (configuration.getDestinationUUID() != null
-        && AlertDestination.get(configuration.getCustomerUUID(), configuration.getDestinationUUID())
-            == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Alert destination " + configuration.getDestinationUUID() + " is missing");
+    if (configuration.getDestinationUUID() != null) {
+      if (AlertDestination.get(configuration.getCustomerUUID(), configuration.getDestinationUUID())
+          == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Alert destination " + configuration.getDestinationUUID() + " is missing");
+      }
+      if (configuration.isDefaultDestination()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Destination can't be filled in case default destination is selected");
+      }
     }
     if (configuration.getThresholdUnit() == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Threshold unit is mandatory");
@@ -582,13 +587,15 @@ public class AlertConfigurationService {
                                             : e.getValue().getThreshold()))))
             .setThresholdUnit(template.getDefaultThresholdUnit())
             .setTemplate(template)
-            .setDurationSec(template.getDefaultDurationSec());
+            .setDurationSec(template.getDefaultDurationSec())
+            .setDefaultDestination(true);
     return new AlertConfigurationTemplate()
         .setDefaultConfiguration(configuration)
         .setThresholdMinValue(template.getThresholdMinValue())
         .setThresholdMaxValue(template.getThresholdMaxValue())
         .setThresholdInteger(template.getDefaultThresholdUnit().isInteger())
         .setThresholdReadOnly(template.isThresholdReadOnly())
+        .setThresholdConditionReadOnly(template.isThresholdConditionReadOnly())
         .setThresholdUnitName(template.getThresholdUnitName());
   }
 

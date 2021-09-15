@@ -18,5 +18,6 @@
   "template": "REPLICATION_LAG",
   "durationSec": 15,
   "active": false,
-  "destinationUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea32"
+  "destinationUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea32",
+  "defaultDestination": false
 }

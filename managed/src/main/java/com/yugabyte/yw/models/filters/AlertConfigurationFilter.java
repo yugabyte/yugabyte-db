@@ -29,6 +29,7 @@ public class AlertConfigurationFilter {
   AlertConfiguration.TargetType targetType;
   AlertTemplate template;
   UUID targetUuid;
+  DestinationType destinationType;
   UUID destinationUuid;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
@@ -55,6 +56,9 @@ public class AlertConfigurationFilter {
     }
     if (targetUuid != null) {
       result.targetUuid(targetUuid);
+    }
+    if (destinationType != null) {
+      result.destinationType(destinationType);
     }
     if (destinationUuid != null) {
       result.destinationUuid(destinationUuid);
@@ -106,9 +110,21 @@ public class AlertConfigurationFilter {
       return this;
     }
 
+    public AlertConfigurationFilterBuilder destinationType(
+        @NonNull DestinationType destinationType) {
+      this.destinationType = destinationType;
+      return this;
+    }
+
     public AlertConfigurationFilterBuilder destinationUuid(@NonNull UUID destinationUuid) {
       this.destinationUuid = destinationUuid;
       return this;
     }
+  }
+
+  public enum DestinationType {
+    NO_DESTINATION,
+    DEFAULT_DESTINATION,
+    SELECTED_DESTINATION
   }
 }

@@ -34,22 +34,16 @@ export class AlertsPolicy extends Component {
       Less than
     </option>
   ];
-  /**
-   * Push an enpty object if field array is empty.
-   */
-  componentDidMount() {
-    const { fields } = this.props;
-    if (fields.length === 0) {
-      this.props.fields.push({});
-    }
-  }
 
   /**
    * Add a new row in field array.
    * @param {Event} e
    */
   addRow = (e) => {
-    this.props.fields.push({});
+  const metric = this.props.currentMetric;
+    this.props.fields.push({
+      _CONDITION: metric.thresholds[Object.keys(metric.thresholds)[0]].condition
+    });
     e.preventDefault();
   };
 
@@ -64,24 +58,6 @@ export class AlertsPolicy extends Component {
   render() {
     const { fields, currentMetric } = this.props;
 
-    let metricUnit = '';
-
-    switch (currentMetric?.thresholdUnit) {
-      case 'MILLISECOND':
-        metricUnit = 'ms';
-        break;
-      case 'SECOND':
-        metricUnit = 'sec';
-        break;
-      case 'DAY':
-        metricUnit = 'day';
-        break;
-      case 'PERCENT':
-        metricUnit = '%';
-        break;
-      default:
-        metricUnit = '';
-    }
     return (
       <div className="condition-row-container">
         <Row>
@@ -105,6 +81,7 @@ export class AlertsPolicy extends Component {
                 name={`${instanceTypeItem}_CONDITION`}
                 component={YBSelect}
                 insetError={true}
+                readOnlySelect={currentMetric?.thresholdConditionReadOnly}
                 validate={required}
                 options={this.conditionTypes}
               />
@@ -113,16 +90,17 @@ export class AlertsPolicy extends Component {
               <Field
                 name={`${instanceTypeItem}_THRESHOLD`}
                 component={YBInputField}
+                isReadOnly={currentMetric?.thresholdReadOnly}
                 validate={required}
               />
             </Col>
             <Col lg={1}>
               <div className="flex-container">
-                <p className="percent-text">{metricUnit}</p>
+                <p className="percent-text">{currentMetric?.thresholdUnitName}</p>
               </div>
             </Col>
             <Col lg={1}>
-              {fields.length > 1 ? (
+              {fields.length > 1 && !currentMetric?.thresholdReadOnly ? (
                 <i
                   className="fa fa-minus-circle on-prem-row-delete-btn"
                   onClick={() => this.removeRow(instanceTypeIdx)}
@@ -131,6 +109,7 @@ export class AlertsPolicy extends Component {
             </Col>
           </Row>
         ))}
+        {currentMetric?.name && fields.length < 2 && !currentMetric.thresholdReadOnly ? (
         <Row>
           <Col lg={2}>
             <a href="# " className="on-prem-add-link" onClick={this.addRow}>
@@ -139,6 +118,7 @@ export class AlertsPolicy extends Component {
             </a>
           </Col>
         </Row>
+        ) : null}
       </div>
     );
   }

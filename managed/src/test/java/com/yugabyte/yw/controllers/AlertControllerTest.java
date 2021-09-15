@@ -991,6 +991,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertConfiguration.setUuid(null);
     alertConfiguration.setCreateTime(null);
     alertConfiguration.setDestinationUUID(destination.getUuid());
+    alertConfiguration.setDefaultDestination(false);
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -1046,6 +1047,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testUpdateConfiguration() {
     AlertDestination destination = createAlertDestination(false);
     alertConfiguration.setDestinationUUID(destination.getUuid());
+    alertConfiguration.setDefaultDestination(false);
 
     Result result =
         doRequestWithAuthTokenAndBody(
