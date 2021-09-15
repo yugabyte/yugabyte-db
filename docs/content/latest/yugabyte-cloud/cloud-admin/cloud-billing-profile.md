@@ -74,7 +74,7 @@ The **Credits** section displays any credits applied to your account, including 
 
 At the end of each month, your invoice is generated, the amount is charged automatically to the default credit card, and the invoice and receipt are emailed to the address on the billing profile. If you are using a payment method other than credit card, the invoice will be settled out of band.
 
-This section lists your active and past invoices, along with a summary of cloud usage.
+**Invoices** lists your active and past invoices, along with a running total of cloud usage for the current billing period. To review a specific invoice, select it in **Invoice History**.
 
 ### Active Invoice
 
@@ -108,11 +108,11 @@ To download the invoice as a PDF, click the **Download** icon.
 
 ### Invoice summary
 
-To view invoice details, select an invoice in the **Invoice History** to display the **Summary**.
+To view invoice details, select an invoice in **Invoice History** to display its **Summary**.
 
 To download the invoice as a PDF, click **Download Invoice**.
 
-The **Summary** shows the following invoice details:
+**Summary** shows the following invoice details:
 
 - Running total - running total of the amount you owe in the current billing period; Yugabyte updates this once a day.
 - Billing option - your billing plan (pay-as-you-go or subscription).
@@ -124,7 +124,7 @@ The **Summary** shows the following invoice details:
 - Payment date - the date the invoice was paid.
 - Payment method - the payment method used to pay the invoice.
 
-In addition, the **Summary by Usage** shows a breakdown of costs for each dimension, including:
+**Summary by Usage** shows a breakdown of costs for each dimension, including:
 
 - The instance minutes, price, and amount.
 - Data storage overage in GB-hours, price, and amount.
