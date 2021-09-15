@@ -145,13 +145,7 @@ preprocess_targetlist(PlannerInfo *root)
 
 		if (rc->allMarkTypes & ~(1 << ROW_MARK_COPY))
 		{
-			bool is_yb_relation = false;
-			if (!target_relation)
-				is_yb_relation = IsYBRelationById(getrelid(rc->rti, range_table));
-			else
-				is_yb_relation = IsYBBackedRelation(target_relation);
-
-			if (is_yb_relation)
+			if (IsYBRelationById(getrelid(rc->rti, range_table)))
 			{
 				/* Need to fetch YB TID */
 				var = makeVar(rc->rti,
