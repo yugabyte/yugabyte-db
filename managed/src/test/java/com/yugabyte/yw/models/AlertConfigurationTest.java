@@ -348,6 +348,13 @@ public class AlertConfigurationTest extends FakeDBApplication {
         "Alert destination " + randomUUID + " is missing");
 
     testValidationCreate(
+        configuration ->
+            configuration
+                .setDestinationUUID(alertDestination.getUuid())
+                .setDefaultDestination(true),
+        "Destination can't be filled in case default destination is selected");
+
+    testValidationCreate(
         configuration -> configuration.setThresholdUnit(null), "Threshold unit is mandatory");
 
     testValidationCreate(
@@ -402,6 +409,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .createConfigurationTemplate(customer, AlertTemplate.MEMORY_CONSUMPTION)
             .getDefaultConfiguration();
     configuration.setDestinationUUID(alertDestination.getUuid());
+    configuration.setDefaultDestination(false);
     return alertConfigurationService.save(configuration);
   }
 

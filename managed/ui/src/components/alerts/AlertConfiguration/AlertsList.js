@@ -76,6 +76,7 @@ const payload = {
 export const AlertsList = (props) => {
   const [alertList, setAlertList] = useState([]);
   const [alertDestinationList, setAlertDestinationList] = useState([]);
+  const [defaultDestination, setDefaultDestination] = useState([]);
   const {
     alertConfigs,
     alertUniverseList,
@@ -102,6 +103,7 @@ export const AlertsList = (props) => {
     });
 
     alertDestinations().then((res) => {
+      setDefaultDestination(res.find(destination => destination.defaultDestination));
       setAlertDestinationList(res);
     });
   };
@@ -116,6 +118,9 @@ export const AlertsList = (props) => {
    * @param {object} row Respective details
    */
   const formatRoutes = (cell, row) => {
+    if (row.defaultDestination) {
+      return <span className="text-red text-regular"> Use Default ({defaultDestination.name})</span>;
+    }
     const route = alertDestinationList
       .map((destination) => {
         return destination.uuid === row.destinationUUID ? destination.name : null;
@@ -125,7 +130,7 @@ export const AlertsList = (props) => {
     if (route.length > 0) {
       return route;
     }
-    return <span className="text-red text-regular"> Default Destination</span>;
+    return <span className="text-red text-regular"> No destination</span>;
   };
 
   /**

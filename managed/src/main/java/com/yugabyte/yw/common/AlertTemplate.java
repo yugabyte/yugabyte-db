@@ -152,6 +152,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, "yb.alert.inactive_cronjob_nodes")
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("node(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   ALERT_QUERY_FAILED(
@@ -215,6 +216,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("node(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   NODE_RESTART(
@@ -234,6 +236,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 2D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("restart(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   NODE_CPU_USAGE(
@@ -304,6 +307,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   DB_INSTANCE_DOWN(
@@ -324,6 +328,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   DB_INSTANCE_RESTART(
@@ -351,6 +356,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 2D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   DB_FATAL_LOGS(
@@ -368,6 +374,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   DB_CORE_FILES(
@@ -384,6 +391,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   DB_YSQL_CONNECTION(
@@ -400,6 +408,7 @@ public enum AlertTemplate {
           .defaultThreshold(SEVERE, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   DB_YCQL_CONNECTION(
@@ -634,7 +643,7 @@ public enum AlertTemplate {
 
   YCQL_THROUGHPUT(
       "YCQL throughput is high",
-      "Average latency of YCQL operations is above threshold",
+      "Throughput of YCQL operations is above threshold",
       "sum by (service_method)(rate(rpc_latency_count{node_prefix=\"__nodePrefix__\","
           + "export_type=\"cql_export\",server_type=\"yb_cqlserver\",service_type=\"SQLProcessor\","
           + "service_method=~\"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction\"}[5m]))"
@@ -682,6 +691,8 @@ public enum AlertTemplate {
 
   private final boolean thresholdReadOnly;
 
+  private final boolean thresholdConditionReadOnly;
+
   private final String thresholdUnitName;
 
   public String buildTemplate(Customer customer) {
@@ -721,6 +732,7 @@ public enum AlertTemplate {
     this.thresholdMinValue = thresholdSettings.getThresholdMinValue();
     this.thresholdMaxValue = thresholdSettings.getThresholdMaxValue();
     this.thresholdReadOnly = thresholdSettings.getThresholdReadOnly();
+    this.thresholdConditionReadOnly = thresholdSettings.getThresholdConditionReadOnly();
     this.thresholdUnitName = thresholdSettings.getThresholdUnitName();
   }
 
@@ -766,6 +778,7 @@ public enum AlertTemplate {
     Double thresholdMinValue;
     Double thresholdMaxValue;
     Boolean thresholdReadOnly;
+    Boolean thresholdConditionReadOnly;
     String thresholdUnitName;
 
     public static class ThresholdSettingsBuilder {
@@ -800,6 +813,9 @@ public enum AlertTemplate {
             thresholdReadOnly != null
                 ? thresholdReadOnly
                 : defaultThresholdUnit.isThresholdReadOnly(),
+            thresholdConditionReadOnly != null
+                ? thresholdConditionReadOnly
+                : defaultThresholdUnit.isThresholdConditionOnly(),
             thresholdUnitName != null ? thresholdUnitName : defaultThresholdUnit.getDisplayName());
       }
     }
