@@ -34,23 +34,23 @@ showAsideToc: true
   
 </ul>
 
-Using the `ycqlsh` shell, you can interact with your YugabyteDB database using the YCQL API. The following exercise shows how you can use ycqlsh to create a keyspace, add a table, insert some data, and run a simple query.
+Using the `ycqlsh` shell, you can interact with your YugabyteDB database using the YCQL API. In the following exercise, you'll use ycqlsh to create a keyspace, add a table, insert some data, and run a simple query.
 
 ## Create a keyspace and add a table
 
 To create a keyspace and add a table, do the following:
 
-1. Connect to your cluster using `ycqlsh` using the [Client Shell](../connect-to-clusters#connect-via-client-shell) from your computer.
+1. Connect to your cluster using `ycqlsh` using the [Client Shell](../connect-to-clusters#connect-via-client-shell) from your computer. You can also do this exercise from the [Cloud Shell](../connect-to-clusters#connect-via-cloud-shell).
 
 1. Create a keyspace called 'myapp'.
 
-    ```sql
+    ```cql
     ycqlsh> CREATE KEYSPACE myapp;
     ```
 
 1. Create a table named `stock_market`, which can store stock prices at various timestamps for different stock ticker symbols.
 
-    ```sql
+    ```cql
     ycqlsh> CREATE TABLE myapp.stock_market (
       stock_symbol text,
       ts text,
@@ -63,18 +63,12 @@ To create a keyspace and add a table, do the following:
 
 Insert some data for a few stock symbols into the `stock_market` table. You can copy and paste these values directly into your ycqlsh shell.
 
-```sql
-ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
+```cql
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
-```
-
-```sql
-ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
-```
-
-```sql
-ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
 
@@ -82,7 +76,7 @@ INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2
 
 Query all the values you have inserted into the database for the stock symbol 'AAPL' as follows:
 
-```sql
+```cql
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 ```
 
@@ -97,7 +91,7 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 
 Query all the values for `FB` and `GOOG` as follows:
 
-```sql
+```cql
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 ```
 

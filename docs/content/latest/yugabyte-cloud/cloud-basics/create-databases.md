@@ -37,9 +37,9 @@ showAsideToc: true
   
 </ul>
 
-Using the `ysqlsh` shell, you can interact with your YugabyteDB database using the YSQL API. The following exercise shows how you can use ysqlsh to create a database, load a sample dataset, and run a simple query.
+Using the `ysqlsh` shell, you can interact with your YugabyteDB database using the YSQL API. In the following exercise, you'll use ysqlsh to create a database, load a sample dataset, and run a simple query.
 
-Sample datasets that you can use to test out YugabyteDB are located in the `share` directory of your YugabyteDB Client Shell installation. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) dataset.
+Your YugabyteDB client shell installation includes sample datasets you can use to test out YugabyteDB. These are located in the `share` directory. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) dataset.
 
 The following files will be used:
 
@@ -70,25 +70,16 @@ To create a database and load the Retail Analytics dataset, do the following:
 1. Create the database schema, which includes four tables, by running the `\i` meta command.
 
     ```sql
-    yb_demo=# \i share/schema.sql;
+    \i share/schema.sql;
     ```
 
 1. Load the data into the tables by running the following four `\i` commands:
 
     ```sql
-    yb_demo=# \i share/products.sql;
-    ```
-
-    ```sql
-    yb_demo=# \i share/users.sql;
-    ```
-
-    ```sql
-    yb_demo=# \i share/orders.sql;
-    ```
-
-    ```sql
-    yb_demo=# \i share/reviews.sql;
+    \i share/products.sql;
+    \i share/users.sql;
+    \i share/orders.sql;
+    \i share/reviews.sql;
     ```
 
     You now have sample data and are ready to begin exploring YSQL in YugabyteDB.
@@ -98,7 +89,7 @@ To create a database and load the Retail Analytics dataset, do the following:
 To look at the schema of the `products` table, enter the following command:
 
 ```sql
-yb_demo=# \d products
+\d products
 ```
 
 ```output
@@ -121,7 +112,7 @@ Indexes:
 Run a query to select the `id`, `title`, `category` and `price` columns for the first five products as follows:
 
 ```sql
-yb_demo=# SELECT id, title, category, price, rating
+SELECT id, title, category, price, rating
           FROM products
           LIMIT 5;
 ```
