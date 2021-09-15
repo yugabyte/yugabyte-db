@@ -443,6 +443,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     response_->set_skipped(true);
     return Status::OK();
   }
+  QLTableRow returning_table_row;
+  if (request_.targets_size()) {
+    returning_table_row = table_row;
+  }
 
   // skipped is set to false if this operation produces some data to write.
   bool skipped = true;
@@ -465,6 +469,11 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       // Evaluate column value.
       QLExprResult expr_result;
       RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
+
+      // Update RETURNING values
+      if (request_.targets_size()) {
+        returning_table_row.AllocColumn(column_id, expr_result.Value());
+      }
 
       // Inserting into specified column.
       const SubDocument sub_doc =
@@ -517,8 +526,13 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     }
   }
 
-  // Returning the values before the update.
-  RETURN_NOT_OK(PopulateResultSet(table_row));
+  if (request_.targets_size()) {
+    // Returning the values after the update.
+    RETURN_NOT_OK(PopulateResultSet(returning_table_row));
+  } else {
+    // Returning the values before the update.
+    RETURN_NOT_OK(PopulateResultSet(table_row));
+  }
 
   if (skipped) {
     response_->set_skipped(true);

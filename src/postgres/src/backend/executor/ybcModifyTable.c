@@ -32,6 +32,7 @@
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
 #include "nodes/execnodes.h"
+#include "nodes/nodeFuncs.h"
 #include "commands/dbcommands.h"
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
@@ -186,13 +187,15 @@ static void YBCBindTupleId(YBCPgStatement pg_stmt, Datum tuple_id) {
 }
 
 /*
- * Utility method to execute a prepared write statement and clean it up.
+ * Utility method to execute a prepared write statement.
  * Will handle the case if the write changes the system catalogs meaning
  * we need to increment the catalog versions accordingly.
+ * cleanup: If true, clean up the YBCPgStatement after executing it.
  */
 static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
-                             Relation rel,
-                             int *rows_affected_count)
+							 Relation rel,
+							 int *rows_affected_count,
+							 bool cleanup)
 {
 	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_stmt, yb_catalog_cache_version));
 
@@ -216,7 +219,9 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 		// TODO(shane) also update the shared memory catalog version here.
 		yb_catalog_cache_version += 1;
 	}
-	YBCPgDeleteStatement(ybc_stmt);
+
+	if (cleanup)
+		YBCPgDeleteStatement(ybc_stmt);
 }
 
 /*
@@ -308,7 +313,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	}
 
 	/* Execute the insert */
-	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(insert_stmt, rel, NULL /* rows_affected_count */, true /* cleanup */);
 
 	/* Add row into foreign key cache */
 	if (!is_single_row_txn)
@@ -585,7 +590,64 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 	}
 
 	/* Execute the insert and clean up. */
-	YBCExecWriteStmt(insert_stmt, index, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(insert_stmt, index, NULL /* rows_affected_count */, true /* cleanup */);
+}
+
+/*
+ * Add a RETURNING target column.
+ * target column attnum is supposed to be non-system attribute number.
+ */
+static void YBCAddReturningTargetColumn(YBCPgStatement handle, TupleDesc desc, AttrNumber attnum)
+{
+	Oid atttypid = InvalidOid;
+	Oid attcollation = InvalidOid;
+	int32 atttypmod = 0;
+	Form_pg_attribute attr = TupleDescAttr(desc, attnum - 1);
+	atttypid = attr->atttypid;
+	atttypmod = attr->atttypmod;
+	attcollation = attr->attcollation;
+
+	YBCPgTypeAttrs type_attrs = { atttypmod };
+	YBCPgExpr expr = YBCNewColumnRef(handle, attnum, atttypid, attcollation, &type_attrs);
+	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
+}
+
+typedef struct
+{
+	YBCPgStatement handle;
+	TupleDesc desc;
+} ReturningExprContext;
+
+/*
+ * Parse column AttrNumber from RETURNING expression and add column AttrNumber 
+ * as a target.
+ * Only parse allowed RETURNING value expression. Any unsupported expression is
+ * detected during plan creation and prevent single-row optimization.
+ */
+static bool YBCParseReturningExpressionTargetColumn(Node *node, 
+												    ReturningExprContext *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+	{
+		Var* var = castNode(Var, node);
+		YBCAddReturningTargetColumn(context->handle, context->desc, var->varattno);
+		return false;
+	}
+	else if (IsA(node, List))
+	{
+		List* list = castNode(List, node);
+		
+		ListCell *lc = NULL;
+
+		foreach (lc, list)
+		{
+			Expr* expr = (Expr *) lfirst(lc);
+			expression_tree_walker((Node*) expr, YBCParseReturningExpressionTargetColumn, (void *) context);
+		}
+	}
+	return expression_tree_walker(node, YBCParseReturningExpressionTargetColumn, (void *) context);
 }
 
 bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, ModifyTableState *mtstate)
@@ -635,7 +697,10 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 
 	/* Execute the statement. */
 	int rows_affected_count = 0;
-	YBCExecWriteStmt(delete_stmt, rel, isSingleRow ? &rows_affected_count : NULL);
+	YBCExecWriteStmt(delete_stmt,
+					 rel,
+					 isSingleRow ? &rows_affected_count : NULL,
+					 true /* cleanup */);
 
 	/* Cleanup. */
 	delete_stmt = NULL;
@@ -677,7 +742,7 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt,
 														 true));
 
-	YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(delete_stmt, index, NULL /* rows_affected_count */, true /* cleanup */);
 }
 
 bool YBCExecuteUpdate(Relation rel,
@@ -732,7 +797,30 @@ bool YBCExecuteUpdate(Relation rel,
 	bool whole_row = bms_is_member(InvalidAttrNumber, updatedCols);
 
 	ModifyTable *mt_plan = (ModifyTable *) mtstate->ps.plan;
-	ListCell* pushdown_lc = list_head(mt_plan->ybPushdownTlist);
+	ListCell *pushdown_lc = list_head(mt_plan->ybPushdownTlist);
+	List *returningLists = mt_plan->returningLists;
+	ListCell *returningLists_lc;
+
+	/* Set up RETURNING target columns. */
+	if (isSingleRow && list_length(returningLists) > 0)
+	{
+		foreach(returningLists_lc, linitial(returningLists))
+		{
+			TargetEntry *tle = lfirst_node(TargetEntry, returningLists_lc);
+			if (tle->resorigcol)
+			{
+				YBCAddReturningTargetColumn(update_stmt, tupleDesc, tle->resorigcol);
+			}
+			else
+			{
+				/* Extract AttrNumber from RETURNING expression. */
+				ReturningExprContext context;
+				context.handle = update_stmt;
+				context.desc = tupleDesc;
+				YBCParseReturningExpressionTargetColumn((Node*) tle->expr, &context);
+			}
+		}
+	}
 
 	for (int idx = 0; idx < tupleDesc->natts; idx++)
 	{
@@ -789,9 +877,38 @@ bool YBCExecuteUpdate(Relation rel,
 							(YBCGetEnableUpdateBatching() && estate->yb_can_batch_updates);
 
 	/* If update batching is allowed, then ignore rows_affected_count. */
-	YBCExecWriteStmt(update_stmt, rel, can_batch_update ? NULL : &rows_affected_count);
+	YBCExecWriteStmt(update_stmt,
+					 rel,
+					 can_batch_update ? NULL : &rows_affected_count,
+					 false /* cleanup */);
+
+	/* Fetch RETURNING values. Feed Update RETURNING values from pggate to postgres. */
+	if (isSingleRow && list_length(returningLists) > 0)
+	{
+		Datum           *values    = slot->tts_values;
+		bool            *isnull    = slot->tts_isnull;
+		bool            has_data   = false;
+		YBCPgSysColumns syscols;
+
+		HandleYBStatus(YBCPgDmlFetch(update_stmt,
+									 tupleDesc->natts,
+								 	 (uint64_t *) values,
+									 isnull,
+									 &syscols,
+									 &has_data));
+
+		if (has_data)
+		{
+			slot->tts_nvalid = tupleDesc->natts;
+			slot->tts_isempty = false;
+		}
+
+		/* Record result relation's tuple descriptor. */
+		slot->tts_tupleDescriptor = CreateTupleDescCopyConstr(tupleDesc);
+	}
 
 	/* Cleanup. */
+	YBCPgDeleteStatement(update_stmt);
 	update_stmt = NULL;
 
 	/*
@@ -854,7 +971,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	MarkCurrentCommandUsed();
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
-	YBCExecWriteStmt(delete_stmt, rel, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(delete_stmt, rel, NULL /* rows_affected_count */, true /* cleanup */);
 
 	/* Complete execution */
 	delete_stmt = NULL;
@@ -918,7 +1035,7 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	/* Execute the statement and clean up */
-	YBCExecWriteStmt(update_stmt, rel, NULL /* rows_affected_count */);
+	YBCExecWriteStmt(update_stmt, rel, NULL /* rows_affected_count */, true /* cleanup */);
 	update_stmt = NULL;
 }
 

@@ -30,6 +30,9 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 * 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1;
@@ -38,9 +41,6 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = v1 + v2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1, v2 = 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 and v2 = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k > 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k != 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
@@ -287,6 +287,76 @@ INSERT INTO single_row_array VALUES (1, ARRAY [1, 2, 3]);
 
 DELETE FROM single_row_array WHERE k = 1;
 SELECT * FROM single_row_array;
+
+--
+-- Test update with complex returning clause expressions
+--
+CREATE TYPE two_int AS (first integer, second integer);
+CREATE TYPE two_text AS (first_text text, second_text text);
+CREATE TABLE single_row_complex_returning (k int primary key, v1 int, v2 text, v3 two_text, array_int int[], v5 int);
+CREATE FUNCTION assign_one_plus_param_to_v1(integer) RETURNS integer
+   AS 'UPDATE single_row_complex_returning SET v1 = $1 + 1 WHERE k = 1 RETURNING $1 * 2;'
+   LANGUAGE SQL;
+CREATE FUNCTION assign_one_plus_param_to_v1_hard(integer) RETURNS two_int
+   AS 'UPDATE single_row_complex_returning SET v1 = $1 + 1 WHERE k = 1 RETURNING $1 * 2, v5 + 1;'
+   LANGUAGE SQL;
+
+-- Below statements should all USE single-row.
+-- (1) Constant
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING 1;
+-- (2) Column reference
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2, v3, array_int;
+-- (3) Subscript
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING array_int[1];
+-- (4) Field selection
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (v3).first_text;
+-- (5) Immutable Operator Invocation
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2||'abc';
+-- (6) Immutable Function Call
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING power(v5, 2);
+-- (7) Type Cast
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v5::text;
+-- (8) Collation Expression
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2 COLLATE "C";
+-- (9) Array Constructor
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
+-- (10) Row Constructor
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
+
+-- Below statements should all NOT USE single-row.
+-- (1) Scalar Subquery
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
+-- (2) Mutable function
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
+
+-- Test execution
+INSERT INTO single_row_complex_returning VALUES (1, 1, 'xyz', ('a','b'), '{11, 11, 11}', 1);
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING 1, v2, array_int[1], (v3).first_text;
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2||'abc', power(v5, 2), v5::text, v2 COLLATE "C";
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
+SELECT * FROM single_row_complex_returning;
+
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
+SELECT * FROM single_row_complex_returning;
 
 --
 -- Test table without a primary key.
