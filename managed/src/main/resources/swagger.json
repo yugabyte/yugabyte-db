@@ -304,12 +304,16 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "defaultDestination" : {
+          "description" : "Is default destination used for this config",
+          "type" : "boolean"
+        },
         "description" : {
           "description" : "Description",
           "type" : "string"
         },
         "destinationUUID" : {
-          "description" : "Alert destination IIOD",
+          "description" : "Alert destination UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -365,6 +369,10 @@
         "active" : {
           "type" : "boolean"
         },
+        "destinationType" : {
+          "enum" : [ "NO_DESTINATION", "DEFAULT_DESTINATION", "SELECTED_DESTINATION" ],
+          "type" : "string"
+        },
         "destinationUuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -389,7 +397,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "active", "destinationUuid", "name", "targetType", "template", "uuids" ],
+      "required" : [ "active", "destinationType", "destinationUuid", "name", "targetType", "template", "uuids" ],
       "type" : "object"
     },
     "AlertConfigurationPagedApiQuery" : {
@@ -480,12 +488,16 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "defaultDestination" : {
+          "description" : "Is default destination used for this config",
+          "type" : "boolean"
+        },
         "description" : {
           "description" : "Description",
           "type" : "string"
         },
         "destinationUUID" : {
-          "description" : "Alert destination IIOD",
+          "description" : "Alert destination UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -513,6 +525,11 @@
           "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT" ],
           "readOnly" : true,
           "type" : "string"
+        },
+        "thresholdConditionReadOnly" : {
+          "description" : "Is alert threshold condition read-only or configurable",
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "thresholdInteger" : {
           "description" : "Is alert threshold integer or floating point",
