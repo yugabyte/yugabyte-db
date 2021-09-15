@@ -71,7 +71,7 @@ export function successStringFormatter(cell, row) {
     case 'Stopped':
       return (
         <span className="yb-warn-color">
-          <i className="fa fa-pause" /> Stopped
+          <i className="fa fa-ban" /> Aborted
         </span>
       );
     default:
