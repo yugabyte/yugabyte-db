@@ -110,8 +110,8 @@ export default class TableAction extends Component {
         />
       );
     } else if (actionType === 'stop-backup') {
-      btnLabel = 'Stop Backup';
-      btnIcon = 'fa fa-stop';
+      btnLabel = 'Abort Backup';
+      btnIcon = 'fa fa-ban';
       modalContainer = (
         <StopBackupContainer
           visible={this.state.showModal}

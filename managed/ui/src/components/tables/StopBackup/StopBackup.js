@@ -19,14 +19,14 @@ export const StopBackup = (props) => {
   return (
     <div className="universe-apps-modal">
       <YBModal
-        title="Stop Backup"
+        title="Abort Backup"
         visible={visible}
         onHide={onHide}
         showCancelButton={true}
         cancelLabel="Cancel"
         onFormSubmit={confirmStopBackup}
       >
-        Are you sure you want to stop this backup?
+        Are you sure you want to abort this backup?
       </YBModal>
     </div>
   );
