@@ -1283,7 +1283,7 @@ ExecUpdate(ModifyTableState *mtstate,
 			return NULL;
 		}
 
-		/* Update indices selectively if necessary, Single row updates do not affect indeces */
+		/* Update indices selectively if necessary, Single row updates do not affect indices */
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
 		    !mtstate->yb_mt_is_single_row_update_or_delete)
 		{
