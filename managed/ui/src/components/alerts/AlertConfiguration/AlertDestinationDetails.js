@@ -44,12 +44,55 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
             <label>Recipient:</label>
             <div>{detail.recipients}</div>
           </li>
+          <li>
+            <label>Default Recipients:</label>
+            <div>{String(detail?.params?.defaultRecipients)}</div>
+          </li>
+          <li>
+            <label>Default SMTP Settings:</label>
+            <div>{String(detail?.params?.defaultSmtpSettings)}</div>
+          </li>
+          {detail?.params?.smtpData && (
+            <>
+              <li>
+                <h5>SMTP Settings : </h5>
+              </li>
+              <li>
+                <label>SMTP Server:</label>
+                <div>{detail?.params?.smtpData?.smtpServer}</div>
+              </li>
+              <li>
+                <label>SMTP Port:</label>
+                <div>{detail?.params?.smtpData?.smtpPort}</div>
+              </li>
+              <li>
+                <label>Email From:</label>
+                <div>{detail?.params?.smtpData?.emailFrom}</div>
+              </li>
+              <li>
+                <label>Username:</label>
+                <div>{detail?.params?.smtpData?.smtpUsername}</div>
+              </li>
+              <li>
+                <label>Password:</label>
+                <div>{detail?.params?.smtpData?.smtpPassword}</div>
+              </li>
+              <li>
+                <label>SSL:</label>
+                <div>{String(detail?.params?.smtpData?.useSSL)}</div>
+              </li>
+              <li>
+                <label>TLS:</label>
+                <div>{String(detail?.params?.smtpData?.useTLS)}</div>
+              </li>
+            </>
+          )}
           {hr}
         </>
       );
 
       showList.push(
-        <ul key={i} className="cert-details-modal__list">
+        <ul key={i} className="cert-details-modal__list alertDestinationDetail">
           {detail.channelType === 'Slack' ? slackDetails : emailDetails}
         </ul>
       );

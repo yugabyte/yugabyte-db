@@ -15,7 +15,7 @@ import { AlertDestinationDetails } from './AlertDestinationDetails';
 /**
  * This is the header for YB Panel Item.
  */
-const header = (destinationCount,onAddAlertDestination) => (
+const header = (destinationCount, onAddAlertDestination) => (
   <>
     <h5 className="table-container-title pull-left">{`${destinationCount} Alert Destinations`}</h5>
     <FlexContainer className="pull-right">
@@ -45,7 +45,11 @@ export const AlertDestinations = (props) => {
     showDetailsModal,
     getAlertChannels
   } = props;
-  const [options, setOptions] = useState({ noDataText: 'Loading...', sortName: 'name', sortOrder: 'asc' });
+  const [options, setOptions] = useState({
+    noDataText: 'Loading...',
+    sortName: 'name',
+    sortOrder: 'asc'
+  });
 
   const setRsponseObject = () => {
     const result = new Map();
@@ -69,7 +73,8 @@ export const AlertDestinations = (props) => {
               channelType: matchedRx.params.channelType,
               channelName: matchedRx.name,
               webHookURL: matchedRx.params?.webhookUrl,
-              recipients: matchedRx.params?.recipients
+              recipients: matchedRx.params?.recipients,
+              params: matchedRx.params
             });
             result.set(dest.uuid, destination);
           });
@@ -95,7 +100,8 @@ export const AlertDestinations = (props) => {
         channelType: channel.channelType,
         channelName: channel.channelName,
         webHookURL: channel?.webHookURL,
-        recipients: channel?.recipients
+        recipients: channel?.recipients,
+        params: channel?.params
       };
     });
 
