@@ -2640,7 +2640,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		index_path = (IndexPath *) projection_path->subpath;
 
 		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
-
+		
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
 		 * columns. If true user write expression is not a supported single row write expression
@@ -2866,21 +2866,41 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	}
 
 	/*
-	 * Verify RETURNING columns are either primary key or
-	 * UPDATE's SET and not pushed down columns.
-	 * TODO(dmitry): Remove restriction for pushed down columns on #5392 completion.
-	 */
-	if (list_length(path->returningLists) > 0)
+	* Additional check for RETURNING.
+	* For UPDATE, verify RETURNING columns do not contain unsupported expressions.
+	* FOR DELETE, this check passes only when RETURNING column(s) only contain
+	* primary key column(s).
+	*/
+	if (path->operation == CMD_UPDATE && list_length(path->returningLists) > 0)
 	{
 		foreach(values, linitial(path->returningLists))
 		{
-			int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
-			if ((!bms_is_member(attr, update_attrs) &&
-				!bms_is_member(attr, primary_key_attrs)) ||
-				bms_is_member(attr, pushdown_update_attrs))
+			TargetEntry* tle = lfirst_node(TargetEntry, values);
+			int attr = tle->resorigcol;
+			/* 
+			 * When a RETURNING expression is not a projection of a base column,
+			 * its AttrNumber is InvalidAttrNumber.
+			 */
+			if (attr == InvalidAttrNumber && !YBCIsSupportedSingleRowModifyReturningExpr(tle->expr))
 			{
 				RelationClose(relation);
 				return false;
+			}
+		}
+	}
+	else 
+	{
+		if (list_length(path->returningLists) > 0)
+		{
+			foreach(values, linitial(path->returningLists))
+			{
+				int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
+				if (!bms_is_member(attr, update_attrs) &&
+					!bms_is_member(attr, primary_key_attrs))
+				{
+					RelationClose(relation);
+					return false;
+				}
 			}
 		}
 	}
