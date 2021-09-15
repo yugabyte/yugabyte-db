@@ -288,10 +288,6 @@ public class ModelFactory {
             .setDescription("alertConfiguration description")
             .setCustomerUUID(customer.getUuid())
             .setTargetType(AlertConfiguration.TargetType.UNIVERSE)
-            .setTarget(
-                new AlertConfigurationTarget()
-                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
-            .setTemplate(AlertTemplate.MEMORY_CONSUMPTION)
             .setThresholds(
                 ImmutableMap.of(
                     AlertConfiguration.Severity.SEVERE,
@@ -299,7 +295,18 @@ public class ModelFactory {
                         .setCondition(Condition.GREATER_THAN)
                         .setThreshold(1D)))
             .setThresholdUnit(Unit.PERCENT)
+            .setDefaultDestination(true)
             .generateUUID();
+    if (universe != null) {
+      configuration
+          .setTarget(
+              new AlertConfigurationTarget().setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+          .setTemplate(AlertTemplate.MEMORY_CONSUMPTION);
+    } else {
+      configuration
+          .setTarget(new AlertConfigurationTarget().setAll(true))
+          .setTemplate(AlertTemplate.BACKUP_FAILURE);
+    }
     modifier.accept(configuration);
     configuration.save();
     return configuration;
@@ -321,8 +328,14 @@ public class ModelFactory {
             .setConfigurationUUID(configuration.getUuid())
             .setCustomerUUID(customer.getUuid())
             .setQuery("query {{ query_condition }} {{ query_threshold }}")
-            .setLabels(MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels())
             .generateUUID();
+    if (universe != null) {
+      alertDefinition.setLabels(
+          MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
+    } else {
+      alertDefinition.setLabels(
+          MetricLabelsBuilder.create().appendSource(customer).getDefinitionLabels());
+    }
     alertDefinition.save();
     return alertDefinition;
   }
@@ -359,28 +372,22 @@ public class ModelFactory {
             .setSeverity(AlertConfiguration.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .generateUUID();
-    if (definition != null) {
-      AlertConfiguration configuration =
-          AlertConfiguration.db().find(AlertConfiguration.class, definition.getConfigurationUUID());
-      alert.setConfigurationUuid(definition.getConfigurationUUID());
-      alert.setConfigurationType(configuration.getTargetType());
-      alert.setDefinitionUuid(definition.getUuid());
-      List<AlertLabel> labels =
-          definition
-              .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
-              .stream()
-              .map(l -> new AlertLabel(l.getName(), l.getValue()))
-              .collect(Collectors.toList());
-      alert.setLabels(labels);
-    } else {
-      MetricLabelsBuilder labelsBuilder = MetricLabelsBuilder.create();
-      if (universe != null) {
-        labelsBuilder.appendSource(universe);
-      } else {
-        labelsBuilder.appendSource(customer);
-      }
-      alert.setLabels(labelsBuilder.getAlertLabels());
+    if (definition == null) {
+      AlertConfiguration configuration = createAlertConfiguration(customer, universe);
+      definition = createAlertDefinition(customer, universe, configuration);
     }
+    AlertConfiguration configuration =
+        AlertConfiguration.db().find(AlertConfiguration.class, definition.getConfigurationUUID());
+    alert.setConfigurationUuid(definition.getConfigurationUUID());
+    alert.setConfigurationType(configuration.getTargetType());
+    alert.setDefinitionUuid(definition.getUuid());
+    List<AlertLabel> labels =
+        definition
+            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
+            .stream()
+            .map(l -> new AlertLabel(l.getName(), l.getValue()))
+            .collect(Collectors.toList());
+    alert.setLabels(labels);
     if (modifier != null) {
       modifier.accept(alert);
     }
