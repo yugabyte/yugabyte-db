@@ -159,7 +159,10 @@ class TransactionStatusResolver::Impl {
       participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
     }
 
-    if (response.status().size() != 1 && response.status().size() != request_size) {
+    if ((response.status().size() != 1 &&
+            response.status().size() != request_size) ||
+        (response.aborted_subtxn_set().size() != 1 &&
+            response.aborted_subtxn_set().size() != request_size)) {
       // Node with old software version would always return 1 status.
       LOG_WITH_PREFIX(DFATAL)
           << "Bad response size, expected " << request_size << " entries, but found: "
@@ -176,6 +179,17 @@ class TransactionStatusResolver::Impl {
       auto& status_info = status_infos_[i];
       status_info.transaction_id = queue.front();
       status_info.status = response.status(i);
+
+      auto aborted_subtxn_set_or_status = AbortedSubTransactionSet::FromPB(
+        response.aborted_subtxn_set(i).set());
+      if (!aborted_subtxn_set_or_status.ok()) {
+        Complete(STATUS_FORMAT(
+            IllegalState, "Cannot deserialize AbortedSubTransactionSet: $0",
+            response.aborted_subtxn_set(i).DebugString()));
+        return;
+      }
+      status_info.aborted_subtxn_set = aborted_subtxn_set_or_status.get();
+
       if (i < response.status_hybrid_time().size()) {
         status_info.status_ht = HybridTime(response.status_hybrid_time(i));
       // Could happen only when coordinator has an old version.
