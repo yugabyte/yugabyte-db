@@ -15,7 +15,7 @@ showAsideToc: true
 
 Invite other users to your cloud so that they can create, manage, and connect to clusters, and add IP allow lists. Invited users cannot perform cloud administration tasks.
 
-Only the cloud account Admin user (the user who created the Yugabyte Cloud account) can invite users. 
+You must be signed in as the Admin user (the user who created the Yugabyte Cloud account) to invite other users.
 
 The **Users** tab displays a list of users that have been invited to the cloud, including their email, display name, role, and status.
 

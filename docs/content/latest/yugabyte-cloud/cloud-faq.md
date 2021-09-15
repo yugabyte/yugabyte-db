@@ -25,9 +25,17 @@ See also [Yugabyte Cloud](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
 Yugabyte Cloud runs on top of [Yugabyte Platform](../../yugabyte-platform/).
 
-<!--
 ### How is Yugabyte Cloud priced?
 
+Yugabyte bills for its services as follows:
+
+- Charges by the minute for your Yugabyte Cloud clusters.
+- Tabulates costs daily.
+- Displays your current monthly costs under **Invoices** on the **Billing** tab.
+
+For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs).
+
+<!--
 ### Is support included in the base price?
 
 ### What SLAs are guaranteed for support and service?
