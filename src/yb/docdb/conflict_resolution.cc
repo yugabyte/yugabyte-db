@@ -309,6 +309,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   // Check whether specified transaction was locally committed, and store this state if so.
   // Returns true if conflict with specified transaction is resolved.
   Result<bool> CheckLocalCommit(TransactionData* transaction) {
+    // TODO(savepoints): Do not conflict with aborted intents.
     auto commit_time = status_manager().LocalCommitTime(transaction->id);
     if (commit_time.is_valid()) {
       transaction->commit_time = commit_time;

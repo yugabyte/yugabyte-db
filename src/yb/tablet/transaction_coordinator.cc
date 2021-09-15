@@ -54,6 +54,7 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
@@ -80,6 +81,11 @@ DEFINE_int64(avoid_abort_after_sealing_ms, 20,
 
 DEFINE_test_flag(uint64, inject_txn_get_status_delay_ms, 0,
                  "Inject specified delay to transaction get status requests.");
+DEFINE_test_flag(int64, inject_random_delay_on_txn_status_response_ms, 0,
+                 "Inject a random amount of delay to the thread processing a "
+                 "GetTransactionStatusRequest after it has populated it's response. This could "
+                 "help simulate e.g. out-of-order responses where PENDING is received by client "
+                 "after a COMMITTED response.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -320,6 +326,8 @@ class TransactionState {
       StartApply();
     }
   }
+
+  const AbortedSubTransactionSetPB& GetAbortedSubTransactionSetPB() const { return aborted_; }
 
   Result<TransactionStatusResult> GetStatus(
       std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
@@ -953,11 +961,22 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
+
+        auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
+        if (txn_status_with_ht.status == TransactionStatus::COMMITTED &&
+            it != managed_transactions_.end()) {
+          *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
+        }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
     }
 
     ExecutePostponedLeaderActions(&postponed_leader_actions);
+    if (GetAtomicFlag(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms)) {
+      if (response->status().size() > 0 && response->status(0) == TransactionStatus::PENDING) {
+        AtomicFlagRandomSleepMs(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms);
+      }
+    }
     return Status::OK();
   }
 

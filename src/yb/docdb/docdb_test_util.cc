@@ -66,9 +66,14 @@ namespace {
 
 class NonTransactionalStatusProvider: public TransactionStatusManager {
  public:
-  HybridTime LocalCommitTime(const TransactionId &id) override {
+  HybridTime LocalCommitTime(const TransactionId& id) override {
     Fail();
     return HybridTime::kInvalid;
+  }
+
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override {
+    Fail();
+    return boost::none;
   }
 
   void RequestStatusAt(const StatusRequest& request) override {

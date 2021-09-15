@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "yb/common/common.pb.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/transaction_participant.h"
@@ -28,6 +29,7 @@ namespace tablet {
 struct TransactionStatusInfo {
   TransactionId transaction_id = TransactionId::Nil();
   TransactionStatus status;
+  AbortedSubTransactionSet aborted_subtxn_set;
   HybridTime status_ht;
   HybridTime coordinator_safe_time;
 

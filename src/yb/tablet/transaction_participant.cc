@@ -106,6 +106,9 @@ METRIC_DEFINE_simple_gauge_uint64(
     tablet, transactions_running, "Total number of transactions running in participant",
     yb::MetricUnit::kTransactions);
 
+DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
+                 "How much latency to inject when a update txn operation is applied.");
+
 namespace yb {
 namespace tablet {
 
@@ -234,6 +237,18 @@ class TransactionParticipant::Impl
       return HybridTime::kInvalid;
     }
     return (**it).local_commit_time();
+  }
+
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      return boost::none;
+    }
+    return boost::make_optional<CommitMetadata>({
+      .commit_ht = (**it).local_commit_time(),
+      .aborted_subtxn_set = (**it).local_commit_aborted_subtxn_set(),
+    });
   }
 
   std::pair<size_t, size_t> TEST_CountIntents() {
@@ -455,6 +470,10 @@ class TransactionParticipant::Impl
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
+    if (FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms > 0) {
+      SleepFor(1ms * FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+    }
+
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
       return id.status();
@@ -520,7 +539,7 @@ class TransactionParticipant::Impl
             << ", new commit ht: " << data.commit_ht;
       } else {
         transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
-          txn->SetLocalCommitTime(data.commit_ht);
+          txn->SetLocalCommitData(data.commit_ht, data.aborted);
         });
 
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
@@ -1214,7 +1233,7 @@ class TransactionParticipant::Impl
     if (pending_apply) {
       VLOG_WITH_PREFIX(4) << "Apply state found for " << txn->id() << ": "
                           << pending_apply->ToString();
-      txn->SetLocalCommitTime(pending_apply->commit_ht);
+      txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
       txn->SetApplyData(pending_apply->state);
     }
     transactions_.insert(txn);
@@ -1289,7 +1308,8 @@ class TransactionParticipant::Impl
       if (it == transactions_.end()) {
         continue;
       }
-      if ((**it).UpdateStatus(info.status, info.status_ht, info.coordinator_safe_time)) {
+      if ((**it).UpdateStatus(
+          info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set)) {
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
@@ -1580,6 +1600,10 @@ void TransactionParticipant::BatchReplicated(
 
 HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
+}
+
+boost::optional<CommitMetadata> TransactionParticipant::LocalCommitData(const TransactionId& id) {
+  return impl_->LocalCommitData(id);
 }
 
 std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {

@@ -3548,7 +3548,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
             return;
           }
           self->TransactionalConflictsResolved();
-          TRACE("self->NonTransactionalConflictsResolved");
+          TRACE("self->TransactionalConflictsResolved");
         });
 
     return Status::OK();
