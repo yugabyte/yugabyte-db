@@ -1209,7 +1209,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
             if (result->status_time.is_valid()) {
               resp->set_status_hybrid_time(result->status_time.ToUint64());
             }
-            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitTime
+            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitData
             // for details.
             resp->set_coordinator_safe_time(leader_safe_time->ToUint64());
             context_ptr->RespondSuccess();
