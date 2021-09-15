@@ -1,7 +1,7 @@
 # [Apache AGE (incubating)](https://age.apache.org/#)
 
-[![license badge](https://img.shields.io/badge/apache-license--v2.0-brightgreen)](https://github.com/apache/incubator-age/releases)
-[![release badge](https://img.shields.io/badge/release-v0.3.0-brightgreen)](https://github.com/apache/incubator-age/releases)
+[![license badge](https://img.shields.io/github/license/apache/incubator-age)](https://github.com/apache/incubator-age/blob/master/LICENSE)
+[![release badge](https://img.shields.io/github/v/release/apache/incubator-age?sort=semver)](https://github.com/apache/incubator-age/releases)
 [![issue badge](https://img.shields.io/github/issues/apache/incubator-age)](https://github.com/apache/incubator-age/issues)
 [![forks badge](https://img.shields.io/github/forks/apache/incubator-age)](https://github.com/apache/incubator-age/network/members)
 [![stars badge](https://img.shields.io/github/stars/apache/incubator-age)](https://github.com/apache/incubator-age/stargazers)
@@ -25,7 +25,7 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 - Apache AGE enables querying multiple graphs at the same time.
 - Apache AGE will be enhanced with an aim to support all of the key features of AgensGraph (PostgreSQL fork extended with graph DB functionality).
 
-## Latest happenings 
+## Latest happenings
 
 - Latest Apache AGE release, [Apache AGE 0.6.0 (incubating)](https://github.com/apache/incubator-age/releases/tag/v0.6.0).
 - The latest Apache AGE documentation is now available at [here](http://age.incubator.apache.org/docs/Apache_AGE_Guide.pdf).
@@ -51,12 +51,12 @@ Under Connect to Database , select database type as "Apache AGE"
 ## Documentation
 
 Here is the link to the latest [Apache AGE documentation](http://age.incubator.apache.org/docs/Apache_AGE_Guide.pdf).
-You can learn about how to install Apache AGE, its features and built-in functions and how to use various Cypher queries.  
+You can learn about how to install Apache AGE, its features and built-in functions and how to use various Cypher queries.
 
 ## Language Specific Drivers
 [Apache AGE Python Driver](https://github.com/rhizome-ai/apache-age-python)
 
 ## Contribution
 
-You can improve ongoing efforts or initiate new ones by sending pull requests to [this repository](https://github.com/apache/incubator-age).  
+You can improve ongoing efforts or initiate new ones by sending pull requests to [this repository](https://github.com/apache/incubator-age).
 Also, you can learn from the code review process, how to merge pull requests, and from code style compliance to documentation, by visiting the [Apache AGE official site - Developer Guidelines](https://age.apache.org/#codereview).
