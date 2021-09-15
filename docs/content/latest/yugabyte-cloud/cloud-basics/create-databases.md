@@ -1,6 +1,6 @@
 ---
 title: Create and explore a database
-headerTitle: Create and explore a database
+headerTitle: Create and explore a database using YSQL
 linkTitle: Create a database
 description: Create and explore a database using YSQL.
 headcontent:
@@ -37,7 +37,9 @@ showAsideToc: true
   
 </ul>
 
-Sample datasets that you can use to test out YugabyteDB are located in the `share` directory of your YugabyteDB Client Shell installation. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). The following exercise shows how you can create a database, load the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) sample dataset, and run a simple query.
+Using the `ysqlsh` shell, you can interact with your YugabyteDB database using the YSQL API. The following exercise shows how you can use ysqlsh to create a database, load a sample dataset, and run a simple query.
+
+Sample datasets that you can use to test out YugabyteDB are located in the `share` directory of your YugabyteDB Client Shell installation. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) dataset.
 
 The following files will be used:
 
@@ -145,6 +147,11 @@ Here are links to documentation on the tested datasets and the steps to create t
 - [PgExercises](../../../sample-data/pgexercises/)
 - [SportsDB](../../../sample-data/sportsdb/)
 - [Chinook](../../../sample-data/chinook/)
+
+For information on YSQL and the ysqlsh shell:
+
+- [ysqlsh](../../../admin/ysqlsh) — Overview of the command line interface (CLI), syntax, and commands.
+- [YSQL API](../../../api/ysql) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 

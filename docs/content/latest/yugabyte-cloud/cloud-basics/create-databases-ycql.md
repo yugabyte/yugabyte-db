@@ -1,6 +1,6 @@
 ---
-title: Create and explore a database
-headerTitle: Create and explore a database
+title: Create and explore a database using YCQL
+headerTitle: Create and explore a database using YCQL
 linkTitle: Create a database
 description: Create and explore a database using YCQL.
 headcontent:
@@ -33,6 +33,8 @@ showAsideToc: true
   </li>
   
 </ul>
+
+Using the `ycqlsh` shell, you can interact with your YugabyteDB database using the YCQL API. The following exercise shows how you can use ycqlsh to create a keyspace, add a table, insert some data, and run a simple query.
 
 ## Create a keyspace and add a table
 
@@ -109,6 +111,11 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 (4 rows)
 ```
+
+## Learn more
+
+- [ycqlsh](../../../admin/ycqlsh) — Overview of the command line interface (CLI), syntax, and commands.
+- [YCQL API](../../../api/ycql) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 
