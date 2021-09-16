@@ -1,22 +1,45 @@
 ---
 title: Create and explore a database
+headerTitle: Create and explore a database using YSQL
 linkTitle: Create a database
-description: Create and explore a database.
+description: Create and explore a database using YSQL.
 headcontent:
-image: /images/section_icons/deploy/enterprise.png
+image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
   - /latest/deploy/yugabyte-cloud/create-databases/
   - /latest/yugabyte-cloud/create-databases/
 menu:
   latest:
-    identifier: create-databases
     parent: cloud-basics
+    name: Create a database
+    identifier: create-databases-1-ysql
     weight: 60
+type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-Sample datasets that you can use to test out YugabyteDB are located in the `share` directory of your YugabyteDB Client Shell installation. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). The following exercise shows how you can create a database, load the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) sample dataset, and run a simple query.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="../create-databases/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+ <li >
+    <a href="../create-databases-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+  
+</ul>
+
+Using the `ysqlsh` shell, you can interact with your YugabyteDB database using the YSQL API. In the following exercise, you'll use ysqlsh to create a database, load a sample dataset, and run a simple query.
+
+Your YugabyteDB client shell installation includes sample datasets you can use to test out YugabyteDB. These are located in the `share` directory. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) dataset.
 
 The following files will be used:
 
@@ -47,25 +70,16 @@ To create a database and load the Retail Analytics dataset, do the following:
 1. Create the database schema, which includes four tables, by running the `\i` meta command.
 
     ```sql
-    yb_demo=# \i share/schema.sql;
+    \i share/schema.sql;
     ```
 
 1. Load the data into the tables by running the following four `\i` commands:
 
     ```sql
-    yb_demo=# \i share/products.sql;
-    ```
-
-    ```sql
-    yb_demo=# \i share/users.sql;
-    ```
-
-    ```sql
-    yb_demo=# \i share/orders.sql;
-    ```
-
-    ```sql
-    yb_demo=# \i share/reviews.sql;
+    \i share/products.sql;
+    \i share/users.sql;
+    \i share/orders.sql;
+    \i share/reviews.sql;
     ```
 
     You now have sample data and are ready to begin exploring YSQL in YugabyteDB.
@@ -75,7 +89,7 @@ To create a database and load the Retail Analytics dataset, do the following:
 To look at the schema of the `products` table, enter the following command:
 
 ```sql
-yb_demo=# \d products
+\d products
 ```
 
 ```output
@@ -98,7 +112,7 @@ Indexes:
 Run a query to select the `id`, `title`, `category` and `price` columns for the first five products as follows:
 
 ```sql
-yb_demo=# SELECT id, title, category, price, rating
+SELECT id, title, category, price, rating
           FROM products
           LIMIT 5;
 ```
@@ -124,6 +138,11 @@ Here are links to documentation on the tested datasets and the steps to create t
 - [PgExercises](../../../sample-data/pgexercises/)
 - [SportsDB](../../../sample-data/sportsdb/)
 - [Chinook](../../../sample-data/chinook/)
+
+For information on YSQL and the ysqlsh shell:
+
+- [ysqlsh](../../../admin/ysqlsh) — Overview of the command line interface (CLI), syntax, and commands.
+- [YSQL API](../../../api/ysql) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 
