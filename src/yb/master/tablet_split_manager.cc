@@ -78,6 +78,16 @@ void TabletSplitManager::RemoveFailedProcessingTabletSplit(const TabletId& table
   processing_tablets_to_split_children_.erase(tablet_id);
 }
 
+bool AllReplicasHaveFinshedCompaction(const TabletInfo& tablet_info) {
+  auto replica_map = tablet_info.GetReplicaLocations();
+  for (auto const& replica : *replica_map) {
+    if (replica.second.drive_info.may_have_orphaned_post_split_data) {
+      return false;
+    }
+  }
+  return true;
+}
+
 Status TabletSplitManager::ProcessLiveTablet(
     const TabletInfo& tablet_info,
     const TabletServerId& drive_info_ts_uuid,
@@ -86,11 +96,69 @@ Status TabletSplitManager::ProcessLiveTablet(
     return Status::OK();
   }
 
+  if (drive_info.may_have_orphaned_post_split_data) {
+    return Status::OK();
+  }
+
+  boost::optional<std::string> split_parent_id_opt = boost::none;
+  {
+    auto l_tablet = tablet_info.LockForRead();
+    if (l_tablet->pb.has_split_parent_tablet_id()) {
+      split_parent_id_opt = boost::make_optional(l_tablet->pb.split_parent_tablet_id());
+    }
+  }
+
+  boost::optional<bool> all_replicas_finished_compacting_opt = boost::none;
+
   UniqueLock<decltype(mutex_)> lock(mutex_);
 
-  RemoveParentProcessingTabletIfChildIsDoneSplitting(tablet_info, drive_info);
+  if (split_parent_id_opt) {
+    // This is a child tablet that has been split and is done compacting.
+    // Need to check if the other child has also finished compacting.
+    auto entry = processing_tablets_to_split_children_.find(split_parent_id_opt.get());
 
-  return ScheduleSplitIfNeeded(tablet_info, drive_info_ts_uuid, drive_info);
+    // If entry is not found, then the parent has already finished being processed.
+    if (entry != processing_tablets_to_split_children_.end()) {
+      all_replicas_finished_compacting_opt = boost::make_optional(
+        AllReplicasHaveFinshedCompaction(tablet_info));
+      if (*all_replicas_finished_compacting_opt) {
+        if (entry->second.empty()) {
+          // This is the first child to finish, save its tablet_id and wait for the other child.
+          entry->second = tablet_info.tablet_id();
+        } else if (entry->second != tablet_info.tablet_id()) {
+          // Both children have finished, the parent is now done processing, so remove the entry.
+          processing_tablets_to_split_children_.erase(entry);
+        }
+      } else {
+        // No point in scheduling split since not all replicas have finished compaction
+        return Status::OK();
+      }
+    }
+  }
+
+  // Schedule split if needed
+  if (candidates_.size() >= GetCandidateQueueLimit()) {
+    return Status::OK();
+  }
+
+  auto tablet_id = tablet_info.tablet_id();
+  if (std::find(candidates_.begin(), candidates_.end(), tablet_id) != candidates_.end()) {
+    return Status::OK();
+  }
+  auto is_tablet_leader_drive_info = (
+      VERIFY_RESULT(tablet_info.GetLeader())->permanent_uuid() == drive_info_ts_uuid);
+  if (is_tablet_leader_drive_info
+      && filter_->ValidateSplitCandidate(tablet_info).ok()
+      && filter_->ShouldSplitValidCandidate(tablet_info, drive_info)) {
+    auto all_replicas_finished_compacting = all_replicas_finished_compacting_opt.has_value()
+      ? *all_replicas_finished_compacting_opt : AllReplicasHaveFinshedCompaction(tablet_info);
+    if (!all_replicas_finished_compacting) {
+      return Status::OK();
+    }
+    LOG(INFO) << "Adding tablet into split queue: " << tablet_id;
+    candidates_.push_back(tablet_id);
+  }
+  return Status::OK();
 }
 
 void TabletSplitManager::ProcessQueuedSplitItems() {
@@ -113,50 +181,6 @@ void TabletSplitManager::ProcessQueuedSplitItems() {
       processing_tablets_to_split_children_.insert({tablet_id, ""});
     }
   }
-}
-
-void TabletSplitManager::RemoveParentProcessingTabletIfChildIsDoneSplitting(
-    const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) {
-  auto l_tablet = tablet_info.LockForRead();
-  if (l_tablet->pb.has_split_parent_tablet_id() && !drive_info.may_have_orphaned_post_split_data) {
-    // This is a child tablet that has been split and is done compacting.
-    // Need to check if the other child has also finished compacting.
-    auto entry = processing_tablets_to_split_children_.find(l_tablet->pb.split_parent_tablet_id());
-
-    // If entry is not found, then the parent has already finished being processed.
-    if (entry != processing_tablets_to_split_children_.end()) {
-      if (entry->second.empty()) {
-        // This is the first child to finish, save its tablet_id and wait for the other child.
-        entry->second = tablet_info.tablet_id();
-      } else if (entry->second != tablet_info.tablet_id()) {
-        // Both children have finished, the parent is now done processing, so remove the entry.
-        processing_tablets_to_split_children_.erase(entry);
-      }
-    }
-  }
-}
-
-Status TabletSplitManager::ScheduleSplitIfNeeded(
-    const TabletInfo& tablet_info,
-    const TabletServerId& drive_info_ts_uuid,
-    const TabletReplicaDriveInfo& drive_info) {
-  if (candidates_.size() >= GetCandidateQueueLimit()) {
-    return Status::OK();
-  }
-
-  auto tablet_id = tablet_info.tablet_id();
-  if (std::find(candidates_.begin(), candidates_.end(), tablet_id) != candidates_.end()) {
-    return Status::OK();
-  }
-  auto is_tablet_leader_drive_info = (
-      VERIFY_RESULT(tablet_info.GetLeader())->permanent_uuid() == drive_info_ts_uuid);
-  if (is_tablet_leader_drive_info
-      && filter_->ValidateSplitCandidate(tablet_info).ok()
-      && filter_->ShouldSplitValidCandidate(tablet_info, drive_info)) {
-    LOG(INFO) << "Adding tablet into split queue: " << tablet_id;
-    candidates_.push_back(tablet_id);
-  }
-  return Status::OK();
 }
 
 }  // namespace master

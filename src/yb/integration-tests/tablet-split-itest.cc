@@ -119,6 +119,7 @@ DECLARE_bool(TEST_select_all_tablets_for_split);
 DECLARE_uint64(cdc_state_table_num_tablets);
 DECLARE_int32(outstanding_tablet_split_limit);
 DECLARE_double(TEST_fail_tablet_split_probability);
+DECLARE_bool(TEST_skip_post_split_compaction);
 
 namespace yb {
 
@@ -290,6 +291,9 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
 
   // Returns the bytes written at the RocksDB layer by the split parent tablet.
   Result<uint64_t> GetInactiveTabletsBytesWritten();
+
+  // Returns the smallest sst file size among all replicas for a given tablet id
+  Result<uint64_t> GetMinSstFileSizeAmongAllReplicas(const std::string& tablet_id);
 
   // Checks active tablet replicas (all expect ones that have been split) to have all rows from 1 to
   // `num_rows` and nothing else.
@@ -688,6 +692,25 @@ Result<uint64_t> TabletSplitITestBase<MiniClusterType>::GetInactiveTabletsBytesW
     }
   }
   return write_bytes;
+}
+
+template <class MiniClusterType>
+Result<uint64_t> TabletSplitITestBase<MiniClusterType>::GetMinSstFileSizeAmongAllReplicas(
+    const std::string& tablet_id) {
+  const auto test_table_id = VERIFY_RESULT(GetTestTableId());
+  auto peers = ListTabletPeers(this->cluster_.get(), [&tablet_id](auto peer) {
+    return peer->tablet_id() == tablet_id;
+  });
+  if (peers.size() == 0) {
+    return STATUS(IllegalState, "Table has no active peer tablets");
+  }
+  uint64_t min_file_size = std::numeric_limits<uint64_t>::max();
+  for (const auto& peer : peers) {
+    min_file_size = std::min(
+      min_file_size,
+      peer->shared_tablet()->GetCurrentVersionSstFilesSize());
+  }
+  return min_file_size;
 }
 
 template <class MiniClusterType>
@@ -1705,6 +1728,37 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     }
     return Status::OK();
   }
+
+  CHECKED_STATUS CreateAndAutomaticallySplitSingleTablet(int numRowsPerBatch, int* key) {
+    CreateSingleTablet();
+
+    uint64_t current_size = 0;
+    while (current_size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+      RETURN_NOT_OK(WriteRows(numRowsPerBatch, *key));
+      *key += numRowsPerBatch;
+      auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+      LOG(INFO) << "Active peers: " << peers.size();
+      if (peers.size() == 2) {
+        for (const auto& peer : peers) {
+          auto peer_size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
+          // Since we've disabled compactions, each post-split subtablet should be larger than the
+          // split size threshold.
+          EXPECT_GE(peer_size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
+        }
+        break;
+      }
+      if (peers.size() != 1) {
+        return STATUS_FORMAT(IllegalState, "Expected number of peers: 1, actual: $0", peers.size());
+      }
+      const auto leader_peer = peers.at(0);
+      // Flush all replicas of this shard to ensure that even if the leader changed we will be in a
+      // state where yb-master should initiate a split.
+      RETURN_NOT_OK(FlushAllTabletReplicas(leader_peer->tablet_id()));
+      current_size = leader_peer->shared_tablet()->GetCurrentVersionSstFilesSize();
+    }
+    RETURN_NOT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
+    return Status::OK();
+  }
 };
 
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
@@ -1714,34 +1768,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 100_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
 
-  CreateSingleTablet();
-
   int key = 1;
-  while (true) {
-    ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
-    key += kNumRowsPerBatch;
-    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-    LOG(INFO) << "Active peers: " << peers.size();
-    if (peers.size() == 2) {
-      for (const auto& peer : peers) {
-        auto peer_size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
-        // Since we've disabled compactions, each post-split subtablet should be larger than the
-        // split size threshold.
-        EXPECT_GE(peer_size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
-      }
-      break;
-    }
-    ASSERT_EQ(peers.size(), 1);
-    const auto leader_peer = peers.at(0);
-    // Flush all replicas of this shard to ensure that even if the leader changed we will be in a
-    // state where yb-master should initiate a split.
-    ASSERT_OK(FlushAllTabletReplicas(leader_peer->tablet_id()));
-    auto current_size = leader_peer->shared_tablet()->GetCurrentVersionSstFilesSize();
-    if (current_size > FLAGS_tablet_split_low_phase_size_threshold_bytes) {
-      ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
-      break;
-    }
-  }
+  ASSERT_OK(CreateAndAutomaticallySplitSingleTablet(kNumRowsPerBatch, &key));
 
   // Since compaction is off, the tablets should not be further split since they won't have had
   // their post split compaction. Assert this is true by tripling the number of keys written and
@@ -1754,6 +1782,74 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplitting) {
     EXPECT_EQ(peers.size(), 2);
   }
 }
+
+TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompacted) {
+  constexpr auto kNumRowsPerBatch = 1000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 100_KB;
+  // Disable post split compaction
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  // Disable automatic compactions
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
+  // Disable manual compations from flushes
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+
+  int key = 1;
+  ASSERT_OK(CreateAndAutomaticallySplitSingleTablet(kNumRowsPerBatch, &key));
+
+  std::unordered_set<string> tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
+  ASSERT_EQ(tablet_ids.size(), 2);
+  auto expected_num_tablets = 2;
+
+  // Compact peers one by one and ensure a tablet is not split until all peers are compacted
+  for (const auto& tablet_id : tablet_ids) {
+    auto peers = ListTabletPeers(cluster_.get(), [&tablet_id](auto peer) {
+      return peer->tablet_id() == tablet_id;
+    });
+    ASSERT_EQ(peers.size(), FLAGS_replication_factor);
+    for (const auto& peer : peers) {
+      // We shouldn't have split this tablet yet since not all peers are compacted yet
+      EXPECT_EQ(
+        ListTableActiveTabletPeers(cluster_.get(), table_->id()).size(),
+        expected_num_tablets * FLAGS_replication_factor);
+
+      // Force a manual rocksdb compaction on the peer tablet and wait for it to complete
+      const auto tablet = peer->shared_tablet();
+      ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      tablet->ForceRocksDBCompactInTest();
+      ASSERT_OK(LoggedWaitFor(
+        [peer]() -> Result<bool> {
+          return peer->tablet_metadata()->has_been_fully_compacted();
+        },
+        15s * kTimeMultiplier,
+        "Wait for post tablet split compaction to be completed for peer: " + peer->tablet_id()));
+
+      // Write enough data to get the tablet into a state where it's large enough for a split
+      uint64_t current_size = 0;
+      while (current_size <= FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+        ASSERT_OK(WriteRows(kNumRowsPerBatch, key));
+        key += kNumRowsPerBatch;
+        ASSERT_OK(FlushAllTabletReplicas(tablet_id));
+        auto current_size_res = GetMinSstFileSizeAmongAllReplicas(tablet_id);
+        if (!current_size_res.ok()) {
+          break;
+        }
+        current_size = current_size_res.get();
+      }
+
+      // Wait for a potential split to get triggered
+      std::this_thread::sleep_for(std::chrono::milliseconds(
+        2 * (FLAGS_catalog_manager_bg_task_wait_ms * 2 + FLAGS_raft_heartbeat_interval_ms * 2)));
+    }
+
+    // Now that all peers have been compacted, we expect this tablet to get split.
+    ASSERT_OK(
+      WaitForTabletSplitCompletion(++expected_num_tablets));
+  }
+}
+
 
 TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMovesToNextPhase) {
   constexpr int kNumRowsPerBatch = 1000;
