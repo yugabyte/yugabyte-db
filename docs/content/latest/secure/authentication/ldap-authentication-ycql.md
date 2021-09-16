@@ -5,7 +5,7 @@ linkTitle: LDAP Authentication
 description: Configuring YugabyteDB to use an external LDAP authentication service.
 menu:
   latest:
-    identifier: ldap-authentication-ycql
+    identifier: ldap-authentication-2-ycql
     parent: authentication
     weight: 732
 isTocNested: false
@@ -14,13 +14,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/ldap-authentication-ysql" class="nav-link">
+    <a href="../ldap-authentication-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/authentication/ldap-authentication-ycql" class="nav-link active">
+    <a href="../ldap-authentication-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -31,53 +31,17 @@ The LDAP authentication method is similar to the password method, except that it
 
 LDAP Authentication for YCQL can be enabled in the YugabyteDB cluster by setting the LDAP configuration with a set of tserver gflags. YugabyteDB supports two modes for LDAP authentication for YCQL (described in detail below):
 
-* <strong>simple-bind</strong> mode
-* <strong>search+bind</strong> mode
+* **simple-bind** mode
+* **search+bind** mode
 
 A prerequisite to using LDAP for YCQL is that the `use_cassandra_authentication` flag should be set to true. A set of configuration gflags common to both modes are -
 
-<table>
-  <tr>
-   <td><strong>Tserver gflag name</strong>
-   </td>
-   <td><strong>Description</strong>
-   </td>
-   <td><strong>Default value</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_use_ldap
-   </td>
-   <td>Flag to enable LDAP for YCQL.
-   </td>
-   <td><code>false</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_users_to_skip_csv 
-   </td>
-   <td>Users that are authenticated via the local password mechanism even if ycql_use_ldap=true. This is a comma separated list.
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_server
-   </td>
-   <td>LDAP server endpoint of the form scheme://ip:port. Scheme can be ldap (or) ldaps.
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_tls (Not supported yet)
-   </td>
-   <td>Connect to LDAP server using TLS encryption
-   </td>
-   <td><code>false</code>
-   </td>
-  </tr>
-</table>
+| T-Server Gflag name | Default value | Description |
+| :------------------ | :------------ | :---------- |
+| `ycql_use_ldap` | false | Enable LDAP for YCQL |
+| `ycql_ldap_users_to_skip_csv` | (empty) | Comma-separated list of users that are authenticated via the local password mechanism even if `ycql_use_ldap` is true. |
+| `ycql_ldap_server` | (empty) | LDAP server endpoint of the form _scheme_://_ip_:_port_. Scheme can be `ldap` (or) `ldaps`. |
+| `ycql_ldap_tls` | false | (Not yet supported) Connect to LDAP server using TLS encryption |
 
 ## Simple Bind Mode
 
@@ -91,36 +55,14 @@ In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (â€œDNâ€
 
 The configuration specific to simple bind mode.
 
-<table>
-  <tr>
-   <td><strong>Tserver gflag name</strong>
-   </td>
-   <td><strong>Description</strong>
-   </td>
-   <td><strong>Default value</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_user_prefix
-   </td>
-   <td>String used for prepending the user name when forming the DN for binding to the LDAP server
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_user_suffix
-   </td>
-   <td>String used for appending the user name when forming the DN for binding to the LDAP Server
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-</table>
+| T-Server Gflag name | Default value | Description |
+| :------------------ | :------------ | :---------- |
+| `ycql_ldap_user_prefix` | (empty) | String to prepend to the user name when forming the DN for binding to the LDAP server |
+| `ycql_ldap_user_suffix` | (empty) | String to append to the user name when forming the DN for binding to the LDAP server |
 
 ## Search + Bind Mode
 
-In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other softwares.
+In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other software.
 
 For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ycql_ldap_base_dn`, and will try to do an exact match of the attribute specified in `ycql_ldap_search_attribute`. Once the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 
@@ -134,56 +76,13 @@ Here is an example for search + bind mode:
 
 The configurations supported for search + bind mode.
 
-<table>
-  <tr>
-   <td><strong>Tserver gflag name</strong>
-   </td>
-   <td><strong>Description</strong>
-   </td>
-   <td><strong>Default value</strong>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_base_dn
-   </td>
-   <td>Specifies the base directory to begin the user name search
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_bind_dn
-   </td>
-   <td>Specifies the username to perform the initial search when doing search + bind authentication
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_bind_passwd
-   </td>
-   <td>Password for username being used to perform the initial search when doing search + bind authentication
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_search_attribute
-   </td>
-   <td>Attribute to match against the username in the search when doing search + bind authentication. If no attribute is specified, the uid attribute is used
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-  <tr>
-   <td>ycql_ldap_search_filter (not supported yet)
-   </td>
-   <td>The search filter to use when doing search + bind authentication
-   </td>
-   <td><code>''</code>
-   </td>
-  </tr>
-</table>
+| T-Server Gflag name | Default value | Description |
+| :------------------ | :------------ | :---------- |
+| `ycql_ldap_base_dn` | (empty) | Base directory to begin the user name search |
+| `ycql_ldap_bind_dn` | (empty) | Username to perform the initial search when doing search + bind authentication |
+| `ycql_ldap_bind_passwd` | (empty) | Password for the username being used to perform the initial search when doing search + bind authentication |
+| `ycql_ldap_search_attribute` | `uid` attribute | Attribute to match against the username in the search when doing search + bind authentication. If no attribute is specified, the `uid` attribute is used. |
+| `ycql_ldap_search_filter` | (empty) | Search filter to use when doing search + bind authentication |
 
 ## Example
 
@@ -209,7 +108,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
     $ ./ycqlsh -u cassandra
     ```
 
-    When prompted for the password, enter `cassandra` (default password of `cassandra` user). You should be able to login and see a response like below.
+    When prompted for the password, enter `cassandra` (default password of `cassandra` user). You should be able to log in and see a response like below.
 
     ```output
     Connected to local cluster at 127.0.0.1:9042.

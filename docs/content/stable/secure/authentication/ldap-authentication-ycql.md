@@ -5,7 +5,7 @@ linkTitle: LDAP Authentication
 description: Configuring YugabyteDB to use an external LDAP authentication service.
 menu:
   stable:
-    identifier: ldap-authentication-ycql
+    identifier: ldap-authentication-2-ycql
     parent: authentication
     weight: 732
 isTocNested: false
@@ -14,13 +14,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ldap-authentication-ysql" class="nav-link">
+    <a href="../ldap-authentication-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="../ldap-authentication-ycql" class="nav-link active">
+    <a href="../ldap-authentication-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -62,7 +62,7 @@ The configuration specific to simple bind mode.
 
 ## Search + Bind Mode
 
-In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other softwares.
+In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other software.
 
 For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ycql_ldap_base_dn`, and will try to do an exact match of the attribute specified in `ycql_ldap_search_attribute`. Once the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 
@@ -108,7 +108,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
     $ ./ycqlsh -u cassandra
     ```
 
-    When prompted for the password, enter `cassandra` (default password of `cassandra` user). You should be able to login and see a response like below.
+    When prompted for the password, enter `cassandra` (default password of `cassandra` user). You should be able to log in and see a response like below.
 
     ```output
     Connected to local cluster at 127.0.0.1:9042.
