@@ -62,6 +62,8 @@ Result<TransactionId> FullyDecodeTransactionId(const Slice& slice);
 // from slice.
 Result<TransactionId> DecodeTransactionId(Slice* slice);
 
+using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
+
 struct TransactionStatusResult {
   TransactionStatus status;
 
@@ -72,17 +74,21 @@ struct TransactionStatusResult {
   // ABORTED - not used.
   HybridTime status_time;
 
-  // TODO(savepoints) -- Add aborted subtransaction bitset here to enable ignoring aborted
-  // subtransactions during conflict resolution.
+  // Set of thus-far aborted subtransactions in this transaction.
+  AbortedSubTransactionSet aborted_subtxn_set;
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
+
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_,
+      AbortedSubTransactionSet aborted_subtxn_set_);
 
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
 
   std::string ToString() const {
-    return Format("{ status: $0 status_time: $1 }", status, status_time);
+    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set);
   }
 };
 
@@ -115,13 +121,22 @@ struct StatusRequest {
 
 class RequestScope;
 
+struct CommitMetadata {
+  HybridTime commit_ht;
+  AbortedSubTransactionSet aborted_subtxn_set;
+};
+
 class TransactionStatusManager {
  public:
   virtual ~TransactionStatusManager() {}
 
-  // Checks whether this tablet knows that transaction is committed.
-  // In case of success returns commit time of transaction, otherwise returns invalid time.
+  // If this tablet is aware that this transaction has committed, returns the commit ht for the
+  // transaction. Otherwise, returns HybridTime::kInvalid.
   virtual HybridTime LocalCommitTime(const TransactionId& id) = 0;
+
+  // If this tablet is aware that this transaction has committed, returns the CommitMetadata for the
+  // transaction. Otherwise, returns boost::none.
+  virtual boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) = 0;
 
   // Fetches status of specified transaction at specified time from transaction coordinator.
   // Callback would be invoked in any case.
@@ -207,8 +222,6 @@ class RequestScope {
   int64_t request_id_;
 };
 
-using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
-
 // Represents all metadata tracked about subtransaction state by the client in support of postgres
 // savepoints. Can be serialized and deserialized to/from SubTransactionMetadataPB. This should be
 // sent by the client on any transactional read/write requests where a savepoint has been created,
@@ -216,22 +229,14 @@ using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
 struct SubTransactionMetadata {
   SubTransactionId subtransaction_id = kMinSubTransactionId;
   AbortedSubTransactionSet aborted;
-  // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
-  // the highest live subtransaction_id.
-  SubTransactionId highest_subtransaction_id = kMinSubTransactionId;
 
-  // This will lose highest_subtransaction_id, so SubTransactionMetadata::FromPB(stm.ToPB) is
-  // not always equal to stm for `SubTransactionMetadata stm`.
-  // TODO: refactor this to something like
-  // `SubTransactionMetadataWithHighest : public SubTransactionMetadata`.
-  // See https://github.com/yugabyte/yugabyte-db/issues/9593.
   void ToPB(SubTransactionMetadataPB* dest) const;
 
   static Result<SubTransactionMetadata> FromPB(
       const SubTransactionMetadataPB& source);
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(subtransaction_id, highest_subtransaction_id, aborted);
+    return YB_STRUCT_TO_STRING(subtransaction_id, aborted);
   }
 
   // Returns true if this is the default state, i.e. default subtransaction_id. This indicates

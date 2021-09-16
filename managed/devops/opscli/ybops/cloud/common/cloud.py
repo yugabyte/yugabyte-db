@@ -8,30 +8,21 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-from ybops.cloud.common.ansible import AnsibleProcess
-from ybops.cloud.common.base import AbstractCommandParser
-from ybops.utils import get_ssh_host_port, get_datafile_path, \
-    get_internal_datafile_path, YBOpsRuntimeError, YB_HOME_DIR
-
-from ybops.utils.remote_shell import RemoteShell
-
-from cryptography import x509
-from cryptography.x509.oid import NameOID
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.serialization import (load_pem_private_key, Encoding,
-                                                          PrivateFormat, NoEncryption)
-import datetime
-import six
 import logging
 import os
-import tempfile
-import yaml
-import socket
-import time
 import re
+import socket
 import ssl
+import tempfile
+import time
+
+import yaml
+from ybops.cloud.common.ansible import AnsibleProcess
+from ybops.cloud.common.base import AbstractCommandParser
+from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
+                         get_internal_datafile_path, get_ssh_host_port, remote_exec_command,
+                         scp_to_tmp)
+from ybops.utils.remote_shell import RemoteShell
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -55,7 +46,7 @@ class AbstractCloud(AbstractCommandParser):
     CERT_LOCATION_NODE = "node"
     CERT_LOCATION_PLATFORM = "platform"
     SSH_RETRY_COUNT = 30
-    SSH_WAIT_SECONDS = 10
+    SSH_WAIT_SECONDS = 30
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -215,11 +206,45 @@ class AbstractCloud(AbstractCommandParser):
             "-U postgres\"".format(master_addresses, init_db_path)
         )
 
+    def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
+        logging.info("[app] Configuring second NIC")
+        self._wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
+                                extra_vars["ssh_port"])
+        subnet_network, subnet_netmask = subnet_cidr.split('/')
+        # Copy and run script to configure routes
+        scp_to_tmp(
+            get_datafile_path('configure_nic.sh'), extra_vars["ssh_host"],
+            extra_vars["ssh_user"], extra_vars["ssh_port"], args.private_key_file)
+        cmd = ("sudo /tmp/configure_nic.sh "
+               "--subnet_network {} --subnet_netmask {} --cloud {}").format(
+            subnet_network, subnet_netmask, self.name)
+        rc, stdout, stderr = remote_exec_command(
+            extra_vars["ssh_host"], extra_vars["ssh_port"],
+            extra_vars["ssh_user"], args.private_key_file, cmd)
+        if rc:
+            raise YBOpsRuntimeError(
+                "Could not configure second nic {} {}".format(stdout, stderr))
+        # Since this is on start, wait for ssh on default port
+        # Reboot instance
+        remote_exec_command(
+            extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
+            args.private_key_file, 'sudo reboot')
+        self._wait_for_ssh_port(extra_vars["ssh_host"],
+                                args.search_pattern, extra_vars["ssh_port"])
+        # Verify that the command ran successfully:
+        rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
+                                                 extra_vars["ssh_user"], args.private_key_file,
+                                                 'ls /tmp/dhclient-script-*')
+        if rc:
+            raise YBOpsRuntimeError(
+                "Second nic not configured at start up")
+
     # Compare certificate content and return
     # 0 -> if cert1 equals to cert2
     # 1 -> if cert1 is subset of cert2
     # 2 -> if cert2 is subset of cert1
     # 3 -> if none of the above satisfies
+
     def compare_certs(self, cert1, cert2):
         # Extract certificate values list from the string
         cert1_re = re.findall(
@@ -367,24 +392,27 @@ class AbstractCloud(AbstractCommandParser):
 
         copy_root = True
         if rotate_certs:
-            root_cert = remote_shell.run_command(
-                "cat '{}'".format(yb_root_cert_path)).stdout
-            root_cert_new = None
-            if certs_location == self.CERT_LOCATION_NODE:
-                root_cert_new = remote_shell.run_command(
-                    "cat '{}'".format(root_cert_path)).stdout
-            if certs_location == self.CERT_LOCATION_PLATFORM:
-                with open(root_cert_path) as file:
-                    root_cert_new = file.read()
-            if root_cert is not None and root_cert_new is not None:
-                compare_result = self.compare_certs(root_cert_new, root_cert)
-                if compare_result == 0 or compare_result == 1:
-                    # Don't copy root certs if the new root cert is
-                    # same or subset of the existing root cert
-                    copy_root = False
-            else:
-                raise YBOpsRuntimeError(
-                    "Unable to fetch the certificate {}".format(root_cert_path))
+            root_cert_command = remote_shell.run_command_raw(
+                "cat '{}'".format(yb_root_cert_path))
+            # In case of tls toggle root cert might not be present
+            if not root_cert_command.exited:
+                root_cert = root_cert_command.stdout
+                root_cert_new = None
+                if certs_location == self.CERT_LOCATION_NODE:
+                    root_cert_new = remote_shell.run_command(
+                        "cat '{}'".format(root_cert_path)).stdout
+                if certs_location == self.CERT_LOCATION_PLATFORM:
+                    with open(root_cert_path) as file:
+                        root_cert_new = file.read()
+                if root_cert is not None and root_cert_new is not None:
+                    compare_result = self.compare_certs(root_cert_new, root_cert)
+                    if compare_result == 0 or compare_result == 1:
+                        # Don't copy root certs if the new root cert is
+                        # same or subset of the existing root cert
+                        copy_root = False
+                else:
+                    raise YBOpsRuntimeError(
+                        "Unable to fetch the certificate {}".format(root_cert_path))
 
         logging.info("Moving server certs located at {}, {}, {}.".format(
             root_cert_path, server_cert_path, server_key_path))
@@ -421,7 +449,7 @@ class AbstractCloud(AbstractCommandParser):
             certs_location):
         remote_shell = RemoteShell(ssh_options)
         yb_root_cert_path = os.path.join(
-            self.YSQLSH_CERT_DIR, self.ROOT_CERT_NAME)
+            self.YSQLSH_CERT_DIR, self.CLIENT_ROOT_NAME)
         yb_client_cert_path = os.path.join(
             self.YSQLSH_CERT_DIR, self.CLIENT_CERT_NAME)
         yb_client_key_path = os.path.join(
@@ -496,20 +524,25 @@ class AbstractCloud(AbstractCommandParser):
 
     def _wait_for_ssh_port(self, private_ip, instance_name, ssh_port):
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock = None
             retry_count = 0
 
+            ssh_port = int(ssh_port)
+
             while retry_count < self.SSH_RETRY_COUNT:
+                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
                 time.sleep(self.SSH_WAIT_SECONDS)
                 retry_count = retry_count + 1
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 result = sock.connect_ex((private_ip, ssh_port))
                 if result == 0:
                     break
             else:
-                logging.error("Start instance {} exceeded maxRetries!".format(instance_name))
+                logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
                 raise YBOpsRuntimeError(
                     "Cannot reach the instance {} after its start at port {}".format(
                         instance_name, ssh_port)
                 )
         finally:
-            sock.close()
+            if sock:
+                sock.close()

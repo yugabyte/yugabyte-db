@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -47,6 +49,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public boolean enableYSQL = false;
+    public boolean enableYCQL = false;
+    public boolean enableYSQLAuth = false;
+    public boolean enableYCQLAuth = false;
     public boolean enableYEDIS = false;
     public Map<String, String> gflags = new HashMap<>();
     public Set<String> gflagsToRemove = new HashSet<>();
@@ -122,8 +127,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         long inactiveCronNodes =
             universe.getNodes().stream().filter(node -> !node.cronsActive).count();
         metricService.setMetric(
-            metricService.buildMetricTemplate(
-                PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
             inactiveCronNodes);
       }
 

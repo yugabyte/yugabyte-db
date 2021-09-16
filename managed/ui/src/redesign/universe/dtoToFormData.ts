@@ -54,6 +54,9 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfigFormValue = {
 const DEFAULT_HIDDEN_CONFIG: HiddenConfig = {
   accessKeyCode: null,
   enableYSQL: true,
+  enableYSQLAuth: true,
+  enableYCQL: true,
+  enableYCQLAuth: true,
   userAZSelected: false,
   useTimeSync: true,
   installNodeExporter: true
@@ -171,6 +174,9 @@ export const getFormData = (universe?: Universe, cluster?: Cluster): WizardSteps
 
     formData.hiddenConfig.accessKeyCode = cluster.userIntent.accessKeyCode;
     formData.hiddenConfig.enableYSQL = cluster.userIntent.enableYSQL;
+    formData.hiddenConfig.enableYSQLAuth = cluster.userIntent.enableYSQLAuth;
+    formData.hiddenConfig.enableYCQL = cluster.userIntent.enableYCQL;
+    formData.hiddenConfig.enableYCQLAuth = cluster.userIntent.enableYCQLAuth;
     formData.hiddenConfig.userAZSelected = false;
     formData.hiddenConfig.useTimeSync = cluster.userIntent.useTimeSync;
     formData.hiddenConfig.installNodeExporter =

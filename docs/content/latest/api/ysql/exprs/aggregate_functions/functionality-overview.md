@@ -124,7 +124,7 @@ This is the result:
 
 Every ordinary aggregate function can be invoked, also, as a window function.
 
-See also the section [Informal overview of window function invocation using the OVER clause](../..//window_functions/functionality-overview/). This section also has examples of invoking an ordinary aggregate function as a window function.
+See also the section [Informal overview of window function invocation using the OVER clause](../../window_functions/functionality-overview/). This section also has examples of invoking an ordinary aggregate function as a window function.
 
 Try this:
 

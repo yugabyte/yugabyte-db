@@ -84,7 +84,7 @@ get_ephemeral_drives() {
   if [[ "$root_drive" == "/dev/xvda1" ]]; then
     echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='xvd'
-  elif [[ "$root_drive" == "/dev/nvme0n1p1" ]]; then
+  elif [[ "$root_drive" =~ ^/dev/nvme.* ]]; then
     echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='nvme'
   else

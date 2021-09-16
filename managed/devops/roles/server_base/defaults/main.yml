@@ -17,3 +17,6 @@ linux_packages:
 
 azure_packages:
   - libselinux-python
+
+aarch64_packages:
+  - libatomic

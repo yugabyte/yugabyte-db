@@ -3,13 +3,17 @@ import { TOGGLE_FEATURE } from '../actions/feature';
 const initialStateFeatureInTest = {
   pausedUniverse: false,
   addListMultiProvider: false,
-  adminAlertsConfig:true
+  adminAlertsConfig:true,
+  enableNewEncryptionInTransitModal: false,
+  addRestoreTimeStamp: false,
 };
 
 const initialStateFeatureReleased = {
   pausedUniverse: true,
   addListMultiProvider: true,
-  adminAlertsConfig:false
+  adminAlertsConfig:false,
+  enableNewEncryptionInTransitModal: false,
+  addRestoreTimeStamp: false,
 };
 
 export const FeatureFlag = (

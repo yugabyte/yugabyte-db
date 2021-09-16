@@ -75,11 +75,11 @@ public class WaitForServerReady extends ServerSubTaskBase {
             ? taskParams().waitTimeMs
             : UpgradeParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
 
-    YBClient client = getClient();
     HostAndPort hp = getHostPort();
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
 
     IsServerReadyResponse response = null;
+    YBClient client = getClient();
     try {
       while (true) {
         numIters++;
@@ -124,10 +124,11 @@ public class WaitForServerReady extends ServerSubTaskBase {
       // There is no generic mechanism from proto/rpc to check if an older server does not have
       // this rpc implemented. So, we just sleep for remaining time on any such error.
       log.info("{} hit exception '{}' after {} iters.", getName(), e.getMessage(), numIters);
+    } finally {
+      closeClient(client);
     }
 
     // Sleep for the remaining portion of user specified time, if any.
     sleepRemaining(userWaitTimeMs, numIters);
-    closeClient(client);
   }
 }

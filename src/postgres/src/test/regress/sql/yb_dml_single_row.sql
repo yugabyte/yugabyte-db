@@ -757,3 +757,14 @@ UPDATE array_t4 SET arr1 = array_remove(arr1, 3::int2),
                     arr2 = array_remove(arr2, 3.25::double precision),
                     arr3 = array_remove(arr3, 'c'::char) WHERE k = 1;
 SELECT * FROM array_t4 ORDER BY k;
+
+-----------------------------------
+-- Test json types.
+
+CREATE TABLE json_t1(k int PRIMARY KEY, json1 json, json2 jsonb);
+
+INSERT INTO json_t1 (k, json1, json2) VALUES (1, '["a", 1]'::json, '["b", 2]'::jsonb);
+SELECT * FROM json_t1;
+
+UPDATE json_t1 SET json1 = json1 -> 0, json2 = json2||'["c", 3]'::jsonb WHERE k = 1;
+SELECT * FROM json_t1;

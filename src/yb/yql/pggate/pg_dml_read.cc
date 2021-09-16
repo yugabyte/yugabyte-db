@@ -229,6 +229,9 @@ bool PgDmlRead::IsConcreteRowRead() const {
 }
 
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
+  // Save IN/OUT parameters from Postgres.
+  pg_exec_params_ = exec_params;
+
   // Set column references in protobuf and whether query is aggregate.
   SetColumnRefs();
 
@@ -443,7 +446,6 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
   expr_binds_.clear();
   read_req_->clear_partition_column_values();
   read_req_->clear_range_column_values();
-  read_req_->set_unknown_ybctid_allowed(true);
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
   return doc_op_->PopulateDmlByYbctidOps(&ybctidsAsSlice);
 }

@@ -1,13 +1,3 @@
-/*
- * Copyright 2021 YugaByte, Inc. and Contributors
- *
- * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
- * may not use this file except in compliance with the License. You
- * may obtain a copy of the License at
- *
- * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
- */
-
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
@@ -46,7 +36,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -1186,7 +1176,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
         assertThrows(
-                YWServiceException.class,
+                PlatformServiceException.class,
                 () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
             .getResult();
 

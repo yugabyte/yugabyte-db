@@ -24,7 +24,7 @@ import lombok.Value;
 public class AlertDefinitionFilter {
   Set<UUID> uuids;
   UUID customerUuid;
-  Set<UUID> groupUuids;
+  Set<UUID> configurationUuids;
   AlertDefinitionLabel label;
   Boolean configWritten;
 
@@ -38,8 +38,8 @@ public class AlertDefinitionFilter {
     if (customerUuid != null) {
       result.customerUuid(customerUuid);
     }
-    if (groupUuids != null) {
-      result.groupUuids(groupUuids);
+    if (configurationUuids != null) {
+      result.configurationUuids(configurationUuids);
     }
     if (label != null) {
       result.label(label);
@@ -52,7 +52,7 @@ public class AlertDefinitionFilter {
 
   public static class AlertDefinitionFilterBuilder {
     Set<UUID> uuids = new HashSet<>();
-    Set<UUID> groupUuids = new HashSet<>();
+    Set<UUID> configurationUuids = new HashSet<>();
 
     public AlertDefinitionFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
@@ -69,13 +69,14 @@ public class AlertDefinitionFilter {
       return this;
     }
 
-    public AlertDefinitionFilterBuilder groupUuid(UUID groupUuid) {
-      this.groupUuids.add(groupUuid);
+    public AlertDefinitionFilterBuilder configurationUuid(UUID configurationUuid) {
+      this.configurationUuids.add(configurationUuid);
       return this;
     }
 
-    public AlertDefinitionFilterBuilder groupUuids(@NonNull Collection<UUID> groupUuids) {
-      this.groupUuids.addAll(groupUuids);
+    public AlertDefinitionFilterBuilder configurationUuids(
+        @NonNull Collection<UUID> configurationUuids) {
+      this.configurationUuids.addAll(configurationUuids);
       return this;
     }
 

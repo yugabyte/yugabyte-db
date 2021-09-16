@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
@@ -76,6 +77,7 @@ public class NodeManager extends DevopsBase {
   // Currently we need to define the enum such that the lower case value matches the action
   public enum NodeCommandType {
     Provision,
+    Create,
     Configure,
     CronCheck,
     Destroy,
@@ -103,6 +105,8 @@ public class NodeManager extends DevopsBase {
   @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject ConfigHelper configHelper;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
@@ -159,21 +163,25 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--private_key_file");
         subCommand.add(keyInfo.privateKey);
 
-        // We only need to include keyPair name for setup server call and if this is aws.
-        if (params instanceof AnsibleSetupServer.Params
+        // We only need to include keyPair name for create instance method and if this is aws.
+        if ((params instanceof AnsibleCreateServer.Params
+                || params instanceof AnsibleSetupServer.Params)
             && userIntent.providerType.equals(Common.CloudType.aws)) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
-          // Also we will add the security group information.
-          Region r = params.getRegion();
-          String customSecurityGroupId = r.getSecurityGroupId();
-          if (customSecurityGroupId != null) {
-            subCommand.add("--security_group_id");
-            subCommand.add(customSecurityGroupId);
+          // Also we will add the security group information for create
+          if (params instanceof AnsibleCreateServer.Params) {
+            Region r = params.getRegion();
+            String customSecurityGroupId = r.getSecurityGroupId();
+            if (customSecurityGroupId != null) {
+              subCommand.add("--security_group_id");
+              subCommand.add(customSecurityGroupId);
+            }
           }
         }
       }
-      if (params instanceof AnsibleSetupServer.Params
+      // security group is only used during Azure create instance method
+      if (params instanceof AnsibleCreateServer.Params
           && userIntent.providerType.equals(Common.CloudType.azu)) {
         Region r = params.getRegion();
         String customSecurityGroupId = r.getSecurityGroupId();
@@ -191,7 +199,9 @@ public class NodeManager extends DevopsBase {
       subCommand.add("--custom_ssh_port");
       subCommand.add(keyInfo.sshPort.toString());
 
-      if ((type == NodeCommandType.Provision || type == NodeCommandType.Destroy)
+      if ((type == NodeCommandType.Provision
+              || type == NodeCommandType.Destroy
+              || type == NodeCommandType.Create)
           && keyInfo.sshUser != null) {
         subCommand.add("--ssh_user");
         subCommand.add(keyInfo.sshUser);
@@ -480,7 +490,26 @@ public class NodeManager extends DevopsBase {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
       if (releaseMetadata != null) {
-        ybServerPackage = releaseMetadata.filePath;
+        if (releaseMetadata.s3 != null) {
+          subcommand.add("--s3_remote_download");
+          ybServerPackage = releaseMetadata.s3.paths.x86_64;
+          subcommand.add("--aws_access_key");
+          subcommand.add(releaseMetadata.s3.accessKeyId);
+          subcommand.add("--aws_secret_key");
+          subcommand.add(releaseMetadata.s3.secretAccessKey);
+        } else if (releaseMetadata.gcs != null) {
+          subcommand.add("--gcs_remote_download");
+          ybServerPackage = releaseMetadata.gcs.paths.x86_64;
+          subcommand.add("--gcs_credentials_json");
+          subcommand.add(releaseMetadata.gcs.credentialsJson);
+        } else if (releaseMetadata.http != null) {
+          subcommand.add("--http_remote_download");
+          ybServerPackage = releaseMetadata.http.paths.x86_64;
+          subcommand.add("--http_package_checksum");
+          subcommand.add(releaseMetadata.http.paths.x86_64_checksum);
+        } else {
+          ybServerPackage = releaseMetadata.filePath;
+        }
       }
     }
 
@@ -527,11 +556,13 @@ public class NodeManager extends DevopsBase {
         extra_gflags.put("metric_node_name", taskParam.nodeName);
         // TODO: add a shared path to massage flags across different flavors of configure.
         String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
+        String cqlProxyBindAddress = node.cloudInfo.private_ip;
 
         if (useHostname) {
           subcommand.add("--server_broadcast_addresses");
           subcommand.add(node.cloudInfo.private_ip);
           pgsqlProxyBindAddress = "0.0.0.0";
+          cqlProxyBindAddress = "0.0.0.0";
         }
 
         if (taskParam.enableYSQL) {
@@ -539,8 +570,29 @@ public class NodeManager extends DevopsBase {
           extra_gflags.put(
               "pgsql_proxy_bind_address",
               String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
+          if (taskParam.enableYSQLAuth) {
+            extra_gflags.put("ysql_enable_auth", "true");
+            extra_gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
+          } else {
+            extra_gflags.put("ysql_enable_auth", "false");
+          }
         } else {
           extra_gflags.put("enable_ysql", "false");
+        }
+
+        // For YCQL flag
+        if (taskParam.enableYCQL) {
+          extra_gflags.put("start_cql_proxy", "true");
+          extra_gflags.put(
+              "cql_proxy_bind_address",
+              String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
+          if (taskParam.enableYCQLAuth) {
+            extra_gflags.put("use_cassandra_authentication", "true");
+          } else {
+            extra_gflags.put("use_cassandra_authentication", "false");
+          }
+        } else {
+          extra_gflags.put("start_cql_proxy", "false");
         }
 
         if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
@@ -731,10 +783,6 @@ public class NodeManager extends DevopsBase {
               break;
             case ROTATE_CERTS:
               {
-                if (taskParam.rootCARotationType == CertRotationType.None
-                    && taskParam.clientRootCARotationType == CertRotationType.None) {
-                  throw new RuntimeException("No cert rotation can be done with the given params.");
-                }
                 subcommand.addAll(
                     getCertificatePaths(
                         taskParam,
@@ -833,6 +881,28 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
+  private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
+    Map<String, String> envVars = new HashMap<>();
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
+
+    envVars.put("ANSIBLE_STRATEGY", runtimeConfig.getString("yb.ansible.strategy"));
+    envVars.put(
+        "ANSIBLE_TIMEOUT", Integer.toString(runtimeConfig.getInt("yb.ansible.conn_timeout_secs")));
+    envVars.put(
+        "ANSIBLE_VERBOSITY", Integer.toString(runtimeConfig.getInt("yb.ansible.verbosity")));
+    if (runtimeConfig.getBoolean("yb.ansible.debug")) {
+      envVars.put("ANSIBLE_DEBUG", "True");
+    }
+    if (runtimeConfig.getBoolean("yb.ansible.diff_always")) {
+      envVars.put("ANSIBLE_DIFF_ALWAYS", "True");
+    }
+    envVars.put("ANSIBLE_LOCAL_TEMP", runtimeConfig.getString("yb.ansible.local_temp"));
+
+    LOG.trace("ansible env vars {}", envVars);
+    return envVars;
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
@@ -858,12 +928,13 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
         // intentional fall-thru
-      case Provision:
+      case Create:
         {
-          if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
-            throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
+          if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
-          AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+          AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
             commandArgs.add("--instance_type");
@@ -871,7 +942,11 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
-            Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+            // Only create second NIC for cloud.
+            if (config.getBoolean("yb.cloud.enabled") && taskParam.secondarySubnetId != null) {
+              commandArgs.add("--cloud_subnet_secondary");
+              commandArgs.add(taskParam.secondarySubnetId);
+            }
 
             // Use case: cloud free tier instances.
             if (config.getBoolean("yb.cloud.enabled")) {
@@ -926,23 +1001,11 @@ public class NodeManager extends DevopsBase {
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
-          }
-
-          if (taskParam.isSystemdUpgrade) {
-            // Cron to Systemd Upgrade
-            commandArgs.add("--reuse_host");
-            commandArgs.add("--tags");
-            commandArgs.add("systemd_upgrade");
-            commandArgs.add("--systemd_services");
-          } else if (taskParam.useSystemd) {
-            // Systemd for new universes
-            commandArgs.add("--systemd_services");
-          }
-
-          if (taskParam.useTimeSync
-              && (cloudType.equals(Common.CloudType.aws)
-                  || cloudType.equals(Common.CloudType.gcp))) {
-            commandArgs.add("--use_chrony");
+            if (config.getBoolean("yb.cloud.enabled")
+                && taskParam.assignPublicIP
+                && taskParam.assignStaticPublicIP) {
+              commandArgs.add("--assign_static_public_ip");
+            }
           }
 
           if (cloudType.equals(Common.CloudType.aws)) {
@@ -954,11 +1017,6 @@ public class NodeManager extends DevopsBase {
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
               commandArgs.add(taskParam.ipArnString);
-            }
-
-            if (!taskParam.remotePackagePath.isEmpty()) {
-              commandArgs.add("--remote_package_path");
-              commandArgs.add(taskParam.remotePackagePath);
             }
           }
           if (cloudType.equals(Common.CloudType.azu)) {
@@ -998,15 +1056,80 @@ public class NodeManager extends DevopsBase {
             }
           }
 
+          break;
+        }
+      case Provision:
+        {
+          if (!(nodeTaskParam instanceof AnsibleSetupServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
+          }
+          AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
+          Common.CloudType cloudType = userIntent.providerType;
+
+          // aws uses instance_type to determine device names for mounting
+          if (cloudType.equals(Common.CloudType.aws)) {
+            commandArgs.add("--instance_type");
+            commandArgs.add(taskParam.instanceType);
+          }
+
+          // gcp uses machine_image for ansible preprovision.yml
+          if (cloudType.equals(Common.CloudType.gcp)) {
+            String ybImage =
+                Optional.ofNullable(taskParam.machineImage).orElse(taskParam.getRegion().ybImage);
+            if (ybImage != null && !ybImage.isEmpty()) {
+              commandArgs.add("--machine_image");
+              commandArgs.add(ybImage);
+            }
+          }
+
+          if (taskParam.isSystemdUpgrade) {
+            // Cron to Systemd Upgrade
+            commandArgs.add("--skip_preprovision");
+            commandArgs.add("--tags");
+            commandArgs.add("systemd_upgrade");
+            commandArgs.add("--systemd_services");
+          } else if (taskParam.useSystemd) {
+            // Systemd for new universes
+            commandArgs.add("--systemd_services");
+          }
+
+          if (taskParam.useTimeSync
+              && (cloudType.equals(Common.CloudType.aws)
+                  || cloudType.equals(Common.CloudType.gcp))) {
+            commandArgs.add("--use_chrony");
+          }
+
+          if (cloudType.equals(Common.CloudType.aws)) {
+            if (!taskParam.remotePackagePath.isEmpty()) {
+              commandArgs.add("--remote_package_path");
+              commandArgs.add(taskParam.remotePackagePath);
+            }
+          }
+
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (nodeTaskParam.deviceInfo != null) {
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+            DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
+            // Need volume_type in GCP provision to determine correct device names for mounting
+            if (deviceInfo.storageType != null && cloudType.equals(Common.CloudType.gcp)) {
+              commandArgs.add("--volume_type");
+              commandArgs.add(deviceInfo.storageType.toString().toLowerCase());
+            }
+          }
+
           String localPackagePath = getThirdpartyPackagePath();
           if (localPackagePath != null) {
             commandArgs.add("--local_package_path");
             commandArgs.add(localPackagePath);
           }
 
-          if (taskParam.reprovision) {
-            commandArgs.add("--reuse_host");
-            commandArgs.add("--reprovision");
+          // right now we only need explicit python installation for CentOS 8 graviton instances
+          if (taskParam.instanceType != null
+              && configHelper
+                  .getGravitonInstancePrefixList()
+                  .stream()
+                  .anyMatch(taskParam.instanceType::startsWith)) {
+            commandArgs.add("--install_python");
           }
 
           break;
@@ -1057,6 +1180,9 @@ public class NodeManager extends DevopsBase {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (appConfig.getBoolean("yb.cloud.enabled") && userIntent.assignStaticPublicIP) {
+            commandArgs.add("--delete_static_public_ip");
+          }
           break;
         }
       case Pause:
@@ -1173,7 +1299,8 @@ public class NodeManager extends DevopsBase {
           null,
           type.toString().toLowerCase(),
           commandArgs,
-          getCloudArgs(nodeTaskParam));
+          getCloudArgs(nodeTaskParam),
+          getAnsibleEnvVars(nodeTaskParam.universeUUID));
     } finally {
       if (bootScriptFile != null) {
         try {

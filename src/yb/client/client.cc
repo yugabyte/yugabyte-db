@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <mutex>
-#include <set>
 #include <unordered_map>
 #include <vector>
 #include <iostream>
@@ -78,12 +77,6 @@
 #include "yb/util/crypt.h"
 
 using yb::master::AlterTableRequestPB;
-using yb::master::AlterTableRequestPB_Step;
-using yb::master::AlterTableResponsePB;
-using yb::master::CreateTableRequestPB;
-using yb::master::CreateTableResponsePB;
-using yb::master::DeleteTableRequestPB;
-using yb::master::DeleteTableResponsePB;
 using yb::master::CreateTablegroupRequestPB;
 using yb::master::CreateTablegroupResponsePB;
 using yb::master::DeleteTablegroupRequestPB;
@@ -92,10 +85,6 @@ using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
-using yb::master::GetTableSchemaRequestPB;
-using yb::master::GetTableSchemaResponsePB;
-using yb::master::GetColocatedTabletSchemaRequestPB;
-using yb::master::GetColocatedTabletSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -117,8 +106,6 @@ using yb::master::ListLiveTabletServersResponsePB;
 using yb::master::ListLiveTabletServersResponsePB_Entry;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
-using yb::master::AlterNamespaceRequestPB;
-using yb::master::AlterNamespaceResponsePB;
 using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
@@ -137,14 +124,10 @@ using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::DeleteRoleRequestPB;
 using yb::master::DeleteRoleResponsePB;
-using yb::master::DeleteTabletRequestPB;
-using yb::master::DeleteTabletResponsePB;
 using yb::master::GetPermissionsRequestPB;
 using yb::master::GetPermissionsResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
 using yb::master::GrantRevokeRoleResponsePB;
-using yb::master::ListUDTypesRequestPB;
-using yb::master::ListUDTypesResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
 using yb::master::GetUDTypeInfoResponsePB;
 using yb::master::GrantRevokePermissionResponsePB;
@@ -162,16 +145,9 @@ using yb::master::DeleteCDCStreamRequestPB;
 using yb::master::DeleteCDCStreamResponsePB;
 using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
-using yb::master::ListCDCStreamsRequestPB;
-using yb::master::ListCDCStreamsResponsePB;
-using yb::master::TSInfoPB;
+using yb::master::UpdateCDCStreamRequestPB;
+using yb::master::UpdateCDCStreamResponsePB;
 using yb::rpc::Messenger;
-using yb::rpc::MessengerBuilder;
-using yb::rpc::RpcController;
-using yb::tserver::NoOpRequestPB;
-using yb::tserver::NoOpResponsePB;
-using yb::util::kBcryptHashSize;
-using std::set;
 using std::string;
 using std::vector;
 using google::protobuf::RepeatedPtrField;
@@ -1360,7 +1336,8 @@ Status YBClient::DeleteUDType(const std::string& namespace_name,
 
 Result<CDCStreamId> YBClient::CreateCDCStream(
     const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options) {
+    const std::unordered_map<std::string, std::string>& options,
+    const master::SysCDCStreamEntryPB::State& initial_state) {
   // Setting up request.
   CreateCDCStreamRequestPB req;
   req.set_table_id(table_id);
@@ -1370,6 +1347,7 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
     new_option->set_key(option.first);
     new_option->set_value(option.second);
   }
+  req.set_initial_state(initial_state);
 
   CreateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateCDCStream);
@@ -1414,7 +1392,9 @@ void YBClient::GetCDCStream(const CDCStreamId& stream_id,
   data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
 }
 
-Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams) {
+Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
+                                 bool force,
+                                 master::DeleteCDCStreamResponsePB* ret) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
   }
@@ -1425,9 +1405,15 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams) {
   for (const auto& stream : streams) {
     req.add_stream_id(stream);
   }
+  req.set_force(force);
 
-  DeleteCDCStreamResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
+  if (ret) {
+    CALL_SYNC_LEADER_MASTER_RPC(req, (*ret), DeleteCDCStream);
+  } else {
+    DeleteCDCStreamResponsePB resp;
+    CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
+  }
+
   return Status::OK();
 }
 
@@ -1446,9 +1432,25 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
 
-void YBClient::DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback) {
+Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
+                                 const master::SysCDCStreamEntryPB& new_entry) {
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  // Setting up request.
+  UpdateCDCStreamRequestPB req;
+  req.set_stream_id(stream_id);
+  req.mutable_entry()->CopyFrom(new_entry);
+
+  UpdateCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->DeleteTablet(this, tablet_id, deadline, callback);
+  data_->DeleteNotServingTablet(this, tablet_id, deadline, callback);
 }
 
 void YBClient::GetTableLocations(

@@ -113,16 +113,13 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
       AddStringField("current_snapshot_id",
                      SnapshotIdToString(resp.current_snapshot_id()),
                      &document, &document.GetAllocator());
-
     } else {
       cout << "Current snapshot id: " << SnapshotIdToString(resp.current_snapshot_id()) << endl;
     }
   }
 
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
-  if (json) {
-    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
-  } else {
+  if (!json) {
     if (resp.snapshots_size()) {
       cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << endl;
     } else {
@@ -135,9 +132,17 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
     if (json) {
       AddStringField(
           "id", SnapshotIdToString(snapshot.id()), &json_snapshot, &document.GetAllocator());
+      const auto& entry = snapshot.entry();
       AddStringField(
-          "state", SysSnapshotEntryPB::State_Name(snapshot.entry().state()), &json_snapshot,
+          "state", SysSnapshotEntryPB::State_Name(entry.state()), &json_snapshot,
           &document.GetAllocator());
+      AddStringField(
+          "snapshot_time", HybridTimeToString(HybridTime::FromPB(entry.snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
+      AddStringField(
+          "previous_snapshot_time",
+          HybridTimeToString(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
     } else {
       cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
     }
@@ -186,6 +191,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   }));
 
   if (json) {
+    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
     std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
     return Status::OK();
   }
@@ -436,7 +442,9 @@ Result<rapidjson::Document> ClusterAdminClient::DeleteSnapshotSchedule(
 }
 
 bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
-  return HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
+  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
+          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
+         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
          HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
 }
 
@@ -709,10 +717,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         if (meta.namespace_name().empty()) {
           return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
         }
-
-        YBTableName orig_table_name;
-        orig_table_name.set_namespace_name(meta.namespace_name());
-        orig_table_name.set_table_name(meta.name());
 
         // Update the table name if needed.
         if (update_meta) {
@@ -1200,10 +1204,11 @@ Status ClusterAdminClient::SetupUniverseReplication(
   return Status::OK();
 }
 
-Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id) {
+Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id, bool force) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
+  req.set_force(force);
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1212,6 +1217,13 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
   if (resp.has_error()) {
     cout << "Error deleting universe replication: " << resp.error().status().message() << endl;
     return StatusFromPB(resp.error().status());
+  }
+
+  if (resp.warnings().size() > 0) {
+    cout << "Encountered the following warnings while running delete_universe_replication:" << endl;
+    for (const auto& warning : resp.warnings()) {
+      cout << " - " << warning.message() << endl;
+    }
   }
 
   cout << "Replication deleted successfully" << endl;

@@ -1,0 +1,21 @@
+@import '../../../_style/colors.scss';
+
+.errCodeLink {
+  text-decoration: underline;
+  cursor: pointer;
+}
+.alerts-table {
+  .react-bs-container-body {
+    overflow: auto !important;
+    height: 500px;
+  }
+  .react-bs-table-pagination {
+    margin-top: 30px !important;
+  }
+  .acknowledge-link-button {
+    padding: 0;
+    color: $YB_ORANGE;
+    border: 0;
+    background: transparent;
+  }
+}

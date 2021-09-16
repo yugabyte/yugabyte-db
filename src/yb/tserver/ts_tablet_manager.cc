@@ -565,9 +565,10 @@ void TSTabletManager::CleanupSplitTablets() {
         LOG_WITH_PREFIX(INFO) << Format("Skipped triggering delete of tablet $0", tablet_id);
       } else {
         LOG_WITH_PREFIX(INFO) << Format("Triggering delete of tablet $0", tablet_id);
-        client().DeleteTablet(tablet_peer->tablet_id(), [tablet_id] (const Status& status) {
-          LOG(INFO) << Format("Tablet $0 deletion result: $1", tablet_id, status);
-        });
+        client().DeleteNotServingTablet(
+            tablet_peer->tablet_id(), [tablet_id](const Status& status) {
+              LOG(INFO) << Format("Tablet $0 deletion result: $1", tablet_id, status);
+            });
       }
     }
   }
@@ -1653,11 +1654,12 @@ Status TSTabletManager::GetRegistration(ServerRegistrationPB* reg) const {
   return server_->GetRegistration(reg, server::RpcOnly::kTrue);
 }
 
-void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tablet_ptrs) const {
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers(TabletPtrs* tablet_ptrs) const {
   SharedLock<RWMutex> shared_lock(mutex_);
-  GetTabletPeersUnlocked(tablet_peers);
+  TabletPeers peers;
+  GetTabletPeersUnlocked(&peers);
   if (tablet_ptrs) {
-    for (const auto& peer : *tablet_peers) {
+    for (const auto& peer : peers) {
       if (!peer) continue;
       auto tablet_ptr = peer->shared_tablet();
       if (tablet_ptr) {
@@ -1665,6 +1667,7 @@ void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers, TabletPtrs* tabl
       }
     }
   }
+  return peers;
 }
 
 void TSTabletManager::GetTabletPeersUnlocked(TabletPeers* tablet_peers) const {
@@ -1692,12 +1695,6 @@ void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const TabletId*>* tab
   };
   tablet_ids->erase(std::remove_if(tablet_ids->begin(), tablet_ids->end(), filter),
                     tablet_ids->end());
-}
-
-TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers() const {
-  TabletPeers peers;
-  GetTabletPeers(&peers);
-  return peers;
 }
 
 void TSTabletManager::ApplyChange(const string& tablet_id,
@@ -1840,6 +1837,7 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
       reported_tablet->set_should_disable_lb_move(tablet_ptr->ShouldDisableLbMove());
     }
   }
+  reported_tablet->set_fs_data_dir(tablet_peer->tablet_metadata()->data_root_dir());
 
   // We cannot get consensus state information unless the TabletPeer is running.
   shared_ptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
@@ -2249,6 +2247,10 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
 
 client::YBClient& TSTabletManager::client() {
   return *async_client_init_->client();
+}
+
+const std::shared_future<client::YBClient*>& TSTabletManager::client_future() {
+  return async_client_init_->get_client_future();
 }
 
 void TSTabletManager::MaybeDoChecksForTests(const TableId& table_id) {

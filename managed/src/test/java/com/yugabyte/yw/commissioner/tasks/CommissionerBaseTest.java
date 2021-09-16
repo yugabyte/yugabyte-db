@@ -10,6 +10,8 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.PlatformExecutorFactory;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -21,11 +23,11 @@ import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
-import com.yugabyte.yw.common.YWGuiceApplicationBaseTest;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -48,7 +50,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 
-public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
+public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
   private int maxRetryCount = 200;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
@@ -69,7 +71,7 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
   protected MetricService metricService;
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
-  protected AlertDefinitionGroupService alertDefinitionGroupService;
+  protected AlertConfigurationService alertConfigurationService;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -77,8 +79,11 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
   protected Provider defaultProvider;
   protected Provider gcpProvider;
 
+  protected Commissioner commissioner;
+
   @Before
   public void setUp() {
+    commissioner = app.injector().instanceOf(Commissioner.class);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
@@ -86,8 +91,8 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
     alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
     SettableRuntimeConfigFactory configFactory = new SettableRuntimeConfigFactory(app.config());
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(alertDefinitionService, configFactory);
+    alertConfigurationService =
+        new AlertConfigurationService(alertDefinitionService, configFactory);
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(app.config());
@@ -98,8 +103,10 @@ public abstract class CommissionerBaseTest extends YWGuiceApplicationBaseTest {
     when(mockBaseTaskDependencies.getTableManager()).thenReturn(mockTableManager);
     when(mockBaseTaskDependencies.getMetricService()).thenReturn(metricService);
     when(mockBaseTaskDependencies.getRuntimeConfigFactory()).thenReturn(configFactory);
-    when(mockBaseTaskDependencies.getAlertDefinitionGroupService())
-        .thenReturn(alertDefinitionGroupService);
+    when(mockBaseTaskDependencies.getAlertConfigurationService())
+        .thenReturn(alertConfigurationService);
+    when(mockBaseTaskDependencies.getExecutorFactory())
+        .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
   }
 
   @Override

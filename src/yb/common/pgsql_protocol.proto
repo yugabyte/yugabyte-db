@@ -280,6 +280,19 @@ message PgsqlPagingStatePB {
   optional ReadHybridTimePB read_time = 6;
 }
 
+// Backfill instruction.
+message PgsqlBackfillSpecPB {
+  // Limit for each backfill batch. "-1" means no limit.
+  optional int64 limit = 1 [default = -1];
+
+  // Accumulated counter is used to check if the number of scanned rows has reached limit.
+  optional int64 count = 2 [default = 0];
+
+  // The next row key to read for backfill. Defined/used similar to how it is used in paging state.
+  // i.e. The row key (SubDocKey = [DocKey + HybridTimestamp]) of the next row to read.
+  optional bytes next_row_key = 3;
+}
+
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
 // execution plan in tablet server.
 message PgsqlReadRequestPB {
@@ -329,7 +342,8 @@ message PgsqlReadRequestPB {
 
   // Indicates ybctids in batch_arguments may not exist.
   // If flag is false read operation will fail in case any of ybctids in batch will not be found.
-  optional bool unknown_ybctid_allowed = 26;
+  // Reserved for deprecated unknown_ybctid_allowed
+  reserved 26;
 
   //------------------------------------------------------------------------------------------------
   // Output Argument Specification (Tuple descriptor).
@@ -398,6 +412,12 @@ message PgsqlReadRequestPB {
 
   // If present, the request is to collect random sample
   optional PgsqlSamplingStatePB sampling_state = 30;
+
+  // Instruction for BACKFILL operation from the tablet server.
+  // This is the serialized-string of "message PgsqlBackfillSpecPB" which will be used by
+  // the tablet server handling the PgsqlRead to terminate the scan and checkpoint the paging
+  // state as desired.
+  optional bytes backfill_spec = 31;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -439,6 +459,7 @@ message PgsqlResponsePB {
   // NOTE: This variable could have been inside "paging state", but due to rolling upgrade I have
   // to place it here, separated from paging status for singular request.
   optional int64 batch_arg_count = 10 [ default = 1 ];
+  repeated int64 batch_orders = 12;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
@@ -460,4 +481,12 @@ message PgsqlResponsePB {
 
   // Random sample state to hand over to the next block
   optional PgsqlSamplingStatePB sampling_state = 11;
+
+  // Instruction for BACKFILL operation from master/table server.
+  // This is the serialized-string of "message PgsqlBackfillSpecPB".
+  //
+  // If 'is_backfill_batch_done' == true, Postgres will return this 'backfill_spec' to tablet server
+  // that sent out the 'BACKFILL' request statement.
+  optional bytes backfill_spec = 13;
+  optional bool is_backfill_batch_done = 14;
 }

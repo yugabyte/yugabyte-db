@@ -1629,5 +1629,76 @@ TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
   Destroy();
 }
 
+TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, replication_factor));
+
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, {tables[0], tables[2]} /* all producer tables */));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 12));
+
+  // Delete the CDC stream on the producer for a table.
+  master::ListCDCStreamsResponsePB stream_resp;
+  ASSERT_OK(GetCDCStreamForTable(tables[0]->id(), &stream_resp));
+  ASSERT_EQ(stream_resp.streams_size(), 1);
+  ASSERT_EQ(stream_resp.streams(0).table_id(), tables[0]->id());
+  auto stream_id = stream_resp.streams(0).stream_id();
+
+  rpc::RpcController rpc;
+  auto producer_proxy = std::make_shared<master::MasterServiceProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  master::DeleteCDCStreamRequestPB delete_cdc_stream_req;
+  master::DeleteCDCStreamResponsePB delete_cdc_stream_resp;
+  delete_cdc_stream_req.add_stream_id(stream_id);
+
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(producer_proxy->DeleteCDCStream(
+      delete_cdc_stream_req, &delete_cdc_stream_resp, &rpc));
+
+  // Try to delete the universe.
+  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  rpc.Reset();
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  master::DeleteUniverseReplicationRequestPB delete_universe_req;
+  master::DeleteUniverseReplicationResponsePB delete_universe_resp;
+  delete_universe_req.set_producer_id(kUniverseId);
+  delete_universe_req.set_force(false);
+  ASSERT_OK(
+      master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
+  // Ensure that the error message describes the missing stream and related table.
+  ASSERT_TRUE(delete_universe_resp.has_error());
+  std::string prefix = "Could not find the following streams:";
+  const auto error_str = delete_universe_resp.error().status().message();
+  ASSERT_TRUE(error_str.substr(0, prefix.size()) == prefix);
+  ASSERT_NE(error_str.find(stream_id), string::npos);
+  ASSERT_NE(error_str.find(tables[0]->id()), string::npos);
+
+  // Force the delete.
+  rpc.Reset();
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  delete_universe_req.set_force(true);
+  ASSERT_OK(
+      master_proxy->DeleteUniverseReplication(delete_universe_req, &delete_universe_resp, &rpc));
+
+  // Ensure that the delete is now succesful.
+  ASSERT_OK(VerifyUniverseReplicationDeleted(consumer_cluster(), consumer_client(), kUniverseId,
+      FLAGS_cdc_read_rpc_timeout_ms * 2));
+
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+  Destroy();
+}
+
 } // namespace enterprise
 } // namespace yb

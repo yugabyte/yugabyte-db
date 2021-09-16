@@ -269,8 +269,9 @@ message NoOpResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
-// A verification request to check if a range of rows in main table is consistent with
-// index table content. We will verify index table rows using the primary table.
+// A verification request to check if a range of rows in main table is
+// consistent with index table content. We will verify index table rows using
+// the primary table.
 message VerifyTableRowRangeRequestPB {
   required bytes tablet_id = 1;
 
@@ -381,6 +382,9 @@ message TransactionStatePB {
   // Relevant only in CLEANUP and APPLYING status, true when we perform request
   // for a transaction that was previously sealed.
   optional bool sealed = 6;
+
+  // Set of subtransaction IDs which are aborted.
+  optional AbortedSubTransactionSetPB aborted = 7;
 }
 
 // Truncate tablet request.

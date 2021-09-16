@@ -29,7 +29,7 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
-public class FakeDBApplication extends YWGuiceApplicationBaseTest {
+public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Commissioner mockCommissioner = mock(Commissioner.class);
   public CallHome mockCallHome = mock(CallHome.class);
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
@@ -62,7 +62,7 @@ public class FakeDBApplication extends YWGuiceApplicationBaseTest {
 
     GuiceApplicationBuilder guiceApplicationBuilder = new GuiceApplicationBuilder();
     if (!isSwaggerEnabled()) {
-      guiceApplicationBuilder.disable(SwaggerModule.class);
+      guiceApplicationBuilder = guiceApplicationBuilder.disable(SwaggerModule.class);
     }
     return configureApplication(
             guiceApplicationBuilder

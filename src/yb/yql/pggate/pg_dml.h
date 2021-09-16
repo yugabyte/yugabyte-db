@@ -188,6 +188,10 @@ class PgDml : public PgStatement {
   std::list<PgDocResult> rowsets_;
   int64_t current_row_order_ = 0;
 
+  // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
+  // OUT value back to postgres.
+  const PgExecParameters *pg_exec_params_ = NULL;
+
   //------------------------------------------------------------------------------------------------
   // Hashed and range values/components used to compute the tuple id.
   //

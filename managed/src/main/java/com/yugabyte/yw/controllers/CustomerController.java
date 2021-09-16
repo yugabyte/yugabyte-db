@@ -26,16 +26,18 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.MetricService;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
 import com.yugabyte.yw.forms.FeatureUpdateFormData;
 import com.yugabyte.yw.forms.MetricQueryParams;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -43,13 +45,14 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.filters.AlertDefinitionGroupFilter;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,7 +66,9 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Customer", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Customer management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerController.class);
@@ -74,7 +79,7 @@ public class CustomerController extends AuthenticatedController {
 
   @Inject private CloudQueryHelper cloudQueryHelper;
 
-  @Inject private AlertDefinitionGroupService alertDefinitionGroupService;
+  @Inject private AlertConfigurationService alertConfigurationService;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -96,16 +101,16 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List customer",
+      value = "List customers",
       response = Customer.class,
       responseContainer = "List",
       nickname = "ListOfCustomers")
   public Result list() {
-    return YWResults.withData(Customer.getAll());
+    return PlatformResults.withData(Customer.getAll());
   }
 
   @ApiOperation(
-      value = "Get customer by UUID",
+      value = "Get a customer's details",
       response = CustomerDetailsData.class,
       nickname = "CustomerDetail")
   public Result index(UUID customerUUID) {
@@ -142,10 +147,7 @@ public class CustomerController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(
-      value = "Update customer by UUID",
-      response = Customer.class,
-      nickname = "UpdateCustomer")
+  @ApiOperation(value = "Update a customer", response = Customer.class, nickname = "UpdateCustomer")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Customer",
@@ -181,38 +183,38 @@ public class CustomerController extends AuthenticatedController {
 
         // Update Clock Skew Alert definition activity.
         // TODO: Remove after implementation of a separate window for
-        // all definition groups configuration.
-        List<AlertDefinitionGroup> groups =
-            alertDefinitionGroupService.list(
-                AlertDefinitionGroupFilter.builder()
+        // alert configurations.
+        List<AlertConfiguration> configurations =
+            alertConfigurationService.list(
+                AlertConfigurationFilter.builder()
                     .customerUuid(customerUUID)
                     .name(AlertTemplate.CLOCK_SKEW.getName())
                     .build());
-        for (AlertDefinitionGroup group : groups) {
-          group.setActive(alertingFormData.alertingData.enableClockSkew);
+        for (AlertConfiguration configuration : configurations) {
+          configuration.setActive(alertingFormData.alertingData.enableClockSkew);
         }
-        alertDefinitionGroupService.save(groups);
+        alertConfigurationService.save(configurations);
         LOG.info(
-            "Updated {} Clock Skew Alert definition groups, new state {}",
-            groups.size(),
+            "Updated {} Clock Skew Alert configuration, new state {}",
+            configurations.size(),
             alertingFormData.alertingData.enableClockSkew);
 
         // Update Backup alert definitions
         // TODO: Remove after implementation of a separate window for
-        // all definition groups configuration.
-        groups =
-            alertDefinitionGroupService.list(
-                AlertDefinitionGroupFilter.builder()
+        // alert configuration.
+        configurations =
+            alertConfigurationService.list(
+                AlertConfigurationFilter.builder()
                     .customerUuid(customerUUID)
                     .name(AlertTemplate.BACKUP_FAILURE.getName())
                     .build());
-        for (AlertDefinitionGroup group : groups) {
-          group.setActive(alertingFormData.alertingData.reportBackupFailures);
+        for (AlertConfiguration configuration : configurations) {
+          configuration.setActive(alertingFormData.alertingData.reportBackupFailures);
         }
-        alertDefinitionGroupService.save(groups);
+        alertConfigurationService.save(configurations);
         LOG.info(
-            "Updated {} Backup Failure definition groups, new state {}",
-            groups.size(),
+            "Updated {} Backup Failure configuration, new state {}",
+            configurations.size(),
             alertingFormData.alertingData.reportBackupFailures);
       }
 
@@ -242,8 +244,8 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Delete customer by UUID",
-      response = YWResults.YWSuccess.class,
+      value = "Delete a customer",
+      response = YBPSuccess.class,
       nickname = "deleteCustomer")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -254,18 +256,18 @@ public class CustomerController extends AuthenticatedController {
     }
 
     if (!customer.delete()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
     }
 
-    metricService.handleTargetRemoval(customerUUID, null);
+    metricService.handleSourceRemoval(customerUUID, null);
 
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 
   @ApiOperation(
-      value = "Upsert features of customer by UUID",
+      value = "Create or update a customer's features",
       hidden = true,
       responseContainer = "Map",
       response = Object.class)
@@ -286,7 +288,7 @@ public class CustomerController extends AuthenticatedController {
     try {
       formData = mapper.treeToValue(requestBody, FeatureUpdateFormData.class);
     } catch (RuntimeException | JsonProcessingException e) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid JSON");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid JSON");
     }
 
     customer.upsertFeatures(formData.features);
@@ -296,9 +298,14 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Add metrics of customer by UUID",
+      value = "Add metrics to a customer",
       response = Object.class,
       responseContainer = "Map")
+  @ApiResponses(
+      @io.swagger.annotations.ApiResponse(
+          code = BAD_REQUEST,
+          message = "When request fails validations.",
+          response = YBPError.class))
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Metrics",
@@ -375,9 +382,9 @@ public class CustomerController extends AuthenticatedController {
     JsonNode response =
         metricQueryHelper.query(formData.get().getMetrics(), params, filterOverrides);
     if (response.has("error")) {
-      throw new YWServiceException(BAD_REQUEST, response.get("error"));
+      throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }
-    return YWResults.withRawData(response);
+    return PlatformResults.withRawData(response);
   }
 
   private String getNamespacesFilter(Customer customer, String nodePrefix) {
@@ -423,7 +430,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get host info by customer UUID",
+      value = "Get a customer's host info",
       responseContainer = "Map",
       response = Object.class)
   public Result getHostInfo(UUID customerUUID) {
@@ -437,7 +444,7 @@ public class CustomerController extends AuthenticatedController {
     hostInfo.put(
         Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null));
 
-    return YWResults.withRawData(hostInfo);
+    return PlatformResults.withRawData(hostInfo);
   }
 
   private HashMap<String, HashMap<String, String>> getFilterOverrides(

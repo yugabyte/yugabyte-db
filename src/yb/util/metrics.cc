@@ -65,6 +65,9 @@ DEFINE_string(metric_node_name, "DEFAULT_NODE_NAME",
 DEFINE_bool(expose_metric_histogram_percentiles, true,
             "Should we expose the percentiles information for metrics histograms.");
 
+DEFINE_int32(max_tables_metrics_breakdowns, INT32_MAX,
+             "The maxmimum number of tables to retrieve metrics for");
+
 // Process/server-wide metrics should go into the 'server' entity.
 // More complex applications will define other entities.
 METRIC_DEFINE_entity(server);
@@ -516,7 +519,8 @@ CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
     WARN_NOT_OK(e.second->WriteForPrometheus(writer, requested_metrics, opts),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
-  RETURN_NOT_OK(writer->FlushAggregatedValues());
+  RETURN_NOT_OK(writer->FlushAggregatedValues(opts.max_tables_metrics_breakdowns,
+                opts.priority_regex));
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling

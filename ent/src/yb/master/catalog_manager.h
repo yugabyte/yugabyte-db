@@ -132,6 +132,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                               GetCDCStreamResponsePB* resp,
                               rpc::RpcContext* rpc);
 
+  // Update a CDC stream.
+  CHECKED_STATUS UpdateCDCStream(const UpdateCDCStreamRequestPB* req,
+                                 UpdateCDCStreamResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
   // Delete CDC streams for a table.
   CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) override;
   CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
@@ -200,6 +205,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     TableId old_table_id;
     TableId new_table_id;
     SysTablesEntryPB table_entry_pb;
+    std::string pg_schema_name;
     int num_tablets;
     typedef std::pair<std::string, std::string> PartitionKeys;
     typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
@@ -234,6 +240,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                               ExternalTableSnapshotDataMap* tables_data);
   void DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
                                 const ExternalTableSnapshotDataMap& tables_data);
+
+  // Helper function for ImportTableEntry.
+  Result<bool> CheckTableForImport(
+      scoped_refptr<TableInfo> table,
+      ExternalTableSnapshotData* snapshot_data) REQUIRES_SHARED(mutex_);
 
   CHECKED_STATUS ImportNamespaceEntry(const SysRowEntry& entry,
                                       NamespaceMap* namespace_map);
@@ -357,12 +368,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                             std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                             const std::string& universe_id,
                             const TableId& table,
+                            std::shared_ptr<CDCRpcTasks> cdc_rpc,
                             const Status& s);
   void AddCDCStreamToUniverseAndInitConsumer(const std::string& universe_id, const TableId& table,
-                                             const Result<CDCStreamId>& stream_id);
+                                             const Result<CDCStreamId>& stream_id,
+                                             std::function<void()> on_success_cb = nullptr);
 
   void MergeUniverseReplication(scoped_refptr<UniverseReplicationInfo> info);
-  void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
+  CHECKED_STATUS DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe,
                                      const Status& failure_status);
 

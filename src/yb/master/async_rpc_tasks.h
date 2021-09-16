@@ -193,6 +193,10 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Note: This is the last thing function called, to guarantee it's the last work done by the task.
   virtual void UnregisterAsyncTaskCallback();
 
+  string table_name() const {
+    return !table_ ? "" : table_->ToString();
+  }
+
   Master* const master_;
   ThreadPool* const callback_pool_;
   const std::unique_ptr<TSPicker> replica_picker_;
@@ -308,7 +312,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Create Tablet"; }
 
   std::string description() const override {
-    return "CreateTablet RPC for tablet " + tablet_id_ + " on TS " + permanent_uuid_;
+    return Format("CreateTablet RPC for tablet $0 ($1) on TS=$2",
+                  tablet_id_, table_name(), permanent_uuid_);
   }
 
  protected:
@@ -336,7 +341,8 @@ class AsyncStartElection : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Hinted Leader Start Election"; }
 
   std::string description() const override {
-    return "RunLeaderElection RPC for tablet " + tablet_id_ + " on TS " + permanent_uuid_;
+    return Format("RunLeaderElection RPC for tablet $0 ($1) on TS=$2",
+                  tablet_id_, table_name(), permanent_uuid_);
   }
 
  protected:
@@ -372,8 +378,8 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Delete Tablet"; }
 
   std::string description() const override {
-    return Format("$0 Tablet RPC for $1 on TS=$2",
-                  hide_only_ ? "Hide" : "Delete", tablet_id_, permanent_uuid_);
+    return Format("$0Tablet RPC for tablet $1 ($2) on TS=$3",
+                  hide_only_ ? "Hide" : "Delete", tablet_id_, table_name(), permanent_uuid_);
   }
 
   void set_hide_only(bool value) {

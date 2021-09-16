@@ -161,7 +161,7 @@ public class AuditTest extends FakeDBApplication {
 
   @Test
   public void testGetAllUserEntries() {
-    Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     UUID randUUID = UUID.randomUUID();
     UUID randUUID1 = UUID.randomUUID();
     UUID randUUID2 = UUID.randomUUID();

@@ -238,6 +238,10 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
                                 ErrorCode::DATATYPE_MISMATCH);
     case KVProperty::kNumTablets:
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
+      if (int_val < 0) {
+        return sem_context->Error(
+            this, "Number of tablets cannot be less zero", ErrorCode::INVALID_ARGUMENTS);
+      }
       if (int_val > FLAGS_max_num_tablets_for_table) {
         return sem_context->Error(
             this, "Number of tablets exceeds system limit", ErrorCode::INVALID_ARGUMENTS);

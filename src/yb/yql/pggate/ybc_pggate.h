@@ -67,6 +67,9 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 // error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
 
+// Get access to callbacks.
+const YBCPgCallbacks* YBCGetPgCallbacks();
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------
@@ -443,19 +446,25 @@ YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
 // Expressions.
 
 // Column references.
-YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
-                            const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewColumnRef(
+    YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, const YBCPgTypeAttrs *type_attrs,
+    YBCPgExpr *expr_handle);
 
 // Constant expressions.
 // Construct an actual constant value.
-YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstant(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
 // Construct a virtual constant value.
-YBCStatus YBCPgNewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                  YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantVirtual(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
 // Construct an operator expression on a constant.
-YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
+YBCStatus YBCPgNewConstantOp(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+    bool is_gt);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.
@@ -468,9 +477,9 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
 
 // Expressions with operators "=", "+", "between", "in", ...
-YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
-                           const YBCPgTypeEntity *type_entity,
-                           YBCPgExpr *op_handle);
+YBCStatus YBCPgNewOperator(
+    YBCPgStatement stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,

@@ -136,6 +136,10 @@ public class CustomerConfigValidator {
                 create(
                     data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText(),
                     data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText());
+            if (data.get(AWS_HOST_BASE_FIELDNAME) != null
+                && !StringUtils.isBlank(data.get(AWS_HOST_BASE_FIELDNAME).textValue())) {
+              s3Client.setEndpoint(data.get(AWS_HOST_BASE_FIELDNAME).textValue());
+            }
             // Only the bucket has been given, with no subdir.
             if (bucketSplit.length == 1) {
               if (!s3Client.doesBucketExistV2(bucketName)) {
@@ -346,6 +350,11 @@ public class CustomerConfigValidator {
       errorJson.set("data", Json.newArray().add("This field is required"));
     } else if (!formData.get("data").isObject()) {
       errorJson.set("data", Json.newArray().add("Invalid data provided, expected a object."));
+    }
+    if (!formData.hasNonNull("configName")) {
+      errorJson.set("configName", Json.newArray().add("Config name cannot be null"));
+    } else if (formData.get("configName").textValue().trim().isEmpty()) {
+      errorJson.set("configName", Json.newArray().add("Invalid config name provided."));
     }
     return errorJson;
   }

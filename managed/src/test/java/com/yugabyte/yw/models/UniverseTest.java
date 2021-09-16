@@ -404,7 +404,7 @@ public class UniverseTest extends FakeDBApplication {
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
-    assertTrue(clusterJson.get("userIntent").get("regionList").isNull());
+    assertTrue(!clusterJson.get("userIntent").has("regionList"));
     assertNull(clusterJson.get("regions"));
     assertNull(clusterJson.get("provider"));
   }

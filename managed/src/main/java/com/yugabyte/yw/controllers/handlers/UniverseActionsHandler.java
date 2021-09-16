@@ -17,7 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
@@ -25,7 +25,7 @@ import com.yugabyte.yw.forms.ToggleTlsParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -110,7 +110,7 @@ public class UniverseActionsHandler {
               "Error occurred attempting to %s the universe encryption key",
               taskParams.encryptionAtRestConfig.opType.name());
       LOG.error(errMsg, e);
-      throw new YWServiceException(Http.Status.BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, errMsg);
     }
   }
 
@@ -125,19 +125,19 @@ public class UniverseActionsHandler {
         universe.universeUUID,
         customer.uuid);
 
-    YWResults.YWError error = requestParams.verifyParams(universeDetails);
+    YBPError error = requestParams.verifyParams(universeDetails);
     if (error != null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, error.error + " - for universe: " + universe.universeUUID);
     }
 
     if (!universeDetails.isUniverseEditable()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Universe UUID " + universe.universeUUID + " cannot be edited.");
     }
 
     if (universe.nodesInTransit()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "Cannot perform a toggle TLS operation on universe "
               + universe.universeUUID
@@ -147,7 +147,7 @@ public class UniverseActionsHandler {
     }
 
     if (!CertificateInfo.isCertificateValid(requestParams.rootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           String.format(
               "The certificate %s needs info. Update the cert and retry.",
@@ -157,7 +157,7 @@ public class UniverseActionsHandler {
     if (requestParams.rootCA != null
         && CertificateInfo.get(requestParams.rootCA).certType
             == CertificateInfo.Type.CustomServerCert) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomServerCert are only supported for Client to Server Communication.");
     }
@@ -166,7 +166,7 @@ public class UniverseActionsHandler {
         && CertificateInfo.get(requestParams.rootCA).certType
             == CertificateInfo.Type.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomCertHostPath certificates are only supported for on-prem providers.");
     }
@@ -175,7 +175,7 @@ public class UniverseActionsHandler {
         && CertificateInfo.get(requestParams.clientRootCA).certType
             == CertificateInfo.Type.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomCertHostPath certificates are only supported for on-prem providers.");
     }
@@ -187,7 +187,7 @@ public class UniverseActionsHandler {
         && requestParams.rootCA != null
         && requestParams.clientRootCA != null
         && requestParams.rootCA != requestParams.clientRootCA) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
     }
@@ -208,7 +208,8 @@ public class UniverseActionsHandler {
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
 
     if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
     }
 
     if (requestParams.enableNodeToNodeEncrypt) {
@@ -303,13 +304,14 @@ public class UniverseActionsHandler {
     // as helm compatible.
     Map<String, String> universeConfig = universe.getConfig();
     if (universeConfig.containsKey(Universe.HELM2_LEGACY)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Universe was already marked as helm3 compatible.");
     }
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     if (!primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, "Only applicable for k8s universes.");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Only applicable for k8s universes.");
     }
 
     Map<String, String> config = new HashMap<>();

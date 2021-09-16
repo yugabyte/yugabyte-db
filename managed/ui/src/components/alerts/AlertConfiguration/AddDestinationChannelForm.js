@@ -9,9 +9,10 @@ export const AddDestinationChannelForm = (props) => {
   const { visible, onHide, onError, defaultChannel } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(true);
+  const [defaultRecipients, setDefaultRecipients] = useState(false);
 
   // TODO: Add option for pagerDuty oce API is avaialable
-  const targetTypeList = [
+  const channelTypeList = [
     <option key={1} value="email">
       Email
     </option>,
@@ -26,6 +27,7 @@ export const AddDestinationChannelForm = (props) => {
   const onModalHide = () => {
     setChannelType(defaultChannel);
     setCustomSMTP(true);
+    setDefaultRecipients(false);
     onHide();
   };
 
@@ -39,17 +41,21 @@ export const AddDestinationChannelForm = (props) => {
       params: {}
     };
 
-    switch (values.ALERT_TARGET_TYPE) {
+    switch (values.CHANNEL_TYPE) {
       case 'slack':
         payload['name'] = values['slack_name'];
-        payload['params']['targetType'] = 'Slack';
+        payload['params']['channelType'] = 'Slack';
         payload['params']['webhookUrl'] = values.webhookURL;
         payload['params']['username'] = values['slack_name'];
         break;
       case 'email':
         payload['name'] = values['email_name'];
-        payload['params']['targetType'] = 'Email';
-        payload['params']['recipients'] = values.emailIds.split(',');
+        payload['params']['channelType'] = 'Email';
+        if (!defaultRecipients) {
+          payload['params']['recipients'] = values.emailIds.split(',');
+        } else {
+          payload['params']['defaultRecipients'] = true;
+        }
         if (!customSMTP) {
           payload['params']['smtpData'] = values.smtpData;
         } else {
@@ -61,14 +67,14 @@ export const AddDestinationChannelForm = (props) => {
     }
     try {
       props.createAlertChannel(payload).then(() => {
-        props.getAlertReceivers().then((receivers) => {
-          receivers = receivers.map((receiver) => {
+        props.getAlertChannels().then((channels) => {
+          channels = channels.map((channel) => {
             return {
-              value: receiver['uuid'],
-              label: receiver['name']
+              value: channel['uuid'],
+              label: channel['name']
             };
           });
-          props.updateDestinationChannel(receivers);
+          props.updateDestinationChannel(channels);
         });
       });
       onModalHide();
@@ -85,11 +91,24 @@ export const AddDestinationChannelForm = (props) => {
     if (name === 'customSmtp') {
       setCustomSMTP(!value);
     }
+    if (name === 'defaultRecipients') {
+      setDefaultRecipients(value);
+    }
   };
 
   const handleChannelTypeChange = (value) => {
     setChannelType(value);
   };
+
+  const validationSchemaEmail = Yup.object().shape({
+    email_name: Yup.string().required('Name is Required'),
+    emailIds: !defaultRecipients && Yup.string().required('Email id is Required')
+  });
+
+  const validationSchemaSlack = Yup.object().shape({
+    slack_name: Yup.string().required('Slack name is Required'),
+    webhookURL: Yup.string().required('Web hook Url is Required')
+  });
 
   const getChannelForm = () => {
     switch (channelType) {
@@ -163,13 +182,28 @@ export const AddDestinationChannelForm = (props) => {
             </Row>
             <Row>
               <Col lg={12}>
-                <Field
-                  name="emailIds"
-                  type="text"
-                  label="Emails"
-                  placeholder="Enter email addressess"
-                  component={YBFormInput}
-                />
+                <Field name="defaultRecipients">
+                  {({ field }) => (
+                    <YBToggle
+                      onToggle={handleOnToggle}
+                      name="defaultRecipients"
+                      input={{
+                        value: field.value,
+                        onChange: field.onChange
+                      }}
+                      label="Use Default Recipients"
+                    />
+                  )}
+                </Field>
+                <div hidden={defaultRecipients}>
+                  <Field
+                    name="emailIds"
+                    type="text"
+                    label="Emails"
+                    placeholder="Enter email addressess"
+                    component={YBFormInput}
+                  />
+                </div>
               </Col>
             </Row>
             <Row>
@@ -269,16 +303,6 @@ export const AddDestinationChannelForm = (props) => {
     }
   };
 
-  const validationSchemaEmail = Yup.object().shape({
-    email_name: Yup.string().required('Name is Required'),
-    emailIds: Yup.string().required('Email ids is Required')
-  });
-
-  const validationSchemaSlack = Yup.object().shape({
-    slack_name: Yup.string().required('Slack name is Required'),
-    webhookURL: Yup.string().required('Web hook Url is Required')
-  });
-
   return (
     <YBModalForm
       formName="alertDestinationForm"
@@ -291,7 +315,7 @@ export const AddDestinationChannelForm = (props) => {
       onFormSubmit={(values) => {
         const payload = {
           ...values,
-          ALERT_TARGET_TYPE: channelType
+          CHANNEL_TYPE: channelType
         };
 
         handleAddDestination(payload);
@@ -302,8 +326,8 @@ export const AddDestinationChannelForm = (props) => {
           <Col lg={8}>
             <div className="form-item-custom-label">Target</div>
             <YBSelectWithLabel
-              name="ALERT_TARGET_TYPE"
-              options={targetTypeList}
+              name="CHANNEL_TYPE"
+              options={channelTypeList}
               value={channelType}
               onInputChanged={handleChannelTypeChange}
             />

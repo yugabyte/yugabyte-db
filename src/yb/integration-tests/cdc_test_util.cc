@@ -71,8 +71,7 @@ void VerifyWalRetentionTime(MiniCluster* cluster,
                             uint32_t expected_wal_retention_secs) {
   int ntablets_checked = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
-    vector<std::shared_ptr<tablet::TabletPeer>> peers;
-    mini_tserver->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       const std::string& table_name = peer->tablet_metadata()->table_name();
       if (table_name.substr(0, table_name_start.length()) == table_name_start) {

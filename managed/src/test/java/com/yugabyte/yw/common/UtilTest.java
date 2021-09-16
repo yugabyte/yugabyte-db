@@ -17,6 +17,9 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -328,5 +331,35 @@ public class UtilTest extends FakeDBApplication {
     assertEquals("", Util.removeEnclosingDoubleQuotes(""));
     // Null string
     assertNull(Util.removeEnclosingDoubleQuotes(null));
+  }
+
+  @Test
+  public void testDeleteDirectory() {
+    File folder = new File("certificates");
+    folder.mkdir();
+    new File("certificates/ca.cert");
+    new File("certificates/cb.cert");
+    Util.deleteDirectory(folder);
+    assertFalse(folder.exists());
+  }
+
+  @Test
+  @Parameters({
+    "yyyy-MM-dd HH:mm:ss",
+    "yyyy-MM-dd'T'HH:mm:ss",
+    "EEE MMM dd HH:mm:ss zzz yyyy",
+    "yyyyMMddhhmm"
+  })
+  public void testGetUnixTimeFromString(String timeStampFormat) {
+    try {
+      Date date = new Date();
+      SimpleDateFormat dateFormat = new SimpleDateFormat(timeStampFormat);
+      String currDate = dateFormat.format(date);
+      long currentTimeUnix = Util.microUnixTimeFromDateString(currDate, timeStampFormat);
+      String recievedDate = dateFormat.format(new Date(currentTimeUnix / 1000L));
+      assertEquals(currDate, recievedDate);
+    } catch (Exception e) {
+      assertNull(e);
+    }
   }
 }

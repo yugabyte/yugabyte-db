@@ -12,11 +12,11 @@ import json
 import logging
 import time
 
-from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.common.cloud import AbstractCloud
-from ybops.cloud.gcp.command import GcpInstanceCommand, GcpQueryCommand, GcpAccessCommand, \
-    GcpNetworkCommand
-from ybops.cloud.gcp.utils import GCP_SCRATCH, GoogleCloudAdmin, GcpMetadata
+from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
+                                     GcpQueryCommand)
+from ybops.cloud.gcp.utils import GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin
+from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 
 
 class GcpCloud(AbstractCloud):
@@ -60,18 +60,38 @@ class GcpCloud(AbstractCloud):
             result[region]["default_image"] = self.get_image(region)["selfLink"]
         return result
 
-    def create_instance(self, args, body):
-        self.get_admin().create_instance(args.zone, body)
+    def get_subnet_cidr(self, args, subnet_id):
+        subnet = self.get_admin().get_subnetwork_by_name(args.region,
+                                                         subnet_id)
+        return subnet['ipCidrRange']
+
+    def create_instance(self, args, server_type, can_ip_forward, machine_image, ssh_keys):
+        # If we are configuring second NIC, ensure that this only happens for a
+        # centOS AMI right now.
+        if args.cloud_subnet_secondary:
+            # GCP machine image for centos is of the form:
+            # https://www.googleapis.com/compute/beta/projects/centos-cloud/global/images/*
+            if 'centos' not in machine_image:
+                raise YBOpsRuntimeError("Second NIC can only be configured for CentOS right now")
+
+        self.get_admin().create_instance(
+            args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
+            server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
+            args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
+            args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
+            auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
+            cloud_subnet_secondary=args.cloud_subnet_secondary)
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
 
     def clone_disk(self, args, volume_id, num_disks):
         output = []
-
+        # disk names must match regex https://cloud.google.com/compute/docs/reference/rest/v1/disks
+        name = args.search_pattern[:58] if len(args.search_pattern) > 58 else args.search_pattern
         for x in range(num_disks):
             res = self.get_admin().create_disk(args.zone, args.instance_tags, body={
-                "name": "{}-disk-{}".format(args.search_pattern, x),
+                "name": "{}-d{}".format(name, x),
                 "sizeGb": args.boot_disk_size_gb,
                 "sourceDisk": volume_id})
             output.append(res["targetLink"])
@@ -101,7 +121,8 @@ class GcpCloud(AbstractCloud):
         if args.node_ip is None or host_info['private_ip'] != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
-        self.get_admin().delete_instance(args.zone, args.search_pattern)
+        self.get_admin().delete_instance(
+            args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()

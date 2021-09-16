@@ -13,23 +13,23 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
+import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import com.yugabyte.yw.common.alerts.AlertChannelInterface;
+import com.yugabyte.yw.common.alerts.AlertChannelManager;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
-import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
-import com.yugabyte.yw.common.alerts.AlertReceiverInterface;
-import com.yugabyte.yw.common.alerts.AlertReceiverManager;
-import com.yugabyte.yw.common.alerts.AlertReceiverService;
-import com.yugabyte.yw.common.alerts.AlertRouteService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.MetricService;
-import com.yugabyte.yw.common.alerts.YWValidateException;
+import com.yugabyte.yw.common.alerts.PlatformValidationException;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -40,10 +40,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.AllArgsConstructor;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -55,60 +56,86 @@ public class AlertManager {
   @VisibleForTesting static final int NOTIFICATION_REPEAT_AFTER_FAILURE_IN_SECS = 180;
 
   private final EmailHelper emailHelper;
-  private final AlertDefinitionGroupService alertDefinitionGroupService;
-  private final AlertReceiverService alertReceiverService;
-  private final AlertRouteService alertRouteService;
-  private final AlertReceiverManager receiversManager;
+  private final AlertConfigurationService alertConfigurationService;
+  private final AlertChannelService alertChannelService;
+  private final AlertDestinationService alertDestinationService;
+  private final AlertChannelManager channelsManager;
   private final AlertService alertService;
   private final MetricService metricService;
+
+  private enum SendNotificationResult {
+    FAILED_TO_RESCHEDULE,
+    SUCCEEDED,
+    FAILED_NO_RESCHEDULE
+  }
 
   @Inject
   public AlertManager(
       EmailHelper emailHelper,
       AlertService alertService,
-      AlertDefinitionGroupService alertDefinitionGroupService,
-      AlertReceiverService alertReceiverService,
-      AlertRouteService alertRouteService,
-      AlertReceiverManager receiversManager,
+      AlertConfigurationService alertConfigurationService,
+      AlertChannelService alertChannelService,
+      AlertDestinationService alertDestinationService,
+      AlertChannelManager channelsManager,
       MetricService metricService) {
     this.emailHelper = emailHelper;
     this.alertService = alertService;
-    this.alertDefinitionGroupService = alertDefinitionGroupService;
-    this.alertReceiverService = alertReceiverService;
-    this.alertRouteService = alertRouteService;
-    this.receiversManager = receiversManager;
+    this.alertConfigurationService = alertConfigurationService;
+    this.alertChannelService = alertChannelService;
+    this.alertDestinationService = alertDestinationService;
+    this.channelsManager = channelsManager;
     this.metricService = metricService;
   }
 
-  private Optional<AlertRoute> getRouteByAlert(Alert alert) {
-    String groupUuid = alert.getLabelValue(KnownAlertLabels.GROUP_UUID);
-    if (groupUuid == null) {
-      return Optional.empty();
+  private NotificationStrategy getNotificationStrategy(Alert alert) {
+    String configurationUuid = alert.getLabelValue(KnownAlertLabels.CONFIGURATION_UUID);
+    if (configurationUuid == null) {
+      log.warn("Missing configuration UUID in alert {}", alert.getUuid());
+      return new NotificationStrategy();
     }
-    AlertDefinitionGroup group = alertDefinitionGroupService.get(UUID.fromString(groupUuid));
-    if (group == null) {
-      log.warn("Missing group {} for alert {}", groupUuid, alert.getUuid());
-      return Optional.empty();
+    AlertConfiguration configuration =
+        alertConfigurationService.get(UUID.fromString(configurationUuid));
+    if (configuration == null) {
+      log.warn("Missing configuration {} for alert {}", configurationUuid, alert.getUuid());
+      return new NotificationStrategy();
     }
-    if (group.getRouteUUID() == null) {
-      return Optional.empty();
+    AlertDestination destination;
+    boolean defaultDestination = false;
+    if (configuration.getDestinationUUID() == null) {
+      if (!configuration.isDefaultDestination()) {
+        return new NotificationStrategy();
+      }
+      log.debug("Using default destination {} for alert {}", configurationUuid, alert.getUuid());
+      defaultDestination = true;
+      destination = alertDestinationService.getDefaultDestination(configuration.getCustomerUUID());
+    } else {
+      destination =
+          alertDestinationService.get(
+              configuration.getCustomerUUID(), configuration.getDestinationUUID());
     }
-    AlertRoute route = alertRouteService.get(group.getCustomerUUID(), group.getRouteUUID());
-    if (route == null) {
-      log.warn("Missing route {} for alert {}", group.getRouteUUID(), alert.getUuid());
-      return Optional.empty();
+    if (destination == null) {
+      log.warn(
+          "Missing destination {} for alert {}",
+          configuration.getDestinationUUID(),
+          alert.getUuid());
     }
-    return Optional.of(route);
+
+    return new NotificationStrategy(destination, defaultDestination);
   }
 
   @VisibleForTesting
   boolean sendNotificationForState(Alert alert, State state, AlertNotificationReport report) {
-    boolean result = false;
+    SendNotificationResult result = SendNotificationResult.FAILED_TO_RESCHEDULE;
     try {
       result = sendNotification(alert, state, report);
+      if (result == SendNotificationResult.FAILED_NO_RESCHEDULE) {
+        // Failed, no reschedule is required.
+        report.failAttempt();
+        return false;
+      }
 
       alert.setNotificationAttemptTime(new Date());
-      if (!result) {
+      if (result == SendNotificationResult.FAILED_TO_RESCHEDULE) {
         alert.setNotificationsFailed(alert.getNotificationsFailed() + 1);
         // For now using fixed delay before the notification repeat. Later the behavior
         // can be adjusted using an amount of failed attempts (using progressive value).
@@ -122,7 +149,7 @@ public class AlertManager {
         report.failAttempt();
       } else {
         // TODO: No repeats for now. Later should be updated along with the according
-        // parameter introduced in AlertRoute.
+        // parameter introduced in AlertDestination.
         alert.setNextNotificationTime(null);
         alert.setNotificationsFailed(0);
         alert.setNotifiedState(state);
@@ -134,7 +161,7 @@ public class AlertManager {
       report.failAttempt();
       log.error("Error while sending notification for alert {}", alert.getUuid(), e);
     }
-    return result;
+    return result == SendNotificationResult.SUCCEEDED;
   }
 
   public void sendNotifications() {
@@ -177,112 +204,137 @@ public class AlertManager {
     }
   }
 
-  private boolean sendNotification(
+  private SendNotificationResult sendNotification(
       Alert alert, State stateToNotify, AlertNotificationReport report) {
     Customer customer = Customer.get(alert.getCustomerUUID());
 
     boolean atLeastOneSucceeded = false;
-    Optional<AlertRoute> route = getRouteByAlert(alert);
-    List<AlertReceiver> receivers =
-        new ArrayList<>(route.map(AlertRoute::getReceiversList).orElse(Collections.emptyList()));
+    NotificationStrategy strategy = getNotificationStrategy(alert);
 
-    if (receivers.isEmpty()) {
-      // Getting receivers from the default route.
-      AlertRoute defaultRoute = alertRouteService.getDefaultRoute(alert.getCustomerUUID());
-      if (defaultRoute == null) {
+    if (!strategy.isShouldSend()) {
+      log.debug("Skipping notification for alert {}", alert.getUuid());
+      return SendNotificationResult.SUCCEEDED;
+    }
+
+    if (strategy.getDestination() == null) {
+      if (strategy.isDefaultDestinationUsed()) {
         log.warn(
-            "Unable to notify about alert {}, there is no default route specified.",
+            "Unable to notify about alert {}, there is no default destination specified.",
             alert.getUuid());
         metricService.setStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
-            "Unable to notify about alert(s), there is no default route specified.");
-        return false;
+            MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
+            "Unable to notify about alert(s), there is no default destination specified.");
+        return SendNotificationResult.FAILED_TO_RESCHEDULE;
+      } else {
+        log.error(
+            "Unable to notify about alert {}, destination is missing from DB.", alert.getUuid());
+        return SendNotificationResult.FAILED_NO_RESCHEDULE;
       }
-
-      List<AlertReceiver> defaultReceivers = defaultRoute.getReceiversList();
-      if ((defaultReceivers.size() == 1)
-          && ("Email".equals(AlertUtils.getJsonTypeName(defaultReceivers.get(0).getParams())))
-          && ((AlertReceiverEmailParams) defaultReceivers.get(0).getParams()).defaultRecipients
-          && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
-
-        metricService.setStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
-            "Unable to notify about alert(s) using default route, "
-                + "there are no recipients configured in the customer's profile.");
-        return false;
-      }
-
-      log.debug("For alert {} no routes/receivers found, using default route.", alert.getUuid());
-      receivers.addAll(defaultReceivers);
-
-      metricService.setOkStatusMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
     }
+
+    List<AlertChannel> channels = new ArrayList<>(strategy.getDestination().getChannelsList());
+
+    if ((channels.size() == 1)
+        && ("Email".equals(AlertUtils.getJsonTypeName(channels.get(0).getParams())))
+        && ((AlertChannelEmailParams) channels.get(0).getParams()).defaultRecipients
+        && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
+
+      metricService.setStatusMetric(
+          MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
+          "Unable to notify about alert(s) using default destination, "
+              + "there are no recipients configured in the customer's profile.");
+      return SendNotificationResult.FAILED_TO_RESCHEDULE;
+    }
+
+    metricService.setOkStatusMetric(
+        MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
 
     // Not going to save the alert, only to use with another state for the
     // notification.
     Alert tempAlert = alertService.get(alert.getUuid());
+    if (tempAlert == null) {
+      // The alert was not found. Most probably it is removed during the processing.
+      return SendNotificationResult.FAILED_NO_RESCHEDULE;
+    }
     tempAlert.setState(stateToNotify);
 
-    for (AlertReceiver receiver : receivers) {
+    for (AlertChannel channel : channels) {
       try {
-        alertReceiverService.validate(receiver);
-      } catch (YWValidateException e) {
-        if (report.failuresByReceiver(receiver.getUuid()) == 0) {
-          log.warn("Receiver {} skipped: {}", receiver.getUuid(), e.getMessage(), e);
+        alertChannelService.validate(channel);
+      } catch (PlatformValidationException e) {
+        if (report.failuresByChannel(channel.getUuid()) == 0) {
+          log.warn("Channel {} skipped: {}", channel.getUuid(), e.getMessage(), e);
         }
-        report.failReceiver(receiver.getUuid());
-        setReceiverStatusMetric(
+        report.failChannel(channel.getUuid());
+        setChannelStatusMetric(
             PlatformMetrics.ALERT_MANAGER_STATUS,
-            receiver,
-            "Misconfigured alert receiver: " + e.getMessage());
+            channel,
+            "Misconfigured alert channel: " + e.getMessage());
         continue;
       }
 
       try {
-        AlertReceiverInterface handler =
-            receiversManager.get(AlertUtils.getJsonTypeName(receiver.getParams()));
-        handler.sendNotification(customer, tempAlert, receiver);
+        AlertChannelInterface handler =
+            channelsManager.get(AlertUtils.getJsonTypeName(channel.getParams()));
+        handler.sendNotification(customer, tempAlert, channel);
         atLeastOneSucceeded = true;
-        setOkReceiverStatusMetric(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS, receiver);
+        setOkChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel);
       } catch (Exception e) {
-        if (report.failuresByReceiver(receiver.getUuid()) == 0) {
+        if (report.failuresByChannel(channel.getUuid()) == 0) {
           log.error(e.getMessage());
         }
-        report.failReceiver(receiver.getUuid());
-        setReceiverStatusMetric(
-            PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS,
-            receiver,
+        report.failChannel(channel.getUuid());
+        setChannelStatusMetric(
+            PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS,
+            channel,
             "Error sending notification: " + e.getMessage());
       }
     }
 
-    return atLeastOneSucceeded;
+    return atLeastOneSucceeded
+        ? SendNotificationResult.SUCCEEDED
+        : SendNotificationResult.FAILED_TO_RESCHEDULE;
   }
 
   @VisibleForTesting
-  void setOkReceiverStatusMetric(PlatformMetrics metric, AlertReceiver receiver) {
-    setReceiverStatusMetric(metric, receiver, StringUtils.EMPTY);
+  void setOkChannelStatusMetric(PlatformMetrics metric, AlertChannel channel) {
+    setChannelStatusMetric(metric, channel, StringUtils.EMPTY);
   }
 
   @VisibleForTesting
-  void setReceiverStatusMetric(PlatformMetrics metric, AlertReceiver receiver, String message) {
+  void setChannelStatusMetric(PlatformMetrics metric, AlertChannel channel, String message) {
     boolean isSuccess = StringUtils.isEmpty(message);
-    Metric statusMetric = buildMetricTemplate(metric, receiver).setValue(isSuccess ? 1.0 : 0.0);
+    Metric statusMetric = buildMetricTemplate(metric, channel).setValue(isSuccess ? 1.0 : 0.0);
     if (!isSuccess) {
       statusMetric.setLabel(KnownAlertLabels.ERROR_MESSAGE, message);
     }
     metricService.cleanAndSave(Collections.singletonList(statusMetric));
   }
 
-  private Metric buildMetricTemplate(PlatformMetrics metric, AlertReceiver receiver) {
+  private Metric buildMetricTemplate(PlatformMetrics metric, AlertChannel channel) {
     return new Metric()
         .setExpireTime(
             nowPlusWithoutMillis(MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
-        .setCustomerUUID(receiver.getCustomerUUID())
+        .setCustomerUUID(channel.getCustomerUUID())
         .setType(Metric.Type.GAUGE)
         .setName(metric.getMetricName())
-        .setTargetUuid(receiver.getUuid())
-        .setLabels(AlertLabelsBuilder.create().appendTarget(receiver).getMetricLabels());
+        .setSourceUuid(channel.getUuid())
+        .setLabels(MetricLabelsBuilder.create().appendSource(channel).getMetricLabels());
+  }
+
+  @Value
+  @AllArgsConstructor
+  private static class NotificationStrategy {
+    boolean shouldSend;
+    AlertDestination destination;
+    boolean defaultDestinationUsed;
+
+    NotificationStrategy() {
+      this(false, null, false);
+    }
+
+    NotificationStrategy(AlertDestination destination, boolean isDefault) {
+      this(true, destination, isDefault);
+    }
   }
 }

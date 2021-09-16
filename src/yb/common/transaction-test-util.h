@@ -26,8 +26,12 @@ namespace yb {
 
 class TransactionStatusManagerMock : public TransactionStatusManager {
  public:
-  HybridTime LocalCommitTime(const TransactionId &id) override {
+  HybridTime LocalCommitTime(const TransactionId& id) override {
     return HybridTime::kInvalid;
+  }
+
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override {
+    return boost::none;
   }
 
   void RequestStatusAt(const StatusRequest& request) override;

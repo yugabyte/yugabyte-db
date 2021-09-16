@@ -19,6 +19,9 @@
 #include "optimizer/cost.h"
 #include "optimizer/tlist.h"
 
+/* YB includes. */
+#include "miscadmin.h"
+
 
 /* Test if an expression node represents a SRF call.  Beware multiple eval! */
 #define IS_SRF_CALL(node) \
@@ -346,6 +349,15 @@ apply_tlist_labeling(List *dest_tlist, List *src_tlist)
 	{
 		TargetEntry *dest_tle = (TargetEntry *) lfirst(ld);
 		TargetEntry *src_tle = (TargetEntry *) lfirst(ls);
+
+		/*
+		 * For YSQL upgrade, we hack Postgres' assumptions of attnos
+		 * to allow oid column to be inserted.
+		 * In that case, attnos generation for dest_tlist is broken
+		 * and we coerce it to that of src_tlist.
+		 */
+		if (IsYsqlUpgrade)
+			dest_tle->resno = src_tle->resno;
 
 		Assert(dest_tle->resno == src_tle->resno);
 		dest_tle->resname = src_tle->resname;

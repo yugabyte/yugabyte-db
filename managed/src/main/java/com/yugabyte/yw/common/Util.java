@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -21,14 +23,17 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -40,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -51,7 +57,13 @@ import play.libs.Json;
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
-  private static Map<UUID, Process> processMap = new HashMap<>();
+  private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
+
+  public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
+  public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
+  public static final String DEFAULT_YCQL_USERNAME = "cassandra";
+  public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
+  public static final String YUGABYTE_DB = "yugabyte";
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -264,7 +276,7 @@ public class Util {
     try {
       return mapper.readTree(inputString);
     } catch (IOException e) {
-      throw new RuntimeException("Shell Response message is not a valid Json.");
+      throw new RuntimeException("I/O error reading json");
     }
   }
 
@@ -321,13 +333,13 @@ public class Util {
     while ((bytesCount = fis.read(byteArray)) != -1) {
       digest.update(byteArray, 0, bytesCount);
     }
-    ;
+
     fis.close();
 
     byte[] bytes = digest.digest();
     StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < bytes.length; i++) {
-      sb.append(Integer.toString((bytes[i] & 0xff) + 0x100, 16).substring(1));
+    for (byte b : bytes) {
+      sb.append(Integer.toString((b & 0xff) + 0x100, 16).substring(1));
     }
     return sb.toString();
   }
@@ -360,7 +372,7 @@ public class Util {
     }
   }
 
-  @ApiModel(description = "A small subset of universe information")
+  @ApiModel(value = "UniverseDetailSubset", description = "A small subset of universe information")
   @Getter
   public static class UniverseDetailSubset {
     final UUID uuid;
@@ -441,7 +453,8 @@ public class Util {
 
   public static Process getProcessOrBadRequest(UUID uuid) {
     if (processMap.get(uuid) == null) {
-      throw new YWServiceException(BAD_REQUEST, "The process you want to stop is not in progress.");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The process you want to stop is not in progress.");
     }
     return processMap.get(uuid);
   }
@@ -463,5 +476,100 @@ public class Util {
 
   public static String doubleToString(double value) {
     return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
+  }
+
+  // This will help us in insertion of set of keys in locked synchronized way as no
+  // extraction/deletion action should be performed on RunTimeConfig object during the process.
+  // TODO: Fix this locking static method - this locks whole Util class with unrelated methods.
+  //  This should really be using database transactions since runtime config is persisted.
+  public static synchronized void setLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, Map<String, String> configKeysMap) {
+    configKeysMap.forEach(
+        (key, value) -> {
+          config.setValue(key, value);
+        });
+  }
+
+  // This will help us in extraction of set of keys in locked synchronized way as no
+  // insertion/deletion action should be performed on RunTimeConfig object during the process.
+  public static synchronized Map<String, String> getLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, List<String> configKeys) {
+    Map<String, String> configKeysMap = new HashMap<>();
+    configKeys.forEach((key) -> configKeysMap.put(key, config.getString(key)));
+    return configKeysMap;
+  }
+
+  // This will help us in deletion of set of keys in locked synchronized way as no
+  // insertion/extraction action should be performed on RunTimeConfig object during the process.
+  public static synchronized void deleteLockedMultiKeyConfig(
+      RuntimeConfig<Universe> config, List<String> configKeys) {
+    configKeys.forEach(
+        (key) -> {
+          if (config.hasPath(key)) {
+            config.deleteEntry(key);
+          }
+        });
+  }
+
+  /** deleteDirectory deletes entire directory recursively. */
+  public static boolean deleteDirectory(File directoryToBeDeleted) {
+    File[] allContents = directoryToBeDeleted.listFiles();
+    if (allContents != null) {
+      for (File file : allContents) {
+        deleteDirectory(file);
+      }
+    }
+    return directoryToBeDeleted.delete();
+  }
+
+  /**
+   * Returns the Unix epoch timeStamp in microseconds provided the given timeStamp and it's format.
+   */
+  public static long microUnixTimeFromDateString(String timeStamp, String timeStampFormat)
+      throws ParseException {
+    SimpleDateFormat format = new SimpleDateFormat(timeStampFormat);
+    try {
+      long timeStampUnix = format.parse(timeStamp).getTime() * 1000L;
+      return timeStampUnix;
+    } catch (ParseException e) {
+      throw e;
+    }
+  }
+
+  public static String unixTimeToDateString(long unixTimestampMs, String dateFormat) {
+    SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+    return formatter.format(new Date(unixTimestampMs));
+  }
+
+  // Update the Universe's 'backupInProgress' flag to new state in synchronized manner to avoid
+  // race condition.
+  public static synchronized void lockedUpdateBackupState(
+      UUID universeUUID, UniverseTaskBase backupTask, boolean newState) {
+    if (Universe.getOrBadRequest(universeUUID).getUniverseDetails().backupInProgress == newState) {
+      if (newState) {
+        throw new RuntimeException("A backup for this universe is already in progress.");
+      } else {
+        return;
+      }
+    }
+    backupTask.updateBackupState(newState);
+  }
+
+  public static String getHostname() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      LOG.error("Could not determine the hostname", e);
+      return "";
+    }
+  }
+
+  public static String getHostIP() {
+    try {
+      return InetAddress.getLocalHost().getHostAddress().toString();
+    } catch (UnknownHostException e) {
+      LOG.error("Could not determine the host IP", e);
+      return "";
+    }
   }
 }

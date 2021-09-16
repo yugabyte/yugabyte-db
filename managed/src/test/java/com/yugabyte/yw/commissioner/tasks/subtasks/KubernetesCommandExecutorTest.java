@@ -362,7 +362,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -407,7 +407,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -450,7 +450,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -494,7 +494,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -542,7 +542,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -590,7 +590,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -638,7 +638,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -675,7 +675,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -734,7 +734,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -777,7 +777,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -819,7 +819,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -863,7 +863,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -904,7 +904,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -976,7 +976,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),
@@ -1241,7 +1241,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
     verify(kubernetesManager, times(1))
         .helmInstall(
             expectedYbSoftwareVersion.capture(),

@@ -43,6 +43,7 @@ class OnPremCreateInstancesMethod(CreateInstancesMethod):
         # step purely to validate that we can access the host.
         #
         # TODO: do we still want/need to change to the custom ssh port?
+        self.update_ansible_vars_with_args(args)
         self.wait_for_host(args)
 
 
@@ -54,14 +55,9 @@ class OnPremProvisionInstancesMethod(ProvisionInstancesMethod):
     def __init__(self, base_command):
         super(OnPremProvisionInstancesMethod, self).__init__(base_command)
 
-    def setup_create_method(self):
-        """Override to get the wiring to the proper method.
-        """
-        self.create_method = OnPremCreateInstancesMethod(self.base_command)
-
     def callback(self, args):
         # For onprem, we are always using pre-existing hosts!
-        args.reuse_host = True
+        args.skip_preprovision = True
         super(OnPremProvisionInstancesMethod, self).callback(args)
 
 
@@ -262,7 +258,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         else:
             # stdout will be returned as a list of lines, which should just be one line of json.
             stdout = json.loads(stdout[0])
-            stdout = {k: v == "true" for k, v in stdout.iteritems()}
+            stdout = {k: v == "true" for k, v in iteritems(stdout)}
             results.update(stdout)
 
         output = json.dumps(results, indent=2)

@@ -1323,7 +1323,6 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   ASSERT_EQ(workload.rows_read_empty(), 0);
 
   // TODO(tsplit): Check with different isolation levels.
-  // TODO(tsplit): Add more splits during writes, so we have tablets with split_depth > 1.
 
   ASSERT_OK(cluster_->RestartSync());
 }
@@ -1576,18 +1575,6 @@ class NotSupportedTabletSplitITest : public TabletSplitITest {
     return cluster;
   }
 };
-
-TEST_F(NotSupportedTabletSplitITest, SplittingWithPitr) {
-  // Schedule snapshots on this namespace.
-  auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
-
-  LOG(INFO) << "Scheduled a snapshot for table "
-            << table_.name().table_name() << " with schedule id "
-            << id;
-
-  // Try splitting this tablet.
-  ASSERT_RESULT(SplitTabletAndCheckForNotSupported(false /* restart_server */));
-}
 
 TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   // Create a cdc stream for this tablet.
@@ -1965,15 +1952,14 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
 
   // Send RPC.
   auto tserver = cluster_->mini_tablet_server(0);
-  auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
-    proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
+  auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+      proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
   tserver::GetSplitKeyRequestPB req;
   req.set_tablet_id(source_tablet_id);
-  req.set_dest_uuid(tablet_peer->permanent_uuid());
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
   tserver::GetSplitKeyResponsePB resp;
-  ASSERT_OK(ts_admin_service_proxy->GetSplitKey(req, &resp, &controller));
+  ASSERT_OK(ts_service_proxy->GetSplitKey(req, &resp, &controller));
 
   // Validate response.
   CHECK(!resp.has_error()) << resp.error().DebugString();
@@ -2098,11 +2084,22 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
     return tablet_ids;
   }
 
-  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx) {
+  CHECKED_STATUS WaitForTabletsExcept(
+      int num_tablets, int tserver_idx, const TabletId& exclude_tablet) {
     return WaitFor([&]() -> Result<bool> {
       auto res = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
-      return res.size() == num_tablets;
+      int count = 0;
+      for (auto& tablet_id : res) {
+        if (tablet_id != exclude_tablet) {
+          count++;
+        }
+      }
+      return count == num_tablets;
     }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets));
+  }
+
+  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx) {
+    return WaitForTabletsExcept(num_tablets, tserver_idx, "");
   }
 
   CHECKED_STATUS WaitForTablets(int num_tablets) {
@@ -2361,9 +2358,9 @@ TEST_F(TabletSplitExternalMiniClusterITest, RemoteBootstrapsFromNodeWithUncommit
   ASSERT_OK(cluster_->WaitForTabletsRunning(leader, 20s * kTimeMultiplier));
   ASSERT_OK(cluster_->WaitForTabletsRunning(server_to_bootstrap, 20s * kTimeMultiplier));
   CHECK_OK(server_to_kill->Restart());
-  ASSERT_OK(WaitForTablets(3, server_to_bootstrap_idx));
-  ASSERT_OK(WaitForTablets(3, leader_idx));
-  ASSERT_OK(WaitForTablets(3, server_to_kill_idx));
+  ASSERT_OK(WaitForTabletsExcept(2, server_to_bootstrap_idx, tablet_id));
+  ASSERT_OK(WaitForTabletsExcept(2, leader_idx, tablet_id));
+  ASSERT_OK(WaitForTabletsExcept(2, server_to_kill_idx, tablet_id));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return WriteRows().ok();

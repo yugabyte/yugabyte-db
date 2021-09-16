@@ -28,8 +28,8 @@ import play.mvc.Http;
 @Singleton
 public class YsqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YsqlQueryExecutor.class);
-  private static final String DEFAULT_DB_USER = "yugabyte";
-  private static final String DEFAULT_DB_PASSWORD = "yugabyte";
+  private static final String DEFAULT_DB_USER = Util.DEFAULT_YSQL_USERNAME;
+  private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YSQL_PASSWORD;
 
   private String getQueryType(String queryString) {
     String[] queryParts = queryString.split(" ");
@@ -116,7 +116,8 @@ public class YsqlQueryExecutor {
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
     LOG.info("Creating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
     }
   }
 
@@ -132,7 +133,8 @@ public class YsqlQueryExecutor {
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
     LOG.info("Updating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
     }
   }
 }

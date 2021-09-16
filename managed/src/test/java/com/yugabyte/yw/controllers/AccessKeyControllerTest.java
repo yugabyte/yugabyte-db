@@ -39,8 +39,8 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -369,7 +369,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAccessKeyWithException() {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1", SSH_PORT, true, false))
-        .thenThrow(new YWServiceException(INTERNAL_SERVER_ERROR, "Something went wrong!!"));
+        .thenThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, "Something went wrong!!"));
     Result result =
         assertYWSE(() -> createAccessKey(defaultProvider.uuid, "key-code-1", false, false));
     assertErrorResponse(result, "Something went wrong!!");
@@ -402,7 +402,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1", SSH_PORT, false, false))
         .thenReturn(accessKey);
     doThrow(
-            new YWServiceException(
+            new PlatformServiceException(
                 INTERNAL_SERVER_ERROR, "Unable to create access key: key-code-1"))
         .when(mockTemplateManager)
         .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus");

@@ -16,35 +16,34 @@ This document describes how to use [WSO2 Identity Server](https://wso2.com/ident
 
 ## Prerequisites
 
-Before you can start using WSO2 Identity Server, ensure that you have WSO2 Identity Server installed in one of the following location, depending on your operating system:
+Before you can start using WSO2 Identity Server, ensure that you have WSO2 Identity Server installed in one of the following locations, depending on your operating system:
 
-- Mac OS:  /`Library`/`WSO2`/`IdentityServer`/*`<IS_VERSION>`*/*`<IS_HOME>`*
-- Windows:  `C:\Program Files\WSO2\IdentityServer`\\*`<IS_HOME>`*  
-- Ubuntu:  /`usr`/`lib`/`wso2`/`wso2is`/*`<IS_HOME>`*
-- CentOS:  /`usr`/`lib64`/`IdentityServer`/*`<IS_HOME>`*
+- Mac OS: `/Library/WSO2/IdentityServer/`*`<IS_VERSION>`*`/`*`<IS_HOME>`*
+- Windows: `C:\Program Files\WSO2\IdentityServer`\\*`<IS_HOME>`*  
+- Ubuntu: `/usr/lib/wso2/wso2is/`*`<IS_HOME>`*
+- CentOS: `/usr/lib64/IdentityServer/`*`<IS_HOME>`*
 
 In addition, perform the following: 
 
-- Download and install [curl](https://curl.haxx.se/download.html).
+- If it's not already installed, download and install [curl](https://curl.haxx.se/download.html).
 
-- Add the following entry to `/etc/hosts`, as per [WSO2 Quick Start Guide](https://docs.wso2.com/display/IS570/Quick+Start+Guide):
+- Add the following entry to `/etc/hosts`, as per the [WSO2 Quick Start Guide](https://docs.wso2.com/display/IS570/Quick+Start+Guide):
 
-  ```
+  ```output
   127.0.0.1    localhost.com
   ```
-
 
 ## Configuring WSO2 Identity Server
 
 Configuring WSO2 Identity Server involves a number of steps.
 
-### How to Update the Database Configuration
+### Update the Database Configuration
 
 You update the database configuration as follows:
 
 - Modify the deployment configuration file `<IS_HOME>/repository/conf/deployment.toml` to set the database to YugabyteDB. Specifically, change the `[database.identity_db]` and `[database.shared_db]` sections as follows:
 
-  ```properties
+  ```toml
   [database.identity_db]
   type = "postgre"
   hostname = "localhost"
@@ -62,20 +61,19 @@ You update the database configuration as follows:
   port = "5433"
   ```
 
-
 - Set the following properties to `true` to configure cross-origin resource sharing (CORS) for running the sample application from [Quick Start](https://is.docs.wso2.com/en/latest/get-started/quick-start-guide/):
 
-  ```properties
+  ```toml
   [cors]
   allow_generic_http_requests = true
   allow_any_origin = true
   ```
 
-### How to Set Up the Database Driver
+### Set Up the Database Driver
 
 You need to download the [Postgres JDBC driver](https://jdbc.postgresql.org/download.html) into the `lib/` directory.
 
-### How to Use the Yugabyte Patch for WSO2
+### Apply the Yugabyte Patch for WSO2
 
 WSO2 default carbon kernel code violates REPEATABLE READ semantics. Since YugabyteDB has stricter transaction semantics and does not allow unrepeatable read anomaly, you need to do the following in order to be able to use a patch of the critical JAR for YugabyteDB compatibility:
 
@@ -87,7 +85,7 @@ WSO2 default carbon kernel code violates REPEATABLE READ semantics. Since Yugaby
 
 - Copy the jar into the `<IS_HOME>/repository/components/patches/` directory.
 
-## Initializing WSO2 Identity Server and YugabyteDB
+## Initialize WSO2 Identity Server and YugabyteDB
 
 You can initialize WSO2 Identity Server and YugabyteDB as follows: 
 
@@ -145,7 +143,7 @@ To test one of the samples, start the first version of the application called Si
 
 This creates the following two users that you can use to test login:
 
-```
+```output
 Junior Manager 
 Username: alex 
 Password: alex123  
@@ -155,7 +153,7 @@ Username: cameron
 Password: cameron123
 ```
 
-### How to Test Sample Applications
+### Run the sample applications
 
 You can test the pickup dispatch functionality as follows: 
 
@@ -169,11 +167,10 @@ You can test the pickup dispatch functionality as follows:
 
   ![img](/images/develop/ecosystem-integrations/wso2-test2.png)
 
-Upon competion, the vehicle booking sample application opens, as shown in the following illustration:
+Upon completion, the vehicle booking sample application opens, as shown in the following illustration:
 
 ![img](/images/develop/ecosystem-integrations/wso2-test3.png)
 
 To test the pickup manager functionality, navigate to [http://localhost.com:8080/saml2-web-app-pickup-manager.com/](http://localhost.com:8080/saml2-web-app-pickup-manager.com/) and perform the preceding login steps. Once logged in, the vehicle pickup manager sample opens, as shown in the following illustration:
 
 ![img](/images/develop/ecosystem-integrations/wso2-test4.png)
-

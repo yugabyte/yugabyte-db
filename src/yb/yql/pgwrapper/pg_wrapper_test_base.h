@@ -66,6 +66,10 @@ class PgCommandTestBase : public PgWrapperTestBase {
     RunPsqlCommand(statement, "CREATE PROCEDURE");
   }
 
+  void CreateSchema(const std::string &statement) {
+    RunPsqlCommand(statement, "CREATE SCHEMA");
+  }
+
   void Call(const std::string &statement) {
     RunPsqlCommand(statement, "CALL");
   }

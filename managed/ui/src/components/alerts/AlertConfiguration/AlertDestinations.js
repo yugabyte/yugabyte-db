@@ -15,9 +15,9 @@ import { AlertDestinationDetails } from './AlertDestinationDetails';
 /**
  * This is the header for YB Panel Item.
  */
-const header = (onAddAlertDestination) => (
+const header = (destinationCount, onAddAlertDestination) => (
   <>
-    <h2 className="table-container-title pull-left">Alert Destinations</h2>
+    <h5 className="table-container-title pull-left">{`${destinationCount} Alert Destinations`}</h5>
     <FlexContainer className="pull-right">
       <FlexShrink>
         <Button
@@ -32,8 +32,8 @@ const header = (onAddAlertDestination) => (
 );
 
 export const AlertDestinations = (props) => {
-  const [alertDestionation, setAlertDesionation] = useState([]);
-  const [alertDestionationDetails, setAlertDesionationDetails] = useState({});
+  const [alertDestination, setAlertDestination] = useState([]);
+  const [alertDestinationDetails, setAlertDestinationDetails] = useState({});
   const {
     alertDestinations,
     closeModal,
@@ -43,39 +43,44 @@ export const AlertDestinations = (props) => {
     setInitialValues,
     showDeleteModal,
     showDetailsModal,
-    getAlertReceivers
+    getAlertChannels
   } = props;
-  const [options, setOptions] = useState({ noDataText: 'Loading...' });
+  const [options, setOptions] = useState({
+    noDataText: 'Loading...',
+    sortName: 'name',
+    sortOrder: 'asc'
+  });
 
   const setRsponseObject = () => {
     const result = new Map();
 
     alertDestinations().then((destinations) => {
-      getAlertReceivers().then((receivers) => {
+      getAlertChannels().then((channels) => {
         destinations.forEach((dest) => {
           result.set(dest.uuid, {
             name: dest.name,
             uuid: dest.uuid,
-            defaultRoute: dest.defaultRoute,
+            defaultDestination: dest.defaultDestination,
             channels: []
           });
 
-          dest['receivers'].forEach((rx) => {
-            const matchedRx = receivers.find((receiver) => receiver.uuid === rx);
+          dest['channels'].forEach((rx) => {
+            const matchedRx = channels.find((channel) => channel.uuid === rx);
             const destination = result.get(dest.uuid);
 
             destination.channels.push({
               uuid: rx,
-              targetType: matchedRx.params.targetType,
-              targetName: matchedRx.name,
+              channelType: matchedRx.params.channelType,
+              channelName: matchedRx.name,
               webHookURL: matchedRx.params?.webhookUrl,
-              recipients: matchedRx.params?.recipients
+              recipients: matchedRx.params?.recipients,
+              params: matchedRx.params
             });
             result.set(dest.uuid, destination);
           });
         });
         setOptions({ noDataText: 'There is no data to display ' });
-        setAlertDesionation(Array.from(result.values()));
+        setAlertDestination(Array.from(result.values()));
       });
     });
   };
@@ -92,14 +97,15 @@ export const AlertDestinations = (props) => {
   const setModalDetails = (row) => {
     const data = row.channels.map((channel) => {
       return {
-        targetType: channel.targetType,
-        targetName: channel.targetName,
+        channelType: channel.channelType,
+        channelName: channel.channelName,
         webHookURL: channel?.webHookURL,
-        recipients: channel?.recipients
+        recipients: channel?.recipients,
+        params: channel?.params
       };
     });
 
-    setAlertDesionationDetails(data);
+    setAlertDestinationDetails(data);
   };
 
   /**
@@ -122,14 +128,14 @@ export const AlertDestinations = (props) => {
     const channels = row.channels.map((channel) => {
       return {
         value: channel.uuid,
-        label: channel.targetName
+        label: channel.channelName
       };
     });
 
     const initialVal = {
       type: 'update',
       uuid: row.uuid,
-      defaultRoute: row.defaultRoute,
+      defaultDestination: row.defaultDestination,
       ALERT_DESTINATION_NAME: row.name,
       DESTINATION_CHANNEL_LIST: channels
     };
@@ -141,10 +147,10 @@ export const AlertDestinations = (props) => {
   /**
    *
    * @param {destination} row
-   * @returns Comma seperated cannel targetType.
+   * @returns Comma seperated channel names.
    */
-  const getChannelType = (row) => {
-    return row.map((channel) => channel.targetName).join(', ');
+  const getChannelNames = (row) => {
+    return row.map((channel) => channel.channelName).join(', ');
   };
 
   // This method will handle all the required actions for the particular row.
@@ -194,13 +200,14 @@ export const AlertDestinations = (props) => {
   return (
     <>
       <YBPanelItem
-        header={header(onAddAlertDestination)}
+        header={header(alertDestination.length, onAddAlertDestination)}
         body={
           <>
             <BootstrapTable
               className="backup-list-table middle-aligned-table"
-              data={alertDestionation}
+              data={alertDestination}
               options={options}
+              pagination
             >
               <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
               <TableHeaderColumn
@@ -212,14 +219,14 @@ export const AlertDestinations = (props) => {
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="channels"
-                dataFormat={getChannelType}
+                dataFormat={getChannelNames}
                 columnClassName="no-border name-column"
                 className="no-border"
               >
                 Channels
               </TableHeaderColumn>
               <TableHeaderColumn
-                dataField="defaultRoute"
+                dataField="defaultDestination"
                 columnClassName="no-border name-column"
                 className="no-border"
               >
@@ -242,7 +249,7 @@ export const AlertDestinations = (props) => {
       <AlertDestinationDetails
         visible={showModal && visibleModal === 'alertDestinationDetailsModal'}
         onHide={closeModal}
-        details={alertDestionationDetails}
+        details={alertDestinationDetails}
       />
     </>
   );

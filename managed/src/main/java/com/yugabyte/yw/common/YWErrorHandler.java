@@ -44,8 +44,8 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
   public CompletionStage<Result> onServerError(Http.RequestHeader request, Throwable exception) {
     LOG.debug("YWErrorHandler invoked {} ", exception.getMessage());
     for (Throwable cause : Throwables.getCausalChain(exception)) {
-      if (cause instanceof YWServiceException) {
-        return CompletableFuture.completedFuture(((YWServiceException) cause).getResult());
+      if (cause instanceof PlatformServiceException) {
+        return CompletableFuture.completedFuture(((PlatformServiceException) cause).getResult());
       }
     }
     return super.onServerError(request, exception);
