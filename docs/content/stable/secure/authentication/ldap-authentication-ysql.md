@@ -1,11 +1,11 @@
 ---
-title: LDAP Authentication
-headerTitle: LDAP Authentication
+title: LDAP Authentication in YSQL
+headerTitle: LDAP Authentication in YSQL
 linkTitle: LDAP Authentication
 description: Configuring YugabyteDB to use an external LDAP authentication service.
 menu:
   stable:
-    identifier: ldap-authentication
+    identifier: ldap-authentication-1-ysql
     parent: authentication
     weight: 732
 isTocNested: false
@@ -14,9 +14,15 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authentication/ldap-authentication" class="nav-link active">
+    <a href="../ldap-authentication-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
+    </a>
+  </li>
+  <li >
+    <a href="../ldap-authentication-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 </ul>
@@ -25,8 +31,8 @@ The LDAP authentication method is similar to the password method, except that it
 
 LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag. YugabyteDB supports two modes for LDAP authentication: 
 
-* <strong>simple-bind</strong> mode
-* <strong>search+bind</strong> mode
+* **simple-bind** mode
+* **search+bind** mode
 
 These are described below.
 
@@ -42,48 +48,18 @@ In **simple-bind** mode, YB-TServer will bind to the Distinguished Name (â€œDNâ€
 
 The configurations supported for simple bind mode.
 
-<table>
-  <tr>
-   <td><strong>ldapserver</strong>
-   </td>
-   <td>Names or IP addresses of LDAP servers to connect to. Multiple servers may be specified, separated by spaces.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapport</strong> 
-   </td>
-   <td>Port number on LDAP server to connect to. If no port is specified, LDAP default port 389 will be used.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapscheme</strong>
-   </td>
-   <td>Set to ldaps to use LDAPS. This is a non-standard way of using LDAP over SSL, supported by some LDAP server implementations. See also the ldaptls option for an alternative.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldaptls</strong>
-   </td>
-   <td>Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption. 
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapprefix</strong>
-   </td>
-   <td>String used for prepending the user name when forming the DN for binding to the LDAP server.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapsuffix</strong>
-   </td>
-   <td>String used for appending the user name when forming the DN for binding to the LDAP Server.
-   </td>
-  </tr>
-</table>
+| T-Server Gflag name | Default value | Description |
+| :------------------ | :------------ | :---------- |
+| `ldapserver` | (empty) | Names or IP addresses of LDAP servers to connect to. Separate servers with spaces. |
+| `ldapport` | 389 | Port number on LDAP server to connect to. |
+| `ldapscheme` | (empty) | Set to `ldaps` to use LDAPS. This is a non-standard way of using LDAP over SSL, supported by some LDAP server implementations. See also the `ldaptls` option for an alternative. |
+| `ldaptls` | 0 | Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption. |
+| `ldapprefix` | (empty) | String to be prepended to the user name when forming the DN for binding to the LDAP server. |
+| `ldapsuffix` | (empty) | String to be appended to the user name when forming the DN for binding to the LDAP Server. |
 
 ## Search + Bind Mode
 
-In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ldapbinddn` and `ldapbindpasswd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other softwares.
+In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ldapbinddn` and `ldapbindpasswd`, and performs a search for the user trying to log into the database. This mode is commonly used by LDAP authentication schemes in other software.
 
 For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ldapbasedn`, and will try to do an exact match of the attribute specified in `ldapsearchattribute`. Once the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 
@@ -97,68 +73,18 @@ Here is an example for search + bind mode:
 
 The configurations supported for search + bind mode.
 
-<table>
-  <tr>
-   <td><strong>ldapserver</strong>
-   </td>
-   <td>Names or IP addresses of LDAP servers to connect to. Multiple servers may be specified, separated by spaces.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapport</strong> 
-   </td>
-   <td>Port number on LDAP server to connect to. If no port is specified, LDAP default port 389 will be used.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapscheme</strong>
-   </td>
-   <td>Set to ldaps to use LDAPS. This is a non-standard way of using LDAP over SSL, supported by some LDAP server implementations. See also the ldaptls option for an alternative.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldaptls</strong>
-   </td>
-   <td>Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption. 
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapbasedn</strong>
-   </td>
-   <td>Specifies the base directory to begin the user name search 
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapbinddn</strong>
-   </td>
-   <td>Specifies the username to perform the initial search when doing search + bind authentication
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapbindpasswd</strong>
-   </td>
-   <td>Password for username being used to perform the initial search when doing search + bind authentication
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapsearchattribute</strong>
-   </td>
-   <td>Attribute to match against the username in the search when doing search + bind authentication. If no attribute is specified, the <strong>uid </strong>attribute is used.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapsearchfilter</strong>
-   </td>
-   <td>The search filter to use when doing search + bind authentication.
-   </td>
-  </tr>
-  <tr>
-   <td><strong>ldapurl</strong>
-   </td>
-   <td>An RFC 4516 LDAP URL. This is an alternative way to write LDAP options in a more compact and standard form.
-   </td>
-  </tr>
-</table>
+| T-Server Gflag name | Default value | Description |
+| :------------------ | :------------ | :---------- |
+| `ldapserver` | (empty) | Names or IP addresses of LDAP servers to connect to. Separate servers with spaces. |
+| `ldapport` | 389 | Port number on LDAP server to connect to. |
+| `ldapscheme` | (empty) | Set to `ldaps` to use LDAPS. This is a non-standard way of using LDAP over SSL, supported by some LDAP server implementations. See also the `ldaptls` option for an alternative. |
+| `ldaptls` | 0 | Set to 1 to make the connection between PostgreSQL and the LDAP server use TLS encryption. |
+| `ldapbasedn` | (empty) | Specifies the base directory to begin the user name search |
+| `ldapbinddn` | (empty) | Specifies the username to perform the initial search when doing search + bind authentication |
+| `ldapbindpasswd` | (empty) | Password for username being used to perform the initial search when doing search + bind authentication |
+| `ldapsearchattribute` | `uid` | Attribute to match against the username in the search when doing search + bind authentication. If no attribute is specified, the **uid** attribute is used. |
+| `ldapsearchfilter` | (empty) | The search filter to use when doing search + bind authentication. |
+| `ldapurl` | (empty) | An RFC 4516 LDAP URL. This is an alternative way to write LDAP options in a more compact and standard form. |
 
 ## Example
 
@@ -187,7 +113,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
     $ ./ysqlsh -U yugabyte -W
     ```
 
-    When prompted for the password, enter the yugabyte password (default is `yugabyte`). You should be able to login and see a response like below.
+    When prompted for the password, enter the yugabyte password (default is `yugabyte`). You should be able to log in and see a response like below.
 
     ```output
     ysqlsh (11.2-YB-2.3.3.0-b0)
