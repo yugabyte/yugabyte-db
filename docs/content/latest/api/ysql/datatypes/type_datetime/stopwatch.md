@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
-    weight: 90
+    weight: 130
 isTocNested: true
 showAsideToc: true
 ---
