@@ -49,9 +49,7 @@ $ wget https://raw.githubusercontent.com/yugabyte/aws-cloudformation/master/yuga
 
 {{< note title="Note" >}}
 
-When using an instance with local disks (not EBS), the `.yaml` file needs to be changed for YugabyteDB to recognize the local disks.
-Here is an example using [i3 instance types](https://github.com/yugabyte/aws-cloudformation/blob/master/yugabyte_cloudformation_i3_example.yaml) 
-that formats and mounts the nvme ssd automatically for each host and installs YugabyteDB on that mount.
+When using an instance with local disks (as opposed to EBS), the `.yaml` file needs to be changed for YugabyteDB to recognize the local disks, as per [this example](https://github.com/yugabyte/aws-cloudformation/blob/master/yugabyte_ephemeral_nvme_cloudformation.yaml) that demonstrates the use of different instance types.
 
 {{< /note >}}
 
