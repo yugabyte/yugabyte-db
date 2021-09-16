@@ -180,6 +180,9 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
+DEFINE_test_flag(bool, skip_post_split_compaction, false,
+                 "Skip processing post split compaction.");
+
 DEFINE_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
@@ -1426,11 +1429,16 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  WARN_NOT_OK(
-      tablet->TriggerPostSplitCompactionIfNeeded([&]() {
-        return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-      }),
-      "Failed to submit compaction for post-split tablet.");
+  if (PREDICT_TRUE(!FLAGS_TEST_skip_post_split_compaction)) {
+    WARN_NOT_OK(
+    tablet->TriggerPostSplitCompactionIfNeeded([&]() {
+      return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    }),
+    "Failed to submit compaction for post-split tablet.");
+  } else {
+    LOG(INFO) << "Skipping post split compaction " << meta->raft_group_id();
+  }
+
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard<RWMutex> lock(mutex_);
     tablets_blocked_from_lb_.insert(tablet->tablet_id());

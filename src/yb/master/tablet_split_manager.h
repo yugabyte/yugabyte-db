@@ -47,13 +47,6 @@ class TabletSplitManager {
  private:
   void ProcessQueuedSplitItems();
 
-  void RemoveParentProcessingTabletIfChildIsDoneSplitting(
-      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) REQUIRES(mutex_);
-
-  CHECKED_STATUS ScheduleSplitIfNeeded(
-      const TabletInfo& tablet_info, const TabletServerId& drive_info_ts_uuid,
-      const TabletReplicaDriveInfo& drive_info) REQUIRES(mutex_);
-
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
 
