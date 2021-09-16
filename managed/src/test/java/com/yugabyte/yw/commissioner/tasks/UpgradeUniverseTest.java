@@ -913,8 +913,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     return taskType;
   }
 
-  @Test
-  public void testResizeNodeUpgrade() {
+  public void testResizeNodeUpgrade(int rf, int numInvocations) {
     String intendedInstanceType = "c5.2xlarge";
     int intendedVolumeSize = 300;
 
@@ -947,31 +946,42 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           UserIntent userIntent = primaryCluster.userIntent;
           userIntent.providerType = Common.CloudType.aws;
           userIntent.provider = defaultProvider.uuid.toString();
+          if (rf == 1) {
+            userIntent.numNodes = 1;
+            userIntent.replicationFactor = 1;
+          }
           userIntent.instanceType = "c5.large";
           DeviceInfo deviceInfo = new DeviceInfo();
           deviceInfo.volumeSize = 250;
           deviceInfo.numVolumes = 1;
           userIntent.deviceInfo = deviceInfo;
 
-          for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
-            NodeDetails node = new NodeDetails();
-            node.nodeIdx = idx;
-            node.placementUuid = primaryCluster.uuid;
-            node.nodeName = "host-n" + idx;
-            node.isMaster = false;
-            node.isTserver = true;
-            node.cloudInfo = new CloudSpecificInfo();
-            node.cloudInfo.instance_type = userIntent.instanceType;
-            node.cloudInfo.private_ip = "1.2.3." + idx;
-            universeDetails.nodeDetailsSet.add(node);
+          if (rf == 1) {
+            for (NodeDetails nodeDetail : universeDetails.nodeDetailsSet) {
+              if (nodeDetail.nodeIdx != 1) {
+                nodeDetail.isMaster = false;
+              }
+              nodeDetail.cloudInfo.private_ip = "1.2.3." + nodeDetail.nodeIdx;
+            }
+          } else {
+            for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
+              NodeDetails node = new NodeDetails();
+              node.nodeIdx = idx;
+              node.placementUuid = primaryCluster.uuid;
+              node.nodeName = "host-n" + idx;
+              node.isMaster = false;
+              node.isTserver = true;
+              node.cloudInfo = new CloudSpecificInfo();
+              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.cloudInfo.private_ip = "1.2.3." + idx;
+              universeDetails.nodeDetailsSet.add(node);
+            }
           }
 
           for (NodeDetails node : universeDetails.nodeDetailsSet) {
             node.nodeUuid = UUID.randomUUID();
           }
-
           userIntent.numNodes += 2;
-
           universe.setUniverseDetails(universeDetails);
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID, updater);
@@ -985,7 +995,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.getPrimaryCluster().userIntent.deviceInfo = deviceInfo;
     taskParams.getPrimaryCluster().userIntent.instanceType = intendedInstanceType;
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskType.ResizeNode, defaultUniverse.version);
-    verify(mockNodeManager, times(26)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(numInvocations)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
@@ -1044,6 +1054,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             j < RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.size()
                 && tmpPosition < subTasksByPosition.size();
             j++) {
+          if (rf == 1) {
+            // Don't change master config for RF1
+            if (RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.ChangeMasterConfig
+                || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j)
+                    == TaskType.WaitForMasterLeader) {
+              continue;
+            }
+          }
+
           List<TaskInfo> tasks = subTasksByPosition.get(tmpPosition++);
           assertEquals(1, tasks.size());
           TaskInfo task = tasks.get(0);
@@ -1086,6 +1105,16 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testResizeNodeUpgradeRF3() {
+    testResizeNodeUpgrade(3, 26);
+  }
+
+  @Test
+  public void testResizeNodeUpgradeRF1() {
+    testResizeNodeUpgrade(1, 14);
   }
 
   @Test

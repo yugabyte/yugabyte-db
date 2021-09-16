@@ -528,20 +528,15 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     nodes.addAll(masterNodes);
     nodes.addAll(tServerNodes);
 
-    Integer currDiskSize =
+    UserIntent currUserIntent =
         Universe.getOrBadRequest(taskParams().universeUUID)
             .getUniverseDetails()
             .getPrimaryCluster()
-            .userIntent
-            .deviceInfo
-            .volumeSize;
+            .userIntent;
 
-    String currInstanceType =
-        Universe.getOrBadRequest(taskParams().universeUUID)
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .instanceType;
+    Integer currDiskSize = currUserIntent.deviceInfo.volumeSize;
+
+    String currInstanceType = currUserIntent.instanceType;
 
     // Todo: Add preflight checks here
 
@@ -592,9 +587,16 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(node)))
               .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
 
-          createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-          createChangeConfigTask(
-              node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType, true /* useHostPort */);
+          // If RF is 1, we can just move forward, since there is no other master.
+          if (currUserIntent.replicationFactor != 1) {
+            createWaitForMasterLeaderTask()
+                .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+            createChangeConfigTask(
+                node,
+                false /* isAdd */,
+                SubTaskGroupType.ChangeInstanceType,
+                true /* useHostPort */);
+          }
         }
 
         // Change the instance type
@@ -618,8 +620,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                   new HashSet<NodeDetails>(Arrays.asList(node)), ServerType.MASTER)
               .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
 
-          // Add stopped master to the quorum.
-          createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+          if (currUserIntent.replicationFactor != 1) {
+            // Add stopped master to the quorum.
+            createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+          }
         }
 
         // Start the tserver process on this node.
