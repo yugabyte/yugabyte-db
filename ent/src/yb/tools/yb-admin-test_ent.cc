@@ -12,7 +12,7 @@
 // under the License.
 
 // Tests for the EE yb-admin command-line tool.
-
+#include <regex>
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 
@@ -30,6 +30,7 @@
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
@@ -642,12 +643,47 @@ class XClusterAdminCliTest : public AdminCliTest {
   }
 
  protected:
-  Status CheckTableIsBeingReplicated(const std::vector<TableId>& tables) {
+  Status CheckTableIsBeingReplicated(
+    const std::vector<TableId>& tables,
+    SysCDCStreamEntryPB::State target_state
+      = SysCDCStreamEntryPB::State::SysCDCStreamEntryPB_State_ACTIVE
+  ) {
     string output = VERIFY_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
                                                           "list_cdc_streams"));
+    const char* output_cstr = output.c_str();
+    string target_state_str = SysCDCStreamEntryPB::State_Name(target_state);
     for (const auto& table_id : tables) {
-      if (output.find(table_id) == string::npos) {
-        return STATUS_FORMAT(NotFound, "Table id '$0' not found in output: $1", table_id, output);
+      // Find the stream object corresponding to table_id.
+      const string regex_str = Format(
+      "streams\\s[{][\\s\\S]*?table_id:\\s\"$0\"[\\s\\S]*?"
+      "key:\\s\"state\"[\\n,\\s,\\t]*value:\\s\"([a-zA-Z_]*)\"[\\s\\S]*?[}]\n[}]",
+      table_id);
+
+      std::regex re(regex_str);
+      std::cmatch match;
+      if (std::regex_match(output_cstr, match, re)) {
+        // There should be exactly 1 match, and 1 group for that match.
+        EXPECT_EQ(match.size(), 2);
+
+        // Ensure we did not match more than 1 stream object.
+        // IE: an invalid match would be "stream { ... } stream {...".
+        string stream_obj_str(match[0]);
+        if (stream_obj_str.find("streams {", 8) != string::npos) {
+          return STATUS_FORMAT(
+            NotFound,
+            "Stream object for table '$0' does not have a state value in output: $1",
+            table_id, output);
+        }
+
+        // Ensure that the state matches target_state.
+        string state_str(match[1]);
+        EXPECT_EQ(state_str, target_state_str);
+      } else {
+          // Table id not found in output.
+          return STATUS_FORMAT(
+            NotFound,
+            "Table id '$0' not found in output: $1",
+            table_id, output);
       }
     }
     return Status::OK();
@@ -759,16 +795,9 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
   // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
   string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
 
-  // Check list_cdc_streams again for the table and the status INITIATED.
-  auto VerifyListCdcStreams = [&] (const string& table_id,
-                                   SysCDCStreamEntryPB::State status) -> Status {
-    string output = VERIFY_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                                          "list_cdc_streams"));
-    EXPECT_NE(output.find(table_id), string::npos);
-    EXPECT_NE(output.find(SysCDCStreamEntryPB::State_Name(status)), string::npos);
-    return Status::OK();
-  };
-  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::INITIATED);
+  ASSERT_OK(CheckTableIsBeingReplicated(
+    {producer_cluster_table->id()},
+    master::SysCDCStreamEntryPB_State_INITIATED));
 
   // Setup universe replication using the bootstrap_id
   ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
@@ -779,11 +808,11 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
 
 
   // Check list_cdc_streams again for the table and the status ACTIVE.
-  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::ACTIVE);
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
 
   // Try restarting the producer to ensure that the status persists.
   ASSERT_OK(producer_cluster_->RestartSync());
-  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::ACTIVE);
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
 
   // Delete this universe so shutdown can proceed.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
@@ -845,6 +874,62 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplication) {
                                 kProducerClusterId,
                                 "add_table",
                                 producer_table->id()));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id(), producer_table2->id()}));
+
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootstrapId) {
+  YB_SKIP_TEST_IN_TSAN();
+  const int kStreamUuidLength = 32;
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  // Create an additional table to test with as well.
+  const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
+  client::TableHandle consumer_table2;
+  client::TableHandle producer_table2;
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
+      kTableName2);
+
+  // Get bootstrap ids for both producer tables and get bootstrap ids.
+  string output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
+                                                        "bootstrap_cdc_producer",
+                                                        producer_table->id()));
+  string bootstrap_id1 = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+  ASSERT_OK(CheckTableIsBeingReplicated(
+    {producer_table->id()},
+    master::SysCDCStreamEntryPB_State_INITIATED));
+
+  output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
+                                                 "bootstrap_cdc_producer",
+                                                 producer_table2->id()));
+  string bootstrap_id2 = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+  ASSERT_OK(CheckTableIsBeingReplicated(
+    {producer_table2->id()},
+    master::SysCDCStreamEntryPB_State_INITIATED));
+
+  // Setup replication with first table, this should only return once complete.
+  // Only use the leader master address initially.
+  ASSERT_OK(RunAdminToolCommand(
+      "setup_universe_replication",
+      kProducerClusterId,
+      ASSERT_RESULT(producer_cluster_->GetLeaderMiniMaster())->bound_rpc_addr_str(),
+      producer_table->id(),
+      bootstrap_id1));
+
+  // Test adding the second table with bootstrap id
+  ASSERT_OK(RunAdminToolCommand("alter_universe_replication",
+                                kProducerClusterId,
+                                "add_table",
+                                producer_table2->id(),
+                                bootstrap_id2));
   ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id(), producer_table2->id()}));
 
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
