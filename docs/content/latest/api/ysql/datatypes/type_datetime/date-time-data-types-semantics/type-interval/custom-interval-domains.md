@@ -402,8 +402,8 @@ create function interval_days(t_finish in timestamptz, t_start in timestamptz)
   language plpgsql
 as $body$
 declare
-  d_finish constant date not null := t_finish;
-  d_start  constant date not null := t_start;
+  d_finish constant date not null := t_finish::date;
+  d_start  constant date not null := t_start::date;
   delta    constant int  not null := d_finish - d_start;
 begin
   call assert_interval_days_in_range(delta);

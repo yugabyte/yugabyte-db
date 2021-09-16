@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: download-date-time-utilities
     parent: api-ysql-datatypes-datetime
-    weight: 100
+    weight: 140
 isTocNested: true
 showAsideToc: true
 ---
