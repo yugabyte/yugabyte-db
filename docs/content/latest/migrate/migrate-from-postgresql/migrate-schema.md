@@ -165,12 +165,8 @@ CREATE TABLE contacts (
 
 ## Use `ysql_dump`
 
-The PostgreSQL utility `pg_dump` can be used to dump the schema of a database.
+The PostgreSQL utility `pg_dump` can be used to dump the schema of a database, as described in the preceding sections of this document.
 
-The [`ysql_dump`](../../../admin/ysql-dump) tool (a YugabyteDB-specific version of the `pg_dump` tool) can connect to an existing PostgreSQL database and export a YugabyteDB-friendly version of the schema and, therefore, includes some of the schema modifications. Additional changes might need to be performed manually, depending on the use case.
+The [`ysql_dump`](../../../admin/ysql-dump) tool (a YugabyteDB-specific version of the `pg_dump` tool) can connect to an existing PostgreSQL database and export a YugabyteDB-friendly version of the schema and, therefore, includes some of the schema modifications. Other changes might need to be performed manually, depending on the use case.
 
-{{< note title="Note" >}}
-
-`ysql_dump` has been tested with PostgreSQL versions up to 11.2 and might not work on newer versions of PostgreSQL.
-
-{{< /note >}}
+Keep in mind that `ysql_dump` has been tested with PostgreSQL versions up to 11.2 and might not work on newer versions of PostgreSQL.
