@@ -268,6 +268,9 @@ YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 
 std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id);
 
+std::unordered_set<string> ListActiveTabletIdsForTable(
+    MiniCluster* cluster, const string& table_id);
+
 std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter);
 

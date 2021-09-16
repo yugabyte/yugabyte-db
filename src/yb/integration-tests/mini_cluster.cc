@@ -692,6 +692,15 @@ std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const str
   return tablet_ids;
 }
 
+std::unordered_set<string> ListActiveTabletIdsForTable(
+    MiniCluster* cluster, const string& table_id) {
+  std::unordered_set<string> tablet_ids;
+  for (auto peer : ListTableActiveTabletPeers(cluster, table_id)) {
+    tablet_ids.insert(peer->tablet_id());
+  }
+  return tablet_ids;
+}
+
 std::vector<tablet::TabletPeerPtr> ListTabletPeers(MiniCluster* cluster, ListPeersFilter filter) {
   switch (filter) {
     case ListPeersFilter::kAll:
