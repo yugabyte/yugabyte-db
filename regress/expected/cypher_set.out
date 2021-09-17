@@ -340,6 +340,30 @@ SELECT set_test();
  {"id": 1407374883553284, "label": "other_v", "properties": {"i": 7, "k": 10}}::vertex
 (10 rows)
 
+--
+-- Updating multiple fieds
+--
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3, n.j = 5 RETURN n $$) AS (a agtype);
+                                                         a                                                         
+-------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710659, "label": "", "properties": {"i": 3, "j": 5, "y": 2}}::vertex
+ {"id": 281474976710657, "label": "", "properties": {"i": 3, "j": 5, "t": 150}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {"i": 3, "j": 5, "t": 150, "y": 1}}::vertex
+ {"id": 844424930131969, "label": "v", "properties": {"i": 3, "j": 5, "t": 150}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 3, "j": 5, "t": 150}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"a": 0, "i": 3, "j": 5, "t": 150, "y": 99, "z": 99}}::vertex
+ {"id": 1407374883553281, "label": "other_v", "properties": {"i": 3, "j": 5, "k": 10}}::vertex
+ {"id": 1407374883553282, "label": "other_v", "properties": {"i": 3, "j": 5, "k": 10}}::vertex
+ {"id": 1407374883553283, "label": "other_v", "properties": {"i": 3, "j": 5, "k": 10}}::vertex
+ {"id": 1407374883553284, "label": "other_v", "properties": {"i": 3, "j": 5, "k": 10}}::vertex
+(10 rows)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (n)-[m]->(n) SET m.y = n.y RETURN n, m$$) AS (a agtype, b agtype);
+                                                         a                                                         |                                                                   b                                                                    
+-------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "v", "properties": {"a": 0, "i": 3, "j": 5, "t": 150, "y": 99, "z": 99}}::vertex | {"id": 1125899906842629, "label": "e", "end_id": 844424930131970, "start_id": 844424930131970, "properties": {"j": 34, "y": 99}}::edge
+(1 row)
+
 --Errors
 SELECT * FROM cypher('cypher_set', $$SET n.i = NULL$$) AS (a agtype);
 ERROR:  SET cannot be the first clause in a Cypher query
@@ -349,21 +373,138 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) SET wrong_var.i = 3$$) AS (a agty
 ERROR:  undefined reference to variable wrong_var in SET clause
 LINE 1: ...ELECT * FROM cypher('cypher_set', $$MATCH (n) SET wrong_var....
                                                              ^
-SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3, n.j = 5 $$) AS (a agtype);
-ERROR:  SET clause does not yet support updating more than one property
-LINE 1: SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3, ...
-                                                       ^
+--
+-- SET refactor regression tests
+--
+-- INSERT INTO
+CREATE TABLE tbl (result agtype);
+SELECT * FROM cypher('cypher_set', $$CREATE (u:vertices) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('cypher_set', $$CREATE (u:begin)-[:edge]->(v:end) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) return u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:begin)-[:edge]->(v:end) return u, v $$) AS (u agtype, v agtype);
+                                  u                                   |                                 v                                  
+----------------------------------------------------------------------+--------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "begin", "properties": {}}::vertex | {"id": 2533274790395905, "label": "end", "properties": {}}::vertex
+(1 row)
+
+INSERT INTO tbl (SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) SET u.i = 7 return u $$) AS (result agtype));
+INSERT INTO tbl (SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) SET u.i = 13 return u $$) AS (result agtype));
+SELECT * FROM tbl;
+                                     result                                     
+--------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 7}}::vertex
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 13}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) return u $$) AS (result agtype);
+                                     result                                     
+--------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 13}}::vertex
+(1 row)
+
+BEGIN;
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) SET u.i = 1, u.j = 3, u.k = 5 return u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 1, "j": 3, "k": 5}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) return u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 1, "j": 3, "k": 5}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) SET u.i = 2, u.j = 4, u.k = 6 return u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 2, "j": 4, "k": 6}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) return u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 2, "j": 4, "k": 6}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) SET u.i = 3, u.j = 6, u.k = 9 return u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 3, "j": 6, "k": 9}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) return u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 3, "j": 6, "k": 9}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:begin)-[:edge]->(v:end) SET u.i = 1, v.i = 2, u.j = 3, v.j = 4 return u, v $$) AS (u agtype, v agtype);
+                                         u                                          |                                        v                                         
+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "begin", "properties": {"i": 1, "j": 3}}::vertex | {"id": 2533274790395905, "label": "end", "properties": {"i": 2, "j": 4}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:begin)-[:edge]->(v:end) return u, v $$) AS (u agtype, v agtype);
+                                         u                                          |                                        v                                         
+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "begin", "properties": {"i": 1, "j": 3}}::vertex | {"id": 2533274790395905, "label": "end", "properties": {"i": 2, "j": 4}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:begin)-[:edge]->(v:end) SET u.i = 2, v.i = 1, u.j = 4, v.j = 3 return u, v $$) AS (u agtype, v agtype);
+                                         u                                          |                                        v                                         
+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "begin", "properties": {"i": 2, "j": 4}}::vertex | {"id": 2533274790395905, "label": "end", "properties": {"i": 1, "j": 3}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:begin)-[:edge]->(v:end) return u, v $$) AS (u agtype, v agtype);
+                                         u                                          |                                        v                                         
+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "begin", "properties": {"i": 2, "j": 4}}::vertex | {"id": 2533274790395905, "label": "end", "properties": {"i": 1, "j": 3}}::vertex
+(1 row)
+
+END;
+SELECT * FROM cypher('cypher_set', $$MATCH (u:vertices) return u $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 1688849860263937, "label": "vertices", "properties": {"i": 3, "j": 6, "k": 9}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (u:begin)-[:edge]->(v:end) return u, v $$) AS (u agtype, v agtype);
+                                         u                                          |                                        v                                         
+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "begin", "properties": {"i": 2, "j": 4}}::vertex | {"id": 2533274790395905, "label": "end", "properties": {"i": 1, "j": 3}}::vertex
+(1 row)
+
 --
 -- Clean up
 --
+DROP TABLE tbl;
 DROP FUNCTION set_test;
 SELECT drop_graph('cypher_set', true);
-NOTICE:  drop cascades to 5 other objects
+NOTICE:  drop cascades to 9 other objects
 DETAIL:  drop cascades to table cypher_set._ag_label_vertex
 drop cascades to table cypher_set._ag_label_edge
 drop cascades to table cypher_set.v
 drop cascades to table cypher_set.e
 drop cascades to table cypher_set.other_v
+drop cascades to table cypher_set.vertices
+drop cascades to table cypher_set.begin
+drop cascades to table cypher_set.edge
+drop cascades to table cypher_set."end"
 NOTICE:  graph "cypher_set" has been dropped
  drop_graph 
 ------------

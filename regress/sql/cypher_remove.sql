@@ -123,6 +123,19 @@ SELECT remove_test();
 
 SELECT * FROM cypher('cypher_remove', $$CREATE ( {i : 1 })$$) AS (a agtype);
 SELECT remove_test();
+
+
+--
+-- Updating Multiple Fields
+--
+SELECT * FROM cypher('cypher_remove', $$MATCH (n) RETURN n$$) AS (a agtype);
+SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i, n.j, n.k RETURN n$$) AS (a agtype);
+SELECT * FROM cypher('cypher_remove', $$MATCH (n) RETURN n$$) AS (a agtype);
+
+SELECT * FROM cypher('cypher_remove', $$CREATE ()-[:edge_multi_property { i: 5, j: 20}]->()$$) AS (a agtype);
+SELECT * FROM cypher('cypher_remove', $$MATCH ()-[e:edge_multi_property]-() RETURN e$$) AS (a agtype);
+SELECT * FROM cypher('cypher_remove', $$MATCH ()-[e:edge_multi_property]-() REMOVE e.i, e.j RETURN e$$) AS (a agtype);
+
 --Errors
 SELECT * FROM cypher('cypher_remove', $$REMOVE n.i$$) AS (a agtype);
 
@@ -130,7 +143,6 @@ SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i = NULL$$) AS (a agt
 
 SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE wrong_var.i$$) AS (a agtype);
 
-SELECT * FROM cypher('cypher_remove', $$MATCH (n) REMOVE n.i = 3, n.j = 5 $$) AS (a agtype);
 --
 -- Clean up
 --

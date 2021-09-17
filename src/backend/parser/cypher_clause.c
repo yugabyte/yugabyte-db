@@ -509,21 +509,15 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
 
     func_set_oid = get_ag_func_oid("_cypher_set_clause", 1, INTERNALOID);
 
-    if (list_length(self->items) != 1)
+    /*if (list_length(self->items) != 1)
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
             errmsg("%s clause does not yet support updating more than one property", clause_name),
             parser_errposition(pstate, self->location)));
-
+*/
     if (self->is_remove == true)
         set_items_target_list = transform_cypher_remove_item_list(cpstate, self->items, query);
     else
         set_items_target_list = transform_cypher_set_item_list(cpstate, self->items, query);
-
-    if (list_length(self->items) != 1)
-        ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-            errmsg("%s clause does not yet support updating more than one property",
-                    set_items_target_list->clause_name),
-            parser_errposition(pstate, self->location)));
 
     set_items_target_list->clause_name = clause_name;
     set_items_target_list->graph_name = cpstate->graph_name;
