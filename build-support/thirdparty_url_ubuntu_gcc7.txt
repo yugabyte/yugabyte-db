@@ -1,1 +1,1 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v2.6-20210619214440-32ba1cdc59-ubuntu1804-gcc7/yugabyte-db-thirdparty-v2.6-20210619214440-32ba1cdc59-ubuntu1804-gcc7.tar.gz
+https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v2.6-20210916160342-07ec4592b1-ubuntu1804-gcc7/yugabyte-db-thirdparty-v2.6-20210916160342-07ec4592b1-ubuntu1804-gcc7.tar.gz
