@@ -13,24 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## September 15, 2021
+## Releases
 
-### New features
+### September 15, 2021
+
+#### New features
 
 - Paid clusters (unlimited)
 - Invoicing
 
-### Known issues
-
-- **Cloud Shell** - The cloud shell cannot display a greater number of lines of output than the page size. For example, if you run a query that returns more rows than there are lines of output in the current browser view, the results will not display.
-- **Cloud Shell** - No support for invited (Developer) users.
-- **Cloud Shell** - No support for keyboard shortcuts on Windows. Use the right-click menu.
-- **Cloud Shell** - No support for keyboard shortcuts in Firefox. Use the right-click menu.
-- **Cloud Shell** - No support for VPC-peered clusters.
-- **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
-- **Clusters** - No support for scaling vCPUs on single node clusters.
-
-## September 8, 2021
+### September 8, 2021
 
 This release includes the following features:
 
@@ -42,7 +34,7 @@ This release includes the following features:
 - Multiple cloud users - invite additional users to your cloud
 - Encryption at rest and in transit
 
-### Cloud provider regions
+## Cloud provider regions
 
 The following **GCP regions** are available:
 
@@ -82,14 +74,12 @@ The following **AWS regions** are available:
 - N. California (us-west-1)
 - Oregon (us-west-2)
 
-### Limitations
+## Known issues
 
-- Free clusters only. Paid clusters coming soon.
-
-### Known issues
-
-- **Cloud Shell** - No support for Firefox.
 - **Cloud Shell** - The cloud shell cannot display a greater number of lines of output than the page size. For example, if you run a query that returns more rows than there are lines of output in the current browser view, the results will not display.
 - **Cloud Shell** - No support for invited (Developer) users.
 - **Cloud Shell** - No support for keyboard shortcuts on Windows. Use the right-click menu.
+- **Cloud Shell** - No support for keyboard shortcuts in Firefox. Use the right-click menu.
+- **Cloud Shell** - No support for VPC-peered clusters.
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
+- **Clusters** - No support for scaling vCPUs on single node clusters.

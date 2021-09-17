@@ -67,6 +67,8 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 
 ### What regions in AWS and GCP are available?
 
+Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a list currently supported regions.
+
 Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. Regions where load balancers, certain VMs, or other resources are harder to obtain have not yet been added. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 ### How do I connect to my cluster?
@@ -80,6 +82,12 @@ Client Shell
 : Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
 
 : Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
+
+: You must be running the latest versions of the client shells. These are available in Yugabyte Client 2.6 or later, which you can download using the following command:
+
+    ```sh
+    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+    ```
 
 Applications
 : Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 

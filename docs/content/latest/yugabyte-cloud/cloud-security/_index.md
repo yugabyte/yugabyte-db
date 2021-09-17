@@ -61,6 +61,4 @@ For information on data privacy and compliance, refer to the [Yugabyte DPA](http
 
 Yugabyte supports audit logging at the cloud account and database level.
 
-Cloud-related audit logs can be provided on request. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
-
 For information on database audit logging, refer to [Configure Audit Logging](../../secure/audit-logging/audit-logging-ysql/).

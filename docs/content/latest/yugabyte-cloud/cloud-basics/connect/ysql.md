@@ -3,7 +3,7 @@ To connect to a cluster using `ysqlsh`:
 1. On the **Clusters** tab, select a cluster.
 1. Click **Connect**.
 1. Click **YugabyteDB Client Shell**.
-1. If you have not installed the client shell on your computer, select your operating system and copy the command to install the shell from the command line.
+1. Make sure you are running the latest version of the Yugabyte Client shell. If you have not installed Yugabyte Client on your computer, select your operating system and copy the command to install Yugabyte Client from the command line. The shell is located in the `bin` directory.
 1. Click **Download CA Cert** to download the root.crt certificate for TLS encryption, and install the certificate on your computer. If you are using Docker, copy the certificate to your Docker container.
 1. Copy the **YSQL** connection string.
     \
@@ -29,7 +29,7 @@ To connect to a cluster using `ysqlsh`:
 The `ysqlsh` shell opens connected to the remote cluster.
 
 ```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
+ysqlsh (11.2-YB-2.6.1.0-b0)
 Type "help" for help.
 
 yugabyte=#
