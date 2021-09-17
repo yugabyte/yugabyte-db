@@ -30,6 +30,8 @@ using std::vector;
 using std::string;
 using strings::Split;
 
+DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
+
 namespace yb {
 namespace tools {
 
@@ -82,7 +84,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
             << " --no_ssh"
             << " --no_auto_name";
 #if defined(__APPLE__)
-    command << " --mac" << " --verbose";
+    command << " --mac";
 #endif // defined(__APPLE__)
     string backup_cmd;
     for (const auto& a : args) {
@@ -90,6 +92,10 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
       if (a == "create" || a == "restore") {
         backup_cmd = a;
       }
+    }
+
+    if (FLAGS_verbose_yb_backup) {
+      command << " --verbose";
     }
 
     const auto command_str = command.str();
