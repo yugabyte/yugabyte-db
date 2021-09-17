@@ -23,6 +23,93 @@ Specifically, you need:
 * thing1
 * thing2
 
+{{< warning title="notes from Tim start here" >}}
+Notes from Tim start here, and go through to the next warning box.
+{{< /warning >}}
+
+## Set up the multi-region demo
+
+### Get access to the instances
+
+On your local machine, add aliases for convenience, and SSH into the GCP portal machine:
+
+```sh
+$ alias gcpportal='ssh -i ~/.yugabyte/yb-dev-aws-2.pem -p 22 centos@10.150.0.14'
+$ alias awsportal2='ssh -i ~/.yugabyte/yb-dev-aws-2.pem centos@10.9.6.228 -p 22'
+$ gcpportal
+```
+
+Now, on the GCP portal, open a shell in the Docker container running the Portal:
+
+```sh
+[centos@portal ~]$ sudo docker exec -it yugaware bash
+```
+
+Now, in the container:
+
+```sh
+$ cd /opt/yugabyte/yugaware/data/keys/
+$ ls -alrt
+$ cd b41822ff-2f02-4f07-8722-33ad63fa2f79/  # Last directory in the list
+$ ls  # REMOVE
+$ cat yb-multi-cloud-key.pem  # REMOVE
+$ ssh -i yb-multi-cloud-key.pem centos@172.152.63.80  # SSH into what machine?
+```
+
+From the **XYZ???** machine, open a shell in the Docker container running PostgreSQL, and open a PostgreSQL shell:
+
+```sh
+$ sudo docker exec -it postgres bash
+$ psql -U postgres -d yugaware
+```
+
+In PostgreSQL, find the region you’re after, and copy its AMI ID:
+
+```sql
+select * from region;
+```
+
+### Set up the instance
+
+Run the following shell commands **as root**, on each instance:
+
+```sh
+mkfs.xfs /dev/nvme1n1
+mkdir -p /mnt/d0
+mount /dev/nvme1n1 /mnt/d0
+```
+
+#### Create the Yugabyte user
+
+Run the following shell commands **as root**, on each instance:
+
+```sh
+adduser yugabyte
+groupadd yugabyte
+usermod -G yugabyte yugabyte
+chown yugabyte:yugabyte /mnt/d0
+cd ~yugabyte/
+mkdir .ssh
+#
+# NOTE: If copied from the root user, the authorized_keys file contains a
+# script at the start. Remove this from the yugabyte user.
+#
+cp ~/.ssh/authorized_keys  .ssh
+chown -R yugabyte:yugabyte .ssh
+```
+
+It's easiest to set up the universe if the yugabyte user has sudo access without a password. To do this, edit `/etc/sudoers` (needs root access), and add the following at the end of the file:
+
+```cfg
+yugabyte ALL=(ALL) NOPASSWD: ALL
+```
+
+In the case of multiple matches, the last match wins. Putting this entry last ensures it wins any conflict.
+
+{{< warning title="END of Tim's notes, START of rough procedures" >}}
+The next span, to the following warning box, is a rough outline from other pages like this.
+{{< /warning >}}
+
 ## Create nodes
 
 Manually create nodes in each cloud provider...
@@ -73,12 +160,8 @@ To create a multi-cloud universe, do the following:
 
 1. Click Create.
 
-{{< warning title="STOP HERE FOR NOW">}}
-Nothing useful yet below here!
-
-(But I did do some editing and deleting, as a start...)
-
-— Alex
+{{< warning title="END of rough procedures" >}}
+Nothing much edited below here, and may not be useful at all?
 {{< /warning >}}
 
 ## 2. Examine the universe
@@ -160,9 +243,9 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
 
 You can find the region codes for each of the nodes by browsing to the **Nodes** tab for this universe in the Yugabyte Platform console. A screenshot is shown below. In this example, the value for `<REGION>` is:
 
-- `us-east4` for node `yb-dev-helloworld2-n1`
-- `asia-northeast1` for node `yb-dev-helloworld2-n2`
-- `us-west1` for node `yb-dev-helloworld2-n3`
+* `us-east4` for node `yb-dev-helloworld2-n1`
+* `asia-northeast1` for node `yb-dev-helloworld2-n2`
+* `us-west1` for node `yb-dev-helloworld2-n3`
 
 ![Region Codes For Universe Nodes](/images/ee/multi-region-universe-node-regions.png)
 
@@ -170,8 +253,8 @@ You can find the region codes for each of the nodes by browsing to the **Nodes**
 
 Recall that we expect the app to have the following characteristics based on its deployment configuration:
 
-- Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
-- Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
+* Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
+* Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
 
 Let us verify this by browse to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the screenshot below.
 
