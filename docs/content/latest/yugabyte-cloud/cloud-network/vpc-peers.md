@@ -19,7 +19,7 @@ The **VPC Peering** tab displays a list of peers configured for your cloud that 
 ![Cloud Network VPC Peering page](/images/yb-cloud/cloud-networking-vpc.png)
 -->
 
-Virtual Private Cloud (VPC) peering allows applications running on other cloud instances to communicate with your YugabyteDB clusters without traversing the public internet - traffic stays within the cloud provider's network. VPC peering allows internal IP address connectivity across two VPC networks regardless of whether they belong to the same project or the same organization.
+Virtual Private Cloud (VPC) peering allows applications running on instances on the same cloud provider as your Yugabyte Cloud cluster to communicate with your YugabyteDB clusters without traversing the public internet - traffic stays within the cloud provider's network.
 
 {{< note title="Note" >}}
 
