@@ -26,6 +26,8 @@ You can connect to a cluster in the following ways:
 
 You must configure [Network Access](../../cloud-network/) before you can connect from a remote YugabyteDB client shell or an application.
 
+When connecting via Client Shell, make sure you are running the latest versions of the shells, provided in the Yugabyte Client 2.6 download.
+
 {{< /note >}}
 
 Related information:
