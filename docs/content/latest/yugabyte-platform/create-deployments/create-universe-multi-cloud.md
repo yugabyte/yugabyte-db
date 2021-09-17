@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section describes how to create a YugabyteDB universe with nodes in more than one cloud provider, including Kubernetes.
+This section describes how to create a YugabyteDB universe with nodes in more than one cloud provider.
 
 ## Prerequisites
 
@@ -20,12 +20,30 @@ Before you start creating a universe, ensure that you performed steps applicable
 
 Specifically, you need:
 
-* At least two configured cloud providers
-* 
+* thing1
+* thing2
 
 ## Create nodes
 
-## Define your regions
+Manually create nodes in each cloud provider...
+
+## Create an on-premises provider
+
+Navigate to Configs > On-Premises Datacenter, and click Edit Provider. On the Provider Info tab... (Let's name this `onprem-provider`)
+
+### Define instance types
+
+On the Instances tab...
+
+For each provider, define an instance type...
+
+### Define regions
+
+On the On-Premises Datacenter tab, click Regions and Zones...
+
+### Add instances
+
+Navigate to Configs > On-Premises Datacenter, and click Manage Instances...
 
 ## Create a universe
 
@@ -33,240 +51,135 @@ If no universes have been created yet, the Yugabyte Platform Dashboard looks sim
 
 ![Dashboard with No Universes](/images/ee/no-univ-dashboard.png)
 
-Click **Create Universe** to create the universe, and then enter your intent.
+To create a multi-cloud universe, do the following:
 
-The **Provider**, **Regions**, and **Instance Type** fields are initialized based on the [configured cloud providers](../../configure-yugabyte-platform/set-up-cloud-provider/). When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
+1. Click Create Universe to create the universe.
 
-To create a multi-zone universe using [Google Cloud provider (GCP)](../../configure-yugabyte-platform/set-up-cloud-provider/gcp), do the following:
+    ![Create multi-region universe on GCP](/images/ee/multi-region-create-universe.png)
 
-* Enter a universe name (**helloworld1**).
-* Enter the region (**Oregon**).
-* Change the instance type (**n1-standard-8**).
-* Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3).
-* Click **Create**, as shown in the following illustration.
+    \
+    The Provider, Regions, and Instance Type fields are initialized based on the [configured cloud providers](../../configure-yugabyte-platform/set-up-cloud-provider/). When you provide the value in the Nodes field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
-![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
+1. Enter the following information:
 
-The following illustration shows a newly-created universe in Pending state:
+    * Universe name: `multi-cloud`
+    * Set of regions: `us-west`, `us-central`, `us-east`
+    * Instance type: `n1-standard-8`
 
-![Dashboard with Pending Universe](/images/ee/pending-univ-dashboard.png)
+1. Add the following flag for Master and T-Server: `leader_failure_max_missed_heartbeat_periods = 10`.
 
-## Examine the universe
+    \
+    Because the the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. See the screenshot below.
 
-The universe view consists of several tabs that provide different information about this universe.
+1. Click Create.
 
-### Overview tab
+{{< warning title="STOP HERE FOR NOW">}}
+Nothing useful yet below here!
 
-The following illustration shows the **Overview** tab:
+(But I did do some editing and deleting, as a start...)
 
-![Detail for a Pending Universe](/images/ee/pending-univ-detail.png)
+— Alex
+{{< /warning >}}
 
-### Tasks tab 
+## 2. Examine the universe
 
-The following illustration shows the **Tasks** tab that provides information about the state of tasks currently running on the universe, as well as the tasks that have run in the past against this universe:
+Wait for the universe to get created. Note that Yugabyte Platform can manage multiple universes as shown below.
 
-![Tasks for a Pending Universe](/images/ee/pending-univ-tasks.png)
+![Multiple universes in Yugabyte Platform console](/images/ee/multi-region-multiple-universes.png)
 
-### Nodes tab
+Once the universe is created, you should see something like the screenshot below in the universe overview.
 
-The following illustration shows the **Nodes** tab that allows you to see a list of the underlying nodes for the universe:
+![Nodes for a Pending Universe](/images/ee/multi-region-universe-overview.png)
 
-![Nodes for a Pending Universe](/images/ee/pending-univ-nodes.png)
+### Universe nodes
 
-Note that in the preceding illustration, the cloud provider instances are still being created.
+You can browse to the **Nodes** tab of the universe to see a list of nodes. Note that the nodes are across the different geographic regions.
 
-You can use this tab to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain **helloworld1** in their name, you should see a list of instances similar to the following illustration:
+![Nodes for a Pending Universe](/images/ee/multi-region-universe-nodes.png)
 
-![Instances for a Pending Universe](/images/ee/multi-zone-universe-gcp-instances.png)
+Browse to the cloud provider's instances page. In this example, since we are using Google Cloud Platform as the cloud provider, browse to `Compute Engine` -> `VM Instances` and search for instances that have `helloworld2` in their name. You should see something as follows. It is easy to verify that the instances were created in the appropriate regions.
 
-## Connect to a database node
+![Instances for a Pending Universe](/images/ee/multi-region-universe-gcp-instances.png)
 
-Once the universe is ready, the **Overview** tab should appear similar to the following illustration:
+## 3. Run a global application
 
-![Multi-zone universe ready](/images/ee/multi-zone-universe-ready.png)
+In this section, we are going to connect to each node and perform the following:
 
-You connect to a database node as follows: 
+* Run the `CassandraKeyValue` workload
+* Write data with global consistency (higher latencies because we chose nodes in far away regions)
+* Read data from the local data center (low latency, timeline-consistent reads)
 
-1. Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured.
+Browse to the **Nodes** tab to find the nodes and click **Connect**. This should bring up a dialog showing how to connect to the nodes.
 
-1. Click **Connect**, as shown in the following illustration:
+![Multi-region universe nodes](/images/ee/multi-region-universe-nodes-connect.png)
 
-  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes.png)
+### Connect to the nodes
 
-1. Use the **Access Your Cluster** dialog to connect to the nodes, as shown in the following illustration:
+Create three Bash terminals and connect to each of the nodes by running the commands shown in the popup above. We are going to start a workload from each of the nodes.
 
-  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes-connect.png)
+On each of the terminals, do the following:
 
-For example, to connect to the first node called **yb-dev-helloworld1-n1**, copy the first command displayed in the **Access Your Cluster** dialog, and then run it from the Yugabyte Platform server, as follows:
+1. Install Java.
 
-```sh
-centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4
-```
+    ```sh
+    $ sudo yum install java-1.8.0-openjdk.x86_64 -y
+    ```
 
-```output
-Are you sure you want to continue connecting (yes/no)? yes
-[centos@yb-dev-helloworld1-n1 ~]$
-```
+1. Switch to the `yugabyte` user.
 
-## Run workloads
+    ```sh
+    $ sudo su - yugabyte
+    ```
 
-Yugabyte Platform includes a number of sample applications. You can run one of the key-value workloads against the YCQL API and the YEDIS API as follows:
+1. Export the `YCQL_ENDPOINTS` environment variable.
 
-1. Install Java by executing the following command:
+    \
+    Browse to the **Universe Overview** tab in Yugabyte Platform console and click **YCQL Endpoints**. A new tab opens displaying a list of IP addresses.
 
-  ```sh
-  $ sudo yum install java-1.8.0-openjdk.x86_64 -y
-  ```
-
-1. Switch to the yugabyte user by executing the following command:
-
-  ```sh
-  $ sudo su - yugabyte
-  ```
-
-1. Export the `YCQL_ENDPOINTS` environment variable, supplying the IP addresses for nodes in the cluster, as follows: 
-
-    * Navigate to the **Universes > Overview** tab and click **YCQL Endpoints** to open a new tab with a list of IP addresses, as shown in the following illustration:
-
-    ![YCQL end points](/images/ee/multi-zone-universe-ycql-endpoints.png)
-
-    * Click the **Export** icon for **YCQL Services** to trigger export into a shell variable on the database node **yb-dev-helloworld1-n1** to which you are connected. Remember to replace the following IP addresses with those displayed in the Yugabyte Platform console.
+    \
+    Export this into a shell variable on the database node `yb-dev-helloworld1-n1` you connected to. Remember to replace the IP addresses below with those shown in the Yugabyte Platform console.
 
     ```sh
     $ export YCQL_ENDPOINTS="10.138.0.3:9042,10.138.0.4:9042,10.138.0.5:9042"
     ```
 
-1. Export the `YEDIS_ENDPOINTS` environment variable by repeating the preceding procedure and as per the following illustration and command:
+### Run the workload
 
-  ![YCQL end points](/images/ee/multi-zone-universe-yedis-endpoints.png)
-
-  ```sh
-  $ export YEDIS_ENDPOINTS="10.138.0.3:6379,10.138.0.4:6379,10.138.0.5:6379"
-  ```
-
-### CassandraKeyValue workload
-
-To start the CassandraKeyValue workload, execute the following command:
+Run the following command on each of the nodes. Remember to substitute `<REGION>` with the region code for each node.
 
 ```sh
 $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload CassandraKeyValue \
             --nodes $YCQL_ENDPOINTS \
-            --num_threads_write 2 \
+            --num_threads_write 1 \
             --num_threads_read 32 \
-            --value_size 128 \
             --num_unique_keys 10000000 \
-            --nouuid
+            --local_reads \
+            --with_local_dc <REGION>
 ```
 
-The sample application produces output similar to the following and reports some statistics in the steady state:
+You can find the region codes for each of the nodes by browsing to the **Nodes** tab for this universe in the Yugabyte Platform console. A screenshot is shown below. In this example, the value for `<REGION>` is:
 
-```output
-Created table: [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
-...
-Read: 47388.10 ops/sec (0.67 ms/op), 816030 total ops  | Write: 1307.80 ops/sec (1.53 ms/op), 22900 total ops
-Read: 47419.99 ops/sec (0.67 ms/op), 1053156 total ops | Write: 1303.85 ops/sec (1.53 ms/op), 29420 total ops
-Read: 47220.98 ops/sec (0.68 ms/op), 1289285 total ops | Write: 1311.67 ops/sec (1.52 ms/op), 35979 total ops
-```
+- `us-east4` for node `yb-dev-helloworld2-n1`
+- `asia-northeast1` for node `yb-dev-helloworld2-n2`
+- `us-west1` for node `yb-dev-helloworld2-n3`
 
-If you open the **Metrics** tab of the universe, you should see the metrics graphs, as shown in the following illustration:
+![Region Codes For Universe Nodes](/images/ee/multi-region-universe-node-regions.png)
 
-![YCQL Load Metrics](/images/ee/multi-zone-universe-ycql-load-metrics.png)
+## 4. Check the performance characteristics of the app
 
-Note that these server-side metrics tally with the client-side metrics reported by the load tester.
+Recall that we expect the app to have the following characteristics based on its deployment configuration:
 
-You can also view metrics at a per-node level, as shown in the following illustration:
+- Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
+- Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
 
-![YCQL Load Metrics Per Node](/images/ee/multi-zone-universe-ycql-load-metrics-per-node.png)
+Let us verify this by browse to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the screenshot below.
 
-You should stop the load tester.
+![YCQL Load Metrics](/images/ee/multi-region-read-write-metrics.png)
 
-### RedisKeyValue workload
+Note the following:
 
-To start the RedisKeyValue workload, execute the following command.
+* Write latency is **139ms** because it has to replicate data to a quorum of nodes across multiple geographic regions.
+* Read latency is **0.23 ms** across all regions. Note that the app is performing **100K reads/sec** across the regions (about 33K reads/sec in each region).
 
-```sh
-$ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
-            --workload RedisKeyValue \
-            --nodes $YEDIS_ENDPOINTS \
-            --num_threads_write 2 \
-            --num_threads_read 32 \
-            --value_size 128 \
-            --num_unique_keys 10000000 \
-            --nouuid
-```
-
-The sample application produces output similar to the following and reports some statistics in the steady state:
-
-```output
-Read: 50069.15 ops/sec (0.64 ms/op), 657550 total ops  | Write: 1470.87 ops/sec (1.36 ms/op), 18849 total ops
-Read: 50209.09 ops/sec (0.64 ms/op), 908653 total ops  | Write: 1454.87 ops/sec (1.37 ms/op), 26125 total ops
-Read: 50016.18 ops/sec (0.64 ms/op), 1158794 total ops | Write: 1463.26 ops/sec (1.37 ms/op), 33443 total ops
-```
-
-If you open the **Metrics** tab of the universe, you should see the metrics graphs, as shown in the following illustration:
-
-![YEDIS Load Metrics Per Node](/images/ee/multi-zone-universe-yedis-load-metrics.png)
-
-Note that these server-side metrics tally with the client-side metrics reported by the load tester.
-
-You should stop the sample application.
-
-## Examine data
-
-You can connect to the YCQL service by executing the following command:
-
-```sh
-/home/yugabyte/tserver/bin/ycqlsh <ip_address_of_the_node>
-```
-
-You can view the table schema and the data, as follows:
-
-```sql
-ycqlsh> DESCRIBE ybdemo_keyspace.cassandrakeyvalue;
-
-CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
-  k text PRIMARY KEY,
-  v blob
-) WITH default_time_to_live = 0;
-```
-
-```sql
-ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
-```
-
-```output
- k          | v
-------------+-----------------------------------------
- key:101323 | 0x4276616c3a3130313332336be1dd6597e2...
- key:159968 | 0x4276616c3a3135393936381ed99587c08f...
-  key:24879 | 0x4276616c3a3234383739054071b34c3fb6...
- key:294799 | 0x4276616c3a3239343739398b312748e80e...
- key:297045 | 0x4276616c3a32393730343525764eedee94...
-
-(5 rows)
-```
-
-You can connect to the YEDIS service by executing the following command:
-
-```sh
-/home/yugabyte/tserver/bin/redis-cli -h <ip_address_of_the_node>
-```
-
-You can view the data by running the following `GET key` commands:
-
-```sh
-10.138.0.4:6379> GET key:0
-```
-
-```output
-"Bval:0\x1b\x942\xea\xf0Q\xd1O\xdb\xf8...=V"
-```
-
-```sh
-10.138.0.4:6379> GET key:1
-```
-
-```output
-"Bval:1\t\x1e\xa0=\xb66\x8b\x8eV\x82...,c"
-```
+It is possible to repeat the same experiment with the `RedisKeyValue` app and get similar results.
