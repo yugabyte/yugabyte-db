@@ -519,11 +519,8 @@ class YBClient {
   // CDC Stream related methods.
 
   // Create a new CDC stream.
-  Result<CDCStreamId> CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      const master::SysCDCStreamEntryPB::State& initial_state =
-          master::SysCDCStreamEntryPB::ACTIVE);
+  Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
+                                      const std::unordered_map<std::string, std::string>& options);
 
   void CreateCDCStream(const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
@@ -548,10 +545,6 @@ class YBClient {
                     StdStatusCallback callback);
 
   void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
-
-  // Update a CDC stream's options.
-  CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
-                                 const master::SysCDCStreamEntryPB& new_entry);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.

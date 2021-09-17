@@ -448,8 +448,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (CreateCDCStream)
     (DeleteCDCStream)
     (ListCDCStreams)
-    (GetCDCStream)
-    (UpdateCDCStream));
+    (GetCDCStream));
 
 // ------------------------------------------------------------------------------------------------
 // Miscellaneous
