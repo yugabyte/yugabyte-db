@@ -11,12 +11,10 @@ import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
-
 import java.io.IOException;
-
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-
+import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -48,7 +46,14 @@ public class AlertChannelSlack implements AlertChannelInterface {
       httpPost.setHeader("Accept", "application/json");
       httpPost.setHeader("Content-type", "application/json");
 
-      client.execute(httpPost);
+      HttpResponse response = client.execute(httpPost);
+
+      if (response.getStatusLine().getStatusCode() != 200) {
+        throw new PlatformNotificationException(
+            String.format(
+                "Error sending Slack message for alert %s: error response %s received",
+                alert.getName(), response.getStatusLine().getStatusCode()));
+      }
     } catch (IOException e) {
       throw new PlatformNotificationException(
           String.format(

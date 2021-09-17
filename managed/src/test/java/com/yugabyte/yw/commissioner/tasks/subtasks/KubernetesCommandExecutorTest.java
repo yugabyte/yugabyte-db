@@ -45,6 +45,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -92,6 +93,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     return new GuiceApplicationBuilder()
         .disable(SwaggerModule.class)
+        .disable(GuiceModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(KubernetesManager.class).toInstance(kubernetesManager))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))

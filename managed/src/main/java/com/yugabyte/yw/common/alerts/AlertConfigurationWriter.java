@@ -118,6 +118,7 @@ public class AlertConfigurationWriter {
               : null;
       if (definition == null || configuration == null || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
+        requiresReload.set(true);
         return SyncResult.REMOVED;
       }
       if (definition.isConfigWritten()) {

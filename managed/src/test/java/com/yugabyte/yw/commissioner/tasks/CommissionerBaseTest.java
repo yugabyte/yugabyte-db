@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import java.util.Map;
 import java.util.UUID;
+import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.mockito.Mock;
 import org.pac4j.play.CallbackController;
@@ -131,6 +132,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     return configureApplication(
             new GuiceApplicationBuilder()
                 .disable(SwaggerModule.class)
+                .disable(GuiceModule.class)
                 .configure((Map) Helpers.inMemoryDatabase())
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
                 .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))

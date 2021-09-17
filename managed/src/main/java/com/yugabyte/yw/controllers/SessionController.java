@@ -23,14 +23,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
@@ -39,7 +37,6 @@ import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -53,14 +50,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -433,15 +428,9 @@ public class SessionController extends AbstractPlatformController {
       role = Role.SuperAdmin;
     }
     passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-    alertDestinationService.createDefaultDestination(cust.uuid);
 
-    List<AlertConfiguration> alertConfigurations =
-        Arrays.stream(AlertTemplate.values())
-            .filter(AlertTemplate::isCreateForNewCustomer)
-            .map(template -> alertConfigurationService.createConfigurationTemplate(cust, template))
-            .map(AlertConfigurationTemplate::getDefaultConfiguration)
-            .collect(Collectors.toList());
-    alertConfigurationService.save(alertConfigurations);
+    alertDestinationService.createDefaultDestination(cust.uuid);
+    alertConfigurationService.createDefaultConfigs(cust);
 
     Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.uuid);
     String authToken = user.createAuthToken();
