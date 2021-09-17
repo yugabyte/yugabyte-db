@@ -12,22 +12,153 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section describes how to create a YugabyteDB universe with nodes in more than one cloud provider.
+This page describes how to create a YugabyteDB universe spanning multiple geographic regions and cloud providers. In this example, you'll deploy a single Yugabyte universe across AWS (US-West-2), Google Cloud (Central-1), and Microsoft Azure (US-East1). 
+
+To do this, you'll need to:
+
+* [Check the prerequisites](#prerequisites)
+* [Set up instance VMs](#set-up-instance-vms) in each cloud (AWS, GCP, and Azure)
+* [Set up VPC peering](#set-up-vpc-peering) through a VPN tunnel across these 3 clouds
+* [Deploy Yugabyte Platform](#deploy-yugabyte-platform) on one of the clouds
+* [Deploy a Yugabyte universe](#deploy-a-universe) on your multi-cloud topology
+* [Run a global application](#run-a-global-application)
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud providers of your choice, as described in [Configure a cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
+* Ability to create VPC, subnets and provision VMs in each of the clouds of choice
+* Root access on the instances to be able to create the Yugabyte user
+* The instances should have access to the internet to download software (not required, but helpful)
 
-Specifically, you need:
+## Set up instance VMs
 
-* thing1
-* thing2
+For on-premises deployments of Yugabyte universes, you need to import nodes that can be managed by Yugabyte Platform. This page outlines the steps required to prepare these YugabyteDB nodes for on-premises deployments.
 
-{{< warning title="notes from Tim start here" >}}
-Notes from Tim start here, and go through to the next warning box.
-{{< /warning >}}
+## Ports
 
-## Set up the multi-region demo
+The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the platform node):
+
+* 7100 - Master RPC
+* 9100 - TServer RPC
+
+The following ports must be exposed for intra-cluster communication, and you should additionally expose these ports to administrators or users monitoring the system, as these ports provide valuable diagnostic troubleshooting and metrics:
+
+* 9300 - Prometheus metrics
+* 7000 - Master HTTP endpoint
+* 9000 - TServer HTTP endpoint
+* 11000 - YEDIS API
+* 12000 - YCQL API
+* 13000 - YSQL API
+
+The following nodes must be available to your application or any user attempting to connect to the YugabyteDB, in addition to intra-node communication:
+
+* 5433 - YSQL server
+* 9042 - YCQL server
+* 6379 - YEDIS server
+
+For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports).
+
+## Preparing nodes
+
+To prepare nodes for on premises deployment:
+
+1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/latest/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/latest/deploy/checklist/#running-on-public-clouds). 
+
+1. Install the prerequisites and verify the system resource limits as described in [system configuration](/latest/deploy/manual-deployment/system-config).
+
+1. Ensure you have SSH access to the machine and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
+
+1. Verify that you can SSH into this node (from your local machine if the node has a public address).
+
+    ```sh
+    $ ssh -i your_private_key.pem ssh_user@node_ip
+    ```
+
+**Do the following with sudo access:**
+
+1. Create the `yugabyte:yugabyte` user + group.
+
+1. Set the home directory to /home/yugabyte.
+
+1. Create the `prometheus:prometheus` user + group.
+
+    {{< tip title="Tip" >}}
+If you're using an LDAP directory for managing system users, you can pre-provision Yugabyte and Prometheus users: 
+
+* The `yugabyte` user should belong to the `yugabyte` group.
+
+* Set the home directory for the `yugabyte` user (default /home/yugabyte) and ensure the directory is owned by `yugabyte:yugabyte`. The home directory is used during cloud provider configuration.
+    
+* The Prometheus username and the group can be user-defined. You enter the custom user during cloud provider configuration.
+    {{< /tip >}}
+
+1. Ensure you can schedule Cron jobs with Crontab.
+
+    \
+    Cron jobs are used for health monitoring, log file rotation, and cleanup of system core files.
+
+    {{< tip title="Tip" >}}
+For any third-party cron scheduling tools, you can disable Crontab and add these cron entries: 
+
+```text
+# Ansible: cleanup core files hourly
+0 * * * * /home/yugabyte/bin/clean_cores.sh
+# Ansible: cleanup yb log files hourly
+5 * * * * /home/yugabyte/bin/zip_purge_yb_logs.sh
+# Ansible: Check liveness of master
+*/1 * * * * /home/yugabyte/bin/yb-server-ctl.sh master cron-check || /home/yugabyte/bin/yb-server-ctl.sh master start
+# Ansible: Check liveness of tserver
+*/1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
+```
+
+\
+Disabling Crontab creates alerts after the universe is created, but they can be ignored. But you need to ensure cron jobs are set appropriately for the platform to work as expected.
+    {{< /tip >}}
+
+1. Verify that Python 2.7 is installed.
+
+1. Enable core dumps and set ulimits:
+
+    ```text
+    *       hard        core        unlimited
+    *       soft        core        unlimited
+    ```
+
+1. Configure SSH as follows:
+
+    * Disable `sshguard`.
+    * Set `UseDNS no` in `/etc/ssh/sshd_config` (disables reverse lookup, which is used for auth; DNS is still useable).
+
+1. Set `vm.swappiness` to 0.
+
+1. Set `mount` path permissions to 0755.
+
+## Set up VPC peering
+
+Once you've set up VPC peering through a VPN tunnel, ensure that each node is able to reach all the other nodes in the cluster.
+
+## Deploy Yugabyte Platform
+
+Navigate to Configs > On-Premises Datacenter, and click Edit Provider. On the Provider Info tab... (Let's name this `onprem-provider`)
+
+### Define instance types
+
+On the Instances tab...
+
+For each provider, define an instance type...
+
+### Define regions
+
+On the On-Premises Datacenter tab, click Regions and Zones...
+
+### Add instances
+
+Navigate to Configs > On-Premises Datacenter, and click Manage Instances...
+
+## Deploy a universe
+
+
+
+
 
 ### Get access to the instances
 
@@ -164,27 +295,7 @@ To create a multi-cloud universe, do the following:
 Nothing much edited below here, and may not be useful at all?
 {{< /warning >}}
 
-## 2. Examine the universe
-
-Wait for the universe to get created. Note that Yugabyte Platform can manage multiple universes as shown below.
-
-![Multiple universes in Yugabyte Platform console](/images/ee/multi-region-multiple-universes.png)
-
-Once the universe is created, you should see something like the screenshot below in the universe overview.
-
-![Nodes for a Pending Universe](/images/ee/multi-region-universe-overview.png)
-
-### Universe nodes
-
-You can browse to the **Nodes** tab of the universe to see a list of nodes. Note that the nodes are across the different geographic regions.
-
-![Nodes for a Pending Universe](/images/ee/multi-region-universe-nodes.png)
-
-Browse to the cloud provider's instances page. In this example, since we are using Google Cloud Platform as the cloud provider, browse to `Compute Engine` -> `VM Instances` and search for instances that have `helloworld2` in their name. You should see something as follows. It is easy to verify that the instances were created in the appropriate regions.
-
-![Instances for a Pending Universe](/images/ee/multi-region-universe-gcp-instances.png)
-
-## 3. Run a global application
+## Run a global application
 
 In this section, we are going to connect to each node and perform the following:
 
@@ -249,20 +360,18 @@ You can find the region codes for each of the nodes by browsing to the **Nodes**
 
 ![Region Codes For Universe Nodes](/images/ee/multi-region-universe-node-regions.png)
 
-## 4. Check the performance characteristics of the app
+### Check the performance characteristics of the app
 
 Recall that we expect the app to have the following characteristics based on its deployment configuration:
 
 * Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
 * Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
 
-Let us verify this by browse to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the screenshot below.
+You can verify this by browsing to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the following screenshot.
 
 ![YCQL Load Metrics](/images/ee/multi-region-read-write-metrics.png)
 
 Note the following:
 
-* Write latency is **139ms** because it has to replicate data to a quorum of nodes across multiple geographic regions.
-* Read latency is **0.23 ms** across all regions. Note that the app is performing **100K reads/sec** across the regions (about 33K reads/sec in each region).
-
-It is possible to repeat the same experiment with the `RedisKeyValue` app and get similar results.
+* Write latency is higher because it has to replicate data to a quorum of nodes across multiple regions and providers.
+* Read latency is low across all nodes.
