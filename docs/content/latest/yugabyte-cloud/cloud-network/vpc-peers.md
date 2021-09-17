@@ -29,27 +29,48 @@ VPC peering is set up by Yugabyte. Self service VPC Peering is in development an
 
 {{< /note >}}
 
+## What to send to Yugabyte Support
+
 To set up a VPC peer, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the following information:
 
 - Cloud provider of choice
 - Region
 - Preferred CIDR to use for your database VPC.
-- The VPCs on your end that you want to with peer with, including
+- Details of the VPC that you want to with peer with, including
   - AWS account or GCP project
   - VPC ID/network name
-  - CIDR blocks of the VPC/network
+  - CIDR blocks of the VPC network
 
 Once Support creates the Yugabyte Cloud cluster and database, you will be contacted with the following information:
 
 - The credentials for your YugabyteDB database.
 - The connection endpoints (if you are using YSQL this is not needed).
 - VPC peering details, including:
-  - For GCP, the project and the network name that you need to peer to, so that you can create a peer on your end.
-  - For AWS, a peering ID; this will also be displayed in your AWS console. You also need to create a routing table entry for your subnets/VPC to enable connectivity between your network and Yugabyte Cloud. 
+  - GCP - the project ID and the network name that you need to peer to.
+  - AWS - a Peering Connection ID (this will also be displayed in your AWS console) and the CIDR block for your Yugabyte Cloud cluster. You will also receive a peering connection request.
 
-Use this information to configure your VPC so that it can connect to the network where the YugabyteDB database has been provisioned. 
+Use this information to configure your VPC so that it can connect to the network where the YugabyteDB database has been provisioned.
 
-Finally, [add an IP allow list](../../cloud-basics/add-connections) for your Yugabyte Cloud cluster to enable certain instances or the whole CIDR range of your network (or particular subnets) to create the ingress rules to allow connections.
+## Configuring the VPC peer connection
+
+### GCP
+
+In the Google Cloud Console, create a peering connection using the project ID and VPC network name.
+
+### AWS
+
+Use the VPC Dashboard to do the following:
+
+- Enable DNS hostnames and DNS resolution. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the Yugabyte Cloud cluster is accessed from the VPC.
+- Approve the peering connection request that you received from Yugabyte.
+- Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
+
+### Yugabyte Cloud
+
+Before your VPC peer can connect to your cluster, you must:
+
+1. Locate the VPC CIDR block addresses (or subset) associated with the VPC for your cloud provider.
+1. Add at least one of these CIDR blocks to the [IP allow list](../../cloud-basics/add-connections) for your Yugabyte Cloud cluster.
 
 <!--
 ## Add VPC peers
