@@ -41,6 +41,8 @@ To set up a VPC peer, contact [Yugabyte Support](https://support.yugabyte.com/hc
   - VPC ID/network name
   - CIDR blocks of the VPC network
 
+## Configuring the VPC peer connection
+
 Once Support creates the Yugabyte Cloud cluster and database, you will be contacted with the following information:
 
 - The credentials for your YugabyteDB database.
@@ -50,8 +52,6 @@ Once Support creates the Yugabyte Cloud cluster and database, you will be contac
   - AWS - a Peering Connection ID (this will also be displayed in your AWS console) and the CIDR block for your Yugabyte Cloud cluster. You will also receive a peering connection request.
 
 Use this information to configure your VPC so that it can connect to the network where the YugabyteDB database has been provisioned.
-
-## Configuring the VPC peer connection
 
 ### GCP
 
