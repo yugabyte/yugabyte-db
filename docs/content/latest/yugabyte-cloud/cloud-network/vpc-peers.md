@@ -23,11 +23,33 @@ Virtual Private Cloud (VPC) peering allows applications running on other cloud i
 
 {{< note title="Note" >}}
 
-To use VPC peering in a cluster, your cluster must be deployed in a dedicated VPC that is peered with your application VPC. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) to set up dedicated VPCs and peering before deploying your cluster. VPC peering is only supported in Paid clusters.
+To use VPC peering in a cluster, your cluster must be deployed in a dedicated VPC that is peered with your application VPC. You must set up dedicated VPCs and peering before deploying your cluster. VPC peering is only supported in Paid clusters.
 
-Self service VPC Peering is in development and will be available in the future.
+VPC peering is set up by Yugabyte. Self service VPC Peering is in development and will be available in the future.
 
 {{< /note >}}
+
+To set up a VPC peer, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the following information:
+
+- Cloud provider of choice
+- Region
+- Preferred CIDR to use for your database VPC.
+- The VPCs on your end that you want to with peer with, including
+  - AWS account or GCP project
+  - VPC ID/network name
+  - CIDR blocks of the VPC/network
+
+Once Support creates the Yugabyte Cloud cluster and database, they send a confirmation email with the following information:
+
+- The password required to access your YugabyteDB database.
+- The connection endpoints (if you are using YSQL this is not needed).
+- VPC peering details, including:
+  - For GCP, the project and the network name that you need to peer to, so that you can create a peer on your end.
+  - For AWS, a peering request from Yugabyte Cloud that you must accept. You also need to create a routing table entry for your subnets/VPC to enable connectivity between your network and Yugabyte Cloud. 
+
+Use this information to configure your VPC so that it can connect to the network where the YugabyteDB database has been provisioned. 
+
+Finally, [add an IP allow list](../../cloud-basics/add-connections) for your Yugabyte Cloud cluster to enable certain instances or the whole CIDR range of your network (or particular subnets) to create the ingress rules to allow connections.
 
 <!--
 ## Add VPC peers
