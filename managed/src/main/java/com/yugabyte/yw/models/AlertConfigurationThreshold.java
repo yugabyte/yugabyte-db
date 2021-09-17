@@ -30,7 +30,6 @@ public class AlertConfigurationThreshold {
 
   @ApiModelProperty(
       value = "Threshold condition (greater than, or less than)",
-      allowableValues = ">, <",
       accessMode = READ_WRITE)
   private Condition condition;
 

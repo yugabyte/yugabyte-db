@@ -106,7 +106,6 @@ public class Schedule extends Model {
 
   @ApiModelProperty(
       value = "Status of the task. Possible values are _Active_, _Paused_, or _Stopped_.",
-      allowableValues = "Active, Paused, Stopped",
       accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)

@@ -585,7 +585,7 @@
       "properties" : {
         "condition" : {
           "description" : "Threshold condition (greater than, or less than)",
-          "enum" : [ ">", "<" ],
+          "enum" : [ "GREATER_THAN", "LESS_THAN" ],
           "type" : "string"
         },
         "threshold" : {

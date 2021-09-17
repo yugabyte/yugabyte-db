@@ -134,10 +134,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   private String sourceName;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(
-      value = "The alert's state",
-      allowableValues = "firing, acknowledged, resolved",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The alert's state", accessMode = READ_ONLY)
   private State state = State.ACTIVE;
 
   @Transient
