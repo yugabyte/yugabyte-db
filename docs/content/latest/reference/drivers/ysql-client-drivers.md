@@ -83,7 +83,7 @@ $ make install
 
 For details on installing and using Npgsql, see [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with Npgsql, see [Build a C++ application](../../../quick-start/build-apps/csharp/ysql/).
+To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../quick-start/build-apps/csharp/ysql/).
 
 #### Install the driver
 
