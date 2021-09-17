@@ -988,16 +988,8 @@ Status PgApiImpl::StopOperationsBuffering() {
   return pg_session_->StopOperationsBuffering();
 }
 
-Status PgApiImpl::ResetOperationsBuffering() {
-  return pg_session_->ResetOperationsBuffering();
-}
-
-Status PgApiImpl::FlushBufferedOperations() {
-  return pg_session_->FlushBufferedOperations();
-}
-
-void PgApiImpl::DropBufferedOperations() {
-  pg_session_->DropBufferedOperations();
+void PgApiImpl::ResetOperationsBuffering() {
+  pg_session_->ResetOperationsBuffering();
 }
 
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
@@ -1365,21 +1357,25 @@ Status PgApiImpl::BeginTransaction() {
 
 Status PgApiImpl::RecreateTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  pg_session_->DropBufferedOperations();
   return pg_txn_manager_->RecreateTransaction();
 }
 
 Status PgApiImpl::RestartTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  pg_session_->DropBufferedOperations();
   return pg_txn_manager_->RestartTransaction();
 }
 
 Status PgApiImpl::CommitTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitTransaction();
 }
 
 Status PgApiImpl::AbortTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  pg_session_->DropBufferedOperations();
   return pg_txn_manager_->AbortTransaction();
 }
 

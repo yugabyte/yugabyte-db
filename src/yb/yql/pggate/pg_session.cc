@@ -920,12 +920,9 @@ Status PgSession::StopOperationsBuffering() {
   return FlushBufferedOperations();
 }
 
-Status PgSession::ResetOperationsBuffering() {
-  SCHECK(buffered_keys_.empty(),
-         IllegalState,
-         Format("Pending operations are not expected, $0 found", buffered_keys_.size()));
+void PgSession::ResetOperationsBuffering() {
+  DropBufferedOperations();
   buffering_enabled_ = false;
-  return Status::OK();
 }
 
 Status PgSession::FlushBufferedOperations() {

@@ -610,16 +610,8 @@ YBCStatus YBCPgStopOperationsBuffering() {
   return ToYBCStatus(pgapi->StopOperationsBuffering());
 }
 
-YBCStatus YBCPgResetOperationsBuffering() {
-  return ToYBCStatus(pgapi->ResetOperationsBuffering());
-}
-
-YBCStatus YBCPgFlushBufferedOperations() {
-  return ToYBCStatus(pgapi->FlushBufferedOperations());
-}
-
-void YBCPgDropBufferedOperations() {
-  pgapi->DropBufferedOperations();
+void YBCPgResetOperationsBuffering() {
+  pgapi->ResetOperationsBuffering();
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
