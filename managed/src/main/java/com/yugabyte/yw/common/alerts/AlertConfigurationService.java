@@ -41,6 +41,7 @@ import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -597,6 +598,16 @@ public class AlertConfigurationService {
         .setThresholdReadOnly(template.isThresholdReadOnly())
         .setThresholdConditionReadOnly(template.isThresholdConditionReadOnly())
         .setThresholdUnitName(template.getThresholdUnitName());
+  }
+
+  public void createDefaultConfigs(Customer customer) {
+    List<AlertConfiguration> alertConfigurations =
+        Arrays.stream(AlertTemplate.values())
+            .filter(AlertTemplate::isCreateForNewCustomer)
+            .map(template -> createConfigurationTemplate(customer, template))
+            .map(AlertConfigurationTemplate::getDefaultConfiguration)
+            .collect(Collectors.toList());
+    save(alertConfigurations);
   }
 
   private AlertDefinition createEmptyDefinition(AlertConfiguration configuration) {

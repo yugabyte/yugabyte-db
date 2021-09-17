@@ -56,6 +56,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import kamon.instrumentation.play.GuiceModule;
 import org.junit.After;
 import org.junit.Test;
 import org.pac4j.play.CallbackController;
@@ -87,6 +88,7 @@ public class SessionControllerTest {
     app =
         new GuiceApplicationBuilder()
             .disable(SwaggerModule.class)
+            .disable(GuiceModule.class)
             .configure((Map) Helpers.inMemoryDatabase())
             .configure(ImmutableMap.of("yb.multiTenant", isMultiTenant))
             .overrides(bind(Scheduler.class).toInstance(mockScheduler))
