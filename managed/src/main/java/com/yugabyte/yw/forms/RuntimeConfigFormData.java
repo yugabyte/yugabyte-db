@@ -44,9 +44,7 @@ public class RuntimeConfigFormData {
 
   @ApiModel(description = "Scoped configuration")
   public static class ScopedConfig {
-    @ApiModelProperty(
-        value = "Scope type",
-        allowableValues = "GLOBAL, CUSTOMER, UNIVERSE, PROVIDER")
+    @ApiModelProperty(value = "Scope type")
     public final ScopeType type;
 
     @ApiModelProperty(value = "Scope UIID")

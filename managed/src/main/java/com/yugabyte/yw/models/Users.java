@@ -136,9 +136,7 @@ public class Users extends Model {
   // The role of the user.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(
-      value = "User role",
-      allowableValues = "Admin, BackupAdmin, ReadOnly, SuperAdmin")
+  @ApiModelProperty(value = "User role")
   private Role role;
 
   public Role getRole() {
