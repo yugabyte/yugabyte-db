@@ -22,11 +22,13 @@ showAsideToc: true
 
 ### Known issues
 
-- **Cloud Shell** - No support for Firefox.
 - **Cloud Shell** - The cloud shell cannot display a greater number of lines of output than the page size. For example, if you run a query that returns more rows than there are lines of output in the current browser view, the results will not display.
 - **Cloud Shell** - No support for invited (Developer) users.
 - **Cloud Shell** - No support for keyboard shortcuts on Windows. Use the right-click menu.
+- **Cloud Shell** - No support for keyboard shortcuts in Firefox. Use the right-click menu.
+- **Cloud Shell** - No support for VPC-peered clusters.
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
+- **Clusters** - No support for scaling vCPUs on single node clusters.
 
 ## September 8, 2021
 
