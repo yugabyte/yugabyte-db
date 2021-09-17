@@ -122,7 +122,6 @@ public class CertificateInfo extends Model {
   @ApiModelProperty(
       value = "Type of the certificate",
       example = "SelfSigned",
-      allowableValues = "SelfSigned, CustomCertHostPath, CustomServerCert",
       accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
