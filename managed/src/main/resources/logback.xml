@@ -76,6 +76,8 @@
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />
 
+  <logger name="oshi.software.os.linux.LinuxFileSystem" level="ERROR" />
+
   <root level="WARN">
     <appender-ref ref="ASYNCSTDOUT" />
     <appender-ref ref="ASYNCFILE" />
