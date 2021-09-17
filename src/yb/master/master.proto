@@ -1008,7 +1008,11 @@ message CreateTableRequestPB {
 
   required string name = 1;
   optional SchemaPB schema = 2;
-  optional int32 num_tablets = 3;  // deprecated
+
+  // Specifies number of tablets to create. If it's not set here
+  // 'SchemaPB::TablePropertiesPB::num_tablets' from 'schema' field will be used.
+  optional int32 num_tablets = 3;
+
   optional PartitionSchemaPB partition_schema = 5;
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
@@ -1939,11 +1943,13 @@ message CreateCDCStreamResponsePB {
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
+  repeated bytes not_found_stream_ids = 2;
 }
 
 message ListCDCStreamsRequestPB {
@@ -2067,10 +2073,13 @@ message SetupUniverseReplicationResponsePB {
 
 message DeleteUniverseReplicationRequestPB {
   optional string producer_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
+  // In case force is set, then still return any ignored warnings.
+  repeated AppStatusPB warnings = 2;
 }
 
 message AlterUniverseReplicationRequestPB {

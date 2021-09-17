@@ -50,6 +50,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "access/ybcam.h"
 #include "optimizer/ybcplan.h"
 
 /*
@@ -2683,6 +2684,26 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				return false;
 			}
 
+			int resno = tle->resno;
+			TupleDesc tupleDesc = RelationGetDescr(relation);
+			Oid target_collation_id = ybc_get_attcollation(tupleDesc, resno);
+
+			/*
+			 * Updates involving non-C collation columns cannot do pushdown.
+			 * If an indexed column id has a non-C collation and we have in an
+			 * UPDATE statement set id = id || 'a'. After evaluating id || 'a',
+			 * we need to write a collation-encoded string of the result back to
+			 * column id. This requires computing a collation sort key of the
+			 * text result and needs postgres collation info but that is not
+			 * accessible in the tablet server. We can allow pushdown if we can
+			 * detect that column id is not a key-column. In that case we just
+			 * need to store the result itself with no collation-encoding.
+			 */
+			if (YBIsCollationValidNonC(target_collation_id))
+			{
+				RelationClose(relation);
+				return false;
+			}
 
 			if (needs_pushdown)
 			{

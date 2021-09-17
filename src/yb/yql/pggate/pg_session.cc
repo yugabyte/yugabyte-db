@@ -16,6 +16,7 @@
 #include <memory>
 #include <boost/optional.hpp>
 
+#include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -33,6 +34,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
@@ -528,6 +530,7 @@ size_t hash_value(const RowIdentifier& key) {
 
 PgSession::PgSession(
     client::YBClient* client,
+    PgClient* pg_client,
     const string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     scoped_refptr<server::HybridClock> clock,
@@ -535,6 +538,7 @@ PgSession::PgSession(
     const YBCPgCallbacks& pg_callbacks)
     : client_(client),
       session_(BuildSession(client_)),
+      pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       clock_(std::move(clock)),
       catalog_session_(BuildSession(client_, clock_)),
@@ -604,15 +608,6 @@ client::YBNamespaceAlterer* PgSession::NewNamespaceAlterer(
   return client_->NewNamespaceAlterer(namespace_name, GetPgsqlNamespaceId(database_oid));
 }
 
-Status PgSession::ReserveOids(const PgOid database_oid,
-                              const PgOid next_oid,
-                              const uint32_t count,
-                              PgOid *begin_oid,
-                              PgOid *end_oid) {
-  return client_->ReservePgsqlOids(GetPgsqlNamespaceId(database_oid), next_oid, count,
-                                   begin_oid, end_oid);
-}
-
 Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   return client_->GetYsqlCatalogMasterVersion(version);
 }
@@ -637,7 +632,7 @@ Status PgSession::CreateSequencesDataTable() {
   CHECK_OK(schemaBuilder.Build(&schema));
 
   // Generate the table id.
-  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
 
   // Try to create the table.
   std::unique_ptr<yb::client::YBTableCreator> table_creator(client_->NewTableCreator());
@@ -667,7 +662,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
                                       uint64_t ysql_catalog_version,
                                       int64_t last_val,
                                       bool is_called) {
-  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   auto result = LoadTable(oid);
   if (!result.ok()) {
     RETURN_NOT_OK(CreateSequencesDataTable());
@@ -703,7 +698,7 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
                                       boost::optional<int64_t> expected_last_val,
                                       boost::optional<bool> expected_is_called,
                                       bool* skipped) {
-  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
 
   std::shared_ptr<client::YBPgsqlWriteOp> psql_write(t->NewPgsqlUpdate());
@@ -758,7 +753,7 @@ Status PgSession::ReadSequenceTuple(int64_t db_oid,
                                     uint64_t ysql_catalog_version,
                                     int64_t *last_val,
                                     bool *is_called) {
-  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
 
   std::shared_ptr<client::YBPgsqlReadOp> psql_read(t->NewPgsqlSelect());
@@ -804,7 +799,7 @@ Status PgSession::ReadSequenceTuple(int64_t db_oid,
 }
 
 Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
 
   auto psql_delete(t->NewPgsqlDelete());
@@ -817,7 +812,7 @@ Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
 }
 
 Status PgSession::DeleteDBSequences(int64_t db_oid) {
-  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   Result<PgTableDesc::ScopedRefPtr> r = LoadTable(oid);
   if (!r.ok()) {
     // Sequence table is not yet created.

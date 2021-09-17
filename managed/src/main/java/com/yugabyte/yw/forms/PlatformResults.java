@@ -15,6 +15,7 @@ import static play.mvc.Results.ok;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.password.RedactingService;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
@@ -42,7 +43,9 @@ public class PlatformResults {
    * @param data - to be serialized to json and returned
    */
   public static Result withData(Object data) {
-    return Results.ok(Json.toJson(data));
+    JsonNode dataObj = Json.toJson(data);
+    dataObj = RedactingService.filterSecretFields(dataObj);
+    return Results.ok(dataObj);
   }
 
   @ApiModel(description = "Generic error response from the Yugabyte Platform API")
@@ -51,7 +54,7 @@ public class PlatformResults {
     public boolean success = false;
 
     @ApiModelProperty(
-        value = "User visible unstructured error message",
+        value = "User-visible unstructured error message",
         example = "There was a problem creating the universe")
     public String error;
 
@@ -80,7 +83,7 @@ public class PlatformResults {
     public boolean success = false;
 
     @ApiModelProperty(
-        value = "User visible error message as json object",
+        value = "User visible error message as JSON object",
         dataType = "Object",
         example = "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
         required = false)
@@ -104,7 +107,7 @@ public class PlatformResults {
   public static class YBPSuccess extends OkResult {
 
     @ApiModelProperty(
-        value = "API operation success",
+        value = "API operation status. A value of true indicates the operation was successful.",
         accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     public final boolean success;
 

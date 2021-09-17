@@ -50,6 +50,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -57,6 +58,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -64,14 +66,17 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashSet;
@@ -391,6 +396,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.universeUUID = taskParams().universeUUID;
     UniverseUpdateSucceeded task = createTask(UniverseUpdateSucceeded.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createChangeAdminPasswordTask(
+      Cluster primaryCluster,
+      String ysqlPassword,
+      String ysqlCurrentPassword,
+      String ysqlUserName,
+      String ysqlDbName,
+      String ycqlPassword,
+      String ycqlCurrentPassword,
+      String ycqlUserName) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("ChangeAdminPassword", executor);
+    ChangeAdminPassword.Params params = new ChangeAdminPassword.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.primaryCluster = primaryCluster;
+    params.ycqlNewPassword = ycqlPassword;
+    params.ysqlNewPassword = ysqlPassword;
+    params.ycqlCurrentPassword = ycqlCurrentPassword;
+    params.ysqlCurrentPassword = ysqlCurrentPassword;
+    params.ycqlUserName = ycqlUserName;
+    params.ysqlUserName = ysqlUserName;
+    params.ysqlDbName = ysqlDbName;
+    ChangeAdminPassword task = createTask(ChangeAdminPassword.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
@@ -1377,12 +1410,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddrs, certificate);
-
-    HostAndPort hp =
-        HostAndPort.fromParts(
-            node.cloudInfo.private_ip,
-            server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-    return client.waitForServer(hp, 5000);
+    try {
+      HostAndPort hp =
+          HostAndPort.fromParts(
+              node.cloudInfo.private_ip,
+              server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
+      return client.waitForServer(hp, 5000);
+    } finally {
+      ybService.closeClient(client, masterAddrs);
+    }
   }
 
   public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs) {
@@ -1477,17 +1513,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return false;
     }
 
-    final CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-    if (task == null) {
+    TaskInfo taskInfo = TaskInfo.get(userTaskUUID);
+    if (taskInfo == null) {
       return false;
     }
 
-    return !((task.getTarget() == CustomerTask.TargetType.Universe)
-        && (task.getType() == CustomerTask.TaskType.Create
-            || task.getType() == CustomerTask.TaskType.UpgradeVMImage
-            || task.getType() == CustomerTask.TaskType.Delete
-            || task.getType() == CustomerTask.TaskType.Pause
-            || task.getType() == CustomerTask.TaskType.Resume));
+    TaskType taskType = taskInfo.getTaskType();
+    return !(taskType == TaskType.CreateUniverse
+        || taskType == TaskType.CreateKubernetesUniverse
+        || taskType == TaskType.DestroyUniverse
+        || taskType == TaskType.DestroyKubernetesUniverse
+        || taskType == TaskType.PauseUniverse
+        || taskType == TaskType.ResumeUniverse);
   }
 
   // TODO: Use of synchronized in static scope! Looks suspicious.

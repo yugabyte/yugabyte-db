@@ -45,7 +45,7 @@ import org.apache.commons.lang3.StringUtils;
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
-@ApiModel(description = "Alert information. which is used to send alert notification.")
+@ApiModel(description = "Alert definition. Used to send an alert notification.")
 public class Alert extends Model implements AlertLabelsProvider {
 
   public enum State {
@@ -90,28 +90,28 @@ public class Alert extends Model implements AlertLabelsProvider {
 
   @Id
   @Column(nullable = false, unique = true)
-  @ApiModelProperty(value = "Alert uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Cutomer uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Cutomer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Create Date time info.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert creation timestamp", accessMode = READ_ONLY)
   private Date createTime = nowWithoutMillis();
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Acknowledge Date time info.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Timestamp at which the alert was acknowledged", accessMode = READ_ONLY)
   private Date acknowledgedTime;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Resolved Date time info.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Timestamp at which the alert was resolved", accessMode = READ_ONLY)
   private Date resolvedTime;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Alert configuration serverity.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert configuration severity", accessMode = READ_ONLY)
   private AlertConfiguration.Severity severity;
 
   @Transient
@@ -123,18 +123,21 @@ public class Alert extends Model implements AlertLabelsProvider {
               + " else 0 end)")
   private Integer severityIndex;
 
-  @ApiModelProperty(value = "Alert name.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The alert's name", accessMode = READ_ONLY)
   private String name;
 
   @Column(columnDefinition = "Text", nullable = false)
-  @ApiModelProperty(value = "Alert message.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The alert's message text", accessMode = READ_ONLY)
   private String message;
 
-  @ApiModelProperty(value = "Alert source name.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The source of the alert", accessMode = READ_ONLY)
   private String sourceName;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Alert state.", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "The alert's state",
+      allowableValues = "firing, acknowledged, resolved",
+      accessMode = READ_ONLY)
   private State state = State.ACTIVE;
 
   @Transient
@@ -147,32 +150,32 @@ public class Alert extends Model implements AlertLabelsProvider {
               + " else 0 end)")
   private Integer stateIndex;
 
-  @ApiModelProperty(value = "Alert definition Uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert definition UUID", accessMode = READ_ONLY)
   private UUID definitionUuid;
 
-  @ApiModelProperty(value = "Alert configuration Uuid.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert configuration UUID", accessMode = READ_ONLY)
   private UUID configurationUuid;
 
-  @ApiModelProperty(value = "Alert configuration type.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert configuration type", accessMode = READ_ONLY)
   private AlertConfiguration.TargetType configurationType;
 
   @OneToMany(mappedBy = "alert", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<AlertLabel> labels;
 
-  @ApiModelProperty(value = "Time of the last notification attempt.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Time of the last notification attempt", accessMode = READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date notificationAttemptTime;
 
-  @ApiModelProperty(value = "Time of the next notification attempt.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Time of the next notification attempt", accessMode = READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   private Date nextNotificationTime = nowWithoutMillis();
 
-  @ApiModelProperty(value = "Count of failures to send a notification.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Count of failures to send a notification", accessMode = READ_ONLY)
   @Column(nullable = false)
   private int notificationsFailed = 0;
 
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Alert state in last sent notification.", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Alert state in the last-sent notification", accessMode = READ_ONLY)
   private State notifiedState;
 
   private static final Finder<UUID, Alert> find = new Finder<UUID, Alert>(Alert.class) {};

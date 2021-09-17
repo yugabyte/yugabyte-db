@@ -2478,6 +2478,7 @@ setlocales(void)
 	/* This is because as of 06/15/2019 we don't support collation-aware string comparisons, */
 	/* but we still want to support storing UTF-8 strings. */
 	if (!locale &&
+		!kTestOnlyUseOSDefaultCollation &&
 		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb())) {
 		const char *kYBDefaultLocaleForSortOrder = "C";
 		const char *kYBDefaultLocaleForEncoding = "en_US.UTF-8";

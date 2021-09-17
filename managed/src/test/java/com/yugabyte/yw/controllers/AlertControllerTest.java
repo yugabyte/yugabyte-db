@@ -63,6 +63,7 @@ import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -683,9 +684,9 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken));
     AssertHelper.assertBadRequest(
         result,
-        "Unable to delete default alert destination "
-            + destinationUUID
-            + ", make another destination default at first.");
+        "Unable to delete default alert destination '"
+            + createdDestination.getName()
+            + "', make another destination default at first.");
   }
 
   @Test
@@ -883,7 +884,7 @@ public class AlertControllerTest extends FakeDBApplication {
             ImmutableMap.of(
                 AlertConfiguration.Severity.SEVERE,
                 new AlertConfigurationThreshold()
-                    .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
+                    .setCondition(Condition.GREATER_THAN)
                     .setThreshold(90D))));
     assertThat(
         template.getDurationSec(),
@@ -990,6 +991,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertConfiguration.setUuid(null);
     alertConfiguration.setCreateTime(null);
     alertConfiguration.setDestinationUUID(destination.getUuid());
+    alertConfiguration.setDefaultDestination(false);
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -1019,7 +1021,7 @@ public class AlertControllerTest extends FakeDBApplication {
             ImmutableMap.of(
                 AlertConfiguration.Severity.SEVERE,
                 new AlertConfigurationThreshold()
-                    .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
+                    .setCondition(Condition.GREATER_THAN)
                     .setThreshold(1D))));
     assertThat(configuration.getDurationSec(), equalTo(15));
     assertThat(configuration.getDestinationUUID(), equalTo(destination.getUuid()));
@@ -1045,6 +1047,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testUpdateConfiguration() {
     AlertDestination destination = createAlertDestination(false);
     alertConfiguration.setDestinationUUID(destination.getUuid());
+    alertConfiguration.setDefaultDestination(false);
 
     Result result =
         doRequestWithAuthTokenAndBody(

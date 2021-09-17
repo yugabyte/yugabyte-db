@@ -504,11 +504,6 @@ class TabletPeer : public consensus::ConsensusContext,
 
   TabletSplitter* tablet_splitter_;
 
-  // can_be_deleted_ is set to true if tablet can be deleted (all replicas have been split and
-  // tablet is no longer needed). After setting to true it will stay that way forever until
-  // TabletPeer is destroyed.
-  std::atomic<bool> can_be_deleted_ = {false};
-
   std::shared_future<client::YBClient*> client_future_;
 
   rpc::Messenger* messenger_;

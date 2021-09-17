@@ -43,7 +43,7 @@ bool HasExpiredTTL(const HybridTime& expiration_time, const HybridTime& read_hyb
 }
 
 const MonoDelta TableTTL(const Schema& schema) {
-  // In this context, a ttl of kMaxTtl indicates that the table has no TTL.
+  // In this context, a ttl of kMaxTtl indicates that the table has no default TTL.
   MonoDelta ttl = Value::kMaxTtl;
   if (schema.table_properties().HasDefaultTimeToLive()) {
     uint64_t default_ttl = schema.table_properties().DefaultTimeToLive();

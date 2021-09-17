@@ -35,20 +35,21 @@ public class HealthManager extends DevopsBase {
     public boolean rootAndClientRootCASame = true;
     public String sslProtocol = "";
     public boolean enableYSQL = false;
+    public boolean enableYCQL = false;
+    public boolean enableYSQLAuth = false;
     public int ysqlPort = 5433;
     public int ycqlPort = 9042;
     public boolean enableYEDIS = false;
     public int redisPort = 6379;
     public int masterHttpPort = 7000;
     public int tserverHttpPort = 9000;
-    public boolean enableYSQLAuth = false;
   }
 
   public ShellResponse runCommand(
       Provider provider,
       List<ClusterInfo> clusters,
-      Long potentialStartTimeMs,
-      Boolean shouldLogOutput) {
+      long potentialStartTimeMs,
+      boolean shouldLogOutput) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -61,12 +62,14 @@ public class HealthManager extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(clusters)));
     }
 
-    if (potentialStartTimeMs > 0) {
+    if (potentialStartTimeMs > 0L) {
       commandArgs.add("--start_time_ms");
       commandArgs.add(String.valueOf(potentialStartTimeMs));
     }
 
-    if (!provider.code.equals("onprem") && !provider.code.equals("kubernetes")) {
+    if (provider != null
+        && !provider.code.equals("onprem")
+        && !provider.code.equals("kubernetes")) {
       commandArgs.add("--check_clock");
     }
 

@@ -49,6 +49,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public boolean enableYSQL = false;
+    public boolean enableYCQL = false;
+    public boolean enableYSQLAuth = false;
+    public boolean enableYCQLAuth = false;
     public boolean enableYEDIS = false;
     public Map<String, String> gflags = new HashMap<>();
     public Set<String> gflagsToRemove = new HashSet<>();

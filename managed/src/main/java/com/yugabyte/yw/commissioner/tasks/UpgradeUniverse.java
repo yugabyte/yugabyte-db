@@ -117,7 +117,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           // ResizeNode cannot change the number of volumes
           if (deviceInfo.numVolumes != null
-              && primIntent.deviceInfo.numVolumes != deviceInfo.numVolumes) {
+              && !deviceInfo.numVolumes.equals(primIntent.deviceInfo.numVolumes)) {
             throw new IllegalArgumentException(
                 "ResizeNode cannot change the number of volumes. It was "
                     + primIntent.deviceInfo.numVolumes
@@ -136,6 +136,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                 Provider.getOrBadRequest(UUID.fromString(provider)),
                 Play.current().injector().instanceOf(Config.class),
                 Play.current().injector().instanceOf(ConfigHelper.class));
+        log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes
                 .stream()

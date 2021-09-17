@@ -119,8 +119,14 @@ lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
 name := "yugaware"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
+  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
   .disablePlugins(PlayLayoutPlugin)
+  .settings(commands += Command.command("deflake") { state =>
+    "test" :: "deflake" :: state
+  })
+  .settings(commands += Command.args("deflakeOne", "<arg>") { (state, args) =>
+    "testOnly " + args.mkString(" ") :: "deflakeOne " + args.mkString(" "):: state
+  })
 
 scalaVersion := "2.12.10"
 version := (sys.process.Process("cat version.txt").lineStream_!.head)
@@ -137,6 +143,8 @@ libraryDependencies ++= Seq(
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.postgresql" % "postgresql" % "42.2.23",
   "commons-io" % "commons-io" % "2.4",
+  "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
@@ -175,7 +183,9 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
   "org.projectlombok" % "lombok" % "1.18.20",
-  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
+  "io.kamon" %% "kamon-bundle" % "2.2.2",
+  "io.kamon" %% "kamon-prometheus" % "2.2.2"
 )
 // Clear default resolvers.
 appResolvers := None

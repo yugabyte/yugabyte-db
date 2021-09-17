@@ -44,12 +44,6 @@ export const AlertConfiguration = (props) => {
         ]);
       });
     }
-    setAlertUniverseList([
-      ...props.universes.data.map((universe) => ({
-        label: universe.name,
-        value: universe.universeUUID
-      }))
-    ]);
   };
 
   useEffect(onInit, []);

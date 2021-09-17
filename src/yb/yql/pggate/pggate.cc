@@ -217,11 +217,19 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
     });
   }
   async_client_init_.Start();
+
+  if (tserver_shared_object_) {
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_holder_.messenger.get());
+    pg_client_.Start(proxy_cache_.get(), *tserver_shared_object_);
+  }
 }
 
 PgApiImpl::~PgApiImpl() {
   messenger_holder_.messenger->Shutdown();
   async_client_init_.client()->Shutdown();
+  if (tserver_shared_object_) {
+    pg_client_.Shutdown();
+  }
 }
 
 const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
@@ -250,6 +258,7 @@ Status PgApiImpl::InitSession(const PgEnv *pg_env,
                               const string& database_name) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(client(),
+                                               &pg_client_,
                                                database_name,
                                                pg_txn_manager_,
                                                clock_,
@@ -461,7 +470,10 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
                               const uint32_t count,
                               PgOid *begin_oid,
                               PgOid *end_oid) {
-  return pg_session_->ReserveOids(database_oid, next_oid, count, begin_oid, end_oid);
+  auto p = VERIFY_RESULT(pg_client_.ReserveOids(database_oid, next_oid, count));
+  *begin_oid = p.first;
+  *end_oid = p.second;
+  return Status::OK();
 }
 
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
@@ -907,7 +919,10 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
           if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
           } else {
-            PgConstant value(attr->type_entity, attr->datum, false);
+            const YBCPgCollationInfo& collation_info = attr->collation_info;
+            PgConstant value(
+                attr->type_entity, collation_info.collate_is_valid_non_c,
+                collation_info.sortkey, attr->datum, false);
             SCHECK_EQ(c.internal_type(), value.internal_type(), Corruption,
                       "Attribute value type does not match column type");
             RETURN_NOT_OK(value.Eval(expr_pb->mutable_value()));
@@ -1194,13 +1209,15 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
 
 // Column references -------------------------------------------------------------------------------
 
-Status PgApiImpl::NewColumnRef(PgStatement *stmt, int attr_num, const PgTypeEntity *type_entity,
-                               const PgTypeAttrs *type_attrs, PgExpr **expr_handle) {
+Status PgApiImpl::NewColumnRef(
+    PgStatement *stmt, int attr_num, const PgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const PgTypeAttrs *type_attrs, PgExpr **expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgColumnRef::SharedPtr colref = make_shared<PgColumnRef>(attr_num, type_entity, type_attrs);
+  PgColumnRef::SharedPtr colref =
+    make_shared<PgColumnRef>(attr_num, type_entity, collate_is_valid_non_c, type_attrs);
   stmt->AddExpr(colref);
 
   *expr_handle = colref.get();
@@ -1208,40 +1225,48 @@ Status PgApiImpl::NewColumnRef(PgStatement *stmt, int attr_num, const PgTypeEnti
 }
 
 // Constant ----------------------------------------------------------------------------------------
-Status PgApiImpl::NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
+Status PgApiImpl::NewConstant(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum, is_null);
+  PgExpr::SharedPtr pg_const =
+    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, collation_sortkey,
+                            datum, is_null);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
   return Status::OK();
 }
 
-Status PgApiImpl::NewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                     YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
+Status PgApiImpl::NewConstantVirtual(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum_kind);
+  PgExpr::SharedPtr pg_const =
+    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, datum_kind);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
   return Status::OK();
 }
 
-Status PgApiImpl::NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
+Status PgApiImpl::NewConstantOp(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+    bool is_gt) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum, is_null,
-      is_gt ? PgExpr::Opcode::PG_EXPR_GT : PgExpr::Opcode::PG_EXPR_LT);
+  PgExpr::SharedPtr pg_const =
+    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, collation_sortkey,
+      datum, is_null, is_gt ? PgExpr::Opcode::PG_EXPR_GT : PgExpr::Opcode::PG_EXPR_LT);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
@@ -1270,9 +1295,9 @@ Status PgApiImpl::UpdateConstant(PgExpr *expr, const void *value, int64_t bytes,
 
 // Text constant -----------------------------------------------------------------------------------
 
-Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname,
-                              const YBCPgTypeEntity *type_entity,
-                              PgExpr **op_handle) {
+Status PgApiImpl::NewOperator(
+    PgStatement *stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, PgExpr **op_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
@@ -1280,7 +1305,7 @@ Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname,
   RETURN_NOT_OK(PgExpr::CheckOperatorName(opname));
 
   // Create operator.
-  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname, type_entity);
+  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname, type_entity, collate_is_valid_non_c);
   stmt->AddExpr(pg_op);
 
   *op_handle = pg_op.get();

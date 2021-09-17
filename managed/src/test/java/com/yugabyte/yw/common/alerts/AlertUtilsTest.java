@@ -125,17 +125,6 @@ public class AlertUtilsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetNotificationText_DefaultTemplate() {
-    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    AlertChannel channel = createEmailChannelWithEmptyTemplates();
-
-    assertEquals(
-        AlertUtils.getDefaultNotificationText(alert),
-        AlertUtils.getNotificationText(alert, channel));
-  }
-
-  @Test
   public void testGetNotificationText_TemplateInAlert() {
     Universe universe = ModelFactory.createUniverse();
     AlertConfiguration configuration =

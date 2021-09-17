@@ -654,6 +654,7 @@ public class HealthChecker {
       clusterMetadata.put(cluster.uuid, info);
       info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
       info.enableYSQL = cluster.userIntent.enableYSQL;
+      info.enableYCQL = cluster.userIntent.enableYCQL;
       info.enableYEDIS = cluster.userIntent.enableYEDIS;
       if (cluster.userIntent.tserverGFlags.containsKey("ssl_protocols")) {
         info.sslProtocol = cluster.userIntent.tserverGFlags.get("ssl_protocols");
@@ -666,7 +667,8 @@ public class HealthChecker {
       info.rootAndClientRootCASame = details.rootAndClientRootCASame;
       // Pass in whether YSQL authentication is enabled for the given cluster.
       info.enableYSQLAuth =
-          cluster.userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true");
+          cluster.userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
+              || cluster.userIntent.enableYSQLAuth;
 
       Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
       if (provider == null) {
@@ -708,16 +710,21 @@ public class HealthChecker {
         for (NodeDetails nd : details.nodeDetailsSet) {
           if (nd.isYsqlServer) {
             info.ysqlPort = nd.ysqlServerRpcPort;
+            info.masterHttpPort = nd.masterHttpPort;
+            info.tserverHttpPort = nd.tserverHttpPort;
             break;
           }
         }
       }
-
-      for (NodeDetails nd : details.nodeDetailsSet) {
-        info.ycqlPort = nd.yqlServerRpcPort;
-        info.masterHttpPort = nd.masterHttpPort;
-        info.tserverHttpPort = nd.tserverHttpPort;
-        break;
+      if (info.enableYCQL) {
+        for (NodeDetails nd : details.nodeDetailsSet) {
+          if (nd.isYqlServer) {
+            info.ycqlPort = nd.yqlServerRpcPort;
+            info.masterHttpPort = nd.masterHttpPort;
+            info.tserverHttpPort = nd.tserverHttpPort;
+            break;
+          }
+        }
       }
 
       if (info.enableYEDIS) {

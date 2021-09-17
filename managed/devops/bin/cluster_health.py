@@ -29,15 +29,16 @@ from six import string_types, PY2, PY3
 
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
+ALERT_ENHANCEMENTS_RELEASE = "2.6.0.0"
+RELEASE_VERSION_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)(.*)"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
 YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
 VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
-VM_CLIENT_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/root.crt")
-VM_CLIENT_ROOT_CERT_FILE_ALTERNATIVE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/ca.crt")
-VM_CLIENT_NODE_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt")
-K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
+
+K8S_CERTS_PATH = "/opt/certs/yugabyte/"
+K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -74,6 +75,7 @@ class EntryType:
     DETAILS = "details"
     METRIC_VALUE = "metric_value"
     HAS_ERROR = "has_error"
+    HAS_WARNING = "has_warning"
     PROCESS = "process"
 
 
@@ -88,6 +90,7 @@ class Entry:
         self.details = None
         self.metric_value = None
         self.has_error = None
+        self.has_warning = None
 
     def fill_and_return_entry(self, details, has_error=False):
         return self.fill_and_return_entry(details, has_error, None)
@@ -95,7 +98,14 @@ class Entry:
     def fill_and_return_entry(self, details, has_error=False, metric_value=None):
         self.details = details
         self.has_error = has_error
+        self.has_warning = False
         self.metric_value = metric_value
+        return self
+
+    def fill_and_return_warning_entry(self, details):
+        self.details = details
+        self.has_error = False
+        self.has_warning = True
         return self
 
     def as_json(self):
@@ -105,7 +115,8 @@ class Entry:
             EntryType.TIMESTAMP: self.timestamp,
             EntryType.MESSAGE: self.message,
             EntryType.DETAILS: self.details,
-            EntryType.HAS_ERROR: self.has_error
+            EntryType.HAS_ERROR: self.has_error,
+            EntryType.HAS_WARNING: self.has_warning
         }
         if self.metric_value:
             j[EntryType.METRIC_VALUE] = self.metric_value
@@ -125,11 +136,11 @@ class Report:
     def add_entry(self, entry):
         self.entries.append(entry)
 
-    def has_errors(self):
-        return True in [e.has_error for e in self.entries]
+    def has_errors_or_warnings(self):
+        return True in [e.has_error or e.has_warning for e in self.entries]
 
     def write_to_log(self, log_file):
-        if not self.has_errors() or log_file is None:
+        if not self.has_errors_or_warnings() or log_file is None:
             logging.info("Not logging anything to a file.")
             return
 
@@ -144,8 +155,10 @@ class Report:
         j = {
             "timestamp": self.start_ts,
             "yb_version": self.yb_version,
-            "data": [e.as_json() for e in self.entries if not only_errors or e.has_error],
-            "has_error": True in [e.has_error for e in self.entries]
+            "data": [e.as_json() for e in self.entries
+                     if not only_errors or e.has_error or e.has_warning],
+            "has_error": True in [e.has_error for e in self.entries],
+            "has_warning": True in [e.has_warning for e in self.entries]
         }
         return json.dumps(j, indent=2)
 
@@ -232,6 +245,7 @@ class NodeChecker():
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
         self.universe_version = universe_version
+        self.additional_info = {}
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name)
@@ -305,7 +319,11 @@ class NodeChecker():
         return self._remote_check_output(remote_cmd)
 
     def check_certificate_expiration(self, cert_name, cert_path):
+        logging.info("Checking {} certificate on node {}".format(cert_name, self.node))
         e = self._new_entry(cert_name + " Cert Expiry Days")
+        ssl_installed = self.additional_info.get("ssl_installed:" + self.node)
+        if ssl_installed is not None and not ssl_installed:
+            return e.fill_and_return_warning_entry(["OpenSSL is not installed, skipped"])
 
         output = self.get_certificate_expiration_date(cert_path)
         if has_errors(output):
@@ -337,26 +355,43 @@ class NodeChecker():
             days_till_expiry)
 
     def get_client_to_node_ca_certificate_path(self):
-        remote_cmd = 'if [ -f "{}" ]; then echo "{}"; elif [ -f "{}" ]; then echo "{}"; fi;'.\
-            format(VM_CLIENT_ROOT_CERT_FILE_PATH,
-                   VM_CLIENT_ROOT_CERT_FILE_PATH,
-                   VM_CLIENT_ROOT_CERT_FILE_ALTERNATIVE_PATH,
-                   VM_CLIENT_ROOT_CERT_FILE_ALTERNATIVE_PATH)
+        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}";'.format(
+            os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt"))
+
+        for name in 'root', 'ca':
+            remote_cmd += ' elif [ -f "{0}" ]; then echo "{0}";'.format(
+                os.path.join(YB_HOME_DIR, ".yugabytedb/{}.crt".format(name)))
+
+        remote_cmd += ' fi;'
         return self._remote_check_output(remote_cmd).strip()
 
     def check_node_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration("Node To Node CA", VM_ROOT_CERT_FILE_PATH)
+        return self.check_certificate_expiration("Node To Node CA",
+                                                 VM_ROOT_CERT_FILE_PATH if not self.is_k8s
+                                                 else K8S_CERT_FILE_PATH)
 
     def check_node_to_node_certificate_expiration(self):
-        cert_path = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/node.{}.crt".format(self.node))
+        if not self.is_k8s:
+            cert_path = os.path.join(YB_HOME_DIR,
+                                     "yugabyte-tls-config/node.{}.crt".format(self.node))
+        else:
+            cert_path = os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
         return self.check_certificate_expiration("Node To Node", cert_path)
 
     def check_client_to_node_ca_certificate_expiration(self):
         return self.check_certificate_expiration(
             "Client To Node CA", self.get_client_to_node_ca_certificate_path())
 
+    def get_client_to_node_certificate_path(self):
+        cert_path = os.path.join(
+            YB_HOME_DIR, "yugabyte-client-tls-config/node.{}.crt".format(self.node))
+        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'.\
+            format(cert_path, os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt"))
+        return self._remote_check_output(remote_cmd).strip()
+
     def check_client_to_node_certificate_expiration(self):
-        return self.check_certificate_expiration("Client To Node", VM_CLIENT_NODE_CERT_FILE_PATH)
+        return self.check_certificate_expiration(
+            "Client To Node", self.get_client_to_node_certificate_path())
 
     def get_yb_version(self, host_port):
         try:
@@ -367,7 +402,8 @@ class NodeChecker():
             message = str(ex)
             return "Error querying for version: " + message
 
-    def check_yb_version(self, ip_address, port, expected):
+    def check_yb_version(self, ip_address, process, port, expected):
+        logging.info("Checking YB Version on node {} process {}".format(self.node, process))
         e = self._new_entry("YB Version")
 
         output = self.get_yb_version('{}:{}'.format(ip_address, port))
@@ -389,10 +425,12 @@ class NodeChecker():
         return e.fill_and_return_entry([version])
 
     def check_master_yb_version(self, process):
-        return self.check_yb_version(self.node, self.master_http_port, self.universe_version)
+        return self.check_yb_version(
+            self.node, process, self.master_http_port, self.universe_version)
 
     def check_tserver_yb_version(self, process):
-        return self.check_yb_version(self.node, self.tserver_http_port, self.universe_version)
+        return self.check_yb_version(
+            self.node, process, self.tserver_http_port, self.universe_version)
 
     def check_for_fatal_logs(self, process):
         logging.info("Checking for fatals on node {}".format(self.node))
@@ -635,6 +673,13 @@ class NodeChecker():
 
         return e.fill_and_return_entry(errors, len(errors) > 0)
 
+    def check_openssl_availability(self):
+        remote_cmd = "which openssl &>/dev/null; echo $?"
+        output = self._remote_check_output(remote_cmd).rstrip()
+        logging.info("OpenSSL installed state for node %s: %s",  self.node, output)
+        return {"ssl_installed:" + self.node: (output == "0")
+                if not has_errors(output) else None}
+
 
 ###################################################################################################
 # Utility functions
@@ -648,6 +693,31 @@ def seconds_to_human_readable_time(seconds):
 
 def local_time():
     return datetime.utcnow().replace(tzinfo=tz.tzutc())
+
+
+def is_equal_or_newer_release(current_version, threshold_version):
+    if not current_version:
+        return False
+
+    c_match = re.match(RELEASE_VERSION_PATTERN, current_version)
+    t_match = re.match(RELEASE_VERSION_PATTERN, threshold_version)
+
+    if c_match is None:
+        raise RuntimeError("Invalid universe version format: {}".format(current_version))
+    if t_match is None:
+        raise RuntimeError("Invalid threshold version format: {}".format(threshold_version))
+
+    for i in range(1, 5):
+        c = int(c_match.group(i))
+        t = int(t_match.group(i))
+        if c < t:
+            # If any component is behind, the whole version is older.
+            return False
+        elif c > t:
+            # If any component is ahead, the whole version is newer.
+            return True
+    # If all components were equal, then the versions are compatible.
+    return True
 
 
 ###################################################################################################
@@ -664,6 +734,15 @@ def multithreaded_caller(instance, func_name,  sleep_interval=0, args=(), kwargs
 
 
 class CheckCoordinator:
+    class PreCheckRunInfo:
+        def __init__(self, instance, func_name):
+            self.instance = instance
+            if PY3:
+                self.__name__ = func_name
+            else:
+                self.func_name = func_name
+            self.result = {}
+
     class CheckRunInfo:
         def __init__(self, instance, func_name, yb_process):
             self.instance = instance
@@ -678,17 +757,34 @@ class CheckCoordinator:
 
     def __init__(self, retry_interval_secs):
         self.pool = Pool(MAX_CONCURRENT_PROCESSES)
+        self.prechecks = []
         self.checks = []
         self.retry_interval_secs = retry_interval_secs
+
+    def add_precheck(self, instance, func_name):
+        self.prechecks.append(CheckCoordinator.PreCheckRunInfo(instance, func_name))
 
     def add_check(self, instance, func_name, yb_process=None):
         self.checks.append(CheckCoordinator.CheckRunInfo(instance, func_name, yb_process))
 
     def run(self):
 
+        precheck_results = []
+        for precheck in self.prechecks:
+            precheck_func_name = precheck.__name__ if PY3 else precheck.func_name
+            result = self.pool.apply_async(multithreaded_caller, (precheck.instance,
+                                                                  precheck_func_name))
+            precheck_results.append(result)
+
+        # Getting results.
+        additional_info = {}
+        for result in precheck_results:
+            additional_info.update(result.get())
+
         while True:
             checks_remaining = 0
             for check in self.checks:
+                check.instance.additional_info = additional_info
                 check.entry = check.result.get() if check.result else None
 
                 # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
@@ -728,7 +824,7 @@ class CheckCoordinator:
 
 class Cluster():
     def __init__(self, data):
-        self.identity_file = data["identityFile"]
+        self.identity_file = data.get("identityFile")
         self.ssh_port = data["sshPort"]
         self.enable_tls = data["enableTls"]
         self.enable_tls_client = data["enableTlsClient"]
@@ -739,6 +835,7 @@ class Cluster():
         self.namespace_to_config = data["namespaceToConfig"]
         self.ssl_protocol = data["sslProtocol"]
         self.enable_ysql = data["enableYSQL"]
+        self.enable_ycql = data["enableYCQL"]
         self.ysql_port = data["ysqlPort"]
         self.ycql_port = data["ycqlPort"]
         self.enable_yedis = data["enableYEDIS"]
@@ -775,6 +872,8 @@ def main():
         # Technically, each cluster can have its own version, but in practice,
         # we disallow that in YW.
         universe_version = universe.clusters[0].yb_version if universe.clusters else None
+        alert_enhancements_version = is_equal_or_newer_release(
+            universe_version, ALERT_ENHANCEMENTS_RELEASE)
         report = Report(universe_version)
         for c in universe.clusters:
             master_nodes = c.master_nodes
@@ -789,20 +888,26 @@ def main():
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
                         c.master_http_port, c.tserver_http_port, universe_version)
+
+                coordinator.add_precheck(checker, "check_openssl_availability")
+
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
                     coordinator.add_check(
                         checker, "check_uptime_for_process", "yb-master")
-                    coordinator.add_check(checker, "check_master_yb_version", "yb-master")
+                    if alert_enhancements_version:
+                        coordinator.add_check(checker, "check_master_yb_version", "yb-master")
                     coordinator.add_check(checker, "check_for_fatal_logs", "yb-master")
                 if node in tserver_nodes:
                     coordinator.add_check(
                         checker, "check_uptime_for_process", "yb-tserver")
-                    coordinator.add_check(checker, "check_tserver_yb_version", "yb-tserver")
+                    if alert_enhancements_version:
+                        coordinator.add_check(checker, "check_tserver_yb_version", "yb-tserver")
                     coordinator.add_check(checker, "check_for_fatal_logs", "yb-tserver")
                     # Only need to check redis-cli/cqlsh for tserver nodes
                     # to be docker/k8s friendly.
-                    coordinator.add_check(checker, "check_cqlsh")
+                    if c.enable_ycql:
+                        coordinator.add_check(checker, "check_cqlsh")
                     if c.enable_yedis:
                         coordinator.add_check(checker, "check_redis_cli")
                     # TODO: Enable check after addressing issue #1845.

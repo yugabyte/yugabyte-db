@@ -12,6 +12,7 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
+import com.yugabyte.yw.models.common.Condition;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
@@ -21,25 +22,16 @@ import lombok.experimental.Accessors;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@ApiModel(value = "Alert configuration threshold.")
+@ApiModel(
+    value = "AlertConfigurationThreshold",
+    description =
+        "Alert configuration threshold. Conditions can be either greater than a specified value, or less than a specified value.")
 public class AlertConfigurationThreshold {
 
-  public enum Condition {
-    GREATER_THAN(">"),
-    LESS_THAN("<");
-
-    private final String value;
-
-    Condition(String value) {
-      this.value = value;
-    }
-
-    public String getValue() {
-      return value;
-    }
-  }
-
-  @ApiModelProperty(value = "Threshold condition", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Threshold condition (greater than, or less than)",
+      allowableValues = ">, <",
+      accessMode = READ_WRITE)
   private Condition condition;
 
   @ApiModelProperty(value = "Threshold value", accessMode = READ_WRITE)

@@ -82,7 +82,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
             + defaultCustomer.uuid
             + "/universes/"
             + universeUUID
-            + "/scheduleScript";
+            + "/schedule_script";
     return FakeApiHelper.doRequestWithMultipartData("POST", url, bodyData, mat);
   }
 
@@ -188,7 +188,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
             + defaultCustomer.uuid
             + "/universes/"
             + defaultUniverse.universeUUID
-            + "/updateScheduledScript";
+            + "/update_scheduled_script";
     Result result = FakeApiHelper.doRequestWithMultipartData("PUT", url, bodyData, mat);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -203,7 +203,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
             + defaultCustomer.uuid
             + "/universes/"
             + defaultUniverse.universeUUID
-            + "/stopScheduledScript";
+            + "/stop_scheduled_script";
     Result result = FakeApiHelper.doRequest("PUT", url);
     assertEquals(OK, result.status());
     assertEquals(OK, result.status());

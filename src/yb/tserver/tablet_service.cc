@@ -1209,7 +1209,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
             if (result->status_time.is_valid()) {
               resp->set_status_hybrid_time(result->status_time.ToUint64());
             }
-            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitTime
+            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitData
             // for details.
             resp->set_coordinator_safe_time(leader_safe_time->ToUint64());
             context_ptr->RespondSuccess();
@@ -1492,43 +1492,6 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
       &change_req, tablet.peer.get(), tablet.leader_term);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
-    return;
-  }
-  context.RespondSuccess();
-}
-
-void TabletServiceAdminImpl::GetSplitKey(
-    const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
-    return;
-  }
-  server::UpdateClock(*req, server_->Clock());
-
-  auto leader_tablet_peer =
-      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  if (!leader_tablet_peer) {
-    return;
-  }
-
-  const auto& tablet = leader_tablet_peer.tablet;
-  const auto split_encoded_key = tablet->GetEncodedMiddleSplitKey();
-  if (split_encoded_key.ok()) {
-    resp->set_split_encoded_key(*split_encoded_key);
-  } else {
-    SetupErrorAndRespond(resp->mutable_error(), split_encoded_key.status(), &context);
-    return;
-  }
-
-  const auto doc_key_hash = docdb::DecodeDocKeyHash(*split_encoded_key);
-  if (doc_key_hash.ok()) {
-    if (doc_key_hash->has_value()) {
-      resp->set_split_partition_key(PartitionSchema::EncodeMultiColumnHashValue(
-          doc_key_hash->value()));
-    } else {
-      resp->set_split_partition_key(*split_encoded_key);
-    }
-  } else {
-    SetupErrorAndRespond(resp->mutable_error(), doc_key_hash.status(), &context);
     return;
   }
   context.RespondSuccess();
@@ -2954,6 +2917,32 @@ void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetSplitKey(
+    const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
+  PerformAtLeader(req, resp, &context,
+      [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+        const auto& tablet = leader_tablet_peer.tablet;
+        const auto split_encoded_key = VERIFY_RESULT(tablet->GetEncodedMiddleSplitKey());
+        resp->set_split_encoded_key(split_encoded_key);
+        const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(split_encoded_key));
+        if (doc_key_hash.has_value()) {
+          resp->set_split_partition_key(PartitionSchema::EncodeMultiColumnHashValue(
+              doc_key_hash.value()));
+        } else {
+          resp->set_split_partition_key(split_encoded_key);
+        }
+        return Status::OK();
+  });
+}
+
+void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
+                                      GetSharedDataResponsePB* resp,
+                                      rpc::RpcContext context) {
+  auto& data = dynamic_cast<DbServerBase*>(server_)->shared_object();
+  resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 
@@ -2990,7 +2979,6 @@ void TabletServerForwardServiceImpl::Read(const ReadRequestPB* req,
     std::make_shared<ForwardReadRpc>(req, resp, std::move(context), server_->client());
   forward_rpc->SendRpc();
 }
-
 
 }  // namespace tserver
 }  // namespace yb

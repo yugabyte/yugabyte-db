@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-@ApiModel(description = "Instance type model which holds the information about the instance.")
+@ApiModel(description = "Information about an instance")
 @Entity
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
@@ -85,7 +85,7 @@ public class InstanceType extends Model {
     if (provider != null) {
       setProvider(provider);
     } else {
-      LOG.error("No provider found for the given id: {}", providerUuid);
+      LOG.error("No provider found for the given UUID: {}", providerUuid);
     }
   }
 
@@ -102,9 +102,7 @@ public class InstanceType extends Model {
     idKey.instanceTypeCode = code;
   }
 
-  @ApiModelProperty(
-      value = "indiacates whether this instance is active or not",
-      accessMode = READ_ONLY)
+  @ApiModelProperty(value = "True if the instance is active", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "boolean default true")
   private Boolean active = true;
@@ -117,17 +115,19 @@ public class InstanceType extends Model {
     this.active = active;
   }
 
-  @ApiModelProperty(value = "Number of cores in an instance", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "The instance's number of CPU cores", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "float")
   public Double numCores;
 
-  @ApiModelProperty(value = "Memory size of an instance", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "The instance's memory size, in gigabytes", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "float")
   public Double memSizeGB;
 
-  @ApiModelProperty(value = "Extra details about instance json", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value = "Extra details about the instance (as a JSON object)",
+      accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT")
   private String instanceTypeDetailsJson;
 
@@ -160,7 +160,7 @@ public class InstanceType extends Model {
     InstanceType instanceType = InstanceType.get(providerUuid, instanceTypeCode);
     if (instanceType == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
+          BAD_REQUEST, "Instance type not found: " + instanceTypeCode);
     }
     return instanceType;
   }

@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-@ApiModel(description = "Certificate used by the universe to send sensitive information")
+@ApiModel(description = "SSL certificate used by the universe")
 @Entity
 public class CertificateInfo extends Model {
 
@@ -72,7 +72,7 @@ public class CertificateInfo extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Certificate uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Certificate UUID", accessMode = READ_ONLY)
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
@@ -92,13 +92,13 @@ public class CertificateInfo extends Model {
   @Column(unique = true)
   public String label;
 
-  @ApiModelProperty(value = "Certificate created date", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "The certificate's creation date", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   public Date startDate;
 
-  @ApiModelProperty(value = "Expiry date of the Certificate", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "The certificate's expiry date", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
@@ -106,7 +106,7 @@ public class CertificateInfo extends Model {
 
   @ApiModelProperty(
       value = "Private key path",
-      example = "/opt/yugaware/..../example.key.pem",
+      example = "/opt/yugaware/.../example.key.pem",
       accessMode = READ_WRITE)
   @Column(nullable = true)
   public String privateKey;
@@ -122,13 +122,14 @@ public class CertificateInfo extends Model {
   @ApiModelProperty(
       value = "Type of the certificate",
       example = "SelfSigned",
+      allowableValues = "SelfSigned, CustomCertHostPath, CustomServerCert",
       accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   public CertificateInfo.Type certType;
 
-  @ApiModelProperty(value = "Checksome of a cert file", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "The certificate file's checksum", accessMode = READ_ONLY)
   @Column(nullable = true)
   public String checksum;
 
@@ -139,7 +140,7 @@ public class CertificateInfo extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Details about the Certificate", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Details about the certificate", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = true)
   @DbJson
   public JsonNode customCertInfo;
@@ -341,7 +342,8 @@ public class CertificateInfo extends Model {
   @VisibleForTesting @Transient Boolean inUse = null;
 
   @ApiModelProperty(
-      value = "Indicates whether the Certificate is in use or not",
+      value =
+          "Indicates whether the certificate is in use. This value is `true` if the universe contains a reference to the certificate.",
       accessMode = READ_ONLY)
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {
@@ -359,7 +361,7 @@ public class CertificateInfo extends Model {
   @VisibleForTesting @Transient List<UniverseDetailSubset> universeDetailSubsets = null;
 
   @ApiModelProperty(
-      value = "Associated universe details of the Certificate",
+      value = "Associated universe details for the certificate",
       accessMode = READ_ONLY)
   public List<UniverseDetailSubset> getUniverseDetails() {
     if (universeDetailSubsets == null) {
@@ -420,7 +422,7 @@ public class CertificateInfo extends Model {
     CertificateInfo certificate = CertificateInfo.getOrBadRequest(certUUID, customerUUID);
     if (!certificate.getInUse()) {
       if (certificate.delete()) {
-        LOG.info("Successfully deleted the certificate:" + certUUID);
+        LOG.info("Successfully deleted the certificate: " + certUUID);
       } else {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Unable to delete the Certificate");

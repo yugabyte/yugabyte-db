@@ -9,25 +9,28 @@ import java.util.Map;
 import play.data.validation.Constraints;
 
 /** This class will be used by the API and UI Form Elements to validate constraints are met */
-@ApiModel(value = "CustomerAlertData", description = "Format of an alert")
+@ApiModel(
+    value = "CustomerAlertData",
+    description =
+        "Format of an alert, used by the API and UI to validate data against input constraints")
 public class AlertingFormData {
   @Constraints.MaxLength(15)
   @ApiModelProperty(value = "Alert code")
   public String code;
 
-  @ApiModelProperty(value = "Alert email", example = "test@example.com")
+  @ApiModelProperty(value = "Alert email address", example = "test@example.com")
   public String email;
 
   @ApiModelProperty(value = "Email password", example = "XurenRknsc")
   public String password;
 
-  @ApiModelProperty(value = "Email password", example = "XurenRknsc")
+  @ApiModelProperty(value = "Email password confirmation", example = "XurenRknsc")
   public String confirmPassword;
 
   @ApiModelProperty(value = "Alert name", example = "Test alert")
   public String name;
 
-  @ApiModelProperty(value = "Feature")
+  @ApiModelProperty(value = "Features")
   public Map features;
 
   @ApiModel(description = "Alerting configuration")
@@ -37,24 +40,24 @@ public class AlertingFormData {
     @ApiModelProperty(value = "Alert email address", example = "test@example.com")
     public String alertingEmail;
 
-    @ApiModelProperty(value = "Is alert has sent to YB")
+    @ApiModelProperty(value = "Send alerts to YB as well as to customer")
     public boolean sendAlertsToYb = false;
 
-    @ApiModelProperty(value = "Alert interval")
+    @ApiModelProperty(value = "Alert interval, in milliseconds")
     public long checkIntervalMs = 0;
 
-    @ApiModelProperty(value = "Status update of alert interval")
+    @ApiModelProperty(value = "Status update of alert interval, in milliseconds")
     public long statusUpdateIntervalMs = 0;
 
-    @ApiModelProperty(value = "Is alert just for errors")
+    @ApiModelProperty(value = "Trigger an alert only for errors")
     public Boolean reportOnlyErrors = false;
 
-    @ApiModelProperty(value = "Is alert needed for backup failure")
+    @ApiModelProperty(value = "Trigger an alert for backup failures")
     public Boolean reportBackupFailures = false;
 
     // TODO: Remove after implementation of a separate window for all definitions
     // configuration.
-    @ApiModelProperty(value = "Is clock skew enabled?")
+    @ApiModelProperty(value = "Enable clock skew (default is true)")
     public boolean enableClockSkew = true;
   }
 

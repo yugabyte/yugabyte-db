@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
@@ -40,7 +41,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -57,8 +57,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private Universe universe;
   private AlertDestination alertDestination;
 
-  private AlertService alertService = new AlertService();
-  private AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
+  private final AlertService alertService = new AlertService();
+  private final AlertDefinitionService alertDefinitionService =
+      new AlertDefinitionService(alertService);
   private AlertConfigurationService alertConfigurationService;
 
   @Before
@@ -89,8 +90,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertConfiguration configuration = Json.fromJson(initialJson, AlertConfiguration.class);
 
-    String stringify = Json.stringify(Json.toJson(configuration));
-    JsonNode resultJson = Json.parse(stringify);
+    JsonNode resultJson = Json.toJson(configuration);
 
     assertThat(resultJson, equalTo(initialJson));
   }
@@ -115,13 +115,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
     AlertConfiguration configuration = createTestConfiguration();
 
     AlertConfigurationThreshold severeThreshold =
-        new AlertConfigurationThreshold()
-            .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
-            .setThreshold(90D);
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(90D);
     AlertConfigurationThreshold warningThreshold =
-        new AlertConfigurationThreshold()
-            .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
-            .setThreshold(80D);
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(80D);
     Map<AlertConfiguration.Severity, AlertConfigurationThreshold> thresholds =
         ImmutableMap.of(
             AlertConfiguration.Severity.SEVERE, severeThreshold,
@@ -352,6 +348,13 @@ public class AlertConfigurationTest extends FakeDBApplication {
         "Alert destination " + randomUUID + " is missing");
 
     testValidationCreate(
+        configuration ->
+            configuration
+                .setDestinationUUID(alertDestination.getUuid())
+                .setDefaultDestination(true),
+        "Destination can't be filled in case default destination is selected");
+
+    testValidationCreate(
         configuration -> configuration.setThresholdUnit(null), "Threshold unit is mandatory");
 
     testValidationCreate(
@@ -375,22 +378,19 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
-        uuid -> "Can't change customer UUID for configuration " + uuid);
+        "Can't change customer UUID for configuration 'Memory Consumption'");
   }
 
   private void testValidationCreate(Consumer<AlertConfiguration> modifier, String expectedMessage) {
-    testValidation(modifier, uuid -> expectedMessage, true);
+    testValidation(modifier, expectedMessage, true);
   }
 
-  private void testValidationUpdate(
-      Consumer<AlertConfiguration> modifier, Function<UUID, String> expectedMessageGenerator) {
-    testValidation(modifier, expectedMessageGenerator, false);
+  private void testValidationUpdate(Consumer<AlertConfiguration> modifier, String expectedMessage) {
+    testValidation(modifier, expectedMessage, false);
   }
 
   private void testValidation(
-      Consumer<AlertConfiguration> modifier,
-      Function<UUID, String> expectedMessageGenerator,
-      boolean create) {
+      Consumer<AlertConfiguration> modifier, String expectedMessage, boolean create) {
     AlertConfiguration configuration = createTestConfiguration();
     if (create) {
       alertConfigurationService.delete(configuration.getUuid());
@@ -400,9 +400,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(
         () -> alertConfigurationService.save(configuration),
-        thrown(
-            PlatformServiceException.class,
-            expectedMessageGenerator.apply(configuration.getUuid())));
+        thrown(PlatformServiceException.class, expectedMessage));
   }
 
   private AlertConfiguration createTestConfiguration() {
@@ -411,6 +409,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .createConfigurationTemplate(customer, AlertTemplate.MEMORY_CONSUMPTION)
             .getDefaultConfiguration();
     configuration.setDestinationUUID(alertDestination.getUuid());
+    configuration.setDefaultDestination(false);
     return alertConfigurationService.save(configuration);
   }
 
@@ -429,7 +428,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
         equalTo(
             new AlertConfigurationThreshold()
                 .setThreshold(90D)
-                .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)));
+                .setCondition(Condition.GREATER_THAN)));
     assertThat(configuration.getThresholds().get(AlertConfiguration.Severity.WARNING), nullValue());
     assertThat(configuration.getUuid(), notNullValue());
     assertThat(configuration.getCreateTime(), notNullValue());
