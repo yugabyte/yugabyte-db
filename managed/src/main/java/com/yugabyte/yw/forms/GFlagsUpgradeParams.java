@@ -26,13 +26,12 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe) {
     super.verifyParams(universe);
 
-    if (masterGFlags.isEmpty() && tserverGFlags.isEmpty()) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "gflags param is required.");
-    }
-
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (masterGFlags.equals(userIntent.masterGFlags)
         && tserverGFlags.equals(userIntent.tserverGFlags)) {
+      if (masterGFlags.isEmpty() && tserverGFlags.isEmpty()) {
+        throw new PlatformServiceException(Status.BAD_REQUEST, "gflags param is required.");
+      }
       throw new PlatformServiceException(Status.BAD_REQUEST, "No gflags to change.");
     }
   }
