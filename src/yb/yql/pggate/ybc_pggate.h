@@ -357,9 +357,7 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor* data, uint64_t *yb
 // Buffer write operations.
 YBCStatus YBCPgStartOperationsBuffering();
 YBCStatus YBCPgStopOperationsBuffering();
-YBCStatus YBCPgResetOperationsBuffering();
-YBCStatus YBCPgFlushBufferedOperations();
-void YBCPgDropBufferedOperations();
+void YBCPgResetOperationsBuffering();
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,

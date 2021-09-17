@@ -212,9 +212,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Flush all pending buffered operation and stop further buffering.
   // Buffering must be in progress.
   CHECKED_STATUS StopOperationsBuffering();
-  // Stop further buffering. Buffering may be in any state,
-  // but pending buffered operations are not allowed.
-  CHECKED_STATUS ResetOperationsBuffering();
+  // Drop all pending buffered operations and stop further buffering. Buffering may be in any state.
+  void ResetOperationsBuffering();
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
   CHECKED_STATUS FlushBufferedOperations();
