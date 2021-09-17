@@ -218,6 +218,10 @@ public class HealthCheckerReport {
     int healthyNodes = 0;
     for (String node : nodeNames) {
       NodeReport nodeReport = reports.get(node);
+      if (nodeReport == null) {
+        // Node is stopped/released, no report available.
+        continue;
+      }
       if (nodeReport.hasError) {
         nodesWithErrors++;
       } else if (nodeReport.hasWarning) {
