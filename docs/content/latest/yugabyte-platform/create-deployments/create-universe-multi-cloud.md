@@ -12,11 +12,20 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section describes how to create a YugabyteDB universe using more than one cloud provider, including Kubernetes.
+This section describes how to create a YugabyteDB universe with nodes in more than one cloud provider, including Kubernetes.
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud providers of your choice, as described in [Configure a cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/). 
+Before you start creating a universe, ensure that you performed steps applicable to the cloud providers of your choice, as described in [Configure a cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
+
+Specifically, you need:
+
+* At least two configured cloud providers
+* 
+
+## Create nodes
+
+## Define your regions
 
 ## Create a universe
 
@@ -46,19 +55,19 @@ The following illustration shows a newly-created universe in Pending state:
 
 The universe view consists of several tabs that provide different information about this universe.
 
-### The Overview tab
+### Overview tab
 
 The following illustration shows the **Overview** tab:
 
 ![Detail for a Pending Universe](/images/ee/pending-univ-detail.png)
 
-### The Tasks tab 
+### Tasks tab 
 
 The following illustration shows the **Tasks** tab that provides information about the state of tasks currently running on the universe, as well as the tasks that have run in the past against this universe:
 
 ![Tasks for a Pending Universe](/images/ee/pending-univ-tasks.png)
 
-### The Nodes tab
+### Nodes tab
 
 The following illustration shows the **Nodes** tab that allows you to see a list of the underlying nodes for the universe:
 
