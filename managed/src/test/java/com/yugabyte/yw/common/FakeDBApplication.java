@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
+import kamon.instrumentation.play.GuiceModule;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
@@ -60,7 +61,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
 
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
 
-    GuiceApplicationBuilder guiceApplicationBuilder = new GuiceApplicationBuilder();
+    GuiceApplicationBuilder guiceApplicationBuilder =
+        new GuiceApplicationBuilder().disable(GuiceModule.class);
     if (!isSwaggerEnabled()) {
       guiceApplicationBuilder = guiceApplicationBuilder.disable(SwaggerModule.class);
     }
