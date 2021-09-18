@@ -19,25 +19,25 @@ Follow the steps on this page to set up a Gitpod workspace environment with a pr
 
 ## Requirements
 
-Gitpod doesn't require anything in your local workstation other than a code editor and Git CLI. Much of the development happens in the cloud through a web browser.
+Gitpod doesn't require anything on your local computer other than a code editor and Git CLI. Much of the development happens in the cloud through a web browser.
 
 ## Get started with a boot app
 
 You can find the source at [Spring Boot todo on GitHub](https://github.com/yugabyte/yb-todo-app.git). 
 
-**The easy way to get started** with Gitpod is to simply fork this [source repo](https://github.com/yugabyte/yb-todo-app.git) and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. Replace `[REPO_URL]` with your forked repository URL and you should already have been connected to the Gitpod account before launching the browser URL.
+**The easy way to get started** with Gitpod is to simply fork this [source repository](https://github.com/yugabyte/yb-todo-app.git) and initialize the Gitpod workspace environment by invoking `https://gitpod.io/#[REPO_URL]` in a browser window. Replace `[REPO_URL]` with your forked repository URL and you should already have been connected to the Gitpod account before launching the browser URL.
 
-If you want **to set this up from scratch**, use the following instructions to bootstrap the base project template and copy the appropriate files/content from the [source repo](https://github.com/yugabyte/yb-todo-app.git).
+If you want **to set up the Spring Boot app from scratch**, use the following instructions to bootstrap the base project template and copy the appropriate files and content from the [source repository](https://github.com/yugabyte/yb-todo-app.git).
 
 ### Initialize the base project structure
 
-Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Gitpod experience are agnostic of the language/framework. A quick way to get started with a spring boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
+Spring todo is a Java Spring Boot reactive app. However, the steps to go through the Gitpod experience are language- and framework-agnostic. A quick way to get started with a Spring Boot app is via the [Spring Initializer](https://start.spring.io). Generate the base project structure with Webflux, Flyway, and R2DBC dependencies.
 
 ![Set up the base project abstract](/images/develop/gitdev/gitpod/init-sb.png)
 
 ### Complete the CRUD APIs
 
-Complete the todo-service by copying the source and build files from the [source repo](https://github.com/yugabyte/yb-todo-app.git) to your repo to handle GET, POST, PUT, and DELETE API requests.
+Complete the todo-service by copying the source and build files from the [source repository](https://github.com/yugabyte/yb-todo-app.git) to your own repository to handle GET, POST, PUT, and DELETE API requests.
 
 ![Complete the API endpoints](/images/develop/gitdev/gitpod/complete-api.png)
 
@@ -47,7 +47,7 @@ The application uses non-blocking reactive APIs to connect to YugabyteDB.
 
 ## Initialize Gitpod
 
-To get started quickly, you can use the universal image [pre-built containers](https://www.gitpod.io/docs/quickstart) or a language-specific image. It can be further customized to fit your needs either by extending them or by creating a new one. A simple click provisions the entire development environment in the cloud with an integrated powerful Visual Studio Code editor. The entire config to set up the development environment lives in the same source code repository. Follow the steps in the next sections to set up your Gitpod environment.
+To get started quickly, you can use the universal image [pre-built containers](https://www.gitpod.io/docs/quickstart) or a language-specific image. These can be further customized to fit your needs either by extending them or by creating a new one. A single click provisions the entire development environment in the cloud with an integrated powerful Visual Studio Code editor. The entire configuration to set up the development environment lives in the same source code repository. Follow the steps in the next sections to set up and customize your Gitpod environment.
 
 ### Set up the Gitpod environment
 
@@ -55,16 +55,16 @@ You initialize the Gitpod workspace environment for a specific repository by inv
 
 ![Initalize the workspace environment](/images/develop/gitdev/gitpod/init-workspace.png)
 
-You can either use a universal image with pre-configured libraries and commonly used utilities or a language-specific image. Create the integrated YugabyteDB workspace environment by customizing the base universal image.
+You can either use a universal image with pre-configured libraries and commonly used utilities or a language-specific image. Create the integrated YugabyteDB workspace environment by customizing the base universal image. Use the editor in your Gitpod environment to add these files directly and commit them back to your GitHub repository.
 
 To initialize the workspace environment:
 
-- create a `.gitpod.yml` file at the root of the source repo
-- create a `.gitpodcontainer` folder at the root of the source repo to hold the customized `Dockerfile`
+* create a `.gitpod.yml` file at the root of the source repository
+* create a `.gitpodcontainer` folder at the root of the source repository to hold the customized `Dockerfile`
 
 ### Customize the Gitpod environment
 
-You need to customize the default universal image to include the YugabyteDB binary. You do this by defining your own `Dockerfile` at `.gitpodcontainer/Dockerfile`. Refer to the [source repo](https://github.com/yugabyte/yb-todo-app.git) for the complete file.
+You need to customize the default universal image to include the YugabyteDB binary. You do this by defining your own `Dockerfile` at `.gitpodcontainer/Dockerfile`. Refer to the [source repository](https://github.com/yugabyte/yb-todo-app.git) for the complete file.
 
 ```docker
 # default universal image
@@ -95,7 +95,7 @@ RUN mkdir -p /var/ybdp \
 USER $ROLE
 ```
 
-The following lines of code are to write the app-specific database-related info to a local file that will be run during the container initialization phase.
+The following lines of code write the app-specific database information to a local file that will be run during the container initialization phase.
 
 ```docker
 ENV STORE=/var/ybdp
@@ -155,13 +155,13 @@ ports:
     onOpen: ignore    
 ```
 
-Launch the workspaces environment with this updated spec to provision the development environment with a running YugabyteDB instance. It opens two terminals, one terminal to run the DB task, and the other to compile and run the boot app.
+Commit `Dockerfile` and `.gitpod.yml` to your GitHub repository.
+
+Next, [launch](#set-up-the-gitpod-environment) the workspaces environment again with this updated spec to provision the development environment with a running YugabyteDB instance. This opens two terminals; one terminal runs the DB task, and the other compiles and runs the boot app.
 
 ![Install YugabyteDB](/images/develop/gitdev/gitpod/install-yb.gif)
 
-{{< note title="Note" >}}
-Gitpod provisions a fully integrated ready-to-code cloud-native development environment with  automated port forwarding to develop, build, and test applications right in your browser.
-{{< /note >}}
+Gitpod provisions a fully integrated ready-to-code cloud-native development environment with automated port forwarding to develop, build, and test applications right in your browser.
 
 ![Workspace environment](/images/develop/gitdev/gitpod/workspace.png)
 

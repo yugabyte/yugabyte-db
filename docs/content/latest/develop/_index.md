@@ -80,7 +80,6 @@ menu:
         Best practices for data modeling and cluster configuration.
       </div>
     </a>
-
   </div>
 
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">
