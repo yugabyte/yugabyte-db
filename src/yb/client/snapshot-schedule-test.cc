@@ -154,7 +154,11 @@ TEST_F(SnapshotScheduleTest, GC) {
       }
       auto dir = ASSERT_RESULT(peer->tablet_metadata()->TopSnapshotsDir());
       auto children = ASSERT_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
-      ASSERT_LE(children.size(), 2) << AsString(children);
+      // At most 3 files (including an extra for intents).
+      // For e.g. [985a49e5-d7c7-491f-a95f-da8aa55a8cf9,
+      // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp.intents,
+      // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp].
+      ASSERT_LE(children.size(), 3) << AsString(children);
     }
 
     std::this_thread::sleep_for(100ms);
