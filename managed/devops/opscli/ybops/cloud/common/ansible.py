@@ -118,7 +118,6 @@ class AnsibleProcess(object):
         process_args.extend([
             "-i", inventory_target,
             "-c", connection_type,
-            "-e", "ansible_python_interpreter='/usr/bin/env python'"
         ])
 
         # Setup the full list of extra-vars needed for ansible plays.
