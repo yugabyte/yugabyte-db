@@ -24,63 +24,25 @@
 namespace yb {
 namespace pggate {
 
-using google::protobuf::RepeatedPtrField;
+PgTableDesc::PgTableDesc(const client::YBTablePtr& table)
+    : table_(table), table_partitions_(table_->GetVersionedPartitions()) {
 
-namespace {
-
-client::VersionedTablePartitionListPtr RetrievePartitions(const client::YBTable *table) {
-  if (PREDICT_FALSE(FLAGS_TEST_index_read_multiple_partitions)) {
-    // In this test we assume there is only one partition from the YSQL side, however more than one
-    // partitions from the DocDB side. This is directed to test the scenario where partition list
-    // is outdated post tablet split.
-    auto partitions = table->GetVersionedPartitions();
-    auto result = std::make_shared<client::VersionedTablePartitionList>();
-    result->version = partitions->version;
-    result->keys = { partitions->keys.front() };
-    return result;
+  size_t idx = 0;
+  for (const auto& column : schema().columns()) {
+    attr_num_map_.emplace(column.order(), idx++);
   }
-  return table->GetVersionedPartitions();
 }
 
-} // namespace
-
-PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table)
-    : table_(pg_table), table_partitions_(RetrievePartitions(table_.get())) {
-  const auto& schema = pg_table->schema();
-  const int num_columns = schema.num_columns();
-  columns_.resize(num_columns);
-  for (size_t idx = 0; idx < num_columns; idx++) {
-    // Find the column descriptor.
-    const auto& col = schema.Column(idx);
-
-    // TODO(neil) Considering index columns by attr_num instead of ID.
-    ColumnDesc *desc = columns_[idx].desc();
-    desc->Init(idx,
-               schema.ColumnId(idx),
-               col.name(),
-               idx < schema.num_hash_key_columns(),
-               idx < schema.num_key_columns(),
-               col.order() /* attr_num */,
-               col.type(),
-               client::YBColumnSchema::ToInternalDataType(col.type()),
-               col.sorting_type());
-    attr_num_map_[col.order()] = idx;
-  }
-
-  // Create virtual columns.
-  column_ybctid_.Init(PgSystemAttrNum::kYBTupleId);
-}
-
-Result<PgColumn *> PgTableDesc::FindColumn(int attr_num) {
+Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   // Find virtual columns.
   if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    return &column_ybctid_;
+    return num_columns();
   }
 
   // Find physical column.
   const auto itr = attr_num_map_.find(attr_num);
   if (itr != attr_num_map_.end()) {
-    return &columns_[itr->second];
+    return itr->second;
   }
 
   return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
@@ -89,9 +51,8 @@ Result<PgColumn *> PgTableDesc::FindColumn(int attr_num) {
 Status PgTableDesc::GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const {
   const auto itr = attr_num_map_.find(attr_number);
   if (itr != attr_num_map_.end()) {
-    const ColumnDesc* desc = columns_[itr->second].desc();
-    *is_primary = desc->is_primary();
-    *is_hash = desc->is_partition();
+    *is_primary = itr->second < schema().num_key_columns();
+    *is_hash = itr->second < schema().num_hash_key_columns();
   } else {
     *is_primary = false;
     *is_hash = false;
@@ -99,20 +60,16 @@ Status PgTableDesc::GetColumnInfo(int16_t attr_number, bool *is_primary, bool *i
   return Status::OK();
 }
 
-bool PgTableDesc::IsTransactional() const {
-  return table_->schema().table_properties().is_transactional();
-}
-
 bool PgTableDesc::IsColocated() const {
   return table_->colocated();
 }
 
 bool PgTableDesc::IsHashPartitioned() const {
-  return table_->IsHashPartitioned();
+  return schema().num_hash_key_columns() > 0;
 }
 
 bool PgTableDesc::IsRangePartitioned() const {
-  return table_->IsRangePartitioned();
+  return schema().num_hash_key_columns() == 0;
 }
 
 const std::vector<std::string>& PgTableDesc::GetPartitions() const {
@@ -175,39 +132,51 @@ const client::YBTableName& PgTableDesc::table_name() const {
 }
 
 size_t PgTableDesc::num_hash_key_columns() const {
-  return table_->schema().num_hash_key_columns();
+  return schema().num_hash_key_columns();
 }
 
 size_t PgTableDesc::num_key_columns() const {
-  return table_->schema().num_key_columns();
+  return schema().num_key_columns();
 }
 
 size_t PgTableDesc::num_columns() const {
-  return table_->schema().num_columns();
+  return schema().num_columns();
 }
 
-std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSelect() {
-  return table_->NewPgsqlSelect();
+const PartitionSchema& PgTableDesc::partition_schema() const {
+  return table_->partition_schema();
 }
 
-std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSample() {
-  return table_->NewPgsqlSample();
+const Schema& PgTableDesc::schema() const {
+  return table_->InternalSchema();
+}
+
+uint32_t PgTableDesc::schema_version() const {
+  return table_->schema().version();
 }
 
 std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlInsert() {
-  return table_->NewPgsqlInsert();
+  return client::YBPgsqlWriteOp::NewInsert(table_);
 }
 
 std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlUpdate() {
-  return table_->NewPgsqlUpdate();
+  return client::YBPgsqlWriteOp::NewUpdate(table_);
 }
 
 std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlDelete() {
-  return table_->NewPgsqlDelete();
+  return client::YBPgsqlWriteOp::NewDelete(table_);
 }
 
 std::unique_ptr<client::YBPgsqlWriteOp> PgTableDesc::NewPgsqlTruncateColocated() {
-  return table_->NewPgsqlTruncateColocated();
+  return client::YBPgsqlWriteOp::NewTruncateColocated(table_);
+}
+
+std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSelect() {
+  return client::YBPgsqlReadOp::NewSelect(table_);
+}
+
+std::unique_ptr<client::YBPgsqlReadOp> PgTableDesc::NewPgsqlSample() {
+  return client::YBPgsqlReadOp::NewSample(table_);
 }
 
 }  // namespace pggate

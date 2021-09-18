@@ -13,8 +13,13 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include "yb/client/client-internal.h"
+#include "yb/client/table.h"
+
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -50,6 +55,36 @@ class PgClient::Impl {
     proxy_ = nullptr;
   }
 
+  Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id) {
+    tserver::PgOpenTableRequestPB req;
+    req.set_table_id(table_id.GetYBTableId());
+    tserver::PgOpenTableResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    client::YBTableInfo info;
+    RETURN_NOT_OK(client::CreateTableInfoFromTableSchemaResp(resp.info(), &info));
+
+    auto partitions = std::make_shared<client::VersionedTablePartitionList>();
+    partitions->version = resp.partitions().version();
+    partitions->keys.assign(resp.partitions().keys().begin(), resp.partitions().keys().end());
+
+    return make_scoped_refptr<PgTableDesc>(std::make_shared<client::YBTable>(
+        info, std::move(partitions)));
+  }
+
+  Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(uint32_t oid) {
+    tserver::PgGetDatabaseInfoRequestPB req;
+    req.set_oid(oid);
+
+    tserver::PgGetDatabaseInfoResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetDatabaseInfo(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.info();
+  }
+
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count) {
     tserver::PgReserveOidsRequestPB req;
     req.set_database_oid(database_oid);
@@ -61,6 +96,15 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->ReserveOids(req, &resp, PrepareAdminController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::pair<PgOid, PgOid>(resp.begin_oid(), resp.end_oid());
+  }
+
+  Result<bool> IsInitDbDone() {
+    tserver::PgIsInitDbDoneRequestPB req;
+    tserver::PgIsInitDbDoneResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->IsInitDbDone(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.done();
   }
 
  private:
@@ -98,9 +142,21 @@ void PgClient::Shutdown() {
   impl_->Shutdown();
 }
 
+Result<PgTableDescPtr> PgClient::OpenTable(const PgObjectId& table_id) {
+  return impl_->OpenTable(table_id);
+}
+
+Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
+  return impl_->GetDatabaseInfo(oid);
+}
+
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
     PgOid database_oid, PgOid next_oid, uint32_t count) {
   return impl_->ReserveOids(database_oid, next_oid, count);
+}
+
+Result<bool> PgClient::IsInitDbDone() {
+  return impl_->IsInitDbDone();
 }
 
 }  // namespace pggate

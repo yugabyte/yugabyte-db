@@ -11,44 +11,49 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_CLIENT_H
-#define YB_YQL_PGGATE_PG_CLIENT_H
-
-#include <memory>
-
-#include "yb/rpc/proxy.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
+#ifndef YB_YQL_PGGATE_PG_TABLE_H
+#define YB_YQL_PGGATE_PG_TABLE_H
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_env.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
 namespace pggate {
 
-class PgClient {
+class PgTable {
  public:
-  PgClient();
-  ~PgClient();
+  PgTable() = default;
+  explicit PgTable(const PgTableDescPtr& desc);
 
-  void Start(rpc::ProxyCache* proxy_cache,
-             const tserver::TServerSharedObject& tserver_shared_object);
-  void Shutdown();
+  bool operator!() const {
+    return !desc_;
+  }
 
-  Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id);
+  explicit operator bool() const {
+    return desc_ != nullptr;
+  }
 
-  Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
+  PgTableDesc* operator->() const {
+    return desc_.get();
+  }
 
-  Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
+  PgTableDesc& operator*() const {
+    return *desc_;
+  }
 
-  Result<bool> IsInitDbDone();
+  std::vector<PgColumn>& columns() {
+    return *columns_;
+  }
+
+  Result<PgColumn&> ColumnForAttr(int attr_num);
+  PgColumn& ColumnForIndex(size_t index);
 
  private:
-  class Impl;
-  std::unique_ptr<Impl> impl_;
+  PgTableDescPtr desc_;
+  std::shared_ptr<std::vector<PgColumn>> columns_;
 };
 
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_CLIENT_H
+#endif  // YB_YQL_PGGATE_PG_TABLE_H

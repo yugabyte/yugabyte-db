@@ -124,6 +124,10 @@ void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
   }
 }
 
+tserver::TServerSharedData& MasterTabletServer::SharedObject() {
+  return master_->shared_object();
+}
+
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
   return master_->async_client_initializer().get_client_future();
 }

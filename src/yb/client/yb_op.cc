@@ -933,7 +933,7 @@ YBNoOp::YBNoOp(const std::shared_ptr<YBTable>& table)
   : table_(table) {
 }
 
-Status YBNoOp::Execute(const YBPartialRow& key) {
+Status YBNoOp::Execute(YBClient* client, const YBPartialRow& key) {
   string encoded_key;
   RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
   CoarseTimePoint deadline = CoarseMonoClock::Now() + 5s;
@@ -943,14 +943,14 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
 
   for (int attempt = 1; attempt < 11; attempt++) {
     Synchronizer sync;
-    auto remote_ = VERIFY_RESULT(table_->client()->data_->meta_cache_->LookupTabletByKeyFuture(
+    auto remote_ = VERIFY_RESULT(client->data_->meta_cache_->LookupTabletByKeyFuture(
         table_, encoded_key, deadline).get());
 
     internal::RemoteTabletServer *ts = nullptr;
     std::vector<internal::RemoteTabletServer*> candidates;
     std::set<string> blacklist;  // TODO: empty set for now.
-    Status lookup_status = table_->client()->data_->GetTabletServer(
-       table_->client(),
+    Status lookup_status = client->data_->GetTabletServer(
+       client,
        remote_,
        YBClient::ReplicaSelection::LEADER_ONLY,
        blacklist,
@@ -982,7 +982,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
     // for the user's call.
     CoarseTimePoint rpc_deadline;
     if (static_cast<int>(candidates.size()) - blacklist.size() > 1) {
-      rpc_deadline = now + table_->client()->default_rpc_timeout();
+      rpc_deadline = now + client->default_rpc_timeout();
       rpc_deadline = std::min(deadline, rpc_deadline);
     } else {
       rpc_deadline = deadline;

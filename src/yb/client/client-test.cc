@@ -541,7 +541,7 @@ class ClientTestForceMasterLookup :
   void PerformManyLookups(const std::shared_ptr<YBTable>& table, bool point_lookup) {
     for (int i = 0; i < kNumIterations; i++) {
       if (point_lookup) {
-          auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
+          auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
           ASSERT_NOTNULL(key_rt);
       } else {
         auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
@@ -597,7 +597,7 @@ TEST_F(ClientTest, TestPointThenRangeLookup) {
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
+  auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
   ASSERT_NOTNULL(key_rt);
 
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
@@ -868,7 +868,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   // We have to loop since some replicas may have been created slowly.
   scoped_refptr<internal::RemoteTablet> rt;
   while (true) {
-    rt = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
+    rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
     ASSERT_TRUE(rt.get() != nullptr);
     vector<internal::RemoteTabletServer*> tservers;
     rt->GetRemoteTabletServers(&tservers);
@@ -1656,7 +1656,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   ASSERT_NO_FATALS(InsertTestRows(table, kNumRowsToWrite));
 
   // Find the leader of the first tablet.
-  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
   internal::RemoteTabletServer *remote_tablet_server = remote_tablet->LeaderTServer();
 
   // Kill the leader of the first tablet.
@@ -1705,7 +1705,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   SleepFor(MonoDelta::FromMilliseconds(1500));
 
   // Find the leader replica
-  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
   internal::RemoteTabletServer *remote_tablet_server;
   set<string> blacklist;
   vector<internal::RemoteTabletServer*> candidates;
@@ -2278,7 +2278,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
 TEST_F(ClientTest, Capability) {
   constexpr CapabilityId kFakeCapability = 0x9c40e9a7;
 
-  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_table_.table()).get());
+  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), client_table_.table()).get());
   ASSERT_TRUE(rt.get() != nullptr);
   auto tservers = rt->GetRemoteTabletServers();
   ASSERT_EQ(tservers.size(), 3);
@@ -2329,7 +2329,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
-  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(pgsq_table->NewPgsqlInsert());
+  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(client::YBPgsqlWriteOp::NewInsert(pgsq_table));
   PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
 
   psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");
@@ -2521,7 +2521,7 @@ TEST_F(ClientTest, RefreshPartitions) {
       table->MarkPartitionsAsStale();
 
       Synchronizer synchronizer;
-      table->RefreshPartitions(synchronizer.AsStdStatusCallback());
+      table->RefreshPartitions(client_table_.client(), synchronizer.AsStdStatusCallback());
       const auto status = synchronizer.Wait();
       if (!status.ok()) {
         LOG(INFO) << status;

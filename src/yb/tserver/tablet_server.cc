@@ -165,7 +165,7 @@ std::string TabletServer::ToString() const {
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
-  return server::ResolveMasterAddresses(opts_.GetMasterAddresses(), nullptr);
+  return ResultToStatus(server::ResolveMasterAddresses(*opts_.GetMasterAddresses()));
 }
 
 Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
