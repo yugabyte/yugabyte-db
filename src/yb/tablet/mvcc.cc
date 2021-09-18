@@ -47,9 +47,14 @@
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 
+using namespace std::literals;
+
 DEFINE_test_flag(int64, mvcc_op_trace_num_items, 32,
                  "Number of items to keep in an MvccManager operation trace. Set to 0 to disable "
                  "MVCC operation tracing.");
+
+DEFINE_test_flag(int32, inject_mvcc_delay_add_leader_pending_ms, 0,
+                 "Inject delay after MvccManager::AddLeaderPending read clock.");
 
 namespace yb {
 namespace tablet {
@@ -299,6 +304,7 @@ bool BadNextOpId(const OpId& prev, const OpId& next) {
 HybridTime MvccManager::AddLeaderPending(const OpId& op_id) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto ht = clock_->Now();
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms);
   VLOG_WITH_PREFIX(1) << __func__ << "(" << op_id << "), time: " << ht;
   AddPending(ht, op_id, /* is_follower_side= */ false);
 
