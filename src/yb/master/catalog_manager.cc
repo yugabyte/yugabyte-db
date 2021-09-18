@@ -2948,7 +2948,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     req.clear_partition_schema();
     num_tablets = 1;
   } else {
-    s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
+    RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema));
     if (req.partitions_size() > 0) {
       if (req.partitions_size() != num_tablets) {
         Status s = STATUS(InvalidArgument, "Partitions are not defined for all tablets");
