@@ -198,3 +198,25 @@
       mode: 0644
   tags: systemd_upgrade
   when: systemd_option
+
+- block:
+  - name: Check if /etc/apt/apt.conf.d/20auto-upgrades exists
+    stat:
+      path: /etc/apt/apt.conf.d/20auto-upgrades
+    register: autoupgrade_file
+
+  - name: Reenable unattended upgrades
+    raw: 'sed -i /Unattended-Upgrade/s/"0"/"1"/ /etc/apt/apt.conf.d/20auto-upgrades'
+    when: autoupgrade_file.stat.exists
+
+  - name: Check if /etc/apt/apt.conf.d/50unattended-upgrades exists
+    stat:
+      path: /etc/apt/apt.conf.d/50unattended-upgrades
+    register: unattendedupgrade_file
+
+  - name: Disable automatic reboot
+    lineinfile:
+      path: /etc/apt/apt.conf.d/50unattended-upgrades
+      line: Unattended-Upgrade::Automatic-Reboot "false";
+    when: unattendedupgrade_file.stat.exists
+  when: ansible_distribution == "Ubuntu"
