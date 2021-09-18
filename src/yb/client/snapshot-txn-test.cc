@@ -43,6 +43,7 @@ DECLARE_bool(TEST_disallow_lmp_failures);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
+DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(txn_max_apply_batch_records);
@@ -364,6 +365,12 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
 
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */,
                    0.0 /* select_update_probability */);
+}
+
+TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
+  FLAGS_TEST_disallow_lmp_failures = true;
+  FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
+  TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }
 
 struct PagingReadCounts {
