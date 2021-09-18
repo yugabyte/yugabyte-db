@@ -17,10 +17,49 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
+import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/master/master.proto";
 
 service PgClientService {
+  rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
+  rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
+}
+
+message PgGetDatabaseInfoRequestPB {
+  uint32 oid = 1;
+}
+
+message PgGetDatabaseInfoResponsePB {
+  AppStatusPB status = 1;
+
+  master.GetNamespaceInfoResponsePB info = 2;
+}
+
+message PgIsInitDbDoneRequestPB {
+}
+
+message PgIsInitDbDoneResponsePB {
+  AppStatusPB status = 1;
+  bool done = 2;
+}
+
+message PgOpenTableRequestPB {
+  string table_id = 1;
+}
+
+message PgTablePartitionsPB {
+  uint32 version = 1;
+  repeated bytes keys = 2;
+}
+
+message PgOpenTableResponsePB {
+  AppStatusPB status = 1;
+
+  master.GetTableSchemaResponsePB info = 2;
+  PgTablePartitionsPB partitions = 3;
 }
 
 message PgReserveOidsRequestPB {

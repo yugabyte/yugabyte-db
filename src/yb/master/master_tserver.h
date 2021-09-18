@@ -59,6 +59,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
     return nullptr;
   }
 
+  tserver::TServerSharedData& SharedObject() override;
+
   const std::shared_future<client::YBClient*>& client_future() const override;
 
  private:

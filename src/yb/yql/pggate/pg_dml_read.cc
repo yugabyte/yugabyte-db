@@ -72,12 +72,12 @@ PgDmlRead::~PgDmlRead() {
 }
 
 void PgDmlRead::PrepareBinds() {
-  if (!bind_desc_) {
+  if (!bind_) {
     // This statement doesn't have bindings.
     return;
   }
 
-  for (PgColumn &col : bind_desc_->columns()) {
+  for (auto& col : bind_.columns()) {
     col.AllocPrimaryBindPB(read_req_);
   }
 }
@@ -127,7 +127,7 @@ void PgDmlRead::SetColumnRefs() {
 // Method removes empty primary binds and moves tailing non empty range primary binds
 // which are following after empty binds into the 'condition_expr' field.
 Status PgDmlRead::ProcessEmptyPrimaryBinds() {
-  if (!bind_desc_) {
+  if (!bind_) {
     // This query does not have any binds.
     read_req_->clear_partition_column_values();
     read_req_->clear_range_column_values();
@@ -138,8 +138,8 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   bool miss_partition_columns = false;
   bool has_partition_columns = false;
 
-  const auto hash_columns_begin = bind_desc_->columns().begin();
-  const auto hash_columns_end = hash_columns_begin + bind_desc_->num_hash_key_columns();
+  const auto hash_columns_begin = bind_.columns().begin();
+  const auto hash_columns_end = hash_columns_begin + bind_->num_hash_key_columns();
   for (auto it = hash_columns_begin; it != hash_columns_end; ++it) {
     auto expr = it->bind_pb();
     // For IN clause expr->has_condition() returns 'true'.
@@ -170,9 +170,8 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
 
   size_t num_bound_range_columns = 0;
 
-  const auto range_columns_end = bind_desc_->columns().end();
-  const auto range_columns_begin =
-      bind_desc_->columns().begin() + bind_desc_->num_hash_key_columns();
+  const auto range_columns_end = bind_.columns().begin() + bind_->num_columns();
+  const auto range_columns_begin = bind_.columns().begin() + bind_->num_hash_key_columns();
   for (auto it = range_columns_begin; it < range_columns_end; ++it) {
     auto& col = *it;
     auto expr = col.bind_pb();
@@ -221,10 +220,10 @@ bool PgDmlRead::IsConcreteRowRead() const {
   // - ybctid is explicitly bound
   // - ybctid is used implicitly by using secondary index
   // - all hash and range key components are bound (Note: each key component can be bound only once)
-  return doc_op_ && bind_desc_ &&
+  return doc_op_ && bind_ &&
          (ybctid_bind_ ||
           (secondary_index_query_ && secondary_index_query_->has_doc_op()) ||
-          (bind_desc_->num_key_columns() ==
+          (bind_->num_key_columns() ==
               (read_req_->partition_column_values_size() + read_req_->range_column_values_size())));
 }
 
@@ -296,23 +295,23 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
     << "Operator BETWEEN cannot be applied to ROWID";
 
   // Find column.
-  PgColumn *col = VERIFY_RESULT(bind_desc_->FindColumn(attr_num));
+  PgColumn& col = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
   if (attr_value) {
-    SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+    SCHECK_EQ(col.internal_type(), attr_value->internal_type(), Corruption,
               "Attribute value type does not match column type");
   }
 
   if (attr_value_end) {
-    SCHECK_EQ(col->internal_type(), attr_value_end->internal_type(), Corruption,
+    SCHECK_EQ(col.internal_type(), attr_value_end->internal_type(), Corruption,
               "Attribute value type does not match column type");
   }
 
-  CHECK(!col->desc()->is_partition()) << "This method cannot be used for binding partition column!";
+  CHECK(!col.is_partition()) << "This method cannot be used for binding partition column!";
 
   // Alloc the protobuf.
-  PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
+  PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(&col);
 
   if (attr_value != nullptr) {
     if (attr_value_end != nullptr) {
@@ -322,7 +321,7 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op3_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-      op1_pb->set_column_id(col->id());
+      op1_pb->set_column_id(col.id());
 
       RETURN_NOT_OK(attr_value->Eval(op2_pb->mutable_value()));
       RETURN_NOT_OK(attr_value_end->Eval(op3_pb->mutable_value()));
@@ -332,7 +331,7 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-      op1_pb->set_column_id(col->id());
+      op1_pb->set_column_id(col.id());
 
       RETURN_NOT_OK(attr_value->Eval(op2_pb->mutable_value()));
     }
@@ -343,7 +342,7 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-      op1_pb->set_column_id(col->id());
+      op1_pb->set_column_id(col.id());
 
       RETURN_NOT_OK(attr_value_end->Eval(op2_pb->mutable_value()));
     } else {
@@ -365,25 +364,25 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
          "Operator IN cannot be applied to ROWID");
 
   // Find column.
-  PgColumn *col = VERIFY_RESULT(bind_desc_->FindColumn(attr_num));
+  PgColumn& col = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
   // TODO(neil) Current code combine TEXT and BINARY datatypes into ONE representation.  Once that
   // is fixed, we can remove the special if() check for BINARY type.
-  if (col->internal_type() != InternalType::kBinaryValue) {
+  if (col.internal_type() != InternalType::kBinaryValue) {
     for (int i = 0; i < n_attr_values; i++) {
       if (attr_values[i]) {
-        SCHECK_EQ(col->internal_type(), attr_values[i]->internal_type(), Corruption,
+        SCHECK_EQ(col.internal_type(), attr_values[i]->internal_type(), Corruption,
             "Attribute value type does not match column type");
       }
     }
   }
 
-  if (col->desc()->is_primary()) {
+  if (col.is_primary()) {
     // Alloc the protobuf.
-    auto *bind_pb = col->bind_pb();
+    auto *bind_pb = col.bind_pb();
     if (bind_pb == nullptr) {
-      bind_pb = AllocColumnBindPB(col);
+      bind_pb = AllocColumnBindPB(&col);
     } else {
       if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
         LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.",
@@ -392,7 +391,7 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
     }
 
     bind_pb->mutable_condition()->set_op(QL_OP_IN);
-    bind_pb->mutable_condition()->add_operands()->set_column_id(col->id());
+    bind_pb->mutable_condition()->add_operands()->set_column_id(col.id());
 
     // There's no "list of expressions" field so we simulate it with an artificial nested OR
     // with repeated operands, one per bind expression.
@@ -409,14 +408,14 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
     }
   } else {
     // Alloc the protobuf.
-    PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
+    PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(&col);
 
     condition_expr_pb->mutable_condition()->set_op(QL_OP_IN);
 
     auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
     auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-    op1_pb->set_column_id(col->id());
+    op1_pb->set_column_id(col.id());
 
     for (int i = 0; i < n_attr_values; i++) {
       // Link the given expression "attr_value" with the allocated protobuf.
@@ -434,6 +433,7 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
       }
     }
   }
+
   return Status::OK();
 }
 
@@ -456,20 +456,20 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
 Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
   vector<docdb::PrimitiveValue> hashed_components, range_components;
-  hashed_components.reserve(bind_desc_->num_hash_key_columns());
+  hashed_components.reserve(bind_->num_hash_key_columns());
   range_components.reserve(
-      bind_desc_->num_hash_key_columns() - bind_desc_->num_hash_key_columns());
-  for (size_t i = 0; i < bind_desc_->num_hash_key_columns(); ++i) {
-    auto& col = bind_desc_->columns()[i];
+      bind_->num_hash_key_columns() - bind_->num_hash_key_columns());
+  for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
+    auto& col = bind_.columns()[i];
     hashed_components.push_back(VERIFY_RESULT(
         BuildKeyColumnValue(col, *col.bind_pb(), hashed_values.Add())));
   }
 
   auto dockey_builder = VERIFY_RESULT(CreateDocKeyBuilder(
-      hashed_components, hashed_values, bind_desc_->table()->partition_schema()));
+      hashed_components, hashed_values, bind_->partition_schema()));
 
-  for (size_t i = bind_desc_->num_hash_key_columns(); i < bind_desc_->num_key_columns(); ++i) {
-    auto& col = bind_desc_->columns()[i];
+  for (size_t i = bind_->num_hash_key_columns(); i < bind_->num_key_columns(); ++i) {
+    auto& col = bind_.columns()[i];
     auto& expr = *col.bind_pb();
     // For IN clause expr->has_condition() returns 'true'.
     if (expr.has_condition()) {
@@ -480,8 +480,8 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
         range_components.push_back(VERIFY_RESULT(BuildKeyColumnValue(col, in_exp)));
         // Range key component has one and only one IN clause,
         // all remains components has explicit values. Add them as is.
-        for (size_t j = i + 1; j < bind_desc_->num_key_columns(); ++j) {
-          auto& suffix_col = bind_desc_->columns()[j];
+        for (size_t j = i + 1; j < bind_->num_key_columns(); ++j) {
+          auto& suffix_col = bind_.columns()[j];
           range_components.push_back(VERIFY_RESULT(
               BuildKeyColumnValue(suffix_col, *suffix_col.bind_pb())));
         }
@@ -499,19 +499,19 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
 
 // Function checks that one and only one range key component has IN clause
 // and all other key components are set.
-bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() const {
-  if (!bind_desc_) {
+bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() {
+  if (!bind_) {
     return false;
   }
 
   size_t range_components_in_clause_count = 0;
 
-  for (size_t i = 0; i < bind_desc_->num_key_columns(); ++i) {
-    auto& col = bind_desc_->columns()[i];
+  for (size_t i = 0; i < bind_->num_key_columns(); ++i) {
+    auto& col = bind_.ColumnForIndex(i);
     auto* expr = col.bind_pb();
     // For IN clause expr->has_condition() returns 'true'.
     if (expr->has_condition()) {
-      if ((i < bind_desc_->num_hash_key_columns()) || (++range_components_in_clause_count > 1)) {
+      if ((i < bind_->num_hash_key_columns()) || (++range_components_in_clause_count > 1)) {
         // unsupported IN clause
         return false;
       }
@@ -554,7 +554,7 @@ Status PgDmlRead::CopyBoundValue(
 Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
     const PgColumn& col, const PgsqlExpressionPB& src, PgsqlExpressionPB* dest) {
   RETURN_NOT_OK(CopyBoundValue(col, src, dest->mutable_value()));
-  return docdb::PrimitiveValue::FromQLValuePB(dest->value(), col.desc()->sorting_type());
+  return docdb::PrimitiveValue::FromQLValuePB(dest->value(), col.desc().sorting_type());
 }
 
 Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
