@@ -1,4 +1,6 @@
+autorepr
 boto
+codecheck
 compiledb
 distro
 downloadutil
@@ -6,11 +8,11 @@ mypy
 overrides
 packaging
 psutil
+pycodestyle
 pygithub
 ruamel.yaml
 semantic-version
 six
+sys_detection
 wheel
 yugabyte_pycommon
-codecheck
-pycodestyle
