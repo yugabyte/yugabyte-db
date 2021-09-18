@@ -742,8 +742,7 @@ bool PgColumnRef::is_ybbasetid() const {
 }
 
 Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  const PgColumn *col;
-  RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb, &col));
+  RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(attr_num_, expr_pb));
   return Status::OK();
 }
 

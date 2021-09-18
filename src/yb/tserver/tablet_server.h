@@ -129,6 +129,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
+  tserver::TServerSharedData& SharedObject() override {
+    return shared_object();
+  }
+
   CHECKED_STATUS PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
 
   CHECKED_STATUS GetLiveTServers(

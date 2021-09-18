@@ -1524,10 +1524,8 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
     local_addrs.push_back(local_hostport.address());
   }
 
-  std::vector<Endpoint> resolved_addresses;
-  Status s = server::ResolveMasterAddresses(master_->opts().GetMasterAddresses(),
-                                            &resolved_addresses);
-  RETURN_NOT_OK(s);
+  auto resolved_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
+      *master_->opts().GetMasterAddresses()));
 
   for (auto const &addr : resolved_addresses) {
     if (addr.address().is_unspecified() ||
