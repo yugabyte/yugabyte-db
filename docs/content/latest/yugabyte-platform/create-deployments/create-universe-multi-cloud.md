@@ -23,7 +23,7 @@ To do this, you'll need to:
 * [Check the prerequisites](#prerequisites)
 * [Set up node instance VMs](#set-up-instance-vms) in each cloud (AWS, GCP, and Azure)
 * [Set up VPC peering](#set-up-vpc-peering) through a VPN tunnel across these 3 clouds
-* [Deploy Yugabyte Platform](#deploy-yugabyte-platform) on one of the nodes
+* [Install Yugabyte Platform](#install-yugabyte-platform) on one of the nodes
 * [Deploy a Yugabyte universe](#deploy-a-universe) on your multi-cloud topology
 * [Run the TPC-C benchmark](#run-the-tpc-c-benchmark)
 
@@ -61,7 +61,7 @@ Follow these steps on the [Install Yugabyte Platform](../../install-yugabyte-pla
 
 This section outlines now to configure the on-premises cloud provider for YugabyteDB using the Yugabyte Platform console. If no cloud providers are configured, the main Dashboard page highlights that you need to configure at least one cloud provider. Refer to [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) for more information.
 
-Follow the instructions in the next sub-sections to configure your cloud provider, instance types, and regions, and to add your instances.
+Follow the instructions in the next sub-sections to configure your cloud provider, instance types, and regions, and to provision the instances you'll use in your universe.
 
 ### Set up the cloud provider
 
@@ -97,25 +97,25 @@ It can be tricky to identify which nodes are in which clouds, so you should use 
 
 ![Multi-cloud regions](/images/ee/multi-cloud-regions.png)
 
-### Summary
+### Save the provider
 
-Once fully configured, the provider should look similar to the following:
+Click Finish to create your cloud provider. Once fully configured, the provider should look similar to the following:
 
 ![Multi-cloud provider map view](/images/ee/multi-cloud-provider-map.png)
 
-And the provider's instance list should be similar to this:
+### Provision instances
+
+Once you've defined your cloud provider configuration, click Manage Instances to provision as many nodes as your application requires. Follow the instructions in Step 2 of the [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-2-provision-the-yugabytedb-nodes) page.
+
+The provider's instance list should be similar to this:
 
 ![Multi-cloud instance list](/images/ee/multi-cloud-provider-instance-list.png)
 
 ## Deploy a universe
 
-If no universes have been created yet, the Yugabyte Platform dashboard looks similar to the following:
-
-![Dashboard with no universes](/images/ee/no-univ-dashboard.png)
-
 To create a multi-region universe, do the following:
 
-1. On the Universes page, click Create Universe.
+1. On the Dashboard or Universes page, click Create Universe.
 
     ![New universe details](/images/ee/multi-cloud-create-universe.png)
 
@@ -123,7 +123,7 @@ To create a multi-region universe, do the following:
 
 1. Enter the set of regions: `us-aws-west-2`, `us-azu-east-1`, `us-centra1-b`
 
-1. Change instance type to `8core`.
+1. Set instance type to `8core`.
 
 1. Add the following flags for Master and T-Server:
 
@@ -148,7 +148,7 @@ The universe's nodes list will be similar to the following:
 
 ## Run the TPC-C benchmark
 
-To run the TPC-C benchmark on your universe, you could commands similar to the following (with your own IP addresses):
+To run the TPC-C benchmark on your universe, you can use commands similar to the following (with your own IP addresses):
 
 ```sh
 ./tpccbenchmark -c config/workload_all.xml \
