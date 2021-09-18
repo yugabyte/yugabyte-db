@@ -37,6 +37,7 @@ set(PGGATE_SRCS
     pg_expr.cc
     pg_column.cc
     pg_doc_op.cc
+    pg_table.cc
     pg_tabledesc.cc
     pg_txn_manager.cc
     pg_value.cc

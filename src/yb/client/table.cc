@@ -71,11 +71,8 @@ TableType YBTable::ClientToPBTableType(YBTableType table_type) {
   return TableType::DEFAULT_TABLE_TYPE;
 }
 
-YBTable::YBTable(client::YBClient* client, const YBTableInfo& info)
-    : client_(client),
-      // The table type is set after the table is opened.
-      table_type_(YBTableType::UNKNOWN_TABLE_TYPE),
-      info_(info) {
+YBTable::YBTable(const YBTableInfo& info, VersionedTablePartitionListPtr partitions)
+    : info_(info), partitions_(std::move(partitions)) {
 }
 
 YBTable::~YBTable() {
@@ -88,15 +85,11 @@ const YBTableName& YBTable::name() const {
 }
 
 YBTableType YBTable::table_type() const {
-  return table_type_;
+  return info_.table_type;
 }
 
 const string& YBTable::id() const {
   return info_.table_id;
-}
-
-YBClient* YBTable::client() const {
-  return client_;
 }
 
 const YBSchema& YBTable::schema() const {
@@ -238,7 +231,7 @@ void YBTable::InvokeRefreshPartitionsCallbacks(const Status& status) {
   }
 }
 
-void YBTable::RefreshPartitions(StdStatusCallback callback) {
+void YBTable::RefreshPartitions(YBClient* client, StdStatusCallback callback) {
   UniqueLock<decltype(refresh_partitions_callbacks_mutex_)> lock(
       refresh_partitions_callbacks_mutex_);
   bool was_empty = refresh_partitions_callbacks_.empty();
@@ -252,12 +245,12 @@ void YBTable::RefreshPartitions(StdStatusCallback callback) {
 
   VLOG_WITH_FUNC(2) << Format(
       "Calling FetchPartitions for table $0 ($1)", info_.table_name, info_.table_id);
-  FetchPartitions([this](const FetchPartitionsResult& result) {
+  FetchPartitions(client, info_, [this](const FetchPartitionsResult& result) {
     if (!result.ok()) {
       InvokeRefreshPartitionsCallbacks(result.status());
       return;
     }
-    const auto& partitions = result->first;
+    const auto& partitions = *result;
     {
       std::lock_guard<rw_spinlock> partitions_lock(mutex_);
       if (partitions->version < partitions_->version) {
@@ -270,7 +263,7 @@ void YBTable::RefreshPartitions(StdStatusCallback callback) {
             partitions->version, partitions_->version);
         return;
       }
-      partitions_ = result->first;
+      partitions_ = partitions;
       partitions_are_stale_ = false;
     }
     InvokeRefreshPartitionsCallbacks(Status::OK());
@@ -285,15 +278,17 @@ bool YBTable::ArePartitionsStale() const {
   return partitions_are_stale_;
 }
 
-void YBTable::FetchPartitions(FetchPartitionsCallback callback) {
+void YBTable::FetchPartitions(
+    YBClient* client, std::reference_wrapper<const YBTableInfo> table_info,
+    FetchPartitionsCallback callback) {
   // TODO: fetch the schema from the master here once catalog is available.
   // TODO(tsplit): consider optimizing this to not wait for all tablets to be running in case
   // of some tablet has been split and post-split tablets are not yet running.
-  client_->GetTableLocations(
-      info_.table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
+  client->GetTableLocations(
+      table_info.get().table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue,
-      [this,
-       callback = std::move(callback)](const Result<master::GetTableLocationsResponsePB*>& result) {
+      [table_info, callback = std::move(callback)]
+          (const Result<master::GetTableLocationsResponsePB*>& result) {
         if (!result.ok()) {
           callback(result.status());
           return;
@@ -301,17 +296,8 @@ void YBTable::FetchPartitions(FetchPartitionsCallback callback) {
         const auto& resp = **result;
 
         VLOG_WITH_FUNC(2) << Format(
-            "Fetched partitions for table $0 ($1), found $2 tablets", info_.table_name,
-            info_.table_id, resp.tablet_locations_size());
-
-        YBTableType table_type;
-        auto s = PBToClientTableType(resp.table_type(), &table_type);
-        if (!s.ok()) {
-          callback(s.CloneAndPrepend(Format(
-              "Invalid table type $0 for table $1 ($2)", resp.table_type(), info_.table_name,
-              info_.table_id)));
-          return;
-        }
+            "Fetched partitions for table $0 ($1), found $2 tablets", table_info.get().table_name,
+            table_info.get().table_id, resp.tablet_locations_size());
 
         auto partitions = std::make_shared<VersionedTablePartitionList>();
         partitions->version = resp.partition_list_version();
@@ -321,62 +307,11 @@ void YBTable::FetchPartitions(FetchPartitionsCallback callback) {
         }
         std::sort(partitions->keys.begin(), partitions->keys.end());
 
-        callback(std::make_pair(partitions, table_type));
+        callback(partitions);
       });
 }
 
-Status YBTable::Open() {
-  Synchronizer synchronizer;
-
-  FetchPartitions([this, callback = synchronizer.AsStdStatusCallback()](
-                      const FetchPartitionsResult& result) {
-    Status status;
-    if (result.ok()) {
-      std::lock_guard<rw_spinlock> partitions_lock(mutex_);
-      partitions_ = result->first;
-      table_type_ = result->second;
-      partitions_are_stale_ = false;
-    } else {
-      status = result.status();
-    }
-    callback(status);
-  });
-  return synchronizer.Wait();
-}
-
 //--------------------------------------------------------------------------------------------------
-
-std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlWrite() {
-  return std::unique_ptr<YBPgsqlWriteOp>(new YBPgsqlWriteOp(shared_from_this()));
-}
-
-std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlInsert() {
-  return YBPgsqlWriteOp::NewInsert(shared_from_this());
-}
-
-std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlUpdate() {
-  return YBPgsqlWriteOp::NewUpdate(shared_from_this());
-}
-
-std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlDelete() {
-  return YBPgsqlWriteOp::NewDelete(shared_from_this());
-}
-
-std::unique_ptr<YBPgsqlWriteOp> YBTable::NewPgsqlTruncateColocated() {
-  return YBPgsqlWriteOp::NewTruncateColocated(shared_from_this());
-}
-
-std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSelect() {
-  return YBPgsqlReadOp::NewSelect(shared_from_this());
-}
-
-std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlSample() {
-  return YBPgsqlReadOp::NewSample(shared_from_this());
-}
-
-std::unique_ptr<YBPgsqlReadOp> YBTable::NewPgsqlRead() {
-  return std::unique_ptr<YBPgsqlReadOp>(new YBPgsqlReadOp(shared_from_this()));
-}
 
 size_t FindPartitionStartIndex(const TablePartitionList& partitions,
                                const PartitionKey& partition_key,

@@ -63,6 +63,7 @@ Status TableHandle::Create(const YBTableName& table_name,
 Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
   RETURN_NOT_OK(client->OpenTable(table_name, &table_));
 
+  client_ = client;
   auto schema = table_->schema();
   for (size_t i = 0; i < schema.num_columns(); ++i) {
     yb::ColumnId col_id = yb::ColumnId(schema.ColumnId(i));
@@ -74,7 +75,7 @@ Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
 }
 
 Status TableHandle::Reopen() {
-  return Open(name(), table_->client());
+  return Open(name(), client_);
 }
 
 const YBTableName& TableHandle::name() const {
@@ -193,7 +194,7 @@ TableIterator::TableIterator() : table_(nullptr) {}
 
 TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
     : table_(table), error_handler_(options.error_handler) {
-  auto client = (*table)->client();
+  auto client = table->client();
 
   session_ = client->NewSession();
 

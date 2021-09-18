@@ -490,16 +490,16 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
+  static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(const YBTablePtr& table);
+
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }
 
  private:
   friend class YBTable;
-  static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(
-      const std::shared_ptr<YBTable>& table);
 
   std::unique_ptr<PgsqlWriteRequestPB> write_request_;
   // Whether this operation should be run as a single row txn.
@@ -586,7 +586,7 @@ class YBNoOp {
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
-  CHECKED_STATUS Execute(const YBPartialRow& key);
+  CHECKED_STATUS Execute(YBClient* client, const YBPartialRow& key);
  private:
   const std::shared_ptr<YBTable> table_;
 

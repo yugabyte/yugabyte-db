@@ -29,6 +29,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -142,9 +143,9 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-                 const PgTableDesc::ScopedRefPtr& table_desc,
+                 PgTable* table,
                  const PgObjectId& relation_id)
-    : pg_session_(pg_session), table_desc_(table_desc), relation_id_(relation_id) {
+    : pg_session_(pg_session), table_(*table), relation_id_(relation_id) {
 }
 
 PgDocOp::~PgDocOp() {
@@ -364,9 +365,9 @@ void PgDocOp::SetReadTime() {
 //-------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
-                         const PgTableDesc::ScopedRefPtr& table_desc,
+                         PgTable* table,
                          std::unique_ptr<client::YBPgsqlReadOp> read_op)
-    : PgDocOp(pg_session, table_desc), template_op_(std::move(read_op)) {
+    : PgDocOp(pg_session, table), template_op_(std::move(read_op)) {
 }
 
 Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
@@ -453,7 +454,7 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
   //
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
   RETURN_NOT_OK(InitializeYbctidOperators());
-  const auto& partition_keys = table_desc_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitions();
 
   // Begin a batch of ybctids.
   end_of_data_ = false;
@@ -465,8 +466,8 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
     SCHECK(ybctid.size() > 0, InternalError, "Invalid ybctid value");
     // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
     // the following lines?
-    const size_t partition = VERIFY_RESULT(table_desc_->FindPartitionIndex(ybctid));
-    SCHECK(partition < table_desc_->GetPartitionCount(), InternalError,
+    const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
+    SCHECK(partition < table_->GetPartitionCount(), InternalError,
            "Ybctid value is not within partition boundary");
 
     // Assign ybctids to operators.
@@ -488,11 +489,11 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
       if (partition < partition_keys.size() - 1) {
         upper_bound = partition_keys[partition + 1];
       }
-      RETURN_NOT_OK(table_desc_->SetScanBoundary(read_op->mutable_request(),
-                                                 partition_keys[partition],
-                                                 /* lower_bound_is_inclusive */ true,
-                                                 upper_bound,
-                                                 /* upper_bound_is_inclusive */ false));
+      RETURN_NOT_OK(table_->SetScanBoundary(read_op->mutable_request(),
+                                            partition_keys[partition],
+                                            /* lower_bound_is_inclusive */ true,
+                                            upper_bound,
+                                            /* upper_bound_is_inclusive */ false));
     }
 
     // Append ybctid and its order to batch_arguments.
@@ -517,7 +518,7 @@ Status PgDocReadOp::PopulateDmlByYbctidOps(const vector<Slice> *ybctids) {
 }
 
 Status PgDocReadOp::InitializeYbctidOperators() {
-  int op_count = table_desc_->GetPartitionCount();
+  int op_count = table_->GetPartitionCount();
 
   if (batch_row_orders_.size() == 0) {
     // First batch:
@@ -548,7 +549,7 @@ Status PgDocReadOp::PopulateNextHashPermutationOps() {
   int op_index = active_op_count_;
 
   // Fill inactive operators with new hash permutations.
-  const size_t hash_column_count = table_desc_->num_hash_key_columns();
+  const size_t hash_column_count = table_->num_hash_key_columns();
   while (op_index < op_count && next_permutation_idx_ < total_permutation_count_) {
     YBPgsqlReadOp *read_op = GetReadOp(op_index++);
     read_op->set_active(true);
@@ -579,7 +580,7 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
 
   // Initialize partition_exprs_.
   // Reorganize the input arguments from Postgres to prepre for permutation generation.
-  const size_t hash_column_count = table_desc_->num_hash_key_columns();
+  const size_t hash_column_count = table_->num_hash_key_columns();
   partition_exprs_.resize(hash_column_count);
   for (int c_idx = 0; c_idx < hash_column_count; ++c_idx) {
     const auto& col_expr = template_op_->request().partition_column_values(c_idx);
@@ -628,7 +629,7 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   // Create batch operators, one per partition, to SELECT COUNT() in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  RETURN_NOT_OK(ClonePgsqlOps(table_desc_->GetPartitionCount()));
+  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionCount()));
   // Set "pararallelism_level_" to control how many operators can be sent at one time.
   //
   // TODO(neil) The calculation for this control variable should be applied to ALL operators, but
@@ -648,7 +649,7 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   }
 
   // Assign partitions to operators.
-  const auto& partition_keys = table_desc_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitions();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
@@ -665,11 +666,11 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
     if (partition < partition_keys.size() - 1) {
       upper_bound = partition_keys[partition + 1];
     }
-    RETURN_NOT_OK(table_desc_->SetScanBoundary(GetReadOp(partition)->mutable_request(),
-                                               partition_keys[partition],
-                                               true /* lower_bound_is_inclusive */,
-                                               upper_bound,
-                                               false /* upper_bound_is_inclusive */));
+    RETURN_NOT_OK(table_->SetScanBoundary(GetReadOp(partition)->mutable_request(),
+                                          partition_keys[partition],
+                                          true /* lower_bound_is_inclusive */,
+                                          upper_bound,
+                                          false /* upper_bound_is_inclusive */));
   }
   active_op_count_ = partition_keys.size();
   request_population_completed_ = true;
@@ -679,11 +680,11 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
 
 Status PgDocReadOp::PopulateSamplingOps() {
   // Create one PgsqlOp per partition
-  RETURN_NOT_OK(ClonePgsqlOps(table_desc_->GetPartitionCount()));
+  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionCount()));
   // Partitions are sampled sequentially, one at a time
   parallelism_level_ = 1;
   // Assign partitions to operators.
-  const auto& partition_keys = table_desc_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitions();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
@@ -701,7 +702,7 @@ Status PgDocReadOp::PopulateSamplingOps() {
     if (partition < partition_keys.size() - 1) {
       upper_bound = partition_keys[partition + 1];
     }
-    RETURN_NOT_OK(table_desc_->SetScanBoundary(GetReadOp(partition)->mutable_request(),
+    RETURN_NOT_OK(table_->SetScanBoundary(GetReadOp(partition)->mutable_request(),
                                                partition_keys[partition],
                                                true /* lower_bound_is_inclusive */,
                                                upper_bound,
@@ -740,7 +741,7 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   // Seek the tablet of the given key.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  const std::vector<std::string>& partition_keys = table_desc_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitions();
   const auto& partition_key = std::find(
       partition_keys.begin(),
       partition_keys.end(),
@@ -754,11 +755,11 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   if (next_partition_key != partition_keys.end()) {
     upper_bound = *next_partition_key;
   }
-  RETURN_NOT_OK(table_desc_->SetScanBoundary(template_op_->mutable_request(),
-                                             *partition_key,
-                                             true /* lower_bound_is_inclusive */,
-                                             upper_bound,
-                                             false /* upper_bound_is_inclusive */));
+  RETURN_NOT_OK(table_->SetScanBoundary(template_op_->mutable_request(),
+                                        *partition_key,
+                                        true /* lower_bound_is_inclusive */,
+                                        upper_bound,
+                                        false /* upper_bound_is_inclusive */));
   return Status::OK();
 }
 
@@ -993,10 +994,10 @@ void PgDocReadOp::FormulateRequestForRollingUpgrade(PgsqlReadRequestPB *read_req
 //--------------------------------------------------------------------------------------------------
 
 PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
-                           const PgTableDesc::ScopedRefPtr& table_desc,
+                           PgTable* table,
                            const PgObjectId& relation_id,
                            std::unique_ptr<YBPgsqlWriteOp> write_op)
-    : PgDocOp(pg_session, table_desc, relation_id),
+    : PgDocOp(pg_session, table, relation_id),
       write_op_(std::move(write_op)) {
 }
 

@@ -381,7 +381,7 @@ class ScopedRowUpdater {
 
  private:
   void RowUpdaterThread() {
-    std::shared_ptr<client::YBSession> session(table_->client()->NewSession());
+    std::shared_ptr<client::YBSession> session(table_.client()->NewSession());
     session->SetTimeout(15s);
 
     int64_t next_key;

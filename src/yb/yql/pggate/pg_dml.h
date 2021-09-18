@@ -17,9 +17,10 @@
 
 #include <boost/unordered_map.hpp>
 
+#include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_table.h"
 
 namespace yb {
 namespace pggate {
@@ -39,8 +40,7 @@ class PgDml : public PgStatement {
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
-  CHECKED_STATUS PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
-                                      const PgColumn **col);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb);
   CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
@@ -131,7 +131,7 @@ class PgDml : public PgStatement {
   // Targets of statements (Output parameter).
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
-  PgTableDesc::ScopedRefPtr target_desc_;
+  PgTable target_;
   std::vector<PgExpr*> targets_;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
@@ -141,7 +141,7 @@ class PgDml : public PgStatement {
   // - For secondary key binding, "bind_desc_" is the descriptor of teh secondary index table.
   //   The bound values will be used to read base_ybctid which is then used to read actual data
   //   from the main table.
-  PgTableDesc::ScopedRefPtr bind_desc_;
+  PgTable bind_;
 
   // Prepare control parameters.
   PgPrepareParameters prepare_params_ = { .index_oid = kInvalidOid,

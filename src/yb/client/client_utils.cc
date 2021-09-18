@@ -30,8 +30,8 @@ namespace client {
 constexpr int32_t kClientTimeoutSecs = 60;
 
 std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
-    const std::shared_ptr<YBTable>& table) {
-  return table->client()->LookupTabletByKeyFuture(
+    YBClient* client, const std::shared_ptr<YBTable>& table) {
+  return client->LookupTabletByKeyFuture(
       table, "" /* partition_key */,
       CoarseMonoClock::now() + std::chrono::seconds(kClientTimeoutSecs));
 }

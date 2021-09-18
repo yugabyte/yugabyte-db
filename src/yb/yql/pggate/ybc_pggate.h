@@ -555,4 +555,18 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* num
 }  // extern "C"
 #endif
 
+#ifdef __cplusplus
+namespace yb {
+namespace pggate {
+
+struct PgApiContext;
+
+void YBCInitPgGateEx(
+    const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
+    PgApiContext *context);
+
+} // namespace pggate
+} // namespace yb
+#endif
+
 #endif  // YB_YQL_PGGATE_YBC_PGGATE_H

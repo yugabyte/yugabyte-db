@@ -245,8 +245,7 @@ Status DetermineMasterAddresses(
   return Status::OK();
 }
 
-Status ResolveMasterAddresses(MasterAddressesPtr master_addresses,
-                              std::vector<Endpoint>* resolved_addresses) {
+Result<std::vector<Endpoint>> ResolveMasterAddresses(const MasterAddresses& master_addresses) {
   const auto resolve_sleep_interval_sec = 1;
   auto resolve_max_iterations =
       (FLAGS_master_discovery_timeout_ms / 1000) / resolve_sleep_interval_sec;
@@ -254,11 +253,12 @@ Status ResolveMasterAddresses(MasterAddressesPtr master_addresses,
     resolve_max_iterations = 120;
   }
 
-  for (const auto &list : *master_addresses) {
-    for (const auto &master_addr : list) {
+  std::vector<Endpoint> result;
+  for (const auto& list : master_addresses) {
+    for (const auto& master_addr : list) {
       // Retry resolving master address for 'master_discovery_timeout' period of time
       int num_iters = 0;
-      Status s = master_addr.ResolveAddresses(resolved_addresses);
+      Status s = master_addr.ResolveAddresses(&result);
       while (!s.ok()) {
         num_iters++;
         if (num_iters > resolve_max_iterations) {
@@ -266,11 +266,11 @@ Status ResolveMasterAddresses(MasterAddressesPtr master_addresses,
               master_addr);
         }
         std::this_thread::sleep_for(std::chrono::seconds(resolve_sleep_interval_sec));
-        s = master_addr.ResolveAddresses(resolved_addresses);
+        s = master_addr.ResolveAddresses(&result);
       }
     }
   }
-  return Status::OK();
+  return result;
 }
 
 std::string MasterAddressesToString(const MasterAddresses& addresses) {

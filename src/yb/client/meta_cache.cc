@@ -2018,7 +2018,7 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
   if (table->ArePartitionsStale()) {
-    table->RefreshPartitions([this, table, partition_key, deadline,
+    table->RefreshPartitions(client_, [this, table, partition_key, deadline,
                               callback = std::move(callback)](const Status& status) {
       if (!status.ok()) {
         callback(status);

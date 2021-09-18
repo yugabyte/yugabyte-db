@@ -224,7 +224,8 @@ class YBClient::Data {
   CHECKED_STATUS GetTableSchema(YBClient* client,
                                 const TableId& table_id,
                                 CoarseTimePoint deadline,
-                                YBTableInfo* info);
+                                YBTableInfo* info,
+                                master::GetTableSchemaResponsePB* resp = nullptr);
   CHECKED_STATUS GetTableSchemaById(YBClient* client,
                                     const TableId& table_id,
                                     CoarseTimePoint deadline,
@@ -502,6 +503,10 @@ Status RetryFunc(
     const std::string& timeout_msg,
     const std::function<Status(CoarseTimePoint, bool*)>& func,
     const CoarseDuration max_wait = std::chrono::seconds(2));
+
+// TODO(PgClient) Remove after removing YBTable from postgres.
+CHECKED_STATUS CreateTableInfoFromTableSchemaResp(
+    const master::GetTableSchemaResponsePB& resp, YBTableInfo* info);
 
 } // namespace client
 } // namespace yb

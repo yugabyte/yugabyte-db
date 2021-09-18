@@ -14,8 +14,13 @@
 #include "yb/tserver/pg_client_service.h"
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
+
+#include "yb/master/master.proxy.h"
 
 #include "yb/rpc/rpc_context.h"
+
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace tserver {
@@ -26,6 +31,59 @@ class PgClientServiceImpl::Impl {
                 TransactionPoolProvider transaction_pool_provider)
       : client_future_(client_future),
         transaction_pool_provider_(std::move(transaction_pool_provider)) {
+  }
+
+  CHECKED_STATUS OpenTable(
+      const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
+    client::YBTablePtr table;
+    RETURN_NOT_OK(client().OpenTable(req.table_id(), &table, resp->mutable_info()));
+    RSTATUS_DCHECK_EQ(table->table_type(), client::YBTableType::PGSQL_TABLE_TYPE, RuntimeError,
+                      "Wrong table type");
+
+    auto partitions = table->GetVersionedPartitions();
+    resp->mutable_partitions()->set_version(partitions->version);
+    for (const auto& key : partitions->keys) {
+      *resp->mutable_partitions()->mutable_keys()->Add() = key;
+    }
+
+    return Status::OK();
+  }
+
+  CHECKED_STATUS GetDatabaseInfo(
+      const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
+      rpc::RpcContext* context) {
+    RETURN_NOT_OK(client().GetNamespaceInfo(
+        GetPgsqlNamespaceId(req.oid()), "" /* namespace_name */, YQL_DATABASE_PGSQL,
+        resp->mutable_info()));
+
+    return Status::OK();
+  }
+
+  CHECKED_STATUS IsInitDbDone(
+      const PgIsInitDbDoneRequestPB& req, PgIsInitDbDoneResponsePB* resp,
+      rpc::RpcContext* context) {
+    HostPort master_leader_host_port = client().GetMasterLeaderAddress();
+    auto proxy  = std::make_shared<master::MasterServiceProxy>(
+        &client().proxy_cache(), master_leader_host_port);
+    rpc::RpcController rpc;
+    master::IsInitDbDoneRequestPB master_req;
+    master::IsInitDbDoneResponsePB master_resp;
+    RETURN_NOT_OK(proxy->IsInitDbDone(master_req, &master_resp, &rpc));
+    if (master_resp.has_error()) {
+      return STATUS_FORMAT(
+          RuntimeError,
+          "IsInitDbDone RPC response hit error: $0",
+          master_resp.error().ShortDebugString());
+    }
+    if (master_resp.done() && master_resp.has_initdb_error() &&
+        !master_resp.initdb_error().empty()) {
+      return STATUS_FORMAT(RuntimeError, "initdb failed: $0", master_resp.initdb_error());
+    }
+    VLOG(1) << "IsInitDbDone response: " << master_resp.ShortDebugString();
+    // We return true if initdb finished running, as well as if we know that it created the first
+    // table (pg_proc) to make initdb idempotent on upgrades.
+    resp->set_done(master_resp.done() || master_resp.pg_proc_exists());
+    return Status::OK();
   }
 
   CHECKED_STATUS ReserveOids(

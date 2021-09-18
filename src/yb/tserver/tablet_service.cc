@@ -2942,7 +2942,7 @@ void TabletServiceImpl::GetSplitKey(
 void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
                                       GetSharedDataResponsePB* resp,
                                       rpc::RpcContext context) {
-  auto& data = dynamic_cast<DbServerBase*>(server_)->shared_object();
+  auto& data = server_->SharedObject();
   resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
   context.RespondSuccess();
 }

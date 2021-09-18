@@ -209,7 +209,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Constructors & Destructors.
   explicit PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-                   const PgTableDesc::ScopedRefPtr& table_desc,
+                   PgTable* table,
                    const PgObjectId& relation_id = PgObjectId());
   virtual ~PgDocOp();
 
@@ -299,7 +299,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   uint64_t read_time_ = 0;
 
   // Target table.
-  PgTableDesc::ScopedRefPtr table_desc_;
+  PgTable& table_;
   PgObjectId relation_id_;
 
   // Exec control parameters.
@@ -401,7 +401,7 @@ class PgDocReadOp : public PgDocOp {
 
   // Constructors & Destructors.
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
-              const PgTableDesc::ScopedRefPtr& table_desc,
+              PgTable* table,
               std::unique_ptr<client::YBPgsqlReadOp> read_op);
 
   CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params) override;
@@ -521,7 +521,7 @@ class PgDocWriteOp : public PgDocOp {
 
   // Constructors & Destructors.
   PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
-               const PgTableDesc::ScopedRefPtr& table_desc,
+               PgTable* table,
                const PgObjectId& relation_id,
                std::unique_ptr<client::YBPgsqlWriteOp> write_op);
 

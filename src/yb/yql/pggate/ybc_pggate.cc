@@ -88,9 +88,9 @@ Slice YbctidAsSlice(uint64_t ybctid) {
 //--------------------------------------------------------------------------------------------------
 // C API.
 //--------------------------------------------------------------------------------------------------
-extern "C" {
 
-void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, PgCallbacks pg_callbacks) {
+void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
+                     PgApiContext* context) {
   InitThreading();
 
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
@@ -102,8 +102,18 @@ void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, PgCallbac
 #endif
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count, pg_callbacks);
+  if (context) {
+    pgapi = new pggate::PgApiImpl(std::move(*context), data_type_table, count, pg_callbacks);
+  } else {
+    pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks);
+  }
   VLOG(1) << "PgGate open";
+}
+
+extern "C" {
+
+void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks) {
+  YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr);
 }
 
 void YBCDestroyPgGate() {
@@ -454,7 +464,7 @@ YBCStatus YBCPgIsTableColocated(const YBCPgOid database_oid,
                                 const YBCPgOid table_oid,
                                 bool *colocated) {
   const PgObjectId table_id(database_oid, table_oid);
-  PgTableDesc::ScopedRefPtr table_desc;
+  PgTableDescPtr table_desc;
   YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
   if (status) {
     return status;

@@ -18,7 +18,6 @@
 #ifndef YB_YQL_PGGATE_PG_COLUMN_H_
 #define YB_YQL_PGGATE_PG_COLUMN_H_
 
-#include "yb/yql/pggate/pg_coldesc.h"
 #include "yb/yql/pggate/pg_expr.h"
 
 namespace yb {
@@ -27,12 +26,7 @@ namespace pggate {
 class PgColumn {
  public:
   // Constructor & Destructor.
-  PgColumn();
-  virtual ~PgColumn() {
-  }
-
-  // Initialize hidden columns.
-  void Init(PgSystemAttrNum attr_num);
+  PgColumn(std::reference_wrapper<const Schema> schema, size_t index);
 
   // Bindings for write requests.
   PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req);
@@ -51,12 +45,10 @@ class PgColumn {
   void ResetBindPB();
 
   // Access functions.
-  ColumnDesc *desc() {
-    return &desc_;
-  }
+  const ColumnSchema& desc() const;
 
-  const ColumnDesc *desc() const {
-    return &desc_;
+  const PgsqlExpressionPB *bind_pb() const {
+    return bind_pb_;
   }
 
   PgsqlExpressionPB *bind_pb() {
@@ -68,19 +60,17 @@ class PgColumn {
   }
 
   const string& attr_name() const {
-    return desc_.name();
+    return desc().name();
   }
 
   int attr_num() const {
-    return desc_.attr_num();
+    return desc().order();
   }
 
-  int id() const {
-    return desc_.id();
-  }
+  int id() const;
 
   InternalType internal_type() const {
-    return desc_.internal_type();
+    return client::YBColumnSchema::ToInternalDataType(desc().type());
   }
 
   bool read_requested() const {
@@ -99,14 +89,13 @@ class PgColumn {
     write_requested_ = value;
   }
 
-  bool is_system_column() {
-    return attr_num() < 0;
-  }
-
-  bool is_virtual_column();
+  bool is_partition() const;
+  bool is_primary() const;
+  bool is_virtual_column() const;
 
  private:
-  ColumnDesc desc_;
+  const Schema& schema_;
+  const size_t index_;
 
   // Protobuf code.
   // Input binds. For now these are just literal values of the columns.

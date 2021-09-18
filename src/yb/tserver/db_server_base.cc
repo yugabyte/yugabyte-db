@@ -49,5 +49,9 @@ client::TransactionPool* DbServerBase::TransactionPool() {
   return transaction_pool_holder_.get();
 }
 
+tserver::TServerSharedData& DbServerBase::shared_object() {
+  return *shared_object_;
+}
+
 }  // namespace tserver
 }  // namespace yb

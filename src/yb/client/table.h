@@ -57,7 +57,7 @@ struct VersionedTablePartitionList {
 };
 
 typedef std::shared_ptr<const VersionedTablePartitionList> VersionedTablePartitionListPtr;
-typedef Result<std::pair<VersionedTablePartitionListPtr, YBTableType>> FetchPartitionsResult;
+typedef Result<VersionedTablePartitionListPtr> FetchPartitionsResult;
 typedef std::function<void(const FetchPartitionsResult&)> FetchPartitionsCallback;
 
 // A YBTable represents a table on a particular cluster. It holds the current
@@ -70,10 +70,16 @@ typedef std::function<void(const FetchPartitionsResult&)> FetchPartitionsCallbac
 // This class is thread-safe.
 class YBTable : public std::enable_shared_from_this<YBTable> {
  public:
+  YBTable(const YBTableInfo& info, VersionedTablePartitionListPtr partitions);
+
   ~YBTable();
 
   static Status PBToClientTableType(TableType table_type_from_pb, YBTableType* client_table_type);
   static TableType ClientToPBTableType(YBTableType table_type);
+  // Fetches tablet partitions from master using GetTableLocations RPC.
+  static void FetchPartitions(
+      YBClient* client, std::reference_wrapper<const YBTableInfo> table_info,
+      FetchPartitionsCallback callback);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -87,7 +93,6 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // name, the ID will distinguish the old table from the new.
   const std::string& id() const;
 
-  YBClient* client() const;
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
   const PartitionSchema& partition_schema() const;
@@ -140,39 +145,17 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   bool ArePartitionsStale() const;
 
   // Asynchronously refreshes table partitions.
-  void RefreshPartitions(StdStatusCallback callback);
-
-  //------------------------------------------------------------------------------------------------
-  // Postgres support
-  // Create a new QL operation for this table.
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlWrite();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlInsert();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlUpdate();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlDelete();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlTruncateColocated();
-
-  std::unique_ptr<YBPgsqlReadOp> NewPgsqlRead();
-  std::unique_ptr<YBPgsqlReadOp> NewPgsqlSelect();
-  std::unique_ptr<YBPgsqlReadOp> NewPgsqlSample();
+  void RefreshPartitions(YBClient* client, StdStatusCallback callback);
 
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
 
-  YBTable(client::YBClient* client, const YBTableInfo& info);
-
-  CHECKED_STATUS Open();
-
-  // Fetches tablet partitions from master using GetTableLocations RPC.
-  void FetchPartitions(FetchPartitionsCallback callback);
-
   void InvokeRefreshPartitionsCallbacks(const Status& status);
 
   size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
 
-  client::YBClient* const client_;
-  YBTableType table_type_;
   const YBTableInfo info_;
 
   // Mutex protecting partitions_.

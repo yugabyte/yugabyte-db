@@ -654,7 +654,8 @@ class YBClient {
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
-  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table);
+  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table,
+                           master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id) {
     YBTablePtr result;
@@ -812,8 +813,10 @@ class YBClient {
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
   FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
+  Result<YBTablePtr> CompleteTable(const YBTableInfo& info);
+
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
-      const std::shared_ptr<const YBTable>& table);
+      YBClient* client, const YBTablePtr& table);
 
   YBClient();
 

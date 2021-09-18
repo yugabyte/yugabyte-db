@@ -56,11 +56,35 @@ class PggateOptions : public yb::server::ServerBaseOptions {
   virtual ~PggateOptions() {}
 };
 
+struct PgApiContext {
+  struct MessengerHolder {
+    std::unique_ptr<rpc::SecureContext> security_context;
+    std::unique_ptr<rpc::Messenger> messenger;
+
+    MessengerHolder(
+        std::unique_ptr<rpc::SecureContext> security_context,
+        std::unique_ptr<rpc::Messenger> messenger);
+    MessengerHolder(MessengerHolder&&);
+
+    ~MessengerHolder();
+  };
+
+  std::unique_ptr<MetricRegistry> metric_registry;
+  scoped_refptr<MetricEntity> metric_entity;
+  std::shared_ptr<MemTracker> mem_tracker;
+  MessengerHolder messenger_holder;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache;
+
+  PgApiContext();
+  PgApiContext(PgApiContext&&) = default;
+};
+
 //--------------------------------------------------------------------------------------------------
 // Implements support for CAPI.
 class PgApiImpl {
  public:
-  PgApiImpl(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
+  PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
+            YBCPgCallbacks pg_callbacks);
   virtual ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -96,7 +120,7 @@ class PgApiImpl {
                                       PgStatement **handle);
   // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
   CHECKED_STATUS AddToCurrentPgMemctx(size_t table_desc_id,
-                                      const PgTableDesc::ScopedRefPtr &table_desc);
+                                      const PgTableDescPtr &table_desc);
   // Read table descriptor that was cached in YB Memctx.
   CHECKED_STATUS GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
 
@@ -188,7 +212,7 @@ class PgApiImpl {
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
   // Load table.
-  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
+  Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
 
   // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
   void InvalidateTableCache(const PgObjectId& table_id);
@@ -505,11 +529,6 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  struct MessengerHolder {
-    std::unique_ptr<rpc::SecureContext> security_context;
-    std::unique_ptr<rpc::Messenger> messenger;
-  };
-
   Result<client::YBClient::TabletServersInfo> ListTabletServers();
 
  private:
@@ -523,7 +542,7 @@ class PgApiImpl {
   // Memory tracker.
   std::shared_ptr<MemTracker> mem_tracker_;
 
-  MessengerHolder messenger_holder_;
+  PgApiContext::MessengerHolder messenger_holder_;
 
   // YBClient is to communicate with either master or tserver.
   yb::client::AsyncClientInitialiser async_client_init_;

@@ -22,7 +22,7 @@ namespace yb {
 namespace tserver {
 
 #define YB_PG_CLIENT_METHODS \
-    (ReserveOids)
+    (GetDatabaseInfo)(IsInitDbDone)(OpenTable)(ReserveOids)
 
 using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 
