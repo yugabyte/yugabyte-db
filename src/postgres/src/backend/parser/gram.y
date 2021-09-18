@@ -2558,7 +2558,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE INHERIT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddInherit;
 					n->def = (Node *) $2;
@@ -2567,7 +2566,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE NO INHERIT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropInherit;
 					n->def = (Node *) $3;
@@ -4214,7 +4212,6 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
 					$$ = $3;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }
