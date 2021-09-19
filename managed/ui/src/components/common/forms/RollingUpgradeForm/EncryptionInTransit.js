@@ -1,7 +1,13 @@
 import { Field } from 'formik';
 import React from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import { YBCheckBox, YBControlledSelectWithLabel, YBFormInput, YBFormToggle, YBToggle } from '../fields';
+import {
+  YBCheckBox,
+  YBControlledSelectWithLabel,
+  YBFormInput,
+  YBFormToggle,
+  YBToggle
+} from '../fields';
 import YBModalForm from '../YBModalForm/YBModalForm';
 
 import { YBLoading } from '../../indicators';
@@ -11,8 +17,11 @@ import { getPrimaryCluster, getReadOnlyCluster } from '../../../../utils/Univers
 import { updateTLS } from '../../../../actions/customers';
 import './EncryptionInTransit.scss';
 
-const CLIENT_TO_NODE_ROTATE_MSG = "Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.";
-const NODE_TO_NODE_ROTATE_MSG = "Note! You are changing the node to node root certificate."
+const CLIENT_TO_NODE_ROTATE_MSG =
+  'Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.';
+const NODE_TO_NODE_ROTATE_MSG = 'Note! You are changing the node to node root certificate.';
+
+const CREATE_NEW_CERTIFICATE = 'create-new-certificate';
 
 const generateSelectOptions = (certificates) => {
   let options = certificates.map((cert) => (
@@ -21,8 +30,8 @@ const generateSelectOptions = (certificates) => {
     </option>
   ));
   options = [
-    <option key={'disabled'} disabled value={'no-certificate-present'}>
-      -- select a certificate --
+    <option key={CREATE_NEW_CERTIFICATE} value={CREATE_NEW_CERTIFICATE}>
+      -- Create a new certificate --
     </option>,
     ...options
   ];
@@ -52,10 +61,10 @@ function getEncryptionComponent(
           <div className="form-item-custom-label">{label}</div>
         </Col>
         <Col lg={7}>
-          <Field 
+          <Field
             name={inputName}
             component={YBFormToggle}
-            onChange={(_, e)=> {
+            onChange={(_, e) => {
               disableUniverseEncryption(values, inputName, e.target.checked, setFieldValue);
             }}
           />
@@ -70,7 +79,7 @@ function getEncryptionComponent(
               onInputChanged={handleSelectChange}
               input={{ name: selectName }}
               selectVal={
-                values[selectName] !== null ? values[selectName] : 'no-certificate-present'
+                values[selectName] !== undefined ? values[selectName] : CREATE_NEW_CERTIFICATE
               }
               options={options}
               label={selectLabel}
@@ -82,11 +91,11 @@ function getEncryptionComponent(
             {rotateCertMsg && (
               <Alert
                 className="rotate-alert-msg"
-                key={inputName + "-rotate-msg"}
+                key={inputName + '-rotate-msg'}
                 variant="warning"
                 bsStyle="warning"
               >
-                <i class="fa fa-exclamation-triangle" aria-hidden="true"></i>
+                <i className="fa fa-exclamation-triangle" aria-hidden="true"></i>
                 &nbsp;&nbsp;{rotateCertMsg}
               </Alert>
             )}
@@ -122,8 +131,12 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
       cluster.userIntent.enableNodeToNodeEncrypt || cluster.userIntent.enableClientToNodeEncrypt,
     enableNodeToNodeEncrypt: cluster.userIntent.enableNodeToNodeEncrypt,
     enableClientToNodeEncrypt: cluster.userIntent.enableClientToNodeEncrypt,
-    rootCA: universeDetails.rootCA,
-    clientRootCA: universeDetails.clientRootCA,
+    rootCA: universeDetails.rootCA ?? CREATE_NEW_CERTIFICATE,
+    clientRootCA: universeDetails.clientRootCA
+      ? universeDetails.clientRootCA
+      : universeDetails.rootAndClientRootCASame
+      ? universeDetails.rootCA
+      : CREATE_NEW_CERTIFICATE,
     rootAndClientRootCASame: universeDetails.rootAndClientRootCASame,
     timeDelay: 240,
     rollingUpgrade: true
@@ -142,33 +155,27 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
       };
     }
 
-    if (formValues.enableNodeToNodeEncrypt && formValues.rootCA === null) {
-        setStatus({
-          enableNodeToNodeEncrypt: 'Select a Root CA'
-        });
-        return;
-    }
-
     if (formValues.rootAndClientRootCASame && !formValues.enableNodeToNodeEncrypt) {
       setStatus({
         enableNodeToNodeEncrypt: 'Node to Node must be enabled to use same certificate'
       });
       return;
     }
-    if (formValues.enableClientToNodeEncrypt === true && !formValues.rootAndClientRootCASame) {
-      if (formValues.clientRootCA === null) {
-        setStatus({
-          enableClientToNodeEncrypt: 'Select a Root CA'
-        });
-        return;
-      }
-    }
 
-    if (formValues.enableNodeToNodeEncrypt === false) {
+    if (
+      formValues.enableNodeToNodeEncrypt === false ||
+      (formValues.enableNodeToNodeEncrypt && formValues.rootCA === CREATE_NEW_CERTIFICATE)
+    ) {
       formValues['rootCA'] = null;
     }
     if (formValues.enableClientToNodeEncrypt === false) {
       formValues['clientRootCA'] = null;
+    }
+
+    if (formValues.enableClientToNodeEncrypt === true && !formValues.rootAndClientRootCASame) {
+      if (formValues['clientRootCA'] === CREATE_NEW_CERTIFICATE) {
+        formValues['clientRootCA'] = null;
+      }
     }
 
     if (formValues.rootAndClientRootCASame) {
@@ -258,6 +265,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                     <Field name="rootAndClientRootCASame">
                       {({ field }) => (
                         <YBCheckBox
+                          disabled={!values['enableNodeToNodeEncrypt']}
                           label={
                             <span style={{ fontWeight: 'normal' }}>
                               Use the same certificate for node to node and client to node
@@ -266,7 +274,10 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                           }
                           name="rootAndClientRootCASame"
                           input={{
-                            checked: values['enableClientToNodeEncrypt'] && field.value,
+                            checked:
+                              values['enableClientToNodeEncrypt'] &&
+                              values['enableNodeToNodeEncrypt'] &&
+                              field.value,
                             onChange: (e) => {
                               setFieldValue('rootAndClientRootCASame', e.target.checked);
 
@@ -291,7 +302,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                       setStatus,
                       setFieldValue,
                       rotateCertMsg:
-                        initialValues["rootCA"] !== values["rootCA"]
+                        initialValues['rootCA'] !== values['rootCA']
                           ? NODE_TO_NODE_ROTATE_MSG
                           : null
                     },
@@ -299,7 +310,12 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                       selectName: 'rootCA',
                       selectLabel: 'Select a root certificate',
                       selectOptions: userCertificates.data,
-                      handleSelectChange: handleChange
+                      handleSelectChange: (e) => {
+                        setFieldValue('rootCA', e.target.value);
+                        if (values['rootAndClientRootCASame']) {
+                          setFieldValue('clientRootCA', e.target.value);
+                        }
+                      }
                     }
                   )}
                   {getEncryptionComponent(
@@ -311,7 +327,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                       setStatus,
                       setFieldValue,
                       rotateCertMsg:
-                        initialValues["clientRootCA"] !== values["clientRootCA"]
+                        initialValues['clientRootCA'] !== values['clientRootCA']
                           ? CLIENT_TO_NODE_ROTATE_MSG
                           : null
                     },
@@ -326,7 +342,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                 </div>
                 <Row className="rolling-upgrade">
                   <Col lg={12}>
-                    <Field 
+                    <Field
                       name="rollingUpgrade"
                       component={YBCheckBox}
                       checkState={initialValues.rollingUpgrade}
@@ -336,7 +352,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
                 </Row>
                 <Row className="server-delay">
                   <Col lg={12}>
-                    <Field 
+                    <Field
                       name="timeDelay"
                       type="number"
                       label="Upgrade Delay Between Servers (seconds)"
