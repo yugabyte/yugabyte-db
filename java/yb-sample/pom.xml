@@ -38,12 +38,8 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.yugabyte</groupId>
-      <artifactId>cassandra-driver-core</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>net.jpountz.lz4</groupId>
-      <artifactId>lz4</artifactId>
+      <groupId>org.lz4</groupId>
+      <artifactId>lz4-java</artifactId>
     </dependency>
     <dependency>
       <groupId>org.xerial.snappy</groupId>
