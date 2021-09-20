@@ -135,7 +135,7 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mindrot" % "jbcrypt" % "0.3m",
-  "org.postgresql" % "postgresql" % "9.4.1208",
+  "org.postgresql" % "postgresql" % "42.2.23",
   "commons-io" % "commons-io" % "2.4",
   "org.apache.commons" % "commons-compress" % "1.20",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
