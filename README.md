@@ -7,11 +7,11 @@
 
 ## What is pg_stat_monitor?
 
-The **pg_stat_monitor** is a **Query Performance Monitoring** tool for [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL. **pg_stat_monitor** is based on PostgreSQL's contrib module ``pg_stat_statements``. pg_stat_statements provides the basic statistics, which is sometimes not enough. The major shortcoming in pg_stat_statements is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. 
+**pg_stat_monitor** is a **Query Performance Monitoring** tool for [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL. **pg_stat_monitor** is based on PostgreSQL's contrib module ``pg_stat_statements``. ``pg_stat_statements`` provides the basic statistics, which is sometimes not enough. The major shortcoming in ``pg_stat_statements`` is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user would need to calculate the aggregates, which is quite an expensive operation. 
 
-**pg_stat_monitor** is developed on the basis of pg_stat_statements as its more advanced replacement. It provides all the features of pg_stat_statements plus its own feature set.  
+**pg_stat_monitor** is developed on the basis of pg_stat_statements as is a more advanced replacement. It provides all the features of pg_stat_statements plus its own feature set.  
 
-### How pg_stat_monitor works?
+### How does pg_stat_monitor work?
 
 ``pg_stat_monitor`` accumulates the information in the form of buckets. All the aggregated information is bucket based. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). When a bucket time elapses, ``pg_stat_monitor`` resets all the statistics and switches to the next bucket. After the last bucket elapses, ``pg_stat_monitor`` goes back to the first bucket. All the data on the first bucket is cleared out with new writes; therefore, to not lose the data, users must read the buckets before that.
 
@@ -26,7 +26,7 @@ The **pg_stat_monitor** is a **Query Performance Monitoring** tool for [Percona 
 9. [Copyright Notice](#copyright-notice)
 
 ## Supported PostgreSQL Versions
-The ``pg_stat_monitor`` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL but is only tested with these versions:
+``pg_stat_monitor`` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL and is currently tested against thes following versions:
 
 | Distribution                        | Version | Supported          |
 | ------------------------------------|---------|--------------------|
@@ -45,7 +45,7 @@ You can install ``pg_stat_monitor`` from [Percona repositories](#installing-from
 
 ### Installing from Percona repositories
 
-``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. To install ``pg_stat_monitor``, follow [the installation instructions](https://www.percona.com/doc/postgresql/LATEST/installing.html). 
+``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The RPM/DEB packages are available from Percona's repositories. To install ``pg_stat_monitor``, follow [the installation instructions](https://www.percona.com/doc/postgresql/LATEST/installing.html). 
 
 ### Installing from PGXN
 
@@ -73,9 +73,9 @@ make USE_PGXS=1 install
 ```
 
 ## Setup
-``pg_stat_monitor`` cannot be enabled in your running ``postgresql`` instance. ``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restarting the ``postgresql`` instance.
+``pg_stat_monitor`` cannot be enabled in your running ``postgresql`` instance, it needs to be loaded at the start time. This requires adding the ``pg_stat_monitor`` extension to the ``shared_preload_libraries`` parameter and restarting the ``postgresql`` instance.
 
-You can set the  ``pg_stat_monitor`` extension in the ``postgresql.conf`` file.
+You can set the ``pg_stat_monitor`` extension in the ``postgresql.conf`` file.
 
 ```
 # - Shared Library Preloading -
@@ -134,11 +134,11 @@ SELECT  decode_error_level(elevel) AS elevel, sqlcode, query, message FROM pg_st
 
 ```
 
-To learn more about ``pg_stat_monitor`` configuration and usage, see [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md).
+To learn more about ``pg_stat_monitor`` configuration and usage, see the [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md).
 
-## Submitting Bug Reports
+## Submitting Feature Requests or Bug Reports
 
-If you found a bug in ``pg_stat_monitor``, please submit the report to the [Jira issue tracker](https://jira.percona.com/projects/PG/issues).
+If you would like to request a feature of if you found a bug in ``pg_stat_monitor``, please submit the report to the [Jira issue tracker](https://jira.percona.com/projects/PG/issues).
 
 Start by searching the open tickets for a similar report. If you find that someone else has already reported your issue, then you can upvote that report to increase its visibility.
 
