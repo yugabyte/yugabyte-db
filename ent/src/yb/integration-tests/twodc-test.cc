@@ -1700,5 +1700,37 @@ TEST_P(TwoDCTest, TestDeleteCDCStreamWithMissingStreams) {
   Destroy();
 }
 
+TEST_P(TwoDCTest, TestAlterWhenProducerIsInaccessible) {
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 1));
+
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, {tables[0]} /* all producer tables */));
+
+  // Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  // Stop the producer master.
+  producer_cluster()->mini_master(0)->Shutdown();
+
+  // Try to alter replication.
+  master::AlterUniverseReplicationRequestPB alter_req;
+  master::AlterUniverseReplicationResponsePB alter_resp;
+  alter_req.set_producer_id(kUniverseId);
+  alter_req.add_producer_table_ids_to_add("123");  // Doesn't matter as we cannot connect.
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // Ensure that we just return an error and don't have a fatal.
+  ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+  ASSERT_TRUE(alter_resp.has_error());
+
+  Destroy();
+}
+
 } // namespace enterprise
 } // namespace yb
