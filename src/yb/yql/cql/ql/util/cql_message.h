@@ -31,6 +31,7 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/util/memory/memory_usage.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
@@ -215,8 +216,15 @@ class CQLMessage {
                                            int64_t pos,
                                            const std::shared_ptr<QLType>& type,
                                            QLValue* value) const override;
+    virtual Result<bool> IsBindVariableUnset(const std::string& name,
+                                             int64_t pos) const override;
 
     CHECKED_STATUS ValidateConsistency();
+
+   private:
+    CHECKED_STATUS GetBindVariableValue(const std::string& name,
+                                        const int64_t pos,
+                                        const Value** value) const;
   };
 
   // Accessors for header fields
