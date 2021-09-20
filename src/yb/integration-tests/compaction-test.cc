@@ -40,6 +40,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 
@@ -483,6 +484,8 @@ TEST_F(CompactionTestWithFileExpiration, FileExpirationAfterExpiry) {
 
 TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
+  // Don't trigger compactions due to number of files written.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
   rocksdb_listener_->Reset();
@@ -497,10 +500,6 @@ TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
 
   rocksdb_listener_->Reset();
   ASSERT_OK(WriteAtLeastFilesPerDb(1));
-  auto size_before_compaction = GetTotalSizeOfDbs();
-  auto files_before_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size of " << files_before_compaction <<
-      " files before compaction: " << size_before_compaction;
 
   ExecuteManualFlush();
   // Assert that the data size is all wiped up now.
@@ -508,7 +507,10 @@ TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
   uint64_t files_after_compaction = GetNumFilesInDbs();
   LOG(INFO) << "Total size of " << files_after_compaction << " files after compaction: "
       << size_after_manual_compaction;
-  EXPECT_LT(size_after_manual_compaction, size_before_compaction*0.5);
+  EXPECT_GT(size_after_manual_compaction, 0);
+  EXPECT_LT(size_after_manual_compaction, size_before_sleep);
+  EXPECT_GT(files_after_compaction, 0);
+  EXPECT_LT(files_after_compaction, files_before_sleep);
   ASSERT_GT(CountFilteredSSTFiles(), 0);
 }
 
