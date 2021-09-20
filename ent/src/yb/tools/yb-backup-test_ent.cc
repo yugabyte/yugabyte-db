@@ -15,14 +15,19 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
 #include "yb/util/subprocess.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
 
 using std::unique_ptr;
 using std::vector;
@@ -34,7 +39,38 @@ namespace tools {
 
 namespace helpers {
 YB_DEFINE_ENUM(TableOp, (kKeepTable)(kDropTable)(kDropDB));
+
+CHECKED_STATUS RedisGet(std::shared_ptr<client::YBSession> session,
+                        const std::shared_ptr<client::YBTable> table,
+                        const string& key,
+                        const string& value) {
+  auto get_op = std::make_shared<client::YBRedisReadOp>(table);
+  RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
+  RETURN_NOT_OK(session->ReadSync(get_op));
+  if (get_op->response().code() != RedisResponsePB_RedisStatusCode_OK) {
+    return STATUS_FORMAT(RuntimeError,
+                         "Redis get returned bad response code: $0",
+                         RedisResponsePB_RedisStatusCode_Name(get_op->response().code()));
+  }
+  if (get_op->response().string_response() != value) {
+    return STATUS_FORMAT(RuntimeError,
+                         "Redis get returned wrong value: $0 != $1",
+                         get_op->response().string_response(), value);
+  }
+  return Status::OK();
 }
+
+CHECKED_STATUS RedisSet(std::shared_ptr<client::YBSession> session,
+                        const std::shared_ptr<client::YBTable> table,
+                        const string& key,
+                        const string& value) {
+  auto set_op = std::make_shared<client::YBRedisWriteOp>(table);
+  RETURN_NOT_OK(redisserver::ParseSet(set_op.get(),
+                                      redisserver::RedisClientCommand({"set", key, value})));
+  RETURN_NOT_OK(session->ApplyAndFlush(set_op));
+  return Status::OK();
+}
+} // namespace helpers
 
 class YBBackupTest : public pgwrapper::PgCommandTestBase {
  protected:
@@ -133,6 +169,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     SetDbName(db); // Connecting to the recreated 'yugabyte' DB from the moment.
   }
 
+  void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
 
@@ -153,6 +190,75 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup
       {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// 1. Insert abc -> 123
+// 2. Backup
+// 3. Insert abc -> 456 OR drop redis table
+// 4. Restore
+// 5. Validate abc -> 123
+void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
+  ASSERT_TRUE(tableOp == helpers::TableOp::kKeepTable || tableOp == helpers::TableOp::kDropTable);
+
+  auto session = client_->NewSession();
+
+  // Create keyspace and table.
+  const client::YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
+                                                YQLDatabase::YQL_DATABASE_REDIS));
+  std::unique_ptr<yb::client::YBTableCreator> table_creator(client_->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(table_name)
+                          .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
+                          .Create());
+  ASSERT_OK(table_.Open(table_name, client_.get()));
+  auto table = table_->shared_from_this();
+
+  // Insert abc -> 123.
+  ASSERT_OK(helpers::RedisSet(session, table, "abc", "123"));
+
+  // Backup.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir,
+       "--keyspace", common::kRedisKeyspaceName,
+       "--table", common::kRedisTableName,
+       "create"}));
+
+  if (tableOp == helpers::TableOp::kKeepTable) {
+    // Insert abc -> 456.
+    ASSERT_OK(helpers::RedisSet(session, table, "abc", "456"));
+    ASSERT_OK(helpers::RedisGet(session, table, "abc", "456"));
+  } else {
+    ASSERT_EQ(tableOp, helpers::TableOp::kDropTable);
+    // Delete table.
+    ASSERT_OK(client_->DeleteTable(table_name));
+    ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(table_name)));
+  }
+
+  // Restore.
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  if (tableOp == helpers::TableOp::kDropTable) {
+    // Refresh table variable to the one newly created by restore.
+    ASSERT_OK(table_.Open(table_name, client_.get()));
+    table = table_->shared_from_this();
+  }
+
+  // Validate abc -> 123.
+  ASSERT_TRUE(ASSERT_RESULT(client_->TableExists(table_name)));
+  ASSERT_OK(helpers::RedisGet(session, table, "abc", "123"));
+}
+
+// Exercise the CatalogManager::ImportTableEntry first code path where namespace ids and table ids
+// match.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackup)) {
+  DoTestYEDISBackup(helpers::TableOp::kKeepTable);
+}
+
+// Exercise the CatalogManager::ImportTableEntry second code path where, instead, table names match.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackupWithDropTable)) {
+  DoTestYEDISBackup(helpers::TableOp::kDropTable);
 }
 
 void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {

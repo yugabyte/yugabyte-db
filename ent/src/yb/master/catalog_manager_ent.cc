@@ -1165,11 +1165,6 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
     VLOG_WITH_FUNC(2) << "Table not visible to client: " << table->ToString();
     return false;
   }
-  // Check if table is user-created.
-  if (!IsUserCreatedTableUnlocked(*table)) {
-    VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
-    return false;
-  }
   // Check if table names match.
   const string& external_table_name = snapshot_data->table_entry_pb.name();
   if (table_lock->name() != external_table_name) {
@@ -1294,6 +1289,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
             }
             if (!VERIFY_RESULT(CheckTableForImport(table, table_data))) {
               // Some other check failed.
+              continue;
+            }
+            // Also check if table is user-created.
+            if (!IsUserCreatedTableUnlocked(*table)) {
+              VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
               continue;
             }
 
