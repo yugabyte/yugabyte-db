@@ -1296,3 +1296,10 @@ demo-1-irrelevant-for-ysql-syntax = ( a 'K' b { ',' a 'K' b } ) ;
 
 demo-2-irrelevant-for-ysql-syntax = ( ( a 'K' b ) { ',' ( a 'K' b ) } ) ;
 *)
+
+(* 'SAVEPOINTS'*)
+savepoint_create := ( 'SAVEPOINT' name );
+
+savepoint_release := ( 'RELEASE' [ 'SAVEPOINT' ] name );
+
+savepoint_rollback := ( 'ROLLBACK' ['WORK' | 'TRANSACTION' ] 'TO' [ 'SAVEPOINT' ] name );

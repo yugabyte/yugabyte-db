@@ -106,6 +106,9 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction |
 | [`SET TRANSACTION`](txn_set)             | Set transaction behaviors              |
 | [`SHOW TRANSACTION`](txn_show)           | Show properties of a transaction       |
+| [`SAVEPOINT`](savepoint_create)          | Create a new savepoint                 |
+| [`ROLLBACK TO`](savepoint_rollback)        | Rollback to a savepoint                |
+| [`RELEASE`](savepoint_release)           | Release a savepoint                    |
 
 ## Session and system control
 

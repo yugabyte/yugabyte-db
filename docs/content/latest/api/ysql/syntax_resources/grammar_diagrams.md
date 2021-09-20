@@ -2595,3 +2595,22 @@ extension_name ::= name
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="84" height="35" viewbox="0 0 84 35"><path class="connector" d="M0 22h15m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="15" y="5" width="54" height="25"/><text class="text" x="25" y="22">name</text></a><polygon points="80,29 84,29 84,15 80,15" style="fill:black;stroke-width:0"/></svg>
 
+### savepoint_create
+```
+savepoint_create ::= SAVEPOINT name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="183" height="35" viewbox="0 0 183 35"><path class="connector" d="M0 22h15m89 0h10m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="89" height="25" rx="7"/><text class="text" x="25" y="22">SAVEPOINT</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="114" y="5" width="54" height="25"/><text class="text" x="124" y="22">name</text></a><polygon points="179,29 183,29 183,15 179,15" style="fill:black;stroke-width:0"/></svg>
+
+### savepoint_release
+```
+savepoint_release ::= RELEASE [ SAVEPOINT ] name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="308" height="50" viewbox="0 0 308 50"><path class="connector" d="M0 22h15m75 0h30m89 0h20m-124 0q5 0 5 5v8q0 5 5 5h99q5 0 5-5v-8q0-5 5-5m5 0h10m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="75" height="25" rx="7"/><text class="text" x="25" y="22">RELEASE</text><rect class="literal" x="120" y="5" width="89" height="25" rx="7"/><text class="text" x="130" y="22">SAVEPOINT</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="239" y="5" width="54" height="25"/><text class="text" x="249" y="22">name</text></a><polygon points="304,29 308,29 308,15 304,15" style="fill:black;stroke-width:0"/></svg>
+
+### savepoint_rollback
+```
+savepoint_rollback ::= ROLLBACK [ WORK | TRANSACTION ] TO 
+                       [ SAVEPOINT ] name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="518" height="70" viewbox="0 0 518 70"><path class="connector" d="M0 22h15m83 0h30m57 0h69m-136 25q0 5 5 5h5m106 0h5q5 0 5-5m-131-25q5 0 5 5v33q0 5 5 5h116q5 0 5-5v-33q0-5 5-5m5 0h10m36 0h30m89 0h20m-124 0q5 0 5 5v8q0 5 5 5h99q5 0 5-5v-8q0-5 5-5m5 0h10m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="83" height="25" rx="7"/><text class="text" x="25" y="22">ROLLBACK</text><rect class="literal" x="128" y="5" width="57" height="25" rx="7"/><text class="text" x="138" y="22">WORK</text><rect class="literal" x="128" y="35" width="106" height="25" rx="7"/><text class="text" x="138" y="52">TRANSACTION</text><rect class="literal" x="264" y="5" width="36" height="25" rx="7"/><text class="text" x="274" y="22">TO</text><rect class="literal" x="330" y="5" width="89" height="25" rx="7"/><text class="text" x="340" y="22">SAVEPOINT</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="449" y="5" width="54" height="25"/><text class="text" x="459" y="22">name</text></a><polygon points="514,29 518,29 518,15 514,15" style="fill:black;stroke-width:0"/></svg>
+
