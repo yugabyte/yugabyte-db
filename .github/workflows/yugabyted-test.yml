@@ -1,6 +1,9 @@
 name: yugabyted-test
 
 on:
+  schedule:
+    - cron: "0 1 */2 * *"
+    
   push:
     branches:
       - master
