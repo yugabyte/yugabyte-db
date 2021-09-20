@@ -173,7 +173,7 @@ message WriteRequestPB {
   // A batch of QL operations.
   repeated QLWriteRequestPB ql_write_batch = 10;
 
-  // A batch of Pgsql operations (Although batching is not yet supported).
+  // A batch of Pgsql operations.
   repeated PgsqlWriteRequestPB pgsql_write_batch = 13;
 
   // Whether data blocks will be cached when read from the files or discarded after use.

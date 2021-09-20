@@ -182,6 +182,8 @@ extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
  * Fetch a single tuple by the ybctid.
  */
 extern HeapTuple YBCFetchTuple(Relation relation, Datum ybctid);
+extern HTSU_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
+												 LockWaitPolicy wait_policy, EState* estate);
 
 /*
  * ANALYZE support: sampling of table data

@@ -1749,7 +1749,8 @@ Status Tablet::HandlePgsqlReadRequest(
 Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
     size_t row_count) const {
   if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-        pgsql_read_request.batch_arguments_size() == row_count) ||
+       (pgsql_read_request.batch_arguments_size() == row_count ||
+        pgsql_read_request.batch_arguments_size() == 0)) ||
        !pgsql_read_request.partition_column_values().empty() ) {
     return true;
   }
@@ -3551,6 +3552,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
           // Empty values are disallowed by docdb.
           // https://github.com/YugaByte/yugabyte-db/issues/736
           pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNullLow));
+          write_batch->set_wait_policy(WAIT_ERROR);
         }
       }
     }

@@ -919,6 +919,7 @@ void PgDocReadOp::SetRowMark() {
   const auto row_mark_type = GetRowMarkType(&exec_params_);
   if (IsValidRowMarkType(row_mark_type)) {
     req->set_row_mark_type(row_mark_type);
+    req->set_wait_policy(static_cast<yb::WaitPolicy>(exec_params_.wait_policy));
   } else {
     req->clear_row_mark_type();
   }

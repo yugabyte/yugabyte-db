@@ -80,16 +80,21 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
-void AddIntent(const std::string& encoded_key, KeyValueWriteBatchPB *out) {
+void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueWriteBatchPB *out) {
   auto pair = out->mutable_read_pairs()->Add();
   pair->set_key(encoded_key);
   pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+  // Since we don't batch read RPCs that lock rows, we can get away with using a singular
+  // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
+  // wait policies field.
+  out->set_wait_policy(wait_policy);
 }
 
-CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, KeyValueWriteBatchPB* out) {
+CHECKED_STATUS AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
+                         KeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
-  AddIntent(val, out);
+  AddIntent(val, wait_policy, out);
   return Status::OK();
 }
 
@@ -1117,10 +1122,10 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB
   if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
-      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), out));
+      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));
     }
   } else {
-    AddIntent(VERIFY_RESULT(FetchEncodedDocKey(schema, request_)), out);
+    AddIntent(VERIFY_RESULT(FetchEncodedDocKey(schema, request_)), request_.wait_policy(), out);
   }
   return Status::OK();
 }

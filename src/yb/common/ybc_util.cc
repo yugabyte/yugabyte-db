@@ -248,7 +248,11 @@ YBCStatus YBCInitGFlags(const char* argv0) {
 }
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode) {
-  return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kConflict);
+  return txn_errcode == to_underlying(TransactionErrorCode::kConflict);
+}
+
+bool YBCIsTxnSkipLockingError(uint16_t txn_errcode) {
+  return txn_errcode == to_underlying(TransactionErrorCode::kSkipLocking);
 }
 
 YBCStatus YBCInit(const char* argv0,
