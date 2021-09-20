@@ -515,6 +515,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		}
 	}
 
+	if (colocated && stmt->tablespacename)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot create colocated table with a tablespace")));
+
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
 									   stmt->relation->relname,
