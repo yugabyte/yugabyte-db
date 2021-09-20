@@ -900,7 +900,7 @@ public class TestPgTransactions extends BasePgSQLTest {
       txn1_successes = checkConflictingStatements(statement1,
                                                   "SELECT * FROM test WHERE v = 1 FOR UPDATE",
                                                   statement2,
-                                                  "UPDATE test SET v = 10 WHERE k = 2",
+                                                  "UPDATE test SET v = 10 WHERE k = 1",
                                                   numItersSmall);
       assertEquals(numItersSmall, txn1_successes);
 

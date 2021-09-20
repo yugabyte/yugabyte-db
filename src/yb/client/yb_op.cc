@@ -774,6 +774,7 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
 Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
   // Read partition key from read request.
   const Schema &schema = table_->InternalSchema();
+  const auto &ybctid = read_request_->ybctid_column_value().value();
 
   // Seek a specific partition_key from read_request.
   // 1. Not specified hash condition - Full scan.
@@ -815,6 +816,9 @@ Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
       read_request_->set_hash_code(paging_state_hash_code);
     }
 
+  } else if (!IsNull(ybctid)) {
+    const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
   } else if (read_request_->has_lower_bound() || read_request_->has_upper_bound()) {
     // If the read request does not provide a specific partition key, but it does provide scan
     // boundary, use the given boundary to setup the scan lower and upper bound.

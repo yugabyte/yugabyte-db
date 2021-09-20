@@ -1620,6 +1620,9 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
     pair->set_key(doc_key.Encode().ToStringBuffer());
   }
   pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
+  // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
+  // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
+  out->set_wait_policy(WAIT_ERROR);
   return Status::OK();
 }
 
