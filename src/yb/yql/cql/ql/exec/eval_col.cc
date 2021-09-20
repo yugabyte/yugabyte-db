@@ -52,9 +52,21 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB
     const ColumnDesc *col_desc = col.desc();
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
 
+    const PTExpr::SharedPtr& expr = col.expr();
+    if (expr != nullptr && expr->expr_op() == ExprOperator::kBindVar) {
+      const PTBindVar* bind_pt = static_cast<const PTBindVar*>(expr.get());
+      DCHECK_NOTNULL(bind_pt->name().get());
+      if(VERIFY_RESULT(exec_context_->params().IsBindVariableUnset(bind_pt->name()->c_str(),
+                                                                   bind_pt->pos()))) {
+        VLOG(3) << "Value unset for column: " << bind_pt->name()->c_str();
+        continue;
+      }
+    }
+
     QLExpressionPB *expr_pb = CreateQLExpression(req, *col_desc);
 
-    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+    RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
+
     if (col_desc->is_primary()) {
       RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row()));
     }

@@ -23,6 +23,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol.pb.h"
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -67,6 +68,13 @@ class StatementParameters {
   int64_t next_partition_index() const { return paging_state().next_partition_index(); }
 
   ReadHybridTime read_time() const;
+
+  // Check if a bind variable is unset. To be overridden by subclasses
+  // to return actual bind variables status.
+  virtual Result<bool> IsBindVariableUnset(const std::string& name,
+                                           int64_t pos) const {
+    return STATUS(RuntimeError, "no bind variable available");
+  }
 
   // Retrieve a bind variable for the execution of the statement. To be overridden by subclasses
   // to return actual bind variables.
