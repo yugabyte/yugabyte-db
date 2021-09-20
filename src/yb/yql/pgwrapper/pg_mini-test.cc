@@ -2127,5 +2127,31 @@ TEST_F_EX(
   RunManyConcurrentReadersTest();
 }
 
+TEST_F_EX(PgMiniTest, TestSerializableStrongReadLockNotAborted, PgMiniTestWithSavepoints) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
+  for (int i = 0; i < 100; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $0)", i));
+  }
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn1.Execute("SAVEPOINT A"));
+  auto res1 = ASSERT_RESULT(conn1.FetchFormat("SELECT b FROM t WHERE a = $0", 90));
+  ASSERT_OK(conn1.Execute("ROLLBACK TO A"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  auto update_status = conn2.ExecuteFormat("UPDATE t SET b = $0 WHERE a = $1", 1000, 90);
+
+  auto commit_status = conn1.CommitTransaction();
+
+  EXPECT_TRUE(commit_status.ok() ^ update_status.ok())
+      << "Expected exactly one of commit of first transaction or update of second transaction to "
+      << "fail.\n"
+      << "Commit status: " << commit_status << ".\n"
+      << "Update status: " << update_status << ".\n";
+}
+
 } // namespace pgwrapper
 } // namespace yb
