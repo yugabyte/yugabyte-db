@@ -82,6 +82,7 @@ The following **AWS regions** are available:
 ### Known issues in cloud shell
 
 - At this time, we recommend running only a single cloud shell session. Running more than one session may produce unexpected results.
+- If the cloud shell stops responding, close the browser tab and restart the cloud shell.
 - Cloud shell is unavailable for clusters with VPC peering
 - Cloud shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
 - No support for invited (Developer) users.
