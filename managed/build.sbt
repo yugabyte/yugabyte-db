@@ -185,7 +185,8 @@ libraryDependencies ++= Seq(
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
   "io.kamon" %% "kamon-bundle" % "2.2.2",
-  "io.kamon" %% "kamon-prometheus" % "2.2.2"
+  "io.kamon" %% "kamon-prometheus" % "2.2.2",
+  "org.unix4j" % "unix4j-command" % "0.6"
 )
 // Clear default resolvers.
 appResolvers := None
