@@ -6,6 +6,8 @@ import { createMemoryHistory } from 'history';
 import { Administration } from './Administration';
 import { render } from '../test-utils';
 
+jest.mock('../components/alerts/AlertConfiguration/AlertConfigurationContainer.js')
+
 const setup = (storeState = {}) => {
   const history = createMemoryHistory();
   history.push('/admin');
