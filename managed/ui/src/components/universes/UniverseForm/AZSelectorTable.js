@@ -71,7 +71,8 @@ export default class AZSelectorTable extends Component {
   resetAZSelectionConfig = () => {
     const {
       universe: { universeConfigTemplate },
-      clusterType
+      clusterType,
+      numNodesChangedViaAzList,
     } = this.props;
     const clusters = _.clone(universeConfigTemplate.data.clusters);
     const currentTemplate = _.clone(universeConfigTemplate.data, true);
@@ -80,6 +81,7 @@ export default class AZSelectorTable extends Component {
         if (cluster.clusterType.toLowerCase() === clusterType) {
           delete currentTemplate.clusters[idx]['placementInfo'];
         }
+        numNodesChangedViaAzList(cluster.userIntent?.replicationFactor);
       });
     }
     currentTemplate.resetAZConfig = true;
