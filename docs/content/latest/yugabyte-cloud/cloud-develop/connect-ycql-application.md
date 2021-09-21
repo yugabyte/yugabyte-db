@@ -2,7 +2,7 @@
 title: Connect a YCQL Java application
 headerTitle: Connect a YCQL Java application
 linkTitle: Connect a YCQL Java application
-description: Build a sample Java application with the Yugabyte Java Driver for YCQL v4.6.
+description: Build a sample Java application for Yugabyte Cloud with the Yugabyte Java Driver for YCQL v4.6.
 menu:
   latest:
     parent: cloud-develop
@@ -39,13 +39,19 @@ This tutorial assumes that you have the following:
 
 Add your computer to the cluster IP allow list. Refer to [Assign IP allow lists](../../cloud-basics/add-connections).
 
-You also need to download and install your Yugabyte Cloud cluster CA certificate as follows:
+You also need to download and install your Yugabyte Cloud cluster CA certificate and obtain the cluster connection parameters as follows:
 
 1. Sign in to Yugabyte Cloud, select your cluster, and click **Connect**.
 
 1. Click **Connect to your Application**.
 
 1. Click **Download CA Cert** to download the cluster `root.crt` certificate to your computer.
+
+1. Click **YCQL** to display the connection parameters. These include:
+
+    - LocalDatacenter - The name of the local datacenter for the cluster. 
+    - Host - The cluster host name.
+    - Port - The port number of the YCQL client API on the YugabyteDB database (9042).
 
 ### Create the project's POM
 
@@ -211,7 +217,9 @@ public class YBCqlHelloWorld {
 }
 ```
 
-Edit the `.withLocalDatacenter` line (replace "datacenter1") to add the correct datacenter. To find the datacenter name, run the following YCQL query from Yugabyte Cloud Shell, and copy the `data_center` value:
+Edit the `.withLocalDatacenter` line by replacing "datacenter1" with the LocalDatacenter from your cluster connection parameters.
+
+You can also find the local datacenter name by running the following YCQL query from Yugabyte Cloud Shell:
 
 ```sql
 admin@ycqlsh:yugabyte> SELECT * FROM system.local;
@@ -247,7 +255,7 @@ $ java -cp "target/hello-world-1.0.jar:target/lib/*" \
     [YUGABYTE_CLOUD_HOSTNAME] [ROOT_CERT_PATH] [YCQL_USER] [YCQL_PASSWORD]
 ```
 
-Replace the following command line variables with the appropriate values:
+Replace the following command line variables with the appropriate connection parameters and database credentials:
 
 | Variable | Description |
 | :------- | :---------- |
@@ -261,7 +269,8 @@ For example:
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" \
     com.yugabyte.sample.apps.YBCqlHelloWorld \
-    424242-cloud.yugabyte.com admin qwerty src/main/resources/root.crt
+    42424242-42d0-4c1a-b424-d42424ab2f42.aws.ybdb.io \
+    src/main/resources/root.crt admin qwerty
 ```
 
 You should see the following output:
