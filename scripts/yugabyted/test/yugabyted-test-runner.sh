@@ -9,22 +9,24 @@ set -euo pipefail
 readonly absolute_dir_path="$(dirname "$(readlink -f "$0")")"
 readonly test_script="${absolute_dir_path}/yugabyted-test.sh"
 readonly logfile="/tmp/yugabyted-test-runner-$( date +%Y-%m-%dT%H_%M_%S ).log"
+set -x
 
 python_interpreter=python
 yb_latest_version="$(curl --silent "https://api.github.com/repos/yugabyte/yugabyte-db/tags" \
-  | jq '.[].name' | head -1)"
+  | jq '.[].name' | head -1 | egrep -o '[0-9.]+' )"
 docker_image="yugabytedb/yugabyte:latest"
 testsuite="basic"
 yugabyted=
 
 declare -a test_args
 
+# get latest 
 if [[ $OSTYPE == linux* ]]; then
-  package="https://downloads.yugabyte.com/yugabyte-${yb_latest_version//[v\"]/}-linux.tar.gz"
+  package="$(curl --silent 'https://api.github.com/repos/yugabyte/yugabyte-db/releases' | jq '.[].body'  | egrep "$yb_latest_version" | egrep -o 'https://downloads.yugabyte.com/yugabyte-[0-9.]+-linux.tar.gz')"
 fi
 
 if [[ $OSTYPE == darwin* ]]; then
-  package="https://downloads.yugabyte.com/yugabyte-${yb_latest_version//[v\"]/}-darwin.tar.gz"
+  package="$(curl --silent 'https://api.github.com/repos/yugabyte/yugabyte-db/releases' | jq '.[].body' | head -1  | egrep "yb_latest_version" | egrep -o 'https://downloads.yugabyte.com/yugabyte-[0-9.]+-darwin.tar.gz')"
 fi
 
 # -------------------------------------------------------------------------------------------------
