@@ -526,7 +526,8 @@ public class SessionController extends AbstractPlatformController {
                 // Set response headers
                 for (Map.Entry<String, List<String>> entry : response.getHeaders().entrySet()) {
                   if (!entry.getKey().equals(play.mvc.Http.HeaderNames.CONTENT_LENGTH)
-                      && !entry.getKey().equals(play.mvc.Http.HeaderNames.CONTENT_TYPE)) {
+                      && !entry.getKey().equals(play.mvc.Http.HeaderNames.CONTENT_TYPE)
+                      && !entry.getKey().equals(play.mvc.Http.HeaderNames.TRANSFER_ENCODING)) {
                     result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
                   }
                 }
