@@ -222,6 +222,30 @@ SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agty
 -- Clean Up
 SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
 
+-- test DELETE in transaction block
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+
+BEGIN;
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u SET u.i = 1 RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+
+END;
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+
 --
 -- Clean up
 --

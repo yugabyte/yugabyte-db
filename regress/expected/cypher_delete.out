@@ -574,17 +574,95 @@ SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agty
  {"id": 281474976710660, "label": "", "properties": {}}::vertex
 (2 rows)
 
+-- test DELETE in transaction block
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+BEGIN;
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u SET u.i = 1 RETURN u $$) AS (result agtype);
+                                    result                                     
+-------------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "vertices", "properties": {"i": 1}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+END;
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
 --
 -- Clean up
 --
 DROP FUNCTION delete_test;
 SELECT drop_graph('cypher_delete', true);
-NOTICE:  drop cascades to 5 other objects
+NOTICE:  drop cascades to 6 other objects
 DETAIL:  drop cascades to table cypher_delete._ag_label_vertex
 drop cascades to table cypher_delete._ag_label_edge
 drop cascades to table cypher_delete.v
 drop cascades to table cypher_delete.e
 drop cascades to table cypher_delete.e2
+drop cascades to table cypher_delete.vertices
 NOTICE:  graph "cypher_delete" has been dropped
  drop_graph 
 ------------
