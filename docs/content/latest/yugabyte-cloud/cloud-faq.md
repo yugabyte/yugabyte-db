@@ -148,7 +148,7 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 Currently, Yugabyte Cloud does not support backups of free clusters.
 
-By default, every paid cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered within the first 10 minutes of creating a table, and scheduled for every 24 hours from the initial backup. You can change the default policy using your own scheduled backup policy.
+By default, every paid cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered 24 hours after creating a table, and is scheduled every 24 hours thereafter. You can change the default backup intervals by adjusting the backup policy settings.
 
 Yugabyte Cloud runs full backups, not incremental.
 
