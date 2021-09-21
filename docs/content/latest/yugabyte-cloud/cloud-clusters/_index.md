@@ -86,7 +86,6 @@ To manage a cluster, select the cluster in the list to display the cluster [Over
     </a>
   </div>
 
-<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="monitor-activity/">
       <div class="head">
@@ -94,11 +93,11 @@ To manage a cluster, select the cluster in the list to display the cluster [Over
         <div class="title">Monitor activity</div>
       </div>
       <div class="body">
-        Monitor cluster activity and review activity details.
+        Monitor cluster activity.
       </div>
     </a>
   </div>
--->
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="configure-clusters/">
       <div class="head">
