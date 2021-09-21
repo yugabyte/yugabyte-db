@@ -2266,6 +2266,15 @@
       "required" : [ "lines" ],
       "type" : "object"
     },
+    "LoggingConfigFormData" : {
+      "properties" : {
+        "level" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "level" ],
+      "type" : "object"
+    },
     "MasterNode" : {
       "properties" : {
         "cloudInfo" : {
@@ -9990,6 +9999,31 @@
         "tags" : [ "Node instances" ]
       }
     },
+    "/api/v1/logging_config" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "setLoggingLevel",
+        "parameters" : [ {
+          "description" : "Logging config to be updated",
+          "in" : "body",
+          "name" : "Logging Config",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/LoggingConfigFormData"
+          }
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Set Logging Level",
+        "tags" : [ "LoggingConfig" ]
+      }
+    },
     "/api/v1/logs/{maxLines}" : {
       "get" : {
         "description" : "",
@@ -10236,6 +10270,8 @@
     "name" : "Encryption at rest"
   }, {
     "name" : "Instance types"
+  }, {
+    "name" : "LoggingConfig"
   }, {
     "name" : "Metrics"
   }, {
