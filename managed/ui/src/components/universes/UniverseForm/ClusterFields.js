@@ -203,7 +203,7 @@ export default class ClusterFields extends Component {
           enableYCQL: userIntent.enableYCQL,
           enableYCQLAuth: userIntent.enableYCQLAuth,
           isReadOnlyExists: false,
-          editNotAllowed: false 
+          editNotAllowed: false
         };
       }
     } else {
@@ -707,7 +707,7 @@ export default class ClusterFields extends Component {
         .join(',');
     }
     if (volumeDetail) {
-      let storageType = DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
+      let storageType = this.state.deviceInfo.storageType ? this.state.deviceInfo.storageType : DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
       if (instanceTypeSelectedData.providerCode === 'aws' &&
         isEphemeralAwsStorageInstance(instanceTypeCode)) {
         storageType = null;
@@ -1240,7 +1240,7 @@ export default class ClusterFields extends Component {
         accessKeyCode: defaultAccessKeyCode,
         awsInstanceWithEphemeralStorage: false,
         gcpInstanceWithEphemeralStorage: false,
-        isReadOnlyExists: providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async' 
+        isReadOnlyExists: providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
       });
 
       this.props.getRegionListItems(providerUUID, true);
@@ -1302,7 +1302,7 @@ export default class ClusterFields extends Component {
   validatePassword(value) {
     if (value) {
       const passwordValidationRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
-      return (passwordValidationRegex.test(value) ? undefined : 
+      return (passwordValidationRegex.test(value) ? undefined :
       'Password must be 8 characters minimum and must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.');
     }
     return value;
@@ -1435,7 +1435,7 @@ export default class ClusterFields extends Component {
       ) || (
         this.props.type === 'Create' && this.props.clusterType === 'async' && this.state.isReadOnlyExists
       );
-    const isReadOnlyOnEdit = 
+    const isReadOnlyOnEdit =
       isNonEmptyObject(universe.currentUniverse.data) &&
       (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists));
 
@@ -1659,7 +1659,7 @@ export default class ClusterFields extends Component {
             </div>
           </Col>
         </Row>
-        
+
       );
       ysqlAuthPassword = (
         <Row>
