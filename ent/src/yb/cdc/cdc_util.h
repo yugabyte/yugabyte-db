@@ -44,6 +44,13 @@ struct ProducerTabletInfo {
                   universe_uuid, stream_id, tablet_id);
   }
 
+  // String used as a descriptor id for metrics.
+  std::string MetricsString() const {
+    std::stringstream ss;
+    ss << universe_uuid << ":" << stream_id << ":" << tablet_id;
+    return ss.str();
+  }
+
   struct Hash {
     std::size_t operator()(const ProducerTabletInfo& p) const noexcept {
       std::size_t hash = 0;
