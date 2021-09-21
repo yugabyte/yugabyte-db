@@ -129,7 +129,7 @@
         },
         "state" : {
           "description" : "The alert's state",
-          "enum" : [ "firing", "acknowledged", "resolved" ],
+          "enum" : [ "ACTIVE", "ACKNOWLEDGED", "RESOLVED" ],
           "readOnly" : true,
           "type" : "string"
         },
@@ -801,14 +801,6 @@
           "description" : "Alert interval, in milliseconds",
           "format" : "int64",
           "type" : "integer"
-        },
-        "enableClockSkew" : {
-          "description" : "Enable clock skew (default is true)",
-          "type" : "boolean"
-        },
-        "reportBackupFailures" : {
-          "description" : "Trigger an alert for backup failures",
-          "type" : "boolean"
         },
         "reportOnlyErrors" : {
           "description" : "Trigger an alert only for errors",
@@ -4520,7 +4512,7 @@
         },
         "role" : {
           "description" : "User role",
-          "enum" : [ "Admin", "BackupAdmin", "ReadOnly", "SuperAdmin" ],
+          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
           "type" : "string"
         },
         "uuid" : {

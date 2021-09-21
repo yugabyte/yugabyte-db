@@ -108,8 +108,6 @@ public class CustomerRegisterFormData {
     public long statusUpdateIntervalMs = 0;
 
     public Boolean reportOnlyErrors = false;
-
-    public Boolean reportBackupFailures = false;
   }
 
   public AlertingData alertingData;

@@ -23,7 +23,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -37,7 +36,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -45,7 +43,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
@@ -180,42 +177,6 @@ public class CustomerController extends AuthenticatedController {
           config.setData(Json.toJson(alertingFormData.alertingData));
           config.update();
         }
-
-        // Update Clock Skew Alert definition activity.
-        // TODO: Remove after implementation of a separate window for
-        // alert configurations.
-        List<AlertConfiguration> configurations =
-            alertConfigurationService.list(
-                AlertConfigurationFilter.builder()
-                    .customerUuid(customerUUID)
-                    .name(AlertTemplate.CLOCK_SKEW.getName())
-                    .build());
-        for (AlertConfiguration configuration : configurations) {
-          configuration.setActive(alertingFormData.alertingData.enableClockSkew);
-        }
-        alertConfigurationService.save(configurations);
-        LOG.info(
-            "Updated {} Clock Skew Alert configuration, new state {}",
-            configurations.size(),
-            alertingFormData.alertingData.enableClockSkew);
-
-        // Update Backup alert definitions
-        // TODO: Remove after implementation of a separate window for
-        // alert configuration.
-        configurations =
-            alertConfigurationService.list(
-                AlertConfigurationFilter.builder()
-                    .customerUuid(customerUUID)
-                    .name(AlertTemplate.BACKUP_FAILURE.getName())
-                    .build());
-        for (AlertConfiguration configuration : configurations) {
-          configuration.setActive(alertingFormData.alertingData.reportBackupFailures);
-        }
-        alertConfigurationService.save(configurations);
-        LOG.info(
-            "Updated {} Backup Failure configuration, new state {}",
-            configurations.size(),
-            alertingFormData.alertingData.reportBackupFailures);
       }
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
