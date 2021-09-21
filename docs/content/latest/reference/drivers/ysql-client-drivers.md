@@ -95,6 +95,14 @@ To install Npgsql in your Visual Studio project, follow the steps below.
 
 3. Search for `Npgsql` and click **Add Package**.
 
+{{< warning title="Warning" >}}
+On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+{{< /warning >}}
+
 ## Go
 
 ### Go PostgreSQL driver (pq)
