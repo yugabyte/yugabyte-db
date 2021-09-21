@@ -27,6 +27,8 @@ GET     /app_version                                                           c
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
 # --
 
+POST    /logging_config                                                         com.yugabyte.yw.controllers.LoggingConfigController.setLoggingLevel()
+
 GET     /customers/:cUUID/host_info                                            com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 
 GET     /prometheus_metrics                                                    com.yugabyte.yw.controllers.MetricsController.index()
