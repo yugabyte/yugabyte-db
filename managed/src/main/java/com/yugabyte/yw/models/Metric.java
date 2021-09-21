@@ -170,7 +170,11 @@ public class Metric extends Model {
       query.eq("sourceUuid", filter.getSourceUuid());
     }
     List<String> metricNames =
-        filter.getMetrics().stream().map(PlatformMetrics::name).collect(Collectors.toList());
+        filter
+            .getMetrics()
+            .stream()
+            .map(PlatformMetrics::getMetricName)
+            .collect(Collectors.toList());
     appendInClause(query, "name", metricNames);
     if (!CollectionUtils.isEmpty(filter.getKeys())
         || !CollectionUtils.isEmpty(filter.getSourceKeys())) {
