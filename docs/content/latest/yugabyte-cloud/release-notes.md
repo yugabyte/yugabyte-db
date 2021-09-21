@@ -76,10 +76,14 @@ The following **AWS regions** are available:
 
 ## Known issues
 
-- **Cloud Shell** - The cloud shell cannot display a greater number of lines of output than the page size. For example, if you run a query that returns more rows than there are lines of output in the current browser view, the results will not display.
-- **Cloud Shell** - No support for invited (Developer) users.
-- **Cloud Shell** - No support for keyboard shortcuts on Windows. Use the right-click menu.
-- **Cloud Shell** - No support for keyboard shortcuts in Firefox. Use the right-click menu.
-- **Cloud Shell** - No support for VPC-peered clusters.
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
+
+### Known issues in cloud shell
+
+- At this time, we recommend running only a single cloud shell session. Running more than one session may produce unexpected results.
+- Cloud shell is unavailable for clusters with VPC peering
+- Cloud shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
+- No support for invited (Developer) users.
+- No support for keyboard shortcuts on Windows. Use the shortcut menu.
+- No support for keyboard shortcuts in Firefox. Use the shortcut menu.
