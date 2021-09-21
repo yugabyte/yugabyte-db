@@ -66,6 +66,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -816,6 +817,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param removeFile, flag to state if we want to remove the swamper or not
    */
   public void createSwamperTargetUpdateTask(boolean removeFile) {
+    if (!config.getBoolean(MetricQueryHelper.PROMETHEUS_MANAGEMENT_ENABLED)) {
+      return;
+    }
     SubTaskGroup subTaskGroup = new SubTaskGroup("SwamperTargetFileUpdate", executor);
     SwamperTargetsFileUpdate.Params params = new SwamperTargetsFileUpdate.Params();
     SwamperTargetsFileUpdate task = createTask(SwamperTargetsFileUpdate.class);

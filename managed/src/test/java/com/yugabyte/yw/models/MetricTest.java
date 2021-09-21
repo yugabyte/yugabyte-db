@@ -2,14 +2,17 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -130,6 +133,59 @@ public class MetricTest extends FakeDBApplication {
 
     Metric metric = metricService.get(key);
     assertThat(metric, nullValue());
+  }
+
+  @Test
+  public void testSaveAndClean() {
+    Metric node1Metric =
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_NODE_FUNCTION, universe)
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1")
+            .setValue(1D);
+    Metric node2Metric =
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_NODE_FUNCTION, universe)
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node2")
+            .setValue(2D);
+    Metric node3Metric =
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_NODE_FUNCTION, universe)
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node3")
+            .setValue(3D);
+    Metric node4Metric =
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_NODE_FUNCTION, universe)
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node4")
+            .setValue(4D);
+    List<Metric> metrics = ImmutableList.of(node1Metric, node2Metric, node3Metric, node4Metric);
+    metricService.save(metrics);
+
+    List<Metric> newMetrics =
+        ImmutableList.of(
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_NODE_FUNCTION, universe)
+                .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1")
+                .setExpireTime(datePlus(node1Metric.getExpireTime(), 12, ChronoUnit.HOURS))
+                .setValue(1D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_NODE_FUNCTION, universe)
+                .setExpireTime(datePlus(node2Metric.getExpireTime(), 12, ChronoUnit.HOURS))
+                .setKeyLabel(KnownAlertLabels.NODE_NAME, "node2")
+                .setValue(3D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_NODE_FUNCTION, universe)
+                .setKeyLabel(KnownAlertLabels.NODE_NAME, "node3")
+                .setExpireTime(datePlus(node3Metric.getExpireTime(), 36, ChronoUnit.HOURS))
+                .setValue(3D));
+    MetricFilter toClean =
+        MetricFilter.builder().metric(PlatformMetrics.UNIVERSE_NODE_FUNCTION).build();
+
+    metricService.cleanAndSave(newMetrics, toClean);
+
+    Metric updatedNode1Metric = metricService.get(MetricKey.from(node1Metric));
+    Metric updatedNode2Metric = metricService.get(MetricKey.from(node2Metric));
+    Metric updatedNode3Metric = metricService.get(MetricKey.from(node3Metric));
+    Metric updatedNode4Metric = metricService.get(MetricKey.from(node4Metric));
+
+    assertThat(updatedNode1Metric.getExpireTime(), equalTo(node1Metric.getExpireTime()));
+    assertThat(updatedNode2Metric.getValue(), equalTo(3D));
+    assertThat(updatedNode2Metric.getExpireTime(), not(equalTo(node1Metric.getExpireTime())));
+    assertThat(updatedNode3Metric.getValue(), equalTo(3D));
+    assertThat(updatedNode3Metric.getExpireTime(), not(equalTo(node1Metric.getExpireTime())));
+    assertThat(updatedNode4Metric, nullValue());
   }
 
   private void assertMetric(Metric metric, double value) {

@@ -104,6 +104,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Test
   public void testSyncActiveDefinition() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     configurationWriter.syncDefinitions();
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
@@ -125,6 +126,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Test
   public void testSyncNotActiveDefinition() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     configuration.setActive(false);
     alertConfigurationService.save(configuration);
     definition = alertDefinitionService.save(definition);
@@ -148,6 +150,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Test
   public void testSyncExistingAndMissingDefinitions() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     UUID missingDefinitionUuid = UUID.randomUUID();
     when(swamperHelper.getAlertDefinitionConfigUuids())
         .thenReturn(ImmutableList.of(missingDefinitionUuid));
@@ -177,6 +180,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Test
   public void testNothingToSync() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     alertConfigurationService.delete(configuration.getUuid());
 
     configurationWriter.syncDefinitions();
@@ -207,5 +211,27 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
         metricService,
         MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_REMOVED.getMetricName()).build(),
         0.0);
+  }
+
+  @Test
+  public void testPrometheusManagementDisabled() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(false);
+    configurationWriter.syncDefinitions();
+
+    AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
+
+    verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
+    verify(queryHelper, never()).postManagementCommand("reload");
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_WRITTEN.getMetricName()).build(),
+        1.0);
   }
 }

@@ -45,6 +45,7 @@ public class MetricQueryHelper {
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
   private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
   private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
+  public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
   @Inject play.Configuration appConfig;
 
@@ -197,6 +198,10 @@ public class MetricQueryHelper {
       throw new RuntimeException(
           "Failed to perform " + command + " on prometheus instance " + queryUrl);
     }
+  }
+
+  public boolean isPrometheusManagementEnabled() {
+    return appConfig.getBoolean(PROMETHEUS_MANAGEMENT_ENABLED);
   }
 
   private String getPrometheusManagementUrl(String path) {

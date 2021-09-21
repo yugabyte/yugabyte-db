@@ -32,8 +32,8 @@ import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import io.jsonwebtoken.lang.Collections;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -49,6 +49,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
@@ -140,6 +141,9 @@ public class QueryAlerts {
   }
 
   private List<UUID> processActiveAlerts() {
+    if (!queryHelper.isPrometheusManagementEnabled()) {
+      return Collections.emptyList();
+    }
     List<AlertData> alerts = queryHelper.queryAlerts();
     metricService.setMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS), alerts.size());
@@ -264,28 +268,28 @@ public class QueryAlerts {
   }
 
   private String getCustomerUuid(AlertData alertData) {
-    if (Collections.isEmpty(alertData.getLabels())) {
+    if (MapUtils.isEmpty(alertData.getLabels())) {
       return null;
     }
     return alertData.getLabels().get(KnownAlertLabels.CUSTOMER_UUID.labelName());
   }
 
   private String getDefinitionUuid(AlertData alertData) {
-    if (Collections.isEmpty(alertData.getLabels())) {
+    if (MapUtils.isEmpty(alertData.getLabels())) {
       return null;
     }
     return alertData.getLabels().get(KnownAlertLabels.DEFINITION_UUID.labelName());
   }
 
   private String getConfigurationUuid(AlertData alertData) {
-    if (Collections.isEmpty(alertData.getLabels())) {
+    if (MapUtils.isEmpty(alertData.getLabels())) {
       return null;
     }
     return alertData.getLabels().get(KnownAlertLabels.CONFIGURATION_UUID.labelName());
   }
 
   private String getSourceUuid(AlertData alertData) {
-    if (Collections.isEmpty(alertData.getLabels())) {
+    if (MapUtils.isEmpty(alertData.getLabels())) {
       return null;
     }
     return alertData.getLabels().get(KnownAlertLabels.SOURCE_UUID.labelName());
@@ -301,7 +305,7 @@ public class QueryAlerts {
   }
 
   private AlertConfiguration.Severity getSeverity(AlertData alertData) {
-    if (Collections.isEmpty(alertData.getLabels())) {
+    if (MapUtils.isEmpty(alertData.getLabels())) {
       return AlertConfiguration.Severity.SEVERE;
     }
     return Optional.ofNullable(alertData.getLabels().get(KnownAlertLabels.SEVERITY.labelName()))
@@ -310,7 +314,7 @@ public class QueryAlerts {
   }
 
   private AlertConfiguration.TargetType getConfigurationType(AlertData alertData) {
-    if (Collections.isEmpty(alertData.getLabels())) {
+    if (MapUtils.isEmpty(alertData.getLabels())) {
       return AlertConfiguration.TargetType.UNIVERSE;
     }
     return Optional.ofNullable(

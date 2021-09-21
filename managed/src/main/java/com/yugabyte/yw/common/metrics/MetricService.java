@@ -10,11 +10,13 @@
 package com.yugabyte.yw.common.metrics;
 
 import static com.yugabyte.yw.models.Metric.createQueryByFilter;
+import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.models.Customer;
@@ -34,13 +36,16 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -50,6 +55,7 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class MetricService {
   public static final long DEFAULT_METRIC_EXPIRY_SEC = TimeUnit.DAYS.toSeconds(10);
+  public static final double EXPIRY_TIME_UPDATE_COEFFICIENT = 1.1;
   public static final double STATUS_OK = 1D;
   public static final double STATUS_NOT_OK = 0D;
   private static final Comparator<MetricSourceKey> METRIC_SOURCE_KEY_COMPARATOR =
@@ -69,38 +75,43 @@ public class MetricService {
 
     try {
       acquireLocks(metrics);
-      List<Metric> beforeMetrics = Collections.emptyList();
-      Set<MetricKey> metricKeys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
-      if (!metricKeys.isEmpty()) {
-        MetricFilter filter = MetricFilter.builder().keys(metricKeys).build();
-        beforeMetrics = list(filter);
-      }
-      Map<MetricKey, Metric> beforeMetricMap =
-          beforeMetrics.stream().collect(Collectors.toMap(MetricKey::from, Function.identity()));
-
-      Map<EntityOperation, List<Metric>> toCreateAndUpdate =
-          metrics
-              .stream()
-              .peek(this::validate)
-              .map(metric -> prepareForSave(metric, beforeMetricMap.get(MetricKey.from(metric))))
-              .collect(Collectors.groupingBy(metric -> metric.isNew() ? CREATE : UPDATE));
-
-      if (toCreateAndUpdate.containsKey(CREATE)) {
-        List<Metric> toCreate = toCreateAndUpdate.get(CREATE);
-        toCreate.forEach(Metric::generateUUID);
-        Metric.db().saveAll(toCreate);
-      }
-
-      if (toCreateAndUpdate.containsKey(UPDATE)) {
-        List<Metric> toUpdate = toCreateAndUpdate.get(UPDATE);
-        Metric.db().updateAll(toUpdate);
-      }
-
-      log.trace("{} metrics saved", metrics.size());
-      return metrics;
+      return saveInternal(metrics);
     } finally {
       releaseLocks(metrics);
     }
+  }
+
+  private List<Metric> saveInternal(List<Metric> metrics) {
+    List<Metric> beforeMetrics = Collections.emptyList();
+    Set<MetricKey> metricKeys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
+    if (!metricKeys.isEmpty()) {
+      MetricFilter filter = MetricFilter.builder().keys(metricKeys).build();
+      beforeMetrics = list(filter);
+    }
+    Map<MetricKey, Metric> beforeMetricMap =
+        beforeMetrics.stream().collect(Collectors.toMap(MetricKey::from, Function.identity()));
+
+    Map<EntityOperation, List<Metric>> toCreateAndUpdate =
+        metrics
+            .stream()
+            .peek(this::validate)
+            .filter(metric -> filterForSave(metric, beforeMetricMap.get(MetricKey.from(metric))))
+            .map(metric -> prepareForSave(metric, beforeMetricMap.get(MetricKey.from(metric))))
+            .collect(Collectors.groupingBy(metric -> metric.isNew() ? CREATE : UPDATE));
+
+    List<Metric> toCreate = toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
+    if (!toCreate.isEmpty()) {
+      toCreate.forEach(Metric::generateUUID);
+      Metric.db().saveAll(toCreate);
+    }
+
+    List<Metric> toUpdate = toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
+    if (!toUpdate.isEmpty()) {
+      Metric.db().updateAll(toUpdate);
+    }
+
+    log.trace("{} metrics saved", toCreate.size() + toUpdate.size());
+    return metrics;
   }
 
   @Transactional
@@ -125,27 +136,50 @@ public class MetricService {
     }
     try {
       acquireLocks(toDelete);
-      MetricFilter deleteFilter =
-          MetricFilter.builder()
-              .uuids(toDelete.stream().map(Metric::getUuid).collect(Collectors.toSet()))
-              .build();
-      int deleted = createQueryByFilter(deleteFilter).delete();
-      log.trace("{} metrics deleted", deleted);
+      deleteInternal(toDelete);
     } finally {
       releaseLocks(toDelete);
     }
   }
 
+  private void deleteInternal(Collection<Metric> toDelete) {
+    MetricFilter deleteFilter =
+        MetricFilter.builder()
+            .uuids(toDelete.stream().map(Metric::getUuid).collect(Collectors.toSet()))
+            .build();
+    int deleted = createQueryByFilter(deleteFilter).delete();
+    log.trace("{} metrics deleted", deleted);
+  }
+
   @Transactional
   public void cleanAndSave(List<Metric> toSave, List<MetricFilter> toClean) {
-    toClean.forEach(this::delete);
-    save(toSave);
+    Map<MetricKey, Metric> toDelete =
+        toClean
+            .stream()
+            .map(this::list)
+            .flatMap(Collection::stream)
+            .collect(Collectors.toMap(MetricKey::from, Function.identity(), (a, b) -> a));
+    Set<MetricKey> toSaveKeys = toSave.stream().map(MetricKey::from).collect(Collectors.toSet());
+    toSaveKeys.forEach(toDelete::remove);
+    Set<MetricKey> allKeys =
+        Stream.concat(toSaveKeys.stream(), toDelete.keySet().stream()).collect(Collectors.toSet());
+
+    try {
+      metricKeyLock.acquireLocks(allKeys);
+      if (!toSave.isEmpty()) {
+        saveInternal(toSave);
+      }
+      if (!toDelete.isEmpty()) {
+        deleteInternal(toDelete.values());
+      }
+    } finally {
+      metricKeyLock.releaseLocks(allKeys);
+    }
   }
 
   @Transactional
   public void cleanAndSave(List<Metric> toSave, MetricFilter toClean) {
-    delete(toClean);
-    save(toSave);
+    cleanAndSave(toSave, ImmutableList.of(toClean));
   }
 
   @Transactional
@@ -206,6 +240,25 @@ public class MetricService {
     if (metric.getValue() == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Value field is mandatory");
     }
+  }
+
+  private boolean filterForSave(Metric metric, Metric before) {
+    if (before == null) {
+      return true;
+    }
+    if (!Objects.equals(before.getValue(), metric.getValue())) {
+      return true;
+    }
+    Date now = new Date();
+    double oldExpiryDuration = getDurationSeconds(now, before.getExpireTime());
+    long newExpiryDuration = getDurationSeconds(now, metric.getExpireTime());
+    // Update if expiry time becomes less OR if expiry time grows at least for 10%
+    // - once a day for default expiry period.
+    if (newExpiryDuration < oldExpiryDuration
+        || oldExpiryDuration * EXPIRY_TIME_UPDATE_COEFFICIENT < newExpiryDuration) {
+      return true;
+    }
+    return false;
   }
 
   private Metric prepareForSave(Metric metric, Metric before) {
