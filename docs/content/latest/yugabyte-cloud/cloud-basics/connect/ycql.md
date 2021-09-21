@@ -13,8 +13,9 @@ To connect to a cluster using `ycqlsh`:
     Here's an example of the generated `ycqlsh` command:
 
     ```sh
-    SSL_CERTFILE=<ROOT_CERT_PATH> ./ycqlsh \
-    740ce33e-4242-4242-a424-cc4242c4242b.cloud.yugabyte.com 9042 \
+    SSL_CERTFILE=<ROOT_CERT_PATH> \
+    ./ycqlsh \
+    740ce33e-4242-4242-a424-cc4242c4242b.aws.ybdb.io 9042 \
     -u <DB USER> \
     --ssl
     ```
