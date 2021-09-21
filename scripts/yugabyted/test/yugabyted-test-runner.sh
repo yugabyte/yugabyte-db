@@ -6,7 +6,7 @@ set -euo pipefail
 # Variables
 # -------------------------------------------------------------------------------------------------
 
-readonly absolute_dir_path="$(dirname "$(readlink -f "$0")")"
+readonly absolute_dir_path="$(python -c 'import os, sys; print(os.path.dirname(os.path.realpath(sys.argv[1])))' "$0")"
 readonly test_script="${absolute_dir_path}/yugabyted-test.sh"
 readonly logfile="/tmp/yugabyted-test-runner-$( date +%Y-%m-%dT%H_%M_%S ).log"
 
