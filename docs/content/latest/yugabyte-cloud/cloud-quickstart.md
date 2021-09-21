@@ -48,9 +48,9 @@ Once the Sign up process completes, the **Getting Started** page of the Yugabyte
 
 1. Choose the credentials you'll use to connect to your YugabyteDB database in the cloud. You can choose the default set with a database user named "admin", or create your own.
 
-1. Click **Copy credentials** and save your credentials in a secure location.
+1. Click **Download credentials** and save your credentials in a secure location.
 
-1. Select the **I have copied the admin credentials** option and click **Create Cluster**.
+1. Verify that your credentials are downloaded, and click **Create Cluster**.
 
 Once you complete the wizard, Yugabyte Cloud bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
 

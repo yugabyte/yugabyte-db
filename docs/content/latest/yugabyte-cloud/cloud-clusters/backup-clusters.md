@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The **Backups** tab (paid clusters only) lists the backups that have been run. Yugabyte Cloud performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. <!--Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).-->
+The **Backups** tab (paid clusters only) lists the backups that have been run. Yugabyte Cloud performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 By default, every paid cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered within the first 10 minutes of creating a table, and scheduled for every 24 hours from the initial backup. 
 

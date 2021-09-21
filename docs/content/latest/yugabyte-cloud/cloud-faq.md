@@ -83,11 +83,19 @@ Client Shell
 
 : Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
 
-: You must be running the latest versions of the client shells. These are available in Yugabyte Client 2.6 or later, which you can download using the following command:
+: You must be running the latest versions of the client shells. These are available in Yugabyte Client 2.6 or later, which you can download using the following command on Linux or macOS:
 
     ```sh
     $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
     ```
+
+: Windows client shells require Docker:
+
+    ```sh
+    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
+    ```
+
+: Please check [cloud.yugabyte.com](https://cloud.yugabyte.com/) to see the latest version.
 
 Applications
 : Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 
