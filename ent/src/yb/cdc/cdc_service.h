@@ -123,6 +123,8 @@ class CDCServiceImpl : public CDCServiceIf {
   bool CDCEnabled();
 
  private:
+  FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
+
   template <class ReqType, class RespType>
   bool CheckOnline(const ReqType* req, RespType* resp, rpc::RpcContext* rpc);
 
@@ -175,6 +177,10 @@ class CDCServiceImpl : public CDCServiceIf {
                                         const std::shared_ptr<client::YBSession>& session);
 
   CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index);
+
+  void ComputeLagMetric(int64_t last_replicated_micros, int64_t metric_last_timestamp_micros,
+                        int64_t cdc_state_last_replication_time_micros,
+                        scoped_refptr<AtomicGauge<int64_t>> metric);
 
   // Update metrics async_replication_sent_lag_micros and async_replication_committed_lag_micros.
   // Called periodically default 1s.

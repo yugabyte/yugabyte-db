@@ -127,7 +127,6 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
                   const client::YBTableName& table_name = kTableName);
   void GetTablet(std::string* tablet_id,
                  const client::YBTableName& table_name = kTableName);
-
   void GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
       int64_t term, int64_t index, bool* has_error = nullptr);
   void WriteTestRow(int32_t key, int32_t int_val, const string& string_val,
@@ -135,7 +134,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
   CHECKED_STATUS WriteToProxyWithRetries(
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
       const tserver::WriteRequestPB& req, tserver::WriteResponsePB* resp, RpcController* rpc);
-
+  tserver::MiniTabletServer* GetLeaderForTablet(const std::string& tablet_id);
   virtual int server_count() { return 1; }
   virtual int tablet_count() { return 1; }
 
@@ -330,6 +329,15 @@ Status CDCServiceTest::WriteToProxyWithRetries(
         return true;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Write test row");
+}
+
+tserver::MiniTabletServer* CDCServiceTest::GetLeaderForTablet(const std::string& tablet_id) {
+  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    if (cluster_->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
+      return cluster_->mini_tablet_server(i);
+    }
+  }
+  return nullptr;
 }
 
 TEST_P(CDCServiceTest, TestCompoundKey) {
@@ -698,6 +706,45 @@ class CDCServiceTestMultipleServersOneTablet : public CDCServiceTest {
 INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMultipleServersOneTablet,
                         ::testing::Bool());
 
+TEST_P(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
+  // Test that the metric value is not time since epoch after a leadership change.
+  SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  tserver::MiniTabletServer* leader_mini_tserver;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = GetLeaderForTablet(tablet_id);
+    return leader_mini_tserver != nullptr;
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+  auto timestamp_before_write = GetCurrentTimeMicros();
+  ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, leader_mini_tserver->server()->proxy()));
+  ASSERT_NO_FATALS(GetChanges(tablet_id, stream_id, 0, 0));
+  ASSERT_OK(leader_mini_tserver->Restart());
+  leader_mini_tserver = nullptr;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = GetLeaderForTablet(tablet_id);
+    return leader_mini_tserver != nullptr;
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+
+  auto leader_tserver = leader_mini_tserver->server();
+  auto leader_proxy = std::make_unique<CDCServiceProxy>(
+      &client_->proxy_cache(),
+      HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+    leader_tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  cdc_service->UpdateLagMetrics();
+  auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+  auto timestamp_after_write = GetCurrentTimeMicros();
+  auto value = metrics->async_replication_committed_lag_micros->value();
+  ASSERT_GE(value, 0);
+  ASSERT_LE(value, timestamp_after_write - timestamp_before_write);
+}
+
 TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
@@ -726,7 +773,6 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     }
     return leader_mini_tserver != nullptr && follower_mini_tserver != nullptr;
   }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
-
 
   auto leader_proxy = std::make_unique<CDCServiceProxy>(
       &client_->proxy_cache(),

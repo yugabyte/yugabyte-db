@@ -101,8 +101,6 @@ using tserver::TSTabletManager;
 using client::internal::RemoteTabletServer;
 
 constexpr int kMaxDurationForTabletLookup = 50;
-constexpr char kDefaultMetricTableName[] = "DEFAULT_TABLE_NAME";
-constexpr char kDefaultMetricTableId[] = "DEFAULT_TABLE_ID";
 const client::YBTableName kCdcStateTableName(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
 
@@ -479,6 +477,25 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_i
   return Status::OK();
 }
 
+void CDCServiceImpl::ComputeLagMetric(int64_t last_replicated_micros,
+                                      int64_t metric_last_timestamp_micros,
+                                      int64_t cdc_state_last_replication_time_micros,
+                                      scoped_refptr<AtomicGauge<int64_t>> metric) {
+  if (metric_last_timestamp_micros == 0) {
+    // The tablet metric timestamp is uninitialized, so try to use last replicated time in cdc
+    // state.
+    if (cdc_state_last_replication_time_micros == 0) {
+      // Last replicated time in cdc state is unitialized as well, so set the metric value to
+      // 0 and update later when we have a suitable lower bound.
+      metric->set_value(0);
+    } else {
+      metric->set_value(last_replicated_micros - cdc_state_last_replication_time_micros);
+    }
+  } else {
+    metric->set_value(last_replicated_micros - metric_last_timestamp_micros);
+  }
+}
+
 void CDCServiceImpl::UpdateLagMetrics() {
   TabletCheckpoints tablet_checkpoints;
   {
@@ -497,7 +514,8 @@ void CDCServiceImpl::UpdateLagMetrics() {
 
   std::unordered_set<ProducerTabletInfo, ProducerTabletInfo::Hash> tablets_in_cdc_state_table;
   client::TableIteratorOptions options;
-  options.columns = std::vector<string>{master::kCdcTabletId, master::kCdcStreamId};
+  options.columns = std::vector<string>{
+      master::kCdcTabletId, master::kCdcStreamId, master::kCdcLastReplicationTime};
   bool failed = false;
   options.error_handler = [&failed](const Status& status) {
     YB_LOG_EVERY_N_SECS(WARNING, 30) << "Scan of table " << kCdcStateTableName.table_name()
@@ -528,14 +546,18 @@ void CDCServiceImpl::UpdateLagMetrics() {
     } else {
       // Get the physical time of the last committed record on producer.
       auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
-
+      const auto& timestamp_ql_value = row.column(2);
+      auto cdc_state_last_replication_time_micros =
+          !timestamp_ql_value.IsNull() ?
+          timestamp_ql_value.timestamp_value().ToInt64() : 0;
       auto last_sent_micros = tablet_metric->last_read_physicaltime->value();
+      ComputeLagMetric(last_replicated_micros, last_sent_micros,
+                       cdc_state_last_replication_time_micros,
+                       tablet_metric->async_replication_sent_lag_micros);
       auto last_committed_micros = tablet_metric->last_checkpoint_physicaltime->value();
-
-      tablet_metric->async_replication_sent_lag_micros->set_value(
-          last_replicated_micros - last_sent_micros);
-      tablet_metric->async_replication_committed_lag_micros->set_value(
-          last_replicated_micros - last_committed_micros);
+      ComputeLagMetric(last_replicated_micros, last_committed_micros,
+                       cdc_state_last_replication_time_micros,
+                       tablet_metric->async_replication_committed_lag_micros);
     }
   }
   if (failed) {
@@ -1340,16 +1362,13 @@ std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
     MetricEntity::AttributeMap attrs;
     {
       SharedLock<rw_spinlock> l(mutex_);
-      auto it = stream_metadata_.find(producer.stream_id);
-      attrs["table_id"] = it != stream_metadata_.end() ?
-          it->second->table_id : kDefaultMetricTableId;
-      // Todo(Rahul): Right now, we don't easily expose table name from the producer.
-      // Populate this table name when we expose per table stats.
-      attrs["table_name"] = kDefaultMetricTableName;
+      auto raft_group_metadata = tablet_peer->tablet()->metadata();
+      attrs["table_id"] = raft_group_metadata->table_id();
+      attrs["namespace_name"] = raft_group_metadata->namespace_name();
+      attrs["table_name"] = raft_group_metadata->table_name();
       attrs["stream_id"] = producer.stream_id;
     }
-    auto entity = METRIC_ENTITY_cdc.Instantiate(metric_registry_,
-        std::to_string(ProducerTabletInfo::Hash {}(producer)), attrs);
+    auto entity = METRIC_ENTITY_cdc.Instantiate(metric_registry_, producer.MetricsString(), attrs);
     metrics_raw = std::make_shared<CDCTabletMetrics>(entity);
     // Adding the new metric to the tablet so it maintains the same lifetime scope.
     tablet->AddAdditionalMetadata(key, metrics_raw);
