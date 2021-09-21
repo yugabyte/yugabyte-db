@@ -51,14 +51,6 @@ public class AlertingFormData {
 
     @ApiModelProperty(value = "Trigger an alert only for errors")
     public Boolean reportOnlyErrors = false;
-
-    @ApiModelProperty(value = "Trigger an alert for backup failures")
-    public Boolean reportBackupFailures = false;
-
-    // TODO: Remove after implementation of a separate window for all definitions
-    // configuration.
-    @ApiModelProperty(value = "Enable clock skew (default is true)")
-    public boolean enableClockSkew = true;
   }
 
   public AlertingData alertingData;
