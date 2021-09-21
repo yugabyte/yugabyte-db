@@ -303,3 +303,10 @@ INSERT INTO temptest VALUES (100, 200, 300);
 INSERT INTO temptest VALUES (101, 201, 301), (101, 201, 301);
 
 DROP TABLE temptest;
+
+-- test temp table being used to update YB table.
+CREATE TABLE test1 (x int, y int, z int);
+INSERT INTO test1 VALUES (1, 2, 3);
+CREATE TEMP TABLE test2 as table test1;
+UPDATE test1 SET z = 2 FROM test2 WHERE test1.x = test2.x;
+SELECT * FROM test1;
