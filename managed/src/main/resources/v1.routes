@@ -25,6 +25,8 @@ GET     /session_info                                                          c
 GET     /customer_count                                                        com.yugabyte.yw.controllers.SessionController.customerCount()
 GET     /app_version                                                           com.yugabyte.yw.controllers.SessionController.appVersion()
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
+GET     /logs                                                                  com.yugabyte.yw.controllers.SessionController.getFilteredLogs(maxLines: Integer ?= 10000, universeName: String ?= null, queryRegex: String ?= null)
+
 # --
 
 POST    /logging_config                                                         com.yugabyte.yw.controllers.LoggingConfigController.setLoggingLevel()
