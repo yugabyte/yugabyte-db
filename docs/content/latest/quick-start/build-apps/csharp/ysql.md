@@ -41,6 +41,14 @@ This tutorial assumes that you have:
 - installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start).
 - installed Visual Studio
 
+{{< warning title="Warning" >}}
+On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+{{< /warning >}}
+
 ## Create the sample C# application
 
 In your Visual Studio, create a new Project and choose **Console Application as template**. Follow the instructions to save the project.
