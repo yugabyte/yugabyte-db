@@ -48,7 +48,7 @@ void YBCGetMasterCatalogVersion(uint64_t *version)
 			return;
 		case CATALOG_VERSION_PROTOBUF_ENTRY:
 		    /* deprecated (kept for compatibility with old clusters). */
-			YBCPgGetCatalogMasterVersion(version);
+			HandleYBStatus(YBCPgGetCatalogMasterVersion(version));
 			return;
 
 		case CATALOG_VERSION_UNSET: /* should not happen. */

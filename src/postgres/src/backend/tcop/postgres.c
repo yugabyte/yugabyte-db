@@ -3702,7 +3702,7 @@ static void YBRefreshCache()
 	YBPreloadRelCache();
 
 	/* Also invalidate the pggate cache. */
-	YBCPgInvalidateCache();
+	HandleYBStatus(YBCPgInvalidateCache());
 
 	/* Set the new ysql cache version. */
 	yb_catalog_cache_version = catalog_master_version;
