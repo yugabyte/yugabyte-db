@@ -4,7 +4,12 @@ import { Field } from 'redux-form';
 import { YBInputField, YBSelect } from '../../common/forms/fields';
 import '../CreateAlerts.scss';
 
-const required = (value) => (value ? undefined : 'This field is required.');
+const required = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return 'This field is required.';
+  }
+  return undefined;
+};
 
 const MAX_SEVERITY_ALLOWED = 2;
 
@@ -51,7 +56,7 @@ export class AlertsPolicy extends Component {
    * @param {Event} e
    */
   addRow = (e) => {
-  const metric = this.props.currentMetric;
+    const metric = this.props.currentMetric;
     this.props.fields.push({
       _CONDITION: metric.thresholds[Object.keys(metric.thresholds)[0]].condition
     });
@@ -120,15 +125,17 @@ export class AlertsPolicy extends Component {
             </Col>
           </Row>
         ))}
-        {currentMetric?.name && fields.length < MAX_SEVERITY_ALLOWED && !currentMetric.thresholdReadOnly ? (
-        <Row>
-          <Col lg={2}>
-            <a href="# " className="on-prem-add-link" onClick={this.addRow}>
-              <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
-              Add Severity
-            </a>
-          </Col>
-        </Row>
+        {currentMetric?.name &&
+        fields.length < MAX_SEVERITY_ALLOWED &&
+        !currentMetric.thresholdReadOnly ? (
+          <Row>
+            <Col lg={2}>
+              <a href="# " className="on-prem-add-link" onClick={this.addRow}>
+                <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
+                Add Severity
+              </a>
+            </Col>
+          </Row>
         ) : null}
       </div>
     );
