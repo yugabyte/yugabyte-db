@@ -28,6 +28,7 @@
 #include "utils/timestamp.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "pg_yb_utils.h"
 
 
 /*
@@ -109,7 +110,7 @@ yb_get_role_password(const char *role, char **logdetail)
 	}
 
 	auth_key = palloc(sizeof(uint64_t));
-	YBCGetSharedAuthKey(auth_key);
+	HandleYBStatus(YBCGetSharedAuthKey(auth_key));
 
 	return auth_key;
 }
