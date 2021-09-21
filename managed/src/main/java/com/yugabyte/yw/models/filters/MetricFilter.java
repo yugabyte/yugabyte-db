@@ -59,6 +59,16 @@ public class MetricFilter {
       return this;
     }
 
+    public MetricFilterBuilder metrics(@NonNull Collection<PlatformMetrics> metrics) {
+      this.metrics.addAll(metrics);
+      return this;
+    }
+
+    public MetricFilterBuilder metric(@NonNull PlatformMetrics metric) {
+      this.metrics.add(metric);
+      return this;
+    }
+
     public MetricFilterBuilder targetKeys(@NonNull Collection<MetricTargetKey> targetKeys) {
       this.targetKeys.addAll(targetKeys);
       return this;
