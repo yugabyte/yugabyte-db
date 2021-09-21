@@ -42,15 +42,12 @@ This tutorial assumes that you have:
 - installed Visual Studio
 
 {{< warning title="Warning" >}}
+On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
 
-On every new connection the NpgSQL driver also makes [extra queries to the system tables to map types](https://github.com/npgsql/npgsql/issues/1486), which results in a big overhead. 
-You can disable this by setting this option in your connection string builder: 
-```
+```csharp
 connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
 ```
-
 {{< /warning >}}
-
 
 ## Create the sample C# application
 
