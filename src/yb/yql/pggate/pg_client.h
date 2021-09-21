@@ -20,6 +20,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 
+#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_env.h"
 
 namespace yb {
@@ -34,7 +35,13 @@ class PgClient {
              const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
 
+  Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id);
+
+  Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
+
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
+
+  Result<bool> IsInitDbDone();
 
  private:
   class Impl;

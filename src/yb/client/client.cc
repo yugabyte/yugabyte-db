@@ -1923,25 +1923,31 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
 
-  // In the future, probably will look up the table in some map to reuse YBTable
-  // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(this, info));
-  RETURN_NOT_OK(ret->Open());
-  table->swap(ret);
+  *table = VERIFY_RESULT(CompleteTable(info));
   return Status::OK();
 }
 
-Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table) {
+Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table,
+                           master::GetTableSchemaResponsePB* resp) {
   YBTableInfo info;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info, resp));
+
+  *table = VERIFY_RESULT(CompleteTable(info));
+  return Status::OK();
+}
+
+Result<YBTablePtr> YBClient::CompleteTable(const YBTableInfo& info) {
+  std::promise<FetchPartitionsResult> promise;
+  auto future = promise.get_future();
+
+  YBTable::FetchPartitions(this, info, [&promise](const FetchPartitionsResult& result) {
+    promise.set_value(result);
+  });
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(this, info));
-  RETURN_NOT_OK(ret->Open());
-  table->swap(ret);
-  return Status::OK();
+  return std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
 }
 
 shared_ptr<YBSession> YBClient::NewSession() {

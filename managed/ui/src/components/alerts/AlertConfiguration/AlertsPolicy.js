@@ -6,6 +6,17 @@ import '../CreateAlerts.scss';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
+const MAX_SEVERITY_ALLOWED = 2;
+
+const detectDuplicateSeverity = (_, values) => {
+  const distinctValue = new Set(
+    values.ALERT_METRICS_CONDITION_POLICY.map((field) => field._SEVERITY)
+  );
+  return distinctValue.size !== values.ALERT_METRICS_CONDITION_POLICY.length
+    ? 'Duplicate severity is not allowed'
+    : undefined;
+};
+
 export class AlertsPolicy extends Component {
   /**
    * Constant option for severity types
@@ -72,7 +83,7 @@ export class AlertsPolicy extends Component {
                 name={`${instanceTypeItem}_SEVERITY`}
                 component={YBSelect}
                 insetError={true}
-                validate={required}
+                validate={[required, detectDuplicateSeverity]}
                 options={this.severityTypes}
               />
             </Col>
@@ -109,7 +120,7 @@ export class AlertsPolicy extends Component {
             </Col>
           </Row>
         ))}
-        {currentMetric?.name && fields.length < 2 && !currentMetric.thresholdReadOnly ? (
+        {currentMetric?.name && fields.length < MAX_SEVERITY_ALLOWED && !currentMetric.thresholdReadOnly ? (
         <Row>
           <Col lg={2}>
             <a href="# " className="on-prem-add-link" onClick={this.addRow}>

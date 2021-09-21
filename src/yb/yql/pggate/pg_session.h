@@ -204,7 +204,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       bool wait = true);
   CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
   CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
-  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
+  Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
 
   // Start operation buffering. Buffering must not be in progress.
@@ -212,9 +212,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Flush all pending buffered operation and stop further buffering.
   // Buffering must be in progress.
   CHECKED_STATUS StopOperationsBuffering();
-  // Stop further buffering. Buffering may be in any state,
-  // but pending buffered operations are not allowed.
-  CHECKED_STATUS ResetOperationsBuffering();
+  // Drop all pending buffered operations and stop further buffering. Buffering may be in any state.
+  void ResetOperationsBuffering();
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
   CHECKED_STATUS FlushBufferedOperations();
@@ -422,7 +421,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Rowid generator.
   ObjectIdGenerator rowid_generator_;
 
-  std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
+  std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_intent_;
 

@@ -53,7 +53,7 @@ Status PgSelectIndex::PrepareSubquery(PgsqlReadRequestPB *read_req) {
 
 Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
   // Setup target and bind descriptor.
-  target_desc_ = bind_desc_ = VERIFY_RESULT(pg_session_->LoadTable(index_id_));
+  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(index_id_)));
 
   // Allocate READ requests to send to DocDB.
   if (read_req) {
@@ -67,9 +67,9 @@ Status PgSelectIndex::PrepareQuery(PgsqlReadRequestPB *read_req) {
     doc_op_ = nullptr;
 
   } else {
-    auto read_op = target_desc_->NewPgsqlSelect();
+    auto read_op = target_->NewPgsqlSelect();
     read_req_ = read_op->mutable_request();
-    doc_op_ = make_shared<PgDocReadOp>(pg_session_, target_desc_, std::move(read_op));
+    doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
   }
 
   // Prepare index key columns.

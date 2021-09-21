@@ -4,7 +4,7 @@ const initialStateFeatureInTest = {
   pausedUniverse: false,
   addListMultiProvider: false,
   adminAlertsConfig:true,
-  enableNewEncryptionInTransitModal: false,
+  enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
 };
 

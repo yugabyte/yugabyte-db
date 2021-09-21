@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -402,7 +403,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             // If this universe is not being edited, fail the request.
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             if (!universeDetails.updateInProgress) {
-              String msg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+              String msg = "Universe " + taskParams().universeUUID + " is not being edited.";
               log.error(msg);
               throw new RuntimeException(msg);
             }
@@ -1672,5 +1673,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected Universe saveUniverseDetails(UniverseUpdater updater) {
     return UniverseTaskBase.saveUniverseDetails(
         taskParams().universeUUID, shouldIncrementVersion(), updater);
+  }
+
+  protected void preTaskActions() {
+    HealthChecker healthChecker = Play.current().injector().instanceOf(HealthChecker.class);
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    if ((details != null) && details.updateInProgress) {
+      log.debug("Cancelling any active health-checks for universe {}", u.universeUUID);
+      healthChecker.cancelHealthCheck(u.universeUUID);
+    }
   }
 }
