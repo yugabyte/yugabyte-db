@@ -98,6 +98,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
 
     mockWaits(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     dummyShellResponse = new ShellProcessHandler.ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);

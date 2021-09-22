@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import java.time.Duration;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeConfigResponse;
@@ -26,6 +28,8 @@ import play.api.Play;
 
 public class ChangeMasterConfig extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(ChangeMasterConfig.class);
+
+  private static final Duration YBCLIENT_ADMIN_OPERATION_TIMEOUT = Duration.ofMinutes(15);
 
   // The YB client to use.
   public YBClientService ybService;
@@ -89,9 +93,6 @@ public class ChangeMasterConfig extends AbstractTaskBase {
           "No master host/ports for a change config op in " + taskParams().universeUUID);
     }
     String certificate = universe.getCertificate();
-    YBClient client;
-    client = ybService.getClient(masterAddresses, certificate);
-
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
@@ -102,6 +103,9 @@ public class ChangeMasterConfig extends AbstractTaskBase {
         taskParams().opType.toString(),
         taskParams().useHostPort);
     ChangeConfigResponse response = null;
+    YBClientService.Config config = new YBClientService.Config(masterAddresses, certificate);
+    config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
+    YBClient client = ybService.getClientWithConfig(config);
     try {
       response =
           client.changeMasterConfig(

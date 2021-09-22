@@ -4,21 +4,19 @@ package com.yugabyte.yw.controllers;
 
 import java.util.UUID;
 
-import org.yb.client.ListTabletServersResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.models.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
-import play.libs.Json;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+
 import play.mvc.Result;
+import play.mvc.Results;
 
 public class TabletServerController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
@@ -37,27 +35,8 @@ public class TabletServerController extends AuthenticatedController {
    * @return Result tablet server uuids
    */
   public Result list() {
-    ObjectNode result = Json.newObject();
-    YBClient client = null;
-
-    try {
-      client = ybService.getClient(null);
-      ListTabletServersResponse response = client.listTabletServers();
-      result.put("count", response.getTabletServersCount());
-      ArrayNode tabletServers = result.putArray("servers");
-      response
-          .getTabletServersList()
-          .forEach(
-              tabletServer -> {
-                tabletServers.add(tabletServer.getHost());
-              });
-    } catch (Exception e) {
-      return internalServerError("Error: " + e.getMessage());
-    } finally {
-      ybService.closeClient(client, null);
-    }
-
-    return ok(result);
+    // 501 - not implemented
+    return Results.TODO;
   }
 
   /**
