@@ -69,18 +69,16 @@ extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
  * Insert a tuple into the an index's backing YugaByte index table.
  */
 extern void YBCExecuteInsertIndex(Relation rel,
-                                  Datum *values,
-                                  bool *isnull,
-                                  Datum ybctid,
-                                  bool is_backfill,
-                                  uint64_t* write_time);
+								  Datum *values,
+								  bool *isnull,
+								  Datum ybctid,
+								  const uint64_t* backfill_write_time);
 extern void YBCExecuteInsertIndexForDb(Oid dboid,
-                                       Relation rel,
-                                       Datum* values,
-                                       bool* isnull,
-                                       Datum ybctid,
-                                       bool is_backfill,
-                                       uint64_t* write_time);
+									   Relation rel,
+									   Datum* values,
+									   bool* isnull,
+									   Datum ybctid,
+									   const uint64_t* backfill_write_time);
 
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.

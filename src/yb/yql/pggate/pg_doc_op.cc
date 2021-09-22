@@ -282,7 +282,7 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   // Send at most "parallelism_level_" number of requests at one time.
   int32_t send_count = std::min(parallelism_level_, active_op_count_);
   response_ = VERIFY_RESULT(pg_session_->RunAsync(pgsql_ops_.data(), send_count, relation_id_,
-                                                  &read_time_, force_non_bufferable));
+                                                  &GetReadTime(), force_non_bufferable));
 
   return Status::OK();
 }
@@ -358,8 +358,9 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseResult() {
   return result;
 }
 
-void PgDocOp::SetReadTime() {
-  read_time_ = exec_params_.read_time;
+uint64_t& PgDocOp::GetReadTime() {
+  return (read_time_ || !exec_params_.statement_read_time)
+      ? read_time_ : *exec_params_.statement_read_time;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -943,11 +944,8 @@ void PgDocReadOp::SetBackfillSpec() {
 }
 
 void PgDocReadOp::SetReadTime() {
-  PgDocOp::SetReadTime();
-  if (read_time_) {
-    template_op_->SetReadTime(ReadHybridTime::FromUint64(read_time_));
-    // TODO(jason): don't assume that read_time being set means it's always for backfill
-    // (issue #6854).
+  if (exec_params_.is_index_backfill) {
+    template_op_->SetReadTime(ReadHybridTime::FromUint64(GetReadTime()));
     template_op_->SetIsForBackfill(true);
   }
 }

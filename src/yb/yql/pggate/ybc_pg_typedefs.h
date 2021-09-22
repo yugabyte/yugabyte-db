@@ -287,20 +287,22 @@ typedef struct PgExecParameters {
   bool limit_use_default = true;
   int rowmark = -1;
   char *bfinstr = NULL;
-  uint64_t read_time = 0;
+  uint64_t* statement_read_time = NULL;
   char *partition_key = NULL;
   bool read_from_followers = false;
   PgExecOutParam *out_param = NULL;
+  bool is_index_backfill = false;
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
   char *bfinstr;
-  uint64_t read_time;
+  uint64_t* statement_read_time;
   char *partition_key;
   bool read_from_followers;
   PgExecOutParam *out_param;
+  bool is_index_backfill;
 #endif
 } YBCPgExecParameters;
 
