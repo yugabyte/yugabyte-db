@@ -332,8 +332,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
-
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
 
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);

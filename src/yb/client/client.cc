@@ -717,14 +717,6 @@ Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
       max_wait);
 }
 
-Status YBClient::AsyncUpdateIndexPermissions(const TableId& indexed_table_id) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  AlterTableRequestPB req;
-  req.mutable_table()->set_table_id(indexed_table_id);
-  req.set_force_send_alter_request(true);
-  return data_->AlterTable(this, req, deadline);
-}
-
 Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type,
                                  const std::string& creator_role_name,

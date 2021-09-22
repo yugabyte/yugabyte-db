@@ -840,10 +840,6 @@ Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
   return Status::OK();
 }
 
-Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
-  return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
-}
-
 Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
