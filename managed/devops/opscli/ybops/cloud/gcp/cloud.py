@@ -15,7 +15,8 @@ import time
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
                                      GcpQueryCommand)
-from ybops.cloud.gcp.utils import GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin
+from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin,
+                                   GCP_INTERNAL_INSTANCE_PREFIXES)
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 
 
@@ -221,6 +222,16 @@ class GcpCloud(AbstractCloud):
                     name = instance["name"]
                     if name not in result:
                         compute_image_name = self.get_compute_image(name)
+                        if (args.gcp_internal):
+                            # For internal instances (n2) we don't consider the pricing map
+                            if name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES):
+                                result[name] = {
+                                    "prices": {},
+                                    "numCores": instance["guestCpus"],
+                                    "isShared": instance["isSharedCpu"],
+                                    "description": instance["description"],
+                                    "memSizeGb": float(instance["memoryMb"]/1000.0)
+                                }
                         if compute_image_name not in pricing_map:
                             continue
                         if "memory" not in pricing_map[compute_image_name]:
@@ -234,12 +245,16 @@ class GcpCloud(AbstractCloud):
                         }
                     if region in result[name]["prices"]:
                         continue
+                    if (args.gcp_internal):
+                        # Set internal testing instances to be free so Platform handles it
+                        if (name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES)):
+                            result[name]['prices'][region] = [{'os': 'Linux', 'price': 0.00}]
+                            continue
                     result[name]["prices"][region] = self.get_os_price_map(pricing_map,
                                                                            name,
                                                                            region,
                                                                            result[name]["numCores"],
                                                                            result[name]["isShared"])
-
         to_delete_instance_types = []
         for name in result:
             to_delete_regions = []
