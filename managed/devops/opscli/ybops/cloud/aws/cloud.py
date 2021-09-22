@@ -483,7 +483,7 @@ class AwsCloud(AbstractCloud):
             instance.wait_until_running()
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
-            self._wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
+            self.wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
         except ClientError as e:
             logging.error(e)
         finally:
