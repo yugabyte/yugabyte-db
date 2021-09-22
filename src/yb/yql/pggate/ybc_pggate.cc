@@ -547,13 +547,6 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, handle));
 }
 
-YBCStatus YBCPgAsyncUpdateIndexPermissions(
-    const YBCPgOid database_oid,
-    const YBCPgOid indexed_table_oid) {
-  const PgObjectId indexed_table_id(database_oid, indexed_table_oid);
-  return ToYBCStatus(pgapi->AsyncUpdateIndexPermissions(indexed_table_id));
-}
-
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecPostponedDdlStmt(handle));
 }
