@@ -94,8 +94,6 @@ static ExecutorCheckPerms_hook_type prev_ExecutorCheckPerms_hook = NULL;
 
 PG_FUNCTION_INFO_V1(pg_stat_monitor_version);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_reset);
-PG_FUNCTION_INFO_V1(pg_stat_monitor_1_2);
-PG_FUNCTION_INFO_V1(pg_stat_monitor_1_3);
 PG_FUNCTION_INFO_V1(pg_stat_monitor);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 PG_FUNCTION_INFO_V1(get_histogram_timings);
