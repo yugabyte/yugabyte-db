@@ -208,9 +208,9 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
   // Constructors & Destructors.
-  explicit PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-                   PgTable* table,
-                   const PgObjectId& relation_id = PgObjectId());
+  PgDocOp(const PgSession::ScopedRefPtr& pg_session,
+          PgTable* table,
+          const PgObjectId& relation_id = PgObjectId());
   virtual ~PgDocOp();
 
   // Initialize doc operator.
@@ -249,6 +249,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   }
 
  protected:
+  uint64_t& GetReadTime();
+
   // Populate Protobuf requests using the collected informtion for this DocDB operator.
   virtual CHECKED_STATUS CreateRequests() = 0;
 
@@ -277,8 +279,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Process the result set in server response.
   Result<std::list<PgDocResult>> ProcessResponseResult();
-
-  void SetReadTime();
 
  private:
   CHECKED_STATUS SendRequest(bool force_non_bufferable);
