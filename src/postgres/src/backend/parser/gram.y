@@ -8229,6 +8229,11 @@ BackfillIndexStmt:
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("read time must be uint64"),
 									 parser_errposition(@6)));
+						if (!n->bfinfo->read_time)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("read time must be larger than 0"),
+									 parser_errposition(@6)));
 					}
 					n->bfinfo->row_bounds = $8;
 					$$ = (Node *)n;

@@ -599,6 +599,14 @@ typedef struct EState
 	 * Currently only enabled for PGSQL functions / procedures.
 	 */
 	bool yb_can_batch_updates;
+
+	/*
+	 *  The read hybrid time used for this query. This value is initialized
+	 *  to 0, and later updated by the first read operation initiated for this
+	 *  query. All later read operations are then ensured that they will never
+	 *  read any data written past this time.
+	 */
+	uint64_t yb_es_read_ht;
 } EState;
 
 /*
