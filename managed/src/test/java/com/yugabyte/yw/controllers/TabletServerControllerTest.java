@@ -58,6 +58,8 @@ public class TabletServerControllerTest extends FakeDBApplication {
     tabletController.apiHelper = mockApiHelper;
   }
 
+  // list is not supported
+  @Ignore
   @Test
   public void testListTabletServersSuccess() {
     when(mockResponse.getTabletServersCount()).thenReturn(2);
@@ -73,6 +75,8 @@ public class TabletServerControllerTest extends FakeDBApplication {
     assertTrue(json.get("servers").isArray());
   }
 
+  // list is not supported
+  @Ignore
   @Test
   public void testListTabletServersFailure() {
     when(mockResponse.getTabletServersCount()).thenThrow(new RuntimeException("Unknown Error"));
