@@ -197,7 +197,7 @@ When run on a 3-node cluster with each a c5.4xlarge AWS instance (16 cores, 32 G
 
 ### 1 Million Rows
 
-| Workload | Throughput (ops/sec) | Read Latency | Write Latency
+| Workload | Throughput (ops/sec) | Read Latency | Write Latency |
 | :------- | -------------------: | :----------- | :------------ |
 | Workload A | 108,249 | 1 ms | 3.5 ms update |
 | Workload B | 141,061 | 1.6 ms | 4 ms update |
