@@ -430,16 +430,14 @@ def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key, num_retries=SSH_RETRY_LIM
         (boolean): Returns true if the ssh was successful.
     """
     retry_count = 0
-    while True:
-        retry_count += 1
+    while retry_count < num_retries:
         if can_ssh(host_ip, ssh_port, ssh_user, ssh_key):
             return True
 
         time.sleep(1)
+        retry_count += 1
 
-        if retry_count > num_retries:
-            raise YBOpsRuntimeError(
-                "Timed out trying to SSH to instance: {}:{}".format(host_ip, ssh_port))
+    return False
 
 
 def format_rsa_key(key, public_key):

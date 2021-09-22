@@ -208,8 +208,8 @@ class AbstractCloud(AbstractCommandParser):
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
         logging.info("[app] Configuring second NIC")
-        self._wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
-                                extra_vars["ssh_port"])
+        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
+                               extra_vars["ssh_port"])
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
         scp_to_tmp(
@@ -229,8 +229,8 @@ class AbstractCloud(AbstractCommandParser):
         remote_exec_command(
             extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
             args.private_key_file, 'sudo reboot')
-        self._wait_for_ssh_port(extra_vars["ssh_host"],
-                                args.search_pattern, extra_vars["ssh_port"])
+        self.wait_for_ssh_port(extra_vars["ssh_host"],
+                               args.search_pattern, extra_vars["ssh_port"])
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,
@@ -522,7 +522,7 @@ class AbstractCloud(AbstractCommandParser):
             logging.info("Expanding file system with mount point: {}".format(mount_point))
             remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))
 
-    def _wait_for_ssh_port(self, private_ip, instance_name, ssh_port):
+    def wait_for_ssh_port(self, private_ip, instance_name, ssh_port):
         try:
             sock = None
             retry_count = 0
@@ -530,13 +530,15 @@ class AbstractCloud(AbstractCommandParser):
             ssh_port = int(ssh_port)
 
             while retry_count < self.SSH_RETRY_COUNT:
-                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
-                time.sleep(self.SSH_WAIT_SECONDS)
-                retry_count = retry_count + 1
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 result = sock.connect_ex((private_ip, ssh_port))
+
                 if result == 0:
                     break
+
+                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
+                time.sleep(self.SSH_WAIT_SECONDS)
+                retry_count += 1
             else:
                 logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
                 raise YBOpsRuntimeError(
