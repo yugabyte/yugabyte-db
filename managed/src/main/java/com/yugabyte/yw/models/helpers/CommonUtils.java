@@ -406,6 +406,14 @@ public class CommonUtils {
     return Date.from(Instant.now().minus(amount, timeUnit));
   }
 
+  public static Date datePlus(Date date, long amount, TemporalUnit timeUnit) {
+    return Date.from(date.toInstant().plus(amount, timeUnit));
+  }
+
+  public static Date dateMinus(Date date, long amount, TemporalUnit timeUnit) {
+    return Date.from(date.toInstant().minus(amount, timeUnit));
+  }
+
   public static long getDurationSeconds(Date startTime, Date endTime) {
     Duration duration = Duration.between(startTime.toInstant(), endTime.toInstant());
     return duration.getSeconds();

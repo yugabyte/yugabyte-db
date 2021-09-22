@@ -50,9 +50,10 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       log.info(
-          "Stop Node with name {} from universe {}",
+          "Stop Node with name {} from universe {} ({})",
           taskParams().nodeName,
-          taskParams().universeUUID);
+          taskParams().universeUUID,
+          universe.name);
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
@@ -60,6 +61,8 @@ public class StopNodeInUniverse extends UniverseTaskBase {
         log.error(msg);
         throw new RuntimeException(msg);
       }
+
+      preTaskActions();
 
       // Update Node State to Stopping
       createSetNodeStateTask(currentNode, NodeState.Stopping)

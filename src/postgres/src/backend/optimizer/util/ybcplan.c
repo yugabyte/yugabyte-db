@@ -543,3 +543,116 @@ bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
 	/* Verify the sets are the same. */
 	return bms_equal(attrs, primary_key_attrs);
 }
+
+/*
+ * Check to see whether a returning expression is supported for single-row modification.
+ * For function, only immutable expression is supported.
+ */
+bool YBCIsSupportedSingleRowModifyReturningExpr(Expr *expr) {
+	switch (nodeTag(expr))
+	{
+		case T_Const:
+		case T_Var:
+		{
+			return true;
+		}
+		case T_RelabelType:
+		{
+			/*
+			 * RelabelType is a "dummy" type coercion between two binary-
+			 * compatible datatypes so we just recurse into its argument.
+			 */
+			RelabelType *rt = castNode(RelabelType, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(rt->arg);
+		}
+		case T_ArrayRef:
+		{
+			ArrayRef *array_ref = castNode(ArrayRef, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(array_ref->refexpr);
+		}
+		case T_FuncExpr:
+		case T_OpExpr:
+		{
+			List         *args = NULL;
+			ListCell     *lc = NULL;
+			Oid          funcid = InvalidOid;
+			HeapTuple    tuple = NULL;
+
+			/* Get the function info. */
+			if (IsA(expr, FuncExpr))
+			{
+				FuncExpr *func_expr = castNode(FuncExpr, expr);
+				args = func_expr->args;
+				funcid = func_expr->funcid;
+			}
+			else if (IsA(expr, OpExpr))
+			{
+				OpExpr *op_expr = castNode(OpExpr, expr);
+				args = op_expr->args;
+				funcid = op_expr->opfuncid;
+			}
+
+			/*
+			 * Only allow immutable functions as they cannot modify the
+			 * database or do lookups.
+			 */
+			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+			if (!HeapTupleIsValid(tuple))
+				elog(ERROR, "cache lookup failed for function %u", funcid);
+			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
+
+			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
+			{
+				ReleaseSysCache(tuple);
+				return false;
+			}
+			ReleaseSysCache(tuple);
+
+			/* Checking all arguments are valid (stable). */
+			foreach (lc, args) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCIsSupportedSingleRowModifyReturningExpr(expr))
+					return false;
+			}
+			return true;
+		}
+		case T_CoerceViaIO:
+		{
+			CoerceViaIO *coerce_via_IO = castNode(CoerceViaIO, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(coerce_via_IO->arg);
+		}
+		case T_FieldSelect:
+		{
+			FieldSelect *field_select = castNode(FieldSelect, expr);
+			return YBCIsSupportedSingleRowModifyReturningExpr(field_select->arg);
+		}
+		case T_RowExpr:
+		{
+			ListCell     *lc = NULL;
+
+			RowExpr *row_expr = castNode(RowExpr, expr);
+			foreach (lc, row_expr->args) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCIsSupportedSingleRowModifyReturningExpr(expr))
+					return false;
+			}
+			return true;
+		}
+		case T_ArrayExpr:
+		{
+			ArrayExpr *array_expr = castNode(ArrayExpr, expr);
+			ListCell     *lc = NULL;
+
+			foreach (lc, array_expr->elements) {
+				Expr* expr = (Expr *) lfirst(lc);
+				if (!YBCIsSupportedSingleRowModifyReturningExpr(expr))
+					return false;
+			}
+			return true;
+		}
+		default:
+			break;
+	}
+
+	return false;
+}

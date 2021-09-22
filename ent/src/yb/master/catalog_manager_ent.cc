@@ -1184,11 +1184,6 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
     VLOG_WITH_FUNC(2) << "Table not visible to client: " << table->ToString();
     return false;
   }
-  // Check if table is user-created.
-  if (!IsUserCreatedTableUnlocked(*table)) {
-    VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
-    return false;
-  }
   // Check if table names match.
   const string& external_table_name = snapshot_data->table_entry_pb.name();
   if (table_lock->name() != external_table_name) {
@@ -1314,6 +1309,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
             }
             if (!VERIFY_RESULT(CheckTableForImport(table, table_data))) {
               // Some other check failed.
+              continue;
+            }
+            // Also check if table is user-created.
+            if (!IsUserCreatedTableUnlocked(*table)) {
+              VLOG_WITH_FUNC(2) << "Table not user created: " << table->ToString();
               continue;
             }
 
@@ -2782,7 +2782,7 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
   auto result = ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
   if (!result.ok()) {
     MarkUniverseReplicationFailed(ri, ResultToStatus(result));
-    return result.status().CloneAndAddErrorCode(MasterError(MasterErrorPB::INVALID_REQUEST));
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, result.status());
   }
   std::shared_ptr<CDCRpcTasks> cdc_rpc = *result;
 
@@ -3665,7 +3665,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     {
       auto result = original_ri->GetOrCreateCDCRpcTasks(req->producer_master_addresses());
       if (!result.ok()) {
-        return result.status().CloneAndAddErrorCode(MasterError(MasterErrorPB::INTERNAL_ERROR));
+        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
       }
     }
   } else if (req->producer_table_ids_to_remove_size() > 0) {
@@ -3775,8 +3775,11 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
           master::DeleteUniverseReplicationResponsePB delete_resp;
           Status s = DeleteUniverseReplication(&delete_req, &delete_resp, rpc);
           if (!s.ok()) {
-            resp->mutable_error()->Swap(delete_resp.mutable_error());
-            return s;
+            if (delete_resp.has_error()) {
+              resp->mutable_error()->Swap(delete_resp.mutable_error());
+              return s;
+            }
+            return SetupError(resp->mutable_error(), s);
           }
         } else {
           return STATUS(InvalidArgument, "Alter for CDC producer currently running",
@@ -3814,8 +3817,11 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 2. run the 'setup_replication' pipeline on the ALTER Table
     Status s = SetupUniverseReplication(&setup_req, &setup_resp, rpc);
     if (!s.ok()) {
-      resp->mutable_error()->Swap(setup_resp.mutable_error());
-      return s;
+      if (setup_resp.has_error()) {
+        resp->mutable_error()->Swap(setup_resp.mutable_error());
+        return s;
+      }
+      return SetupError(resp->mutable_error(), s);
     }
     // NOTE: ALTER merges back into original after completion.
   }

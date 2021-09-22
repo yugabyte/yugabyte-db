@@ -72,20 +72,17 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
     }
   }
 
-  private void createAlertData(boolean enableClockSkew) {
+  private void createAlertData() {
     AlertingData data = new AlertingData();
     data.sendAlertsToYb = false;
     data.alertingEmail = "";
     data.reportOnlyErrors = true;
-    data.enableClockSkew = enableClockSkew;
     // Setup alerting data.
     CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
   @Test
   public void testRunFunctionality() {
-    createAlertData(true);
-
     CreateAlertDefinitions alertDefinitionTask = new CreateAlertDefinitions(baseTaskDependencies);
     UniverseTaskParams taskParams = new UniverseTaskParams();
     taskParams.universeUUID = u.universeUUID;

@@ -19,10 +19,22 @@
 //
 #ifndef ROCKSDB_LITE
 
+#include "yb/docdb/docdb_debug.h"
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/sst_dump_tool.h"
 
+namespace {
+class DocDBKVFormatterImpl : public rocksdb::DocDBKVFormatter {
+  std::string Format(
+      const yb::Slice& key, const yb::Slice& value, yb::docdb::StorageDbType type) const override {
+    return yb::docdb::EntryToString(rocksdb::ExtractUserKey(key), value, type);
+  }
+};
+}  // namespace
+
 int main(int argc, char** argv) {
-  rocksdb::SSTDumpTool tool;
+  DocDBKVFormatterImpl docdb_kv_formatter;
+  rocksdb::SSTDumpTool tool(docdb_kv_formatter);
   tool.Run(argc, argv);
   return 0;
 }

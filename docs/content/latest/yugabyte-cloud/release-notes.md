@@ -13,22 +13,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## September 15, 2021
+## Releases
 
-### New features
+### September 15, 2021
+
+#### New features
 
 - Paid clusters (unlimited)
 - Invoicing
 
-### Known issues
-
-- **Cloud Shell** - No support for Firefox.
-- **Cloud Shell** - The cloud shell cannot display a greater number of lines of output than the page size. For example, if you run a query that returns more rows than there are lines of output in the current browser view, the results will not display.
-- **Cloud Shell** - No support for invited (Developer) users.
-- **Cloud Shell** - No support for keyboard shortcuts on Windows. Use the right-click menu.
-- **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
-
-## September 8, 2021
+### September 8, 2021
 
 This release includes the following features:
 
@@ -40,7 +34,7 @@ This release includes the following features:
 - Multiple cloud users - invite additional users to your cloud
 - Encryption at rest and in transit
 
-### Cloud provider regions
+## Cloud provider regions
 
 The following **GCP regions** are available:
 
@@ -80,14 +74,17 @@ The following **AWS regions** are available:
 - N. California (us-west-1)
 - Oregon (us-west-2)
 
-### Limitations
+## Known issues
 
-- Free clusters only. Paid clusters coming soon.
-
-### Known issues
-
-- **Cloud Shell** - No support for Firefox.
-- **Cloud Shell** - The cloud shell cannot display a greater number of lines of output than the page size. For example, if you run a query that returns more rows than there are lines of output in the current browser view, the results will not display.
-- **Cloud Shell** - No support for invited (Developer) users.
-- **Cloud Shell** - No support for keyboard shortcuts on Windows. Use the right-click menu.
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
+- **Clusters** - No support for scaling vCPUs on single node clusters.
+
+### Known issues in cloud shell
+
+- At this time, we recommend running only a single cloud shell session. Running more than one session may produce unexpected results.
+- If the cloud shell stops responding, close the browser tab and restart the cloud shell.
+- Cloud shell is unavailable for clusters with VPC peering
+- Cloud shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
+- No support for invited (Developer) users.
+- No support for keyboard shortcuts on Windows. Use the shortcut menu.
+- No support for keyboard shortcuts in Firefox. Use the shortcut menu.

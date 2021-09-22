@@ -344,7 +344,7 @@ class TransactionState {
       case TransactionStatus::ABORTED:
         return TransactionStatusResult{TransactionStatus::ABORTED, HybridTime::kMax};
       case TransactionStatus::PENDING: {
-        HybridTime status_ht = context_.coordinator_context().clock().Now();
+        HybridTime status_ht;
         if (replicating_) {
           auto replicating_status = replicating_->request()->status();
           if (replicating_status == TransactionStatus::COMMITTED ||
@@ -352,8 +352,15 @@ class TransactionState {
             auto replicating_ht = replicating_->hybrid_time_even_if_unset();
             if (replicating_ht.is_valid()) {
               status_ht = replicating_ht;
+            } else {
+              // Hybrid time now yet assigned to replicating, so assign more conservative time,
+              // that is guaranteed to be less then replicating time. See GH #9981.
+              status_ht = replicating_submit_time_;
             }
           }
+        }
+        if (!status_ht) {
+          status_ht = context_.coordinator_context().clock().Now();
         }
         status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
         return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
@@ -601,8 +608,7 @@ class TransactionState {
     }
 
     VLOG_WITH_PREFIX(4) << Format("DoHandle, replicating = $0", replicating_);
-    replicating_ = request.get();
-    auto submitted = context_.SubmitUpdateTransaction(std::move(request));
+    auto submitted = SubmitRequest(std::move(request));
     // Should always succeed, since we execute this code only on the leader.
     CHECK(submitted) << "Status: " << TransactionStatus_Name(txn_status);
   }
@@ -635,14 +641,22 @@ class TransactionState {
     if (replicating_) {
       request_queue_.push_back(std::move(request));
     } else {
-      replicating_ = request.get();
-      VLOG_WITH_PREFIX(4) << Format("SubmitUpdateStatus, replicating = $0", replicating_);
-      if (!context_.SubmitUpdateTransaction(std::move(request))) {
-        // Was not able to submit update transaction, for instance we are not leader.
-        // So we are not replicating.
-        replicating_ = nullptr;
-      }
+      SubmitRequest(std::move(request));
     }
+  }
+
+  bool SubmitRequest(std::unique_ptr<tablet::UpdateTxnOperation> request) {
+    replicating_ = request.get();
+    replicating_submit_time_ = context_.coordinator_context().clock().Now();
+    VLOG_WITH_PREFIX(4) << Format("SubmitUpdateStatus, replicating = $0", replicating_);
+    if (!context_.SubmitUpdateTransaction(std::move(request))) {
+      // Was not able to submit update transaction, for instance we are not leader.
+      // So we are not replicating.
+      replicating_ = nullptr;
+      return false;
+    }
+
+    return true;
   }
 
   void ProcessQueue() {
@@ -860,6 +874,9 @@ class TransactionState {
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
   tablet::UpdateTxnOperation* replicating_ = nullptr;
+  // Hybrid time before submitting replicating operation.
+  // It is guaranteed to be less then actual operation hybrid time.
+  HybridTime replicating_submit_time_;
   std::deque<std::unique_ptr<tablet::UpdateTxnOperation>> request_queue_;
 
   std::vector<TransactionAbortCallback> abort_waiters_;

@@ -503,7 +503,6 @@ YBCCommitTransaction()
 	if (!IsYugaByteEnabled())
 		return;
 
-	HandleYBStatus(YBCPgFlushBufferedOperations());
 	HandleYBStatus(YBCPgCommitTransaction());
 }
 
@@ -512,8 +511,6 @@ YBCAbortTransaction()
 {
 	if (!IsYugaByteEnabled())
 		return;
-
-	YBCPgDropBufferedOperations();
 
 	if (YBTransactionsEnabled())
 		HandleYBStatus(YBCPgAbortTransaction());
@@ -1297,7 +1294,7 @@ static void YBCInstallTxnDdlHook() {
 	}
 };
 
-static int buffering_nesting_level = 0;
+static unsigned int buffering_nesting_level = 0;
 
 void YBBeginOperationsBuffering() {
 	if (++buffering_nesting_level == 1) {
@@ -1316,7 +1313,7 @@ void YBEndOperationsBuffering() {
 
 void YBResetOperationsBuffering() {
 	buffering_nesting_level = 0;
-	HandleYBStatus(YBCPgResetOperationsBuffering());
+	YBCPgResetOperationsBuffering();
 }
 
 bool YBReadFromFollowersEnabled() {
@@ -1788,4 +1785,12 @@ bool YBIsCollationValidNonC(Oid collation_id) {
 	if (kTestOnlyUseOSDefaultCollation && collation_id == DEFAULT_COLLATION_OID)
 		is_valid_non_c = true;
 	return is_valid_non_c;
+}
+
+Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation) {
+	if (attcollation == InvalidOid)
+		return InvalidOid;
+	YBCPgColumnInfo column_info = {false, false};
+	HandleYBStatus(YBCPgDmlGetColumnInfo(handle, attr_num, &column_info));
+	return column_info.is_primary ? attcollation : InvalidOid;
 }

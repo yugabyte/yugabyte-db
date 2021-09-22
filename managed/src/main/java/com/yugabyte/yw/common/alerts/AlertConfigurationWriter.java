@@ -118,6 +118,7 @@ public class AlertConfigurationWriter {
               : null;
       if (definition == null || configuration == null || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
+        requiresReload.set(true);
         return SyncResult.REMOVED;
       }
       if (definition.isConfigWritten()) {
@@ -165,7 +166,9 @@ public class AlertConfigurationWriter {
             buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_REMOVED),
             results.stream().filter(result -> result == SyncResult.REMOVED).count());
         if (requiresReload.get()) {
-          metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
+          if (metricQueryHelper.isPrometheusManagementEnabled()) {
+            metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
+          }
           requiresReload.compareAndSet(true, false);
         }
 

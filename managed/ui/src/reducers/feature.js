@@ -4,14 +4,14 @@ const initialStateFeatureInTest = {
   pausedUniverse: false,
   addListMultiProvider: false,
   adminAlertsConfig:true,
-  enableNewEncryptionInTransitModal: false,
+  enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
 };
 
 const initialStateFeatureReleased = {
   pausedUniverse: true,
   addListMultiProvider: true,
-  adminAlertsConfig:false,
+  adminAlertsConfig:true,
   enableNewEncryptionInTransitModal: false,
   addRestoreTimeStamp: false,
 };

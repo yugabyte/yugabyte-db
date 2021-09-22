@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.alerts;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -136,6 +137,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlertsNewAlert() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
     when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
@@ -168,6 +170,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlertsMultipleSeverities() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
     when(queryHelper.queryAlerts())
         .thenReturn(
@@ -206,6 +209,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlertsNewAlertWithDefaults() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
     when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
@@ -227,6 +231,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlertsExistingAlert() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
     when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
@@ -272,6 +277,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlertsExistingResolvedAlert() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
     when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
 
@@ -302,6 +308,7 @@ public class QueryAlertsTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlertsResolveExistingAlert() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
     when(queryHelper.queryAlerts()).thenReturn(Collections.emptyList());
 
@@ -335,6 +342,37 @@ public class QueryAlertsTest extends FakeDBApplication {
             .name(PlatformMetrics.ALERT_QUERY_RESOLVED_ALERTS.getMetricName())
             .build(),
         1.0);
+  }
+
+  @Test
+  public void testPrometheusManagementDisabled() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(false);
+    ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
+    when(queryHelper.queryAlerts()).thenReturn(ImmutableList.of(createAlertData(raisedTime)));
+
+    queryAlerts.scheduleRunner();
+
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .customerUuid(customer.getUuid())
+            .definitionUuid(definition.getUuid())
+            .build();
+    List<Alert> alerts = alertService.list(alertFilter);
+
+    assertThat(alerts, empty());
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_STATUS.getMetricName()).build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS.getMetricName()).build(),
+        null);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_QUERY_NEW_ALERTS.getMetricName()).build(),
+        null);
   }
 
   private Alert createAlert(ZonedDateTime raisedTime) {

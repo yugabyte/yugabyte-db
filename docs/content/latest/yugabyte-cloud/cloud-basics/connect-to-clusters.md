@@ -26,6 +26,8 @@ You can connect to a cluster in the following ways:
 
 You must configure [Network Access](../../cloud-network/) before you can connect from a remote YugabyteDB client shell or an application.
 
+When connecting via Client Shell, make sure you are running the latest versions of the shells, provided in the Yugabyte Client 2.6 download. See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
+
 {{< /note >}}
 
 Related information:
@@ -86,6 +88,12 @@ If you enter an incorrect password, the cloud shell session is terminated immedi
 
 Once connected, one or more entries for the cloud shell session are added to the cluster IP allow list. After the session is closed, these are cleaned up automatically within five minutes.
 
+{{< tip title="Cloud shell limitations" >}}
+
+Cloud shell is updated regularly. Check the [known issues list](../../release-notes/#known-issues-in-cloud-shell) in the release notes for the most-current list of limitations and known issues.
+
+{{< /tip >}}
+
 ## Connect via Client Shell
 
 You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer.
@@ -139,14 +147,18 @@ To connect a cluster to an application:
 1. Click **Connect**.
 1. Click **Connect to your Application**.
 1. Click **Download CA Cert** and install the certificate on the computer running the application.
-1. Add the appropriate YSQL or YCQL connection string to your application.
+1. Choose the API used by your application - YSQL or YCQL.
+
+    - Choosing YSQL displays a connection string you can add to your application. 
+
+    - Choosing YCQL displays connection parameters that you will use to connect your application. 
 
 ### YSQL
 
-Here's an example of the generated `ysqlsh` string:
+YSQL applications can use the connection string to connect. Here's an example of a generated `ysqlsh` string:
 
 ```sh
-postgresql://<DB USER>:<DB PASSWORD>@4242424.cloud.yugabyte.com:5433/yugabyte? \
+postgresql://<DB USER>:<DB PASSWORD>@4242424.aws.ybdb.io:5433/yugabyte? \
 ssl=true& \
 sslmode=verify-full& \
 sslrootcert=<ROOT_CERT_PATH>
@@ -162,7 +174,7 @@ Add the string to your application, replacing
 For example:
 
 ```sh
-postgresql://admin:qwerty@4242424.cloud.yugabyte.com:5433/yugabyte?ssl=true& \
+postgresql://admin:qwerty@4242424.aws.ybdb.io:5433/yugabyte?ssl=true& \
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
@@ -170,17 +182,17 @@ If you're connecting to a Hasura Cloud project, which doesn't use the CA certifi
 
 ### YCQL
 
-Here's an example of the generated `ycqlsh` string:
+To connect a YCQL application, use the connection parameters in your application to connect to your cluster. The parameters are:
 
-```sh
-cassandra://<DB USER>:<DB PASSWORD>@4242424.cloud.yugabyte.com:9042/yugabyte
-```
+- LocalDatacenter - The name of the local datacenter for the cluster. 
+- Host - The cluster host name.
+- Port - The port number of the YCQL client API on the YugabyteDB database (9042).
 
-Add the string to your application, replacing
+To connect your application, do the following:
 
-- `<DB USER>` with your database username.
-- `<DB PASSWORD>` with your database password.
-- `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
+- Download the CA certificate.
+- Add the YCQL java driver to your dependencies.
+- Initialize SSLContext using the downloaded root certificate.
 
 For an example of building a Java application connected to Yugabyte Cloud using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/).
 

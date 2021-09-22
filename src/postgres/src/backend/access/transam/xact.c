@@ -1875,7 +1875,6 @@ YBStartTransaction(TransactionState s)
 
 	if (IsYugaByteEnabled())
 	{
-		YBResetOperationsBuffering();
 		YBInitializeTransaction();
 	}
 }
@@ -2052,12 +2051,6 @@ StartTransaction(void)
 void
 YBCRestartWriteTransaction()
 {
-	/*
-	 * Disable the buffering of operations that was enabled during the execution
-	 * of the write.
-	 */
-	YBEndOperationsBuffering();
-
 	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the

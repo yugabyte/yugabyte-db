@@ -1075,6 +1075,7 @@ class YBBackup:
         snapshot_tables = []
         snapshot_keyspaces = []
         snapshot_table_uuids = []
+        failed_state = 'FAILED'
 
         yb_admin_args = ['list_snapshots']
         if update_table_list:
@@ -1096,10 +1097,14 @@ class YBBackup:
                 if not snapshot_done:
                     if line.find(snapshot_id) == 0:
                         (found_snapshot_id, state) = line.split()
-                        if found_snapshot_id == snapshot_id and state == complete_state:
-                            snapshot_done = True
-                            if not update_table_list:
-                                break
+                        if found_snapshot_id == snapshot_id:
+                            if state == complete_state:
+                                snapshot_done = True
+                                if not update_table_list:
+                                    break
+                            elif state == failed_state:
+                                raise BackupException(
+                                    'Snapshot id %s, %s failed!' % (snapshot_id, op))
                 elif update_table_list:
                     if line[0] != ' ':
                         break
@@ -1192,7 +1197,8 @@ class YBBackup:
                     '{}/{}:{}'.format(
                         k8s_details.namespace, k8s_details.pod_name, self.get_tmp_dir()),
                     '-c',
-                    k8s_details.container
+                    k8s_details.container,
+                    '--no-preserve=true'
                 ], env=k8s_details.env_config)
             elif not self.args.no_ssh:
                 if self.needs_change_user():
