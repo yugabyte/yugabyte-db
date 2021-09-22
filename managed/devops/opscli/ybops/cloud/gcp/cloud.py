@@ -114,7 +114,7 @@ class GcpCloud(AbstractCloud):
 
     def start_instance(self, args, ssh_port):
         self.admin.start_instance(args.zone, args.search_pattern)
-        self._wait_for_ssh_port(args.private_ip, args.search_pattern, ssh_port)
+        self.wait_for_ssh_port(args.private_ip, args.search_pattern, ssh_port)
 
     def delete_instance(self, args):
         host_info = self.get_host_info(args)
