@@ -3168,9 +3168,6 @@
       },
       "type" : "object"
     },
-    "PlatformResults" : {
-      "type" : "object"
-    },
     "Provider" : {
       "properties" : {
         "active" : {
@@ -6588,7 +6585,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/PlatformResults"
+                "$ref" : "#/definitions/InstanceType"
               },
               "type" : "array"
             }
@@ -7445,7 +7442,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/PlatformResults"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
