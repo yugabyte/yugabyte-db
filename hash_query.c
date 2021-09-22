@@ -97,12 +97,6 @@ pgsm_get_hash(void)
 	return pgss_hash;
 }
 
-HTAB*
-pgsm_get_query_hash(void)
-{
-	return pgss_query_hash;
-}
-
 /*
  * shmem_shutdown hook: Dump statistics into file.
  *
@@ -270,7 +264,7 @@ hash_entry_reset()
 	LWLockRelease(pgss->lock);
 }
 
-/* Caller must accuire lock */
+/* Caller must acquire a lock */
 pgssQueryEntry*
 hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid)
 {
@@ -289,7 +283,7 @@ hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 us
 	return entry;
 }
 
-/* Caller must accuire lock */
+/* Caller must acquire a lock */
 pgssQueryEntry*
 hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid)
 {
