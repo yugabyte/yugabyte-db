@@ -87,6 +87,7 @@ class AbstractInstancesMethod(AbstractMethod):
     """
     YB_SERVER_TYPE = "cluster-server"
     SSH_USER = "centos"
+    INSTANCE_LOOKUP_RETRY_LIMIT = 120
 
     def __init__(self, base_command, name, required_host=True):
         super(AbstractInstancesMethod, self).__init__(base_command, name)
@@ -208,6 +209,33 @@ class AbstractInstancesMethod(AbstractMethod):
         })
         self.extra_vars.update(get_ssh_host_port(host_info, custom_ssh_port))
 
+    def wait_for_host(self, args, default_port=True):
+        logging.info("Waiting for instance {}".format(args.search_pattern))
+        host_lookup_count = 0
+        # Cache the result of the cloud call outside of the loop.
+        host_info = None
+
+        while host_lookup_count < self.INSTANCE_LOOKUP_RETRY_LIMIT:
+            if not host_info:
+                host_info = self.cloud.get_host_info(args)
+
+            if host_info:
+                self.extra_vars.update(
+                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
+                if wait_for_ssh(self.extra_vars["ssh_host"],
+                                self.extra_vars["ssh_port"],
+                                self.extra_vars["ssh_user"],
+                                args.private_key_file):
+                    return host_info
+
+            sys.stdout.write('.')
+            sys.stdout.flush()
+            time.sleep(1)
+            host_lookup_count += 1
+
+        raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
+            args.search_pattern))
+
 
 class ReplaceRootVolumeMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
@@ -276,10 +304,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
     """Superclass for creating an instance.
 
     This class will create an instance, if one does not already exist with the same conditions,
-    such as name, region or zone, etc. It will also wait for this instance to become SSHable on
-    any of the valid YugaByte ports.
+    such as name, region or zone, etc.
     """
-    INSTANCE_LOOKUP_RETRY_LIMIT = 120
 
     def __init__(self, base_command):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
@@ -322,30 +348,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         })
         self.update_ansible_vars_with_args(args)
         self.run_ansible_create(args)
-
-    def wait_for_host(self, args, default_port=True):
-        logging.info("Waiting for instance {}".format(args.search_pattern))
-        host_lookup_count = 0
-        # Cache the result of the cloud call outside of the loop.
-        host_info = None
-        while True:
-            host_lookup_count += 1
-            if not host_info:
-                host_info = self.cloud.get_host_info(args)
-            if host_info:
-                self.extra_vars.update(
-                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
-                if wait_for_ssh(self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file):
-                    return host_info
-            sys.stdout.write('.')
-            sys.stdout.flush()
-            time.sleep(1)
-            if host_lookup_count > self.INSTANCE_LOOKUP_RETRY_LIMIT:
-                raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
-                    args.search_pattern))
 
 
 class ProvisionInstancesMethod(AbstractInstancesMethod):
@@ -443,32 +445,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         if args.network is not None:
             self.extra_vars["network_name"] = args.network
 
-    def wait_for_host(self, args, default_port=True):
-        logging.info("Waiting for instance {}".format(args.search_pattern))
-        host_lookup_count = 0
-        # Cache the result of the cloud call outside of the loop.
-        host_info = None
-        while True:
-            host_lookup_count += 1
-            if not host_info:
-                host_info = self.cloud.get_host_info(args)
-            if host_info:
-                self.extra_vars.update(
-                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
-                if wait_for_ssh(self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file):
-                    return host_info
-            sys.stdout.write('.')
-            sys.stdout.flush()
-            time.sleep(1)
-            if host_lookup_count > self.INSTANCE_LOOKUP_RETRY_LIMIT:
-                raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
-                    args.search_pattern))
-
     def preprovision(self, args):
         self.update_ansible_vars(args)
+        self.cloud.wait_for_ssh_port(
+            self.extra_vars["ssh_host"], args.search_pattern, self.extra_vars["ssh_port"])
         host_info = self.wait_for_host(args)
         ansible = self.cloud.setup_ansible(args)
         if (args.install_python):
