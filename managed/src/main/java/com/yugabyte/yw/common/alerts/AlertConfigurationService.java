@@ -18,6 +18,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
@@ -231,6 +232,7 @@ public class AlertConfigurationService {
     }
   }
 
+  // TODO: Remove many of these validations as annotations work now
   private void validate(AlertConfiguration configuration, AlertConfiguration before) {
     if (configuration.getCustomerUUID() == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
@@ -261,7 +263,8 @@ public class AlertConfigurationService {
       switch (configuration.getTargetType()) {
         case UNIVERSE:
           Set<UUID> existingUuids =
-              Universe.getAllWithoutResources(configuration.getTarget().getUuids())
+              Universe.getAllWithoutResources(
+                      ImmutableSet.copyOf(configuration.getTarget().getUuids()))
                   .stream()
                   .map(Universe::getUniverseUUID)
                   .collect(Collectors.toSet());

@@ -318,7 +318,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             () ->
                 createProviderTest(
                     buildProviderReq("aws", null), REGION_CODES_FROM_CLOUD_API, UUID.randomUUID()));
-    assertBadRequest(result, "\"name\":[\"This field is required\"]}");
+    assertBadRequest(result, "\"name\":[\"error.required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
 

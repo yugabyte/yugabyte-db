@@ -37,7 +37,7 @@ public class ScheduleController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Delete a backup schedule",
-      response = PlatformResults.class,
+      response = PlatformResults.YBPSuccess.class,
       nickname = "deleteBackupSchedule")
   public Result delete(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);

@@ -284,7 +284,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     Result result = assertYWSE(() -> createProvider(bodyJson));
-    assertBadRequest(result, "\"name\":[\"This field is required\"]}");
+    assertBadRequest(result, "\"name\":[\"error.required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
 

@@ -30,7 +30,6 @@ import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
@@ -80,10 +79,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
@@ -98,8 +97,6 @@ public class AlertControllerTest extends FakeDBApplication {
   private String authToken;
 
   private Universe universe;
-
-  @Mock private ValidatingFormFactory formFactory;
 
   @InjectMocks private AlertController controller;
 
@@ -959,6 +956,20 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(configurations.getEntities(), contains(configuration2, configuration3));
   }
 
+  @Ignore("See PLAT-545 why we cannot fail on unknown params")
+  public void testListConfigurations_unknown_filter_props() {
+    JsonNode badFilter =
+        Json.parse(
+            "{\n" + "\"jatin\": 3,\n" + "\"alexander\": \"bar\",\n" + "\"shashank\": null\n" + "}");
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alert_configurations/list",
+            authToken,
+            Json.toJson(badFilter));
+    assertBadRequest(result, "unknown fields error");
+  }
+
   @Test
   public void testListConfigurations() {
     AlertConfiguration configuration2 = ModelFactory.createAlertConfiguration(customer, universe);
@@ -1040,7 +1051,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     "/api/customers/" + customer.getUuid() + "/alert_configurations",
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "Name field is mandatory");
+    assertBadRequest(result, "{\"name\":[\"error.required\"]}");
   }
 
   @Test
@@ -1080,7 +1091,7 @@ public class AlertControllerTest extends FakeDBApplication {
                         + alertConfiguration.getUuid(),
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "Target type field is mandatory");
+    assertBadRequest(result, "{\"targetType\":[\"error.required\"]}");
   }
 
   @Test
