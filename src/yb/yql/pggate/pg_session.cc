@@ -1195,10 +1195,6 @@ void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }
 
-Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
-  return client_->AsyncUpdateIndexPermissions(indexed_table_id.GetYBTableId());
-}
-
 void PgSession::ResetCatalogReadPoint() {
   catalog_session_->SetReadPoint(ReadHybridTime());
 }

@@ -368,9 +368,6 @@ class YBClient {
       const CoarseTimePoint deadline,
       const CoarseDuration max_wait = std::chrono::seconds(2));
 
-  // Trigger an async index permissions update after new YSQL index permissions are committed.
-  Status AsyncUpdateIndexPermissions(const TableId& indexed_table_id);
-
   // Namespace related methods.
 
   // Create a new namespace with the given name.

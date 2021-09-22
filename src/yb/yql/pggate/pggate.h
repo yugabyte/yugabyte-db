@@ -326,8 +326,6 @@ class PgApiImpl {
                               bool if_exist,
                               PgStatement **handle);
 
-  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
-
   CHECKED_STATUS ExecPostponedDdlStmt(PgStatement *handle);
 
   CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
