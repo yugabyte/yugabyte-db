@@ -13,11 +13,11 @@
 //
 //
 
-#include <boost/optional/optional.hpp>
-#include <boost/optional/optional_io.hpp>
-
 #include <shared_mutex>
 #include <thread>
+
+#include <boost/optional/optional.hpp>
+#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -148,7 +148,9 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return client::CreateReadOp(key, table, kValueColumn);
   }
 
-  void CreateTable(const YBTableName& table_name, TableHandle* table, int num_tablets = 0, bool transactional = false) {
+  void CreateTable(
+      const YBTableName& table_name, TableHandle* table, int num_tablets = 0,
+      bool transactional = false) {
     YBSchemaBuilder builder;
     builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
     builder.AddColumn(kValueColumn)->Type(INT32);
@@ -217,7 +219,6 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
     std::vector<std::string> tablet_ids = info.first;
     std::unordered_set<std::string> replicas = info.second;
-    
     for (const auto& replica : replicas) {
       RETURN_NOT_OK(DoWaitSync(deadline, tablet_ids, replica, begin, end, table));
     }
@@ -304,25 +305,28 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Wait(condition, deadline, "Waiting for replication");
   }
 
-  CHECKED_STATUS VerifyConsistency(int begin, int end, const TableHandle& table, int expected_rows_mismatched = 0) {
+  CHECKED_STATUS VerifyConsistency(
+      int begin, int end, const TableHandle& table, int expected_rows_mismatched = 0) {
     auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
     TabletIdsAndReplicas info = VERIFY_RESULT(GetTabletIdsAndReplicas(table));
     std::vector<std::string> tablet_ids = info.first;
     std::unordered_set<std::string> replicas = info.second;
-    
+
     for (const auto& replica : replicas) {
-      RETURN_NOT_OK(DoVerify(deadline, tablet_ids, replica, begin, end, table, expected_rows_mismatched));
+      RETURN_NOT_OK(
+          DoVerify(deadline, tablet_ids, replica, begin, end, table, expected_rows_mismatched));
     }
     return Status::OK();
   }
 
-  CHECKED_STATUS DoVerify(const MonoTime& deadline,
-                          const std::vector<std::string>& tablet_ids, 
-                          const std::string& replica,
-                          const int begin,
-                          const int end,
-                          const TableHandle& table,
-                          const int expected_rows_mismatched) {
+  CHECKED_STATUS DoVerify(
+      const MonoTime& deadline,
+      const std::vector<std::string>& tablet_ids,
+      const std::string& replica,
+      const int begin,
+      const int end,
+      const TableHandle& table,
+      const int expected_rows_mismatched) {
     auto tserver = cluster_->find_tablet_server(replica);
     if (!tserver) {
       return STATUS_FORMAT(NotFound, "Tablet server for $0 not found", replica);
@@ -331,37 +335,39 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     auto proxy = std::make_unique<tserver::TabletServerServiceProxy>(
         &tserver->server()->proxy_cache(), HostPort::FromBoundEndpoint(endpoint));
 
+    CHECK_EQ(tablet_ids.size(), 1);
     for (const string& tablet_id : tablet_ids) {
       tserver::VerifyTableRowRangeRequestPB req;
       tserver::VerifyTableRowRangeResponsePB resp;
 
       req.set_tablet_id(tablet_id);
       req.set_num_rows(end - begin + 1);
-      req.clear_start_key(); // empty string indicates start scan from start
+      req.clear_start_key();  // empty string indicates start scan from start
       // read_time: if left empty, the safe time retrieved will be used instead
 
       rpc::RpcController controller;
-      controller.set_timeout(MonoDelta::FromSeconds(5));
-      proxy->VerifyTableRowRange(req, &resp, &controller);        
-        
+      controller.set_deadline(deadline);
+      RETURN_NOT_OK(proxy->VerifyTableRowRange(req, &resp, &controller));
+
       if (resp.consistency_stats().size() == 0) {
-        return STATUS_FORMAT(NotFound,
-                             "Individual index consistency state missing for table $0.",
-                             table.table()->id());
+        return STATUS_FORMAT(
+            NotFound,
+            "Individual index consistency state missing for table $0.",
+            table.table()->id());
       }
       for (auto it = resp.consistency_stats().begin(); it != resp.consistency_stats().end(); it++) {
         if (it->second != expected_rows_mismatched) {
-          return STATUS_FORMAT(Corruption,
-                               "Incorrect number of rows reported to be dropped for index $0 built on table $1:"
-                               "found $2 rows reported when $3 rows mismatched was expected.",
-                               it->first, table.table()->id(), it->second, expected_rows_mismatched);
+          return STATUS_FORMAT(
+              Corruption,
+              "Incorrect number of rows reported to be dropped for index $0 built on table $1:"
+              "found $2 rows reported when $3 rows mismatched was expected.",
+              it->first, table.table()->id(), it->second, expected_rows_mismatched);
         }
       }
     }
 
     return Status::OK();
   }
-
 
   CHECKED_STATUS Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
@@ -513,22 +519,24 @@ TEST_F(QLTabletTest, OverlappedImport) {
   ASSERT_NOK(Import());
 }
 
-
-void QLTabletTest::CreateAndVerifyIndexConsistency(int expected_number_rows_mismatched) {
-  CreateTable(kTable1Name, &table1_, 1, true); 
+void QLTabletTest::CreateAndVerifyIndexConsistency(const int expected_number_rows_mismatched) {
+  CreateTable(kTable1Name, &table1_, 1, true);
   FillTable(0, kTotalKeys, table1_);
 
   TableHandle index_table;
-  kv_table_test::CreateIndex(yb::client::Transactional::kTrue, 1, false, table1_, client_.get(), &index_table);
+  kv_table_test::CreateIndex(
+      yb::client::Transactional::kTrue, 1, false, table1_, client_.get(), &index_table);
 
   ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
       kTable1Name, index_table.name(), INDEX_PERM_READ_WRITE_AND_DELETE, 100ms /* max_wait */));
-  ASSERT_OK(VerifyConsistency(0, kTotalKeys - 1, table1_, expected_number_rows_mismatched));
+  ASSERT_OK(VerifyConsistency(
+      0, kTotalKeys - 1, table1_,
+      expected_number_rows_mismatched));  // no missing indexed rows check
+  ASSERT_OK(VerifyConsistency(
+      0, kTotalKeys - 1, index_table, expected_number_rows_mismatched));  // no orphans check
 }
 
-TEST_F(QLTabletTest, VerifyIndexRange) {
-  CreateAndVerifyIndexConsistency(0);
-}
+TEST_F(QLTabletTest, VerifyIndexRange) { CreateAndVerifyIndexConsistency(0); }
 
 TEST_F(QLTabletTest, VerifyIndexRangeWithInconsistentTable) {
   FLAGS_TEST_backfill_sabotage_frequency = 10;
@@ -569,8 +577,7 @@ void DoStepDowns(MiniCluster* cluster) {
 
 void VerifyLogIndicies(MiniCluster* cluster) {
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
 
     for (const auto& peer : peers) {
       int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
@@ -671,8 +678,8 @@ TEST_F(QLTabletTest, WaitFlush) {
   std::vector<tablet::TabletPeerPtr> peers;
 
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> tserver_peers;
-    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&tserver_peers);
+    auto tserver_peers =
+        cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(tserver_peers.size(), 1);
     peers.push_back(tserver_peers.front());
   }
@@ -753,8 +760,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
   std::this_thread::sleep_for(kSleepTime);
 
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(1, peers.size());
     auto& peer = *peers[0];
     auto op_id = peer.log()->GetLatestEntryOpId();

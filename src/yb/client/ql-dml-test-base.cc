@@ -255,7 +255,7 @@ void CreateIndex(
   const YBTableName index_name(YQL_DATABASE_CQL, table.name().namespace_name(),
       table.name().table_name() + '_' + schema.Column(indexed_column_index).name() + "_idx");
 
-  ASSERT_OK(index->Create(index_name, schema.table_properties().num_tablets(),
+  ASSERT_OK(index->Create(index_name, table->GetPartitionCount(),
       client, &builder, &index_info));
 }
 

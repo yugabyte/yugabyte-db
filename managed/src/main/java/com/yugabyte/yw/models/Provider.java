@@ -14,7 +14,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -44,27 +44,27 @@ public class Provider extends Model {
   private static final String TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST =
       "Transient property - only present in mutate API request";
 
-  @ApiModelProperty(value = "Provide uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Provider uuid", accessMode = READ_ONLY)
   @Id
   public UUID uuid;
 
   // TODO: Use Enum
   @Column(nullable = false)
-  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Provider cloud code", accessMode = READ_WRITE)
   @Constraints.Required()
   public String code;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Provider name", accessMode = READ_WRITE)
   @Constraints.Required()
   public String name;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
-  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Provider active status", accessMode = READ_ONLY)
   public Boolean active = true;
 
   @Column(nullable = false)
-  @ApiModelProperty(value = "Cloud Provider code", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   public static final Set<String> HostedZoneEnabledProviders = ImmutableSet.of("aws", "azu");
@@ -96,7 +96,7 @@ public class Provider extends Model {
 
   // Start Transient Properties
   // TODO: These are all transient fields for now. At present these are stored
-  //  with CliudBootstrap params. We should move them to Provider and persist with
+  //  with CloudBootstrap params. We should move them to Provider and persist with
   //  Provider entity.
 
   // Custom keypair name to use when spinning up YB nodes.
@@ -236,7 +236,7 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
     return provider;
   }
@@ -294,14 +294,16 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
-      throw new YWServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
     return provider;
   }
 
+  @ApiModelProperty(required = false)
   public String getHostedZoneId() {
     return getConfig().getOrDefault("HOSTED_ZONE_ID", getConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
+  @ApiModelProperty(required = false)
   public String getHostedZoneName() {
     return getConfig().getOrDefault("HOSTED_ZONE_NAME", getConfig().get("AWS_HOSTED_ZONE_NAME"));
   }

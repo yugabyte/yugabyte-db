@@ -137,6 +137,7 @@ Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     bool is_explicit_request_read_time) {
+  VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << yb::ToString(request);
 
   common::YQLRowwiseIteratorIf::UniPtr result;
   // TODO(neil) Remove the following IF block when it is completely obsolete.
@@ -166,6 +167,15 @@ Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
         } else {
           actual_read_time.read = start_sub_doc_key.hybrid_time();
         }
+      }
+    } else if (request.is_for_backfill()) {
+      RSTATUS_DCHECK(is_explicit_request_read_time, InvalidArgument,
+                     "Backfill request should already be using explicit read times.");
+      PgsqlBackfillSpecPB spec;
+      spec.ParseFromString(a2b_hex(request.backfill_spec()));
+      if (!spec.next_row_key().empty()) {
+        KeyBytes start_key_bytes(spec.next_row_key());
+        RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
       }
     }
     RETURN_NOT_OK(ql_storage.GetIterator(
@@ -433,6 +443,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     response_->set_skipped(true);
     return Status::OK();
   }
+  QLTableRow returning_table_row;
+  if (request_.targets_size()) {
+    returning_table_row = table_row;
+  }
 
   // skipped is set to false if this operation produces some data to write.
   bool skipped = true;
@@ -455,6 +469,11 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       // Evaluate column value.
       QLExprResult expr_result;
       RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
+
+      // Update RETURNING values
+      if (request_.targets_size()) {
+        returning_table_row.AllocColumn(column_id, expr_result.Value());
+      }
 
       // Inserting into specified column.
       const SubDocument sub_doc =
@@ -507,8 +526,13 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     }
   }
 
-  // Returning the values before the update.
-  RETURN_NOT_OK(PopulateResultSet(table_row));
+  if (request_.targets_size()) {
+    // Returning the values after the update.
+    RETURN_NOT_OK(PopulateResultSet(returning_table_row));
+  } else {
+    // Returning the values before the update.
+    RETURN_NOT_OK(PopulateResultSet(table_row));
+  }
 
   if (skipped) {
     response_->set_skipped(true);
@@ -705,7 +729,7 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
            "ybctid arguments can be batched only");
     fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
         ql_storage, deadline, read_time, schema,
-        request_.unknown_ybctid_allowed(), result_buffer, restart_read_ht));
+        result_buffer, restart_read_ht));
   } else if (request_.has_sampling_state()) {
     fetched_rows = VERIFY_RESULT(ExecuteSample(
         ql_storage, deadline, read_time, is_explicit_request_read_time, schema,
@@ -963,7 +987,6 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const Schema& schema,
-                                                      bool unknown_ybctid_allowed,
                                                       faststring *result_buffer,
                                                       HybridTime *restart_read_ht) {
   Schema projection;
@@ -976,20 +999,16 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
     RETURN_NOT_OK(ql_storage.GetIterator(request_.stmt_id(), projection, schema, txn_op_context_,
                                          deadline, read_time, batch_argument.ybctid().value(),
                                          &table_iter_));
-    row.Clear();
 
-    if (!VERIFY_RESULT(table_iter_->HasNext())) {
-      if (unknown_ybctid_allowed) {
-        continue;
-      } else {
-        return STATUS(Corruption, "Given ybctid is not associated with any row in table");
-      }
+    if (VERIFY_RESULT(table_iter_->HasNext())) {
+      row.Clear();
+      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
+
+      // Populate result set.
+      RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
+      response_.add_batch_orders(batch_argument.order());
+      row_count++;
     }
-    RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
-
-    // Populate result set.
-    RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-    row_count++;
   }
 
   // Set status for this batch.

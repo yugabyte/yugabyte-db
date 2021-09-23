@@ -74,7 +74,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
 
-  void VerifyTableRowRange(const VerifyTableRowRangeRequestPB* req, VerifyTableRowRangeResponsePB* resp, rpc::RpcContext context) override;
+  void VerifyTableRowRange(
+      const VerifyTableRowRangeRequestPB* req, VerifyTableRowRangeResponsePB* resp,
+      rpc::RpcContext context) override;
 
   void NoOp(const NoOpRequestPB* req, NoOpResponsePB* resp, rpc::RpcContext context) override;
 
@@ -134,9 +136,18 @@ class TabletServiceImpl : public TabletServerServiceIf {
                            IsTabletServerReadyResponsePB* resp,
                            rpc::RpcContext context) override;
 
+  void GetSplitKey(
+      const GetSplitKeyRequestPB* req,
+      GetSplitKeyResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TakeTransaction(const TakeTransactionRequestPB* req,
                        TakeTransactionResponsePB* resp,
                        rpc::RpcContext context) override;
+
+  void GetSharedData(const GetSharedDataRequestPB* req,
+                     GetSharedDataResponsePB* resp,
+                     rpc::RpcContext context) override;
 
   void Shutdown() override;
 
@@ -240,11 +251,6 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   // Called on the Index table(s) once the backfill is complete.
   void BackfillDone(
       const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
-      rpc::RpcContext context) override;
-
-  void GetSplitKey(
-      const GetSplitKeyRequestPB* req,
-      GetSplitKeyResponsePB* resp,
       rpc::RpcContext context) override;
 
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source

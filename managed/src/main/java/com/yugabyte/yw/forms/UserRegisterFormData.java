@@ -10,20 +10,22 @@ import java.util.Map;
 import play.data.validation.Constraints;
 
 /** This class will be used by the API and UI Form Elements to validate constraints are met */
-@ApiModel(value = "UserRegistrationData", description = "User registration data")
+@ApiModel(
+    value = "UserRegistrationData",
+    description = "User registration data. The API and UI use this to validate form data.")
 public class UserRegisterFormData {
   @Constraints.Required()
-  @ApiModelProperty(value = "User email address", example = "test@gmail.com", required = true)
+  @ApiModelProperty(value = "Email address", example = "test@example.com", required = true)
   @Constraints.Email
   private String email;
 
-  @ApiModelProperty(value = "User password", example = "Test@1234")
+  @ApiModelProperty(value = "Password", example = "Test@1234")
   private String password;
 
-  @ApiModelProperty(value = "User password", example = "Test@1234")
+  @ApiModelProperty(value = "Password confirmation", example = "Test@1234")
   private String confirmPassword;
 
-  @ApiModelProperty(value = "User Features")
+  @ApiModelProperty(value = "User features")
   private Map features;
 
   @Constraints.Required()

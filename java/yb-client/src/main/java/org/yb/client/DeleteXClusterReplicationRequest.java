@@ -46,7 +46,7 @@ public class DeleteXClusterReplicationRequest extends YRpc<DeleteXClusterReplica
 
   @Override
   String method() {
-    return "DeleteXClusterReplication";
+    return "DeleteUniverseReplication";
   }
 
   @Override

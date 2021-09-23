@@ -36,7 +36,7 @@ To determine why this error is happening, you can check the disk bandwidth, netw
 
 The limits are controlled by the following YB-TServer configuration flags: `--sst_files_hard_limit=48` and `--sst_files_soft_limit=24`.
 
-## Catalog Version Mismatch: A DDL occurred while processing this query. Try Again.
+## Catalog Version Mismatch: A DDL occurred while processing this query. Try Again
 
 When executing queries in the YSQL layer, the query may fail with the following error:
 
@@ -52,9 +52,10 @@ In these cases, the database aborts the query and returns a `40001` PostgreSQL e
 
 After configuring [encryption at transit](../../../secure/tls-encryption) for yugabyte cluster, you may get the following error when trying to use `yb-admin`:
 
-```output
+```sh
 ./bin/yb-admin -master_addresses <master-addresses> list_all_masters
 ```
+
 ```output
 Unable to establish connection to leader master at [MASTERIP1:7100,MASTERIP2:7100,MASTERIP3:7100].
 Please verify the addresses.\n\n: Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100], num_attempts: 338)
@@ -64,4 +65,40 @@ Unable to establish connection to leader master at [MASTERIP1:7100,MASTERIP2:710
 Please verify the addresses.\n\n: Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100]
 ```
 
-The solution is to pass the location of your certificates directory via `--certs_dir_name` on the `yb-admin` command. Then it will function as expected.
+Pass the location of your certificates directory via `--certs_dir_name` on the `yb-admin` command. Then it will function as expected.
+
+## ysqlsh: FATAL: password authentication failed for user "yugabyte" after fresh installation
+
+Sometimes users get the following error when trying to connect to YSQL using the `ysqlsh` CLI after creating a fresh cluster:
+
+```output
+ysqlsh: FATAL:  password authentication failed for user "yugabyte"
+```
+
+By default, PostgreSQL listens on port `5432`. To not conflict with it, we've set the YSQL port to `5433`. But users have the ability to create multiple PostgreSQL clusters locally. Each one takes the next port available, starting from `5433`, conflicting with the YSQL port. 
+
+If you've created 2 PostgreSQL clusters before creating the YugabyteDB cluster, the `ysqlsh` shell is trying to connect to PostgreSQL running on port `5433` and failing to authenticate. To verify in this case, you can look which process is listening on port `5433`:
+
+```sh
+sudo lsof -i :5433
+```
+
+```output
+COMMAND   PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+postgres 1263 postgres    7u  IPv4  35344      0t0  TCP localhost:postgresql (LISTEN)
+```
+
+Shut down this PostgreSQL cluster, or kill the process, then restart YugabyteDB.
+
+## ServerError: Server Error. Unknown keyspace/cf pair (system.peers_v2)
+
+When connecting to the YCQL layer, you may get an error similar to the following:
+
+```output.cql
+ServerError: Server Error. Unknown keyspace/cf pair (system.peers_v2)
+SELECT * FROM system.peers_v2;
+^^^^^^
+ (ql error -2)
+```
+
+The reason is probably that you're not using one of our forks of the Cassandra client drivers. The `system.peers_v2` table doesn't exist in YugabyteDB. Check the [drivers page](../../../reference/drivers/ycql-client-drivers) to find a driver for your client language.

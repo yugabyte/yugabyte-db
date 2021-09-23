@@ -43,6 +43,7 @@ const std::string kClusterName = "yugacluster";
 constexpr auto kInterval = 6s;
 constexpr auto kRetention = 10min;
 constexpr auto kHistoryRetentionIntervalSec = 5;
+constexpr auto kCleanupSplitTabletsInterval = 1s;
 
 } // namespace
 
@@ -101,6 +102,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   CHECKED_STATUS WaitRestorationDone(const std::string& restoration_id, MonoDelta timeout) {
     return WaitFor([this, restoration_id]() -> Result<bool> {
       auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations", restoration_id));
+      LOG(INFO) << "Restorations: " << common::PrettyWriteRapidJsonToString(out);
       const auto& restorations = VERIFY_RESULT(Get(out, "restorations")).get().GetArray();
       SCHECK_EQ(restorations.Size(), 1, IllegalState, "Wrong restorations number");
       auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
@@ -133,14 +135,17 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   virtual std::vector<std::string> ExtraTSFlags() {
     return { Format("--timestamp_history_retention_interval_sec=$0", kHistoryRetentionIntervalSec),
-             "--history_cutoff_propagation_interval_ms=1000" };
+             "--history_cutoff_propagation_interval_ms=1000",
+             Format("--cleanup_split_tablets_interval_sec=$0",
+                      MonoDelta(kCleanupSplitTabletsInterval).ToSeconds()) };
   }
 
   virtual std::vector<std::string> ExtraMasterFlags() {
     // To speed up tests.
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
-             "--enable_transactional_ddl_gc=false" };
+             "--enable_transactional_ddl_gc=false",
+             "--TEST_select_all_tablets_for_split=true", };
   }
 
   Result<std::string> PrepareQl(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
@@ -181,7 +186,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return pgwrapper::PGConn::Connect(HostPort(ts->bind_host(), ts->pgsql_rpc_port()), db_name);
   }
 
-  Result<std::string> PrepareCql() {
+  Result<std::string> PrepareCql(MonoDelta interval = kInterval, MonoDelta retention = kRetention) {
     RETURN_NOT_OK(PrepareCommon());
 
     auto conn = VERIFY_RESULT(CqlConnect());
@@ -189,7 +194,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         "CREATE KEYSPACE IF NOT EXISTS $0", client::kTableName.namespace_name())));
 
     return CreateSnapshotScheduleAndWaitSnapshot(
-        "ycql." + client::kTableName.namespace_name(), kInterval, kRetention);
+        "ycql." + client::kTableName.namespace_name(), interval, retention);
   }
 
   template <class... Args>
@@ -346,7 +351,7 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
       controller.set_timeout(30s);
       RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
 
-      req.set_is_compaction(true);
+      req.set_operation(tserver::FlushTabletsRequestPB::COMPACT);
       controller.Reset();
       RETURN_NOT_OK(proxy->FlushTablets(req, &resp, &controller));
     }
@@ -493,7 +498,7 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   }, deadline, "Deleted table cleanup"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(Pgsql),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(Pgsql),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -514,7 +519,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(Pgsql),
   ASSERT_EQ(res, "before");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateTable),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateTable),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -535,7 +540,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateTable),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateIndex),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlCreateIndex),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -558,7 +563,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlCreateIndex),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropTable),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropTable),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -580,7 +585,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropTable),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropIndex),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropIndex),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -605,7 +610,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlDropIndex),
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST(PgsqlAddColumn),
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumn),
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -1083,6 +1088,99 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, ConsistentRestoreFailover,
 
   auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString("SELECT * FROM test_table"));
   ASSERT_EQ(rows, "1;3");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, DropKeyspaceAndSchedule) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, kInterval));
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
+      "WITH transactions = { 'enabled' : true }"));
+
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'before')"));
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'after')"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  auto res = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM test_table"));
+  ASSERT_EQ(res, "before");
+  ASSERT_OK(conn.ExecuteQuery("DROP TABLE test_table"));
+  // Wait until table completely removed, because of schedule retention.
+  std::this_thread::sleep_for(kInterval * 3);
+  ASSERT_NOK(conn.ExecuteQuery(Format("DROP KEYSPACE $0", client::kTableName.namespace_name())));
+  ASSERT_OK(DeleteSnapshotSchedule(schedule_id));
+  ASSERT_OK(conn.ExecuteQuery(Format("DROP KEYSPACE $0", client::kTableName.namespace_name())));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, kInterval * 4));
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQuery(
+      "CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT) "
+      "WITH transactions = { 'enabled' : true }"));
+
+  for (int i = 0; i != 3; ++i) {
+    LOG(INFO) << "Iteration: " << i;
+    ASSERT_OK(conn.ExecuteQuery("INSERT INTO test_table (key, value) VALUES (1, 'value')"));
+    Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+    ASSERT_OK(conn.ExecuteQuery("CREATE UNIQUE INDEX test_table_idx ON test_table (value)"));
+    std::this_thread::sleep_for(kInterval * 2);
+    ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  }
+
+  auto snapshots = ASSERT_RESULT(ListSnapshots());
+  LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
+  std::string id = ASSERT_RESULT(Get(snapshots[0], "id")).get().GetString();
+  ASSERT_OK(WaitFor([this, &id]() -> Result<bool> {
+    auto snapshots = VERIFY_RESULT(ListSnapshots());
+    LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
+    auto current_id = VERIFY_RESULT(Get(snapshots[0], "id")).get().GetString();
+    return current_id != id;
+  }, kInterval * 3, "Wait first snapshot to be deleted"));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, RestoreAfterSplit) {
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
+      "WITH tablets = 1 AND transactions = { 'enabled' : true }", client::kTableName.table_name()));
+
+  auto insert_pattern = Format(
+      "INSERT INTO $0 (key, value) VALUES (1, '$$0')", client::kTableName.table_name());
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "before"));
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "after"));
+
+  auto out = ASSERT_RESULT(CallJsonAdmin(
+      "list_tablets", "ycql." + client::kTableName.namespace_name(),
+      client::kTableName.table_name(), "JSON"));
+  {
+    auto tablets = ASSERT_RESULT(Get(&out, "tablets")).get().GetArray();
+    ASSERT_EQ(tablets.Size(), 1);
+    auto tablet_id = ASSERT_RESULT(Get(tablets[0], "id")).get().GetString();
+    LOG(INFO) << "Tablet id: " << tablet_id;
+    ASSERT_OK(CallAdmin("split_tablet", tablet_id));
+  }
+
+  std::this_thread::sleep_for(kCleanupSplitTabletsInterval * 5);
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  LOG(INFO) << "Reading";
+  auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "1,before");
+
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "final"));
+  rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "1,final");
+
+  auto tablets = ASSERT_RESULT(Get(&out, "tablets")).get().GetArray();
+  ASSERT_EQ(tablets.Size(), 1);
 }
 
 }  // namespace tools

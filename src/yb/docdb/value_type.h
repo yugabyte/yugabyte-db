@@ -99,13 +99,15 @@ namespace docdb {
     ((kColumnId, 'K'))  /* ASCII code 75 */ \
     ((kDoubleDescending, 'L'))  /* ASCII code 76 */ \
     ((kFloatDescending, 'M')) /* ASCII code 77 */ \
-    ((kUInt32, 'O'))  /* ASCII code 78 */ \
+    ((kUInt32, 'O'))  /* ASCII code 79 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kExternalIntents, 'Z')) /* ASCII code 90 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
+    ((kCollString, '\\'))  /* ASCII code 92 */ \
+    ((kCollStringDescending, ']'))  /* ASCII code 93 */ \
     \
     /* We allow putting a 32-bit hash in front of the document key. This hash is computed based */ \
     /* on the "hashed" components of the document key that precede "range" components. */ \

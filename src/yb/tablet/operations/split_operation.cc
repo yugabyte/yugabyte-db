@@ -68,8 +68,10 @@ bool SplitOperation::ShouldAllowOpAfterSplitTablet(const consensus::OperationTyp
   // If new OperationType is added, make an explicit deliberate decision whether new op type
   // should be allowed to be added into Raft log for old (pre-split) tablet.
   switch (op_type) {
-    case consensus::NO_OP:
       // We allow NO_OP, so old tablet can have leader changes in case of re-elections.
+    case consensus::NO_OP: FALLTHROUGH_INTENDED;
+      // We allow SNAPSHOT_OP, so old tablet can be restored.
+    case consensus::SNAPSHOT_OP:
       return true;
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::WRITE_OP: FALLTHROUGH_INTENDED;
@@ -77,7 +79,6 @@ bool SplitOperation::ShouldAllowOpAfterSplitTablet(const consensus::OperationTyp
     case consensus::CHANGE_CONFIG_OP: FALLTHROUGH_INTENDED;
     case consensus::HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
     case consensus::UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
-    case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
     case consensus::TRUNCATE_OP: FALLTHROUGH_INTENDED;
     case consensus::SPLIT_OP:
       return false;

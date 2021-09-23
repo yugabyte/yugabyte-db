@@ -65,24 +65,39 @@ constexpr char CQLMessage::kTopologyChangeEvent[];
 constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
-Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
-                                                    const int64_t pos,
-                                                    const shared_ptr<QLType>& type,
-                                                    QLValue* value) const {
-  const Value* v = nullptr;
+CHECKED_STATUS CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
+                                                                 const int64_t pos,
+                                                                 const Value** value) const {
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
     if (itr == value_map.end()) {
       return STATUS_SUBSTITUTE(RuntimeError, "Bind variable \"$0\" not found", name);
     }
-    v = &values.at(itr->second);
+    *value = &values.at(itr->second);
   } else {
     if (pos < 0 || pos >= values.size()) {
       // Return error with 1-based position.
       return STATUS_SUBSTITUTE(RuntimeError, "Bind variable at position $0 not found", pos + 1);
     }
-    v = &values.at(pos);
+    *value = &values.at(pos);
   }
+
+  return Status::OK();
+}
+
+Result<bool> CQLMessage::QueryParameters::IsBindVariableUnset(const std::string& name,
+                                                              const int64_t pos) const {
+  const Value* value = nullptr;
+  RETURN_NOT_OK(GetBindVariableValue(name, pos, &value));
+  return (value->kind == Value::Kind::NOT_SET);
+}
+
+Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
+                                                    const int64_t pos,
+                                                    const shared_ptr<QLType>& type,
+                                                    QLValue* value) const {
+  const Value* v = nullptr;
+  RETURN_NOT_OK(GetBindVariableValue(name, pos, &v));
   switch (v->kind) {
     case Value::Kind::NOT_NULL: {
       if (v->value.empty()) {
@@ -120,10 +135,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
           case DataType::FROZEN: FALLTHROUGH_INTENDED;
           case DataType::DATE: FALLTHROUGH_INTENDED;
           case DataType::TIME: FALLTHROUGH_INTENDED;
-          case DataType::UINT8: FALLTHROUGH_INTENDED;
-          case DataType::UINT16: FALLTHROUGH_INTENDED;
-          case DataType::UINT32: FALLTHROUGH_INTENDED;
-          case DataType::UINT64:
+          QL_INVALID_TYPES_IN_SWITCH:
             break;
         }
         return STATUS_SUBSTITUTE(
@@ -136,16 +148,14 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
       value->SetNull();
       return Status::OK();
     case Value::Kind::NOT_SET:
-      // The RuntimeError status code will be mapped later into the non-retryable INVALID_REQUEST
-      // error code (non-retryable due to not mapping into STALE_METADATA code later).
-      return STATUS(RuntimeError, "Bind variable was not set");
+      return Status::OK();
   }
   return STATUS_SUBSTITUTE(
       RuntimeError, "Invalid bind variable kind $0", static_cast<int>(v->kind));
 }
 
 Status CQLMessage::QueryParameters::ValidateConsistency() {
-  switch(consistency) {
+  switch (consistency) {
     case Consistency::LOCAL_ONE: FALLTHROUGH_INTENDED;
     case Consistency::QUORUM: {
       // We are repurposing cassandra's "QUORUM" consistency level to indicate "STRONG"
@@ -1312,15 +1322,8 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
       return;
     }
     case DataType::FROZEN: FALLTHROUGH_INTENDED;
-    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case DataType::TUPLE: FALLTHROUGH_INTENDED;
-    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
-
-    case DataType::UINT8:  FALLTHROUGH_INTENDED;
-    case DataType::UINT16: FALLTHROUGH_INTENDED;
-    case DataType::UINT32: FALLTHROUGH_INTENDED;
-    case DataType::UINT64: FALLTHROUGH_INTENDED;
-    case DataType::UNKNOWN_DATA:
+    QL_UNSUPPORTED_TYPES_IN_SWITCH: FALLTHROUGH_INTENDED;
+    QL_INVALID_TYPES_IN_SWITCH:
       break;
 
     // default: fall through

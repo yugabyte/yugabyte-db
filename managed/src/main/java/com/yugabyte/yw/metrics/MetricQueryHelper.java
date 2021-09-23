@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
@@ -45,6 +45,7 @@ public class MetricQueryHelper {
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
   private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
   private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
+  public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
   @Inject play.Configuration appConfig;
 
@@ -76,7 +77,7 @@ public class MetricQueryHelper {
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides) {
     if (metricKeys.isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
+      throw new PlatformServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
     }
 
     long timeDifference;
@@ -100,7 +101,7 @@ public class MetricQueryHelper {
       try {
         additionalFilters = new ObjectMapper().readValue(params.get("filters"), HashMap.class);
       } catch (IOException e) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Invalid filter params provided, it should be a hash.");
       }
     }
@@ -197,6 +198,10 @@ public class MetricQueryHelper {
       throw new RuntimeException(
           "Failed to perform " + command + " on prometheus instance " + queryUrl);
     }
+  }
+
+  public boolean isPrometheusManagementEnabled() {
+    return appConfig.getBoolean(PROMETHEUS_MANAGEMENT_ENABLED);
   }
 
   private String getPrometheusManagementUrl(String path) {

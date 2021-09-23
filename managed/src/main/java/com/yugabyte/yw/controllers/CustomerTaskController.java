@@ -12,7 +12,7 @@ import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -35,7 +35,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
-    value = "Customer Task",
+    value = "Customer Tasks",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CustomerTaskController extends AuthenticatedController {
 
@@ -43,8 +43,9 @@ public class CustomerTaskController extends AuthenticatedController {
   @Inject private Commissioner commissioner;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
+  private static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
+  private static final String YB_PREV_SOFTWARE_VERSION = "ybPrevSoftwareVersion";
 
-  protected static final int TASK_HISTORY_LIMIT = 6;
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
@@ -64,7 +65,8 @@ public class CustomerTaskController extends AuthenticatedController {
       subTaskData.subTaskState = taskInfo.getTaskState().name();
       subTaskData.creationTime = taskInfo.getCreationTime();
       subTaskData.subTaskGroupType = taskInfo.getSubTaskGroupType().name();
-      subTaskData.errorString = taskInfo.getTaskDetails().get("errorString").asText();
+      JsonNode taskError = taskInfo.getTaskDetails().get("errorString");
+      subTaskData.errorString = (taskError == null) ? "null" : taskError.asText();
       subTasks.add(subTaskData);
     }
     return subTasks;
@@ -83,6 +85,15 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.target = task.getTarget().name();
       taskData.type = task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
+      ObjectNode versionNumbers = Json.newObject();
+      JsonNode taskDetails = taskInfo.getTaskDetails();
+      if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
+        versionNumbers.put(
+            YB_PREV_SOFTWARE_VERSION, taskDetails.get(YB_PREV_SOFTWARE_VERSION).asText());
+        versionNumbers.put(YB_SOFTWARE_VERSION, taskDetails.get(YB_SOFTWARE_VERSION).asText());
+        taskData.details = versionNumbers;
+      }
       return taskData;
     } catch (RuntimeException e) {
       LOG.error(
@@ -148,7 +159,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
-    return YWResults.withData(taskList);
+    return PlatformResults.withData(taskList);
   }
 
   @ApiOperation(
@@ -162,7 +173,7 @@ public class CustomerTaskController extends AuthenticatedController {
     for (List<CustomerTaskFormData> task : taskList.values()) {
       flattenList.addAll(task);
     }
-    return YWResults.withData(flattenList);
+    return PlatformResults.withData(flattenList);
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -171,10 +182,10 @@ public class CustomerTaskController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList =
         fetchTasks(customerUUID, universe.universeUUID);
-    return YWResults.withData(taskList);
+    return PlatformResults.withData(taskList);
   }
 
-  @ApiOperation(value = "Status of task", responseContainer = "Map", response = Object.class)
+  @ApiOperation(value = "Get a task's status", responseContainer = "Map", response = Object.class)
   public Result taskStatus(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -183,7 +194,10 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "Get failed sub task", responseContainer = "Map", response = Object.class)
+  @ApiOperation(
+      value = "Get a task's failed subtasks",
+      responseContainer = "Map",
+      response = Object.class)
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -194,7 +208,10 @@ public class CustomerTaskController extends AuthenticatedController {
     return ok(responseJson);
   }
 
-  @ApiOperation(value = "Retry task", response = UniverseResp.class)
+  @ApiOperation(
+      value = "Retry a task",
+      notes = "Retry a Create Universe task.",
+      response = UniverseResp.class)
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customer.uuid, taskUUID);
@@ -238,6 +255,6 @@ public class CustomerTaskController extends AuthenticatedController {
             + universe.name);
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(params), newTaskUUID);
-    return YWResults.withData(new UniverseResp(universe, newTaskUUID));
+    return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
   }
 }

@@ -78,6 +78,15 @@ WHERE
 ORDER BY
   relname, staattnum;
 
+create temp table prtx1 (a integer, b integer, c integer)
+  partition by range (a);
+create temp table prtx1_1 partition of prtx1 for values from (1) to (11);
+create temp table prtx1_2 partition of prtx1 for values from (11) to (21);
+create temp table prtx1_3 partition of prtx1 for values from (21) to (31);
+insert into prtx1 select 1 + i%30, i, i
+  from generate_series(1,1000) i;
+analyze prtx1;
+
 -- Cleanup
 DROP TABLE x;
 DROP TABLE y;

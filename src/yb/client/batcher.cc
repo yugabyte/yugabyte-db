@@ -581,10 +581,14 @@ void Batcher::FlushBuffersIfReady() {
   // tablet lookup failed, ops_queue_ could become empty inside `if (had_errors_) { ... }` block
   // above.
   if (ops_queue_.empty()) {
-    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    {
+      std::lock_guard<decltype(mutex_)> lock(mutex_);
 
-    // Nothing to prepare.
-    state_ = BatcherState::kTransactionReady;
+      // Nothing to prepare.
+      state_ = BatcherState::kTransactionReady;
+    }
+    // CheckForFinishedFlush will invoke callback.
+    CheckForFinishedFlush();
     return;
   }
 

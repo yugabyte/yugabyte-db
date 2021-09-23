@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -47,6 +49,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean isMasterInShellMode = false;
     public boolean isMaster = false;
     public boolean enableYSQL = false;
+    public boolean enableYCQL = false;
+    public boolean enableYSQLAuth = false;
+    public boolean enableYCQLAuth = false;
     public boolean enableYEDIS = false;
     public Map<String, String> gflags = new HashMap<>();
     public Set<String> gflagsToRemove = new HashSet<>();
@@ -91,11 +96,14 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     if (taskParams().type == UpgradeTaskParams.UpgradeTaskType.Everything
         && !taskParams().updateMasterAddrsOnly) {
       // Check cronjob status if installing software.
-      response = getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
+      if (!taskParams().useSystemd) {
+        response =
+            getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
+      }
 
       // Create an alert if the cronjobs failed to be created on this node.
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      if (response.code != 0) {
+      if (response.code != 0 || taskParams().useSystemd) {
         String nodeName = taskParams().nodeName;
 
         // Persist node cronjob status into the DB.
@@ -115,11 +123,13 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         saveUniverseDetails(updater);
       }
 
-      long inactiveCronNodes =
-          universe.getNodes().stream().filter(node -> !node.cronsActive).count();
-      metricService.setMetric(
-          metricService.buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
-          inactiveCronNodes);
+      if (!taskParams().useSystemd) {
+        long inactiveCronNodes =
+            universe.getNodes().stream().filter(node -> !node.cronsActive).count();
+        metricService.setMetric(
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+            inactiveCronNodes);
+      }
 
       // We set the node state to SoftwareInstalled when configuration type is Everything.
       // TODO: Why is upgrade task type used to map to node state update?

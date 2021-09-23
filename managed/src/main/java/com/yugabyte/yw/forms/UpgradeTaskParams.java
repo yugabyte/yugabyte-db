@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Map;
@@ -60,7 +60,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Map<String, String> universeConfig = universe.getConfig();
 
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE && universe.nodesInTransit()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Cannot perform a rolling upgrade on universe "
               + universe.universeUUID
@@ -71,7 +71,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
 
     if (isKubernetesUpgradeSupported() && userIntent.providerType.equals(CloudType.kubernetes)) {
       if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "Cannot perform upgrade on universe. "
                 + universe.universeUUID
@@ -82,7 +82,8 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     }
 
     if (!isKubernetesUpgradeSupported() && userIntent.providerType.equals(CloudType.kubernetes)) {
-      throw new YWServiceException(Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
     }
   }
 

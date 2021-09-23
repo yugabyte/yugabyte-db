@@ -225,6 +225,8 @@ class StatusErrorCodeImpl : public StatusErrorCode {
 
   static boost::optional<StatusErrorCodeImpl> FromStatus(const Status& status);
 
+  static boost::optional<Value> ValueFromStatus(const Status& status);
+
   uint8_t Category() const override {
     return kCategory;
   }
@@ -568,6 +570,16 @@ boost::optional<StatusErrorCodeImpl<Tag>> StatusErrorCodeImpl<Tag>::FromStatus(
     return boost::none;
   }
   return StatusErrorCodeImpl<Tag>(Tag::Decode(error_data));
+}
+
+template <class Tag>
+boost::optional<typename StatusErrorCodeImpl<Tag>::Value> StatusErrorCodeImpl<Tag>::ValueFromStatus(
+    const Status& status) {
+  const auto* error_data = status.ErrorData(Tag::kCategory);
+  if (!error_data) {
+    return boost::none;
+  }
+  return Tag::Decode(error_data);
 }
 
 inline Status&& MoveStatus(Status&& status) {

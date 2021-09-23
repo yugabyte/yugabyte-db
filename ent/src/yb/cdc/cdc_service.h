@@ -40,6 +40,12 @@
 
 namespace yb {
 
+namespace client {
+
+class TableHandle;
+
+}
+
 namespace tserver {
 
 class TSTabletManager;
@@ -168,7 +174,7 @@ class CDCServiceImpl : public CDCServiceIf {
   OpId GetMinAppliedCheckpointForTablet(const std::string& tablet_id,
                                         const std::shared_ptr<client::YBSession>& session);
 
-  void UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index);
+  CHECKED_STATUS UpdatePeersCdcMinReplicatedIndex(const TabletId& tablet_id, int64_t min_index);
 
   // Update metrics async_replication_sent_lag_micros and async_replication_committed_lag_micros.
   // Called periodically default 1s.
@@ -193,6 +199,14 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Used to protect tablet_checkpoints_ and stream_metadata_ maps.
   mutable rw_spinlock mutex_;
+
+  Result<std::shared_ptr<yb::client::TableHandle>> GetCdcStateTable() EXCLUDES(mutex_);
+
+  void RefreshCdcStateTable() EXCLUDES(mutex_);
+
+  Status RefreshCacheOnFail(const Status& s) EXCLUDES(mutex_);
+
+  std::shared_ptr<yb::client::TableHandle> cdc_state_table_ GUARDED_BY(mutex_){nullptr};
 
   // These are guarded by lock_.
   // Map of checkpoints that have been sent to CDC consumer and stored in cdc_state.
@@ -249,7 +263,7 @@ class CDCServiceImpl : public CDCServiceIf {
     >
   > TabletCheckpoints;
 
-  TabletCheckpoints tablet_checkpoints_ GUARDED_BY(mutex_);;
+  TabletCheckpoints tablet_checkpoints_ GUARDED_BY(mutex_);
 
   std::unordered_map<std::string, std::shared_ptr<StreamMetadata>> stream_metadata_
       GUARDED_BY(mutex_);
@@ -272,7 +286,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // True when this service is stopped. Used to inform
   // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
-  std::atomic<bool> cdc_service_stopped_{false};
+  bool cdc_service_stopped_ GUARDED_BY(mutex_){false};
 
   // True when this service has received a GetChanges request on a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};

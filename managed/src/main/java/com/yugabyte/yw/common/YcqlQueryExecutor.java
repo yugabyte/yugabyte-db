@@ -29,8 +29,8 @@ import play.mvc.Http;
 @Singleton
 public class YcqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YcqlQueryExecutor.class);
-  private static final String DEFAULT_DB_USER = "cassandra";
-  private static final String DEFAULT_DB_PASSWORD = "cassandra";
+  private static final String DEFAULT_DB_USER = Util.DEFAULT_YCQL_USERNAME;
+  private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YCQL_PASSWORD;
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
     // Create user for customer CQL.
@@ -47,7 +47,8 @@ public class YcqlQueryExecutor {
         executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
     LOG.info("Creating YCQL user, result: " + ycqlResponse.toString());
     if (ycqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
     }
   }
 
@@ -67,7 +68,8 @@ public class YcqlQueryExecutor {
         executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlCurrAdminPassword);
     LOG.info("Updating YCQL user, result: " + ycqlResponse.toString());
     if (ycqlResponse.has("error")) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ycqlResponse.get("error").asText());
     }
   }
 

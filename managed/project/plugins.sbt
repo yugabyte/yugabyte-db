@@ -22,3 +22,5 @@ addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "5.0.1")
 addSbtPlugin("com.swoval" % "sbt-jvm-format" % "0.3.1")
 
 //addSbtPlugin("com.hootsuite" %% "sbt-swagger" % "1.0.0")
+
+addSbtPlugin("io.kamon" % "sbt-kanela-runner-play-2.6" % "2.0.9")

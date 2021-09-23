@@ -74,6 +74,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "commands/ybccmds.h"
 
 static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
                                         const char *queryString,
@@ -417,29 +418,18 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 	pstate->p_sourcetext = queryString;
 
 	/*
-	 * For tserver-postgres libpq connection, only authorize certain queries.
+	 * tserver auth method is only allowed to run backfill statements.
 	 */
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates() &&
-		MyProcPort->yb_is_tserver_auth_method)
+		MyProcPort->yb_is_tserver_auth_method &&
+		!IsA(parsetree, BackfillIndexStmt))
 	{
-		switch (nodeTag(parsetree))
-		{
-			case T_BackfillIndexStmt:
-			{
-				BackfillIndexStmt *stmt = (BackfillIndexStmt *) parsetree;
-				BackfillIndex(stmt);
-			}
-			break;
-			default:
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("yb-tserver cannot run this query: %s",
-								CreateCommandTag(parsetree))));
-		}
-		free_parsestate(pstate);
-		return;
+		ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("yb-tserver cannot run this query: %s",
+				CreateCommandTag(parsetree))));
 	}
 
 	switch (nodeTag(parsetree))
@@ -865,13 +855,20 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_BackfillIndexStmt:
-			Assert(IsYugaByteEnabled());
-			Assert(!IsBootstrapProcessingMode());
-			Assert(!YBIsPreparingTemplates());
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("backfill can only be run internally by"
-							" yb-tserver")));
+			/*
+			 * Only tserver-postgres libpq connection can send BACKFILL request.
+			 */
+			if (!IsYugaByteEnabled() ||
+				!MyProcPort->yb_is_tserver_auth_method ||
+				IsBootstrapProcessingMode() ||
+				YBIsPreparingTemplates())
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot run this query: %s",
+								CreateCommandTag(parsetree))));
+			}
+			YbBackfillIndex((BackfillIndexStmt *) parsetree, dest);
 			break;
 
 			/*
@@ -1895,6 +1892,9 @@ UtilityReturnsTuples(Node *parsetree)
 		case T_VariableShowStmt:
 			return true;
 
+		case T_BackfillIndexStmt:
+			return true;
+
 		default:
 			return false;
 	}
@@ -1949,6 +1949,9 @@ UtilityTupleDescriptor(Node *parsetree)
 
 				return GetPGVariableResultDesc(n->name);
 			}
+
+		case T_BackfillIndexStmt:
+			return YbBackfillIndexResultDesc((BackfillIndexStmt *) parsetree);
 
 		default:
 			return NULL;

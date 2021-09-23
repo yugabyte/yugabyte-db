@@ -36,6 +36,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/range.h"
+
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
@@ -79,7 +81,7 @@ CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr
   return pg_stmt->AddColumn(attr_name, attr_num, attr_type, is_hash, is_range, sorting_type);
 }
 
-Result<PgApiImpl::MessengerHolder> BuildMessenger(
+Result<PgApiContext::MessengerHolder> BuildMessenger(
     const string& client_name,
     int32_t num_reactors,
     const scoped_refptr<MetricEntity>& metric_entity,
@@ -92,13 +94,14 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
   }
   auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
       client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()));
-  return PgApiImpl::MessengerHolder{std::move(secure_context), std::move(messenger)};
+  return PgApiContext::MessengerHolder{std::move(secure_context), std::move(messenger)};
 }
 
 std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
+  LOG(INFO) << __func__ << ": " << YBCIsInitDbModeEnvVarSet() << ", "
+            << FLAGS_TEST_pggate_ignore_tserver_shm << ", " << FLAGS_pggate_tserver_shm_fd;
   // Do not use shared memory in initdb or if explicity set to be ignored.
-  if (YBCIsInitDbModeEnvVarSet() || FLAGS_TEST_pggate_ignore_tserver_shm ||
-      FLAGS_pggate_tserver_shm_fd == -1) {
+  if (FLAGS_TEST_pggate_ignore_tserver_shm || FLAGS_pggate_tserver_shm_fd == -1) {
     return nullptr;
   }
   return std::make_unique<tserver::TServerSharedObject>(CHECK_RESULT(
@@ -110,12 +113,12 @@ Result<std::vector<std::string>> FetchExistingYbctids(PgSession::ScopedRefPtr se
                                                       PgOid table_id,
                                                       const std::vector<Slice>& ybctids) {
   auto desc  = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
+  PgTable table(desc);
   auto read_op = desc->NewPgsqlSelect();
   auto read_req = read_op->mutable_request();
-  read_req->set_unknown_ybctid_allowed(true);
   PgsqlExpressionPB* expr_pb = read_req->add_targets();
   expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));
-  auto doc_op = std::make_shared<PgDocReadOp>(session, desc, std::move(read_op));
+  auto doc_op = std::make_shared<PgDocReadOp>(session, &table, std::move(read_op));
   // Postgres uses SELECT FOR KEY SHARE query for FK check.
   // Use same lock level.
   PgExecParameters exec_params = doc_op->ExecParameters();
@@ -169,16 +172,40 @@ PggateOptions::PggateOptions() : ServerBaseOptions(kDefaultPort) {
   SetMasterAddresses(make_shared<server::MasterAddresses>(std::move(master_addresses)));
 }
 
+PgApiContext::MessengerHolder::MessengerHolder(
+    std::unique_ptr<rpc::SecureContext> security_context_,
+    std::unique_ptr<rpc::Messenger> messenger_)
+    : security_context(std::move(security_context_)), messenger(std::move(messenger_)) {
+}
+
+PgApiContext::MessengerHolder::MessengerHolder(MessengerHolder&& rhs)
+    : security_context(std::move(rhs.security_context)),
+      messenger(std::move(rhs.messenger)) {
+}
+
+PgApiContext::MessengerHolder::~MessengerHolder() {
+}
+
+PgApiContext::PgApiContext()
+    : metric_registry(new MetricRegistry()),
+      metric_entity(METRIC_ENTITY_server.Instantiate(metric_registry.get(), "yb.pggate")),
+      mem_tracker(MemTracker::CreateTracker("PostgreSQL")),
+      messenger_holder(CHECK_RESULT(BuildMessenger("pggate_ybclient",
+                                                   FLAGS_pggate_ybclient_reactor_threads,
+                                                   metric_entity,
+                                                   mem_tracker))),
+      proxy_cache(std::make_unique<rpc::ProxyCache>(messenger_holder.messenger.get())) {
+}
+
 //--------------------------------------------------------------------------------------------------
 
-PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCallbacks callbacks)
-    : metric_registry_(new MetricRegistry()),
-      metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
-      mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
-      messenger_holder_(CHECK_RESULT(BuildMessenger("pggate_ybclient",
-                                                    FLAGS_pggate_ybclient_reactor_threads,
-                                                    metric_entity_,
-                                                    mem_tracker_))),
+PgApiImpl::PgApiImpl(
+    PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
+    YBCPgCallbacks callbacks)
+    : metric_registry_(std::move(context.metric_registry)),
+      metric_entity_(std::move(context.metric_entity)),
+      mem_tracker_(std::move(context.mem_tracker)),
+      messenger_holder_(std::move(context.messenger_holder)),
       async_client_init_(messenger_holder_.messenger.get()->name(),
                          FLAGS_pggate_ybclient_reactor_threads,
                          FLAGS_pggate_rpc_timeout_secs,
@@ -187,6 +214,7 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
                          metric_entity_,
                          mem_tracker_,
                          messenger_holder_.messenger.get()),
+      proxy_cache_(std::move(context.proxy_cache)),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
       pg_callbacks_(callbacks),
@@ -217,11 +245,14 @@ PgApiImpl::PgApiImpl(const YBCPgTypeEntity *YBCDataTypeArray, int count, YBCPgCa
     });
   }
   async_client_init_.Start();
+
+  pg_client_.Start(proxy_cache_.get(), *DCHECK_NOTNULL(tserver_shared_object_));
 }
 
 PgApiImpl::~PgApiImpl() {
   messenger_holder_.messenger->Shutdown();
   async_client_init_.client()->Shutdown();
+  pg_client_.Shutdown();
 }
 
 const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
@@ -250,6 +281,7 @@ Status PgApiImpl::InitSession(const PgEnv *pg_env,
                               const string& database_name) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(client(),
+                                               &pg_client_,
                                                database_name,
                                                pg_txn_manager_,
                                                clock_,
@@ -312,7 +344,7 @@ Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
 // For now, table_desc is allocated as ScopedPtr and cached in the memory context. The table_desc
 // would then be destructed when the context is destroyed.
 Status PgApiImpl::AddToCurrentPgMemctx(size_t table_desc_id,
-                                       const PgTableDesc::ScopedRefPtr &table_desc) {
+                                       const PgTableDescPtr &table_desc) {
   pg_callbacks_.GetCurrentYbMemctx()->Cache(table_desc_id, table_desc);
   return Status::OK();
 }
@@ -461,14 +493,17 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
                               const uint32_t count,
                               PgOid *begin_oid,
                               PgOid *end_oid) {
-  return pg_session_->ReserveOids(database_oid, next_oid, count, begin_oid, end_oid);
+  auto p = VERIFY_RESULT(pg_client_.ReserveOids(database_oid, next_oid, count));
+  *begin_oid = p.first;
+  *end_oid = p.second;
+  return Status::OK();
 }
 
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
 }
 
-Result<PgTableDesc::ScopedRefPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
+Result<PgTableDescPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
   return pg_session_->LoadTable(table_id);
 }
 
@@ -805,10 +840,6 @@ Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
   return Status::OK();
 }
 
-Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
-  return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
-}
-
 Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
@@ -858,6 +889,10 @@ Status PgApiImpl::DmlBindTable(PgStatement *handle) {
   return down_cast<PgDml*>(handle)->BindTable();
 }
 
+Result<YBCPgColumnInfo> PgApiImpl::DmlGetColumnInfo(YBCPgStatement handle, int attr_num) {
+  return down_cast<PgDml*>(handle)->GetColumnInfo(attr_num);
+}
+
 CHECKED_STATUS PgApiImpl::DmlAssignColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->AssignColumn(attr_num, attr_value);
 }
@@ -884,14 +919,15 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   size_t remain_attr = descr.nattrs;
   // DocDB API requires that partition columns must be listed in their created-order.
   // Order from target_desc should be used as attributes sequence may have different order.
-  for (const auto& c : target_desc->columns()) {
+  for (size_t i : Range(target_desc->schema().columns().size())) {
+    PgColumn column(target_desc->schema(), i);
     for (auto attr = descr.attrs, end = descr.attrs + descr.nattrs; attr != end; ++attr) {
-      if (attr->attr_num == c.attr_num()) {
-        if (!c.desc()->is_primary()) {
+      if (attr->attr_num == column.attr_num()) {
+        if (!column.is_primary()) {
           return STATUS_SUBSTITUTE(
               InvalidArgument, "Attribute number $0 not a primary attribute", attr->attr_num);
         }
-        if (c.desc()->is_partition()) {
+        if (column.is_partition()) {
           // Hashed component.
           values = &hashed_components;
           expr_pb = hashed_values.Add();
@@ -907,13 +943,16 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
           if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());
           } else {
-            PgConstant value(attr->type_entity, attr->datum, false);
-            SCHECK_EQ(c.internal_type(), value.internal_type(), Corruption,
+            const YBCPgCollationInfo& collation_info = attr->collation_info;
+            PgConstant value(
+                attr->type_entity, collation_info.collate_is_valid_non_c,
+                collation_info.sortkey, attr->datum, false);
+            SCHECK_EQ(column.internal_type(), value.internal_type(), Corruption,
                       "Attribute value type does not match column type");
             RETURN_NOT_OK(value.Eval(expr_pb->mutable_value()));
           }
           values->push_back(PrimitiveValue::FromQLValuePB(expr_pb->value(),
-                                                          c.desc()->sorting_type()));
+                                                          column.desc().sorting_type()));
         }
 
         if (--remain_attr == 0) {
@@ -926,7 +965,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
             return processor(docdb::DocKey(move(range_components)).Encode());
           }
           string partition_key;
-          const PartitionSchema& partition_schema = target_desc->table()->partition_schema();
+          const PartitionSchema& partition_schema = target_desc->partition_schema();
           RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values, &partition_key));
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
@@ -949,16 +988,8 @@ Status PgApiImpl::StopOperationsBuffering() {
   return pg_session_->StopOperationsBuffering();
 }
 
-Status PgApiImpl::ResetOperationsBuffering() {
-  return pg_session_->ResetOperationsBuffering();
-}
-
-Status PgApiImpl::FlushBufferedOperations() {
-  return pg_session_->FlushBufferedOperations();
-}
-
-void PgApiImpl::DropBufferedOperations() {
-  pg_session_->DropBufferedOperations();
+void PgApiImpl::ResetOperationsBuffering() {
+  pg_session_->ResetOperationsBuffering();
 }
 
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
@@ -1194,13 +1225,15 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
 
 // Column references -------------------------------------------------------------------------------
 
-Status PgApiImpl::NewColumnRef(PgStatement *stmt, int attr_num, const PgTypeEntity *type_entity,
-                               const PgTypeAttrs *type_attrs, PgExpr **expr_handle) {
+Status PgApiImpl::NewColumnRef(
+    PgStatement *stmt, int attr_num, const PgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const PgTypeAttrs *type_attrs, PgExpr **expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgColumnRef::SharedPtr colref = make_shared<PgColumnRef>(attr_num, type_entity, type_attrs);
+  PgColumnRef::SharedPtr colref =
+    make_shared<PgColumnRef>(attr_num, type_entity, collate_is_valid_non_c, type_attrs);
   stmt->AddExpr(colref);
 
   *expr_handle = colref.get();
@@ -1208,40 +1241,48 @@ Status PgApiImpl::NewColumnRef(PgStatement *stmt, int attr_num, const PgTypeEnti
 }
 
 // Constant ----------------------------------------------------------------------------------------
-Status PgApiImpl::NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
+Status PgApiImpl::NewConstant(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum, is_null);
+  PgExpr::SharedPtr pg_const =
+    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, collation_sortkey,
+                            datum, is_null);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
   return Status::OK();
 }
 
-Status PgApiImpl::NewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                     YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
+Status PgApiImpl::NewConstantVirtual(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum_kind);
+  PgExpr::SharedPtr pg_const =
+    make_shared<PgConstant>(type_entity, false /* collate_is_valid_non_c */, datum_kind);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
   return Status::OK();
 }
 
-Status PgApiImpl::NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
+Status PgApiImpl::NewConstantOp(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+    bool is_gt) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum, is_null,
-      is_gt ? PgExpr::Opcode::PG_EXPR_GT : PgExpr::Opcode::PG_EXPR_LT);
+  PgExpr::SharedPtr pg_const =
+    make_shared<PgConstant>(type_entity, collate_is_valid_non_c, collation_sortkey,
+      datum, is_null, is_gt ? PgExpr::Opcode::PG_EXPR_GT : PgExpr::Opcode::PG_EXPR_LT);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
@@ -1270,9 +1311,9 @@ Status PgApiImpl::UpdateConstant(PgExpr *expr, const void *value, int64_t bytes,
 
 // Text constant -----------------------------------------------------------------------------------
 
-Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname,
-                              const YBCPgTypeEntity *type_entity,
-                              PgExpr **op_handle) {
+Status PgApiImpl::NewOperator(
+    PgStatement *stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, PgExpr **op_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
@@ -1280,7 +1321,7 @@ Status PgApiImpl::NewOperator(PgStatement *stmt, const char *opname,
   RETURN_NOT_OK(PgExpr::CheckOperatorName(opname));
 
   // Create operator.
-  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname, type_entity);
+  PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname, type_entity, collate_is_valid_non_c);
   stmt->AddExpr(pg_op);
 
   *op_handle = pg_op.get();
@@ -1316,21 +1357,25 @@ Status PgApiImpl::BeginTransaction() {
 
 Status PgApiImpl::RecreateTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  pg_session_->DropBufferedOperations();
   return pg_txn_manager_->RecreateTransaction();
 }
 
 Status PgApiImpl::RestartTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  pg_session_->DropBufferedOperations();
   return pg_txn_manager_->RestartTransaction();
 }
 
 Status PgApiImpl::CommitTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitTransaction();
 }
 
 Status PgApiImpl::AbortTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
+  pg_session_->DropBufferedOperations();
   return pg_txn_manager_->AbortTransaction();
 }
 

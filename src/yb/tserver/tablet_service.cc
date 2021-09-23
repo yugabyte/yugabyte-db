@@ -250,25 +250,25 @@ using client::internal::ForwardReadRpc;
 using client::internal::ForwardWriteRpc;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
+using consensus::Consensus;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
-using consensus::Consensus;
 using consensus::ConsensusConfigType;
 using consensus::ConsensusRequestPB;
 using consensus::ConsensusResponsePB;
 using consensus::GetLastOpIdRequestPB;
 using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
+using consensus::LeaderLeaseStatus;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
-using consensus::LeaderLeaseStatus;
+using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
 using consensus::StartRemoteBootstrapResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
-using consensus::RaftPeerPB;
 
 using std::unique_ptr;
 using google::protobuf::RepeatedPtrField;
@@ -776,7 +776,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
-  int number_rows_processed = 0;
+  size_t number_rows_processed = 0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -796,6 +796,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->pgsql_proxy_bind_address(),
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
+        &number_rows_processed,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
       DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
@@ -968,74 +969,89 @@ void TabletServiceImpl::VerifyTableRowRange(
     const VerifyTableRowRangeRequestPB* req,
     VerifyTableRowRangeResponsePB* resp,
     rpc::RpcContext context) {
-
   DVLOG(3) << "Received VerifyTableRowRange RPC: " << req->DebugString();
 
   server::UpdateClock(*req, server_->Clock());
 
-  auto peer_tablet = LookupTabletPeerOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  auto peer_tablet =
+      LookupTabletPeerOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
   if (!peer_tablet) {
     return;
   }
-  
+
   auto tablet = peer_tablet->tablet;
   bool is_pg_table = tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
   if (is_pg_table) {
-    SetupErrorAndRespond(resp->mutable_error(), STATUS(NotFound, "Verify operation not supported for PGSQL tables."), &context);
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(NotFound, "Verify operation not supported for PGSQL tables."),
+        &context);
     return;
   }
 
-  const CoarseTimePoint &deadline = context.GetClientDeadline();
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
 
   // Wait for SafeTime to get past read_at;
   const HybridTime read_at(req->read_time());
   DVLOG(1) << "Waiting for safe time to be past " << read_at;
-  const auto safe_time =
-      tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
+  const auto safe_time = tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
   DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
     LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
     SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
     return;
   }
-  
-  const IndexMap index_map =
-    peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
-  vector<IndexInfo> indexes;
-  vector<TableId> index_ids;
-  if (req->index_ids().empty()) {
-    for (auto it = index_map.begin(); it != index_map.end(); it++) {
-      indexes.push_back(it->second);
-    }
-  } else {
-    for (const auto& idx : req->index_ids()) {
-      auto result = index_map.FindIndex(idx);
-      if (result) {
-        const IndexInfo* index_info = *result;
-        indexes.push_back(*index_info);
-        index_ids.push_back(index_info->table_id());
-      } else {
-        LOG(WARNING) << "Index " << idx << " not found in tablet metadata";
-      }
-    }
-  }
-
-  std::unordered_map<TableId, uint64> consistency_stats;
-  std::string verified_until;
 
   auto valid_read_at = req->has_read_time() ? read_at : *safe_time;
-  Status verify_status = tablet->VerifyTableConsistencyForCQL(
-    indexes, req->start_key(), req->num_rows(), deadline,
-    valid_read_at, &consistency_stats, &verified_until);
-  if (!verify_status.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
-    return;
-  }
+  std::string verified_until = "";
+  std::unordered_map<TableId, uint64> consistency_stats;
 
-  for (const IndexInfo& index : indexes) {
-    const auto& table_id = index.table_id();
+  if (peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_info) {
+    auto index_info =
+        *peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_info;
+    const auto& table_id = index_info.indexed_table_id();
+    Status verify_status = tablet->VerifyMainTableConsistencyForCQL(
+        table_id, req->start_key(), req->num_rows(), deadline, valid_read_at, &consistency_stats,
+        &verified_until);
+    if (!verify_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
+      return;
+    }
+
     (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
+  } else {
+    const IndexMap index_map =
+        peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
+    vector<IndexInfo> indexes;
+    vector<TableId> index_ids;
+    if (req->index_ids().empty()) {
+      for (auto it = index_map.begin(); it != index_map.end(); it++) {
+        indexes.push_back(it->second);
+      }
+    } else {
+      for (const auto& idx : req->index_ids()) {
+        auto result = index_map.FindIndex(idx);
+        if (result) {
+          const IndexInfo* index_info = *result;
+          indexes.push_back(*index_info);
+          index_ids.push_back(index_info->table_id());
+        } else {
+          LOG(WARNING) << "Index " << idx << " not found in tablet metadata";
+        }
+      }
+    }
+
+    Status verify_status = tablet->VerifyIndexTableConsistencyForCQL(
+        indexes, req->start_key(), req->num_rows(), deadline, valid_read_at, &consistency_stats,
+        &verified_until);
+    if (!verify_status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), verify_status, &context);
+      return;
+    }
+
+    for (const IndexInfo& index : indexes) {
+      const auto& table_id = index.table_id();
+      (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
+    }
   }
   resp->set_verified_until(verified_until);
   context.RespondSuccess();
@@ -1193,7 +1209,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
             if (result->status_time.is_valid()) {
               resp->set_status_hybrid_time(result->status_time.ToUint64());
             }
-            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitTime
+            // See comment above WaitForSafeTime in TransactionStatusCache::DoGetCommitData
             // for details.
             resp->set_coordinator_safe_time(leader_safe_time->ToUint64());
             context_ptr->RespondSuccess();
@@ -1371,7 +1387,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   TSTabletManager::TabletPtrs tablet_ptrs;
 
   if (req->all_tablets()) {
-    server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
+    tablet_peers = server_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
   } else {
     for (const TabletId& id : req->tablet_ids()) {
       auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
@@ -1383,22 +1399,32 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       }
     }
   }
-  if (req->is_compaction()) {
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-        server_->tablet_manager()->TriggerCompactionAndWait(tablet_ptrs), resp, &context);
-  } else {
-    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-      resp->set_failed_tablet_id(tablet->tablet_id());
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
-      resp->clear_failed_tablet_id();
-    }
+  switch (req->operation()) {
+    case FlushTabletsRequestPB::FLUSH:
+      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
 
-    // Wait for end of all flush operations.
-    for (const tablet::TabletPtr& tablet : tablet_ptrs) {
-      resp->set_failed_tablet_id(tablet->tablet_id());
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
-      resp->clear_failed_tablet_id();
-    }
+      // Wait for end of all flush operations.
+      for (const tablet::TabletPtr& tablet : tablet_ptrs) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->WaitForFlush(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
+    case FlushTabletsRequestPB::COMPACT:
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+          server_->tablet_manager()->TriggerCompactionAndWait(tablet_ptrs), resp, &context);
+      break;
+    case FlushTabletsRequestPB::LOG_GC:
+      for (const auto& tablet : tablet_peers) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->RunLogGC(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
   }
 
   context.RespondSuccess();
@@ -1408,9 +1434,8 @@ void TabletServiceAdminImpl::CountIntents(
     const CountIntentsRequestPB* req,
     CountIntentsResponsePB* resp,
     rpc::RpcContext context) {
-  TabletPeers tablet_peers;
   TSTabletManager::TabletPtrs tablet_ptrs;
-  server_->tablet_manager()->GetTabletPeers(&tablet_peers, &tablet_ptrs);
+  TabletPeers tablet_peers = server_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
   int64_t total_intents = 0;
   // TODO: do this in parallel.
   // TODO: per-tablet intent counts.
@@ -1467,43 +1492,6 @@ void TabletServiceAdminImpl::RemoveTableFromTablet(
       &change_req, tablet.peer.get(), tablet.leader_term);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
-    return;
-  }
-  context.RespondSuccess();
-}
-
-void TabletServiceAdminImpl::GetSplitKey(
-    const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "SplitTablet", req, resp, &context)) {
-    return;
-  }
-  server::UpdateClock(*req, server_->Clock());
-
-  auto leader_tablet_peer =
-      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  if (!leader_tablet_peer) {
-    return;
-  }
-
-  const auto& tablet = leader_tablet_peer.tablet;
-  const auto split_encoded_key = tablet->GetEncodedMiddleSplitKey();
-  if (split_encoded_key.ok()) {
-    resp->set_split_encoded_key(*split_encoded_key);
-  } else {
-    SetupErrorAndRespond(resp->mutable_error(), split_encoded_key.status(), &context);
-    return;
-  }
-
-  const auto doc_key_hash = docdb::DecodeDocKeyHash(*split_encoded_key);
-  if (doc_key_hash.ok()) {
-    if (doc_key_hash->has_value()) {
-      resp->set_split_partition_key(PartitionSchema::EncodeMultiColumnHashValue(
-          doc_key_hash->value()));
-    } else {
-      resp->set_split_partition_key(*split_encoded_key);
-    }
-  } else {
-    SetupErrorAndRespond(resp->mutable_error(), doc_key_hash.status(), &context);
     return;
   }
   context.RespondSuccess();
@@ -1985,7 +1973,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   // has the transaction metadata, including the isolation level, and those requests expect us to
   // retrieve the isolation level from that metadata. Failure to do so was the cause of a
   // serialization anomaly tested by TestOneOrTwoAdmins
-  // (https://github.com/YugaByte/yugabyte-db/issues/1572).
+  // (https://github.com/yugabyte/yugabyte-db/issues/1572).
 
   bool serializable_isolation = false;
   TabletPeerTablet peer_tablet;
@@ -2039,7 +2027,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
               STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
                                         "processing this query. Try again."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
+          return;
         }
       }
       RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
@@ -2220,7 +2208,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       break;
     }
     if (!read_context->allow_retry) {
-      // The read time is specified, than we read as part of transaction. So we should restart
+      // If the read time is specified, then we read as part of a transaction. So we should restart
       // whole transaction. In this case we report restart time and abort reading.
       read_context->resp->Clear();
       auto restart_read_time = read_context->resp->mutable_restart_read_time();
@@ -2772,8 +2760,7 @@ void TabletServiceImpl::Publish(
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {
-  TabletPeers peers;
-  server_->tablet_manager()->GetTabletPeers(&peers);
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
   for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
@@ -2804,8 +2791,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
                                                    ListTabletsForTabletServerResponsePB* resp,
                                                    rpc::RpcContext context) {
   // Replicating logic from path-handlers.
-  TabletPeers peers;
-  server_->tablet_manager()->GetTabletPeers(&peers);
+  TabletPeers peers = server_->tablet_manager()->GetTabletPeers();
   for (const TabletPeerPtr& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
@@ -2931,6 +2917,36 @@ void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetSplitKey(
+    const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
+  PerformAtLeader(req, resp, &context,
+      [resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+        const auto& tablet = leader_tablet_peer.tablet;
+
+        if (tablet->MayHaveOrphanedPostSplitData()) {
+          return STATUS(IllegalState, "Tablet has orphaned post-split data");
+        }
+        const auto split_encoded_key = VERIFY_RESULT(tablet->GetEncodedMiddleSplitKey());
+        resp->set_split_encoded_key(split_encoded_key);
+        const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(split_encoded_key));
+        if (doc_key_hash.has_value()) {
+          resp->set_split_partition_key(PartitionSchema::EncodeMultiColumnHashValue(
+              doc_key_hash.value()));
+        } else {
+          resp->set_split_partition_key(split_encoded_key);
+        }
+        return Status::OK();
+  });
+}
+
+void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
+                                      GetSharedDataResponsePB* resp,
+                                      rpc::RpcContext context) {
+  auto& data = server_->SharedObject();
+  resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 
@@ -2967,7 +2983,6 @@ void TabletServerForwardServiceImpl::Read(const ReadRequestPB* req,
     std::make_shared<ForwardReadRpc>(req, resp, std::move(context), server_->client());
   forward_rpc->SendRpc();
 }
-
 
 }  // namespace tserver
 }  // namespace yb

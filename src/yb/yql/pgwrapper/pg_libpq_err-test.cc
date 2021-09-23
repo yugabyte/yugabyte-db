@@ -41,9 +41,9 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(BeginWithoutCommit)) {
     std::vector<std::thread> threads;
     threads.emplace_back([this, iteration, &complete] {
       // Exec BEGIN block.
-      auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE"));
-      auto res = conn.Fetch("SELECT * FROM terr");
+      auto connection = ASSERT_RESULT(Connect());
+      ASSERT_OK(connection.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE"));
+      auto res = connection.Fetch("SELECT * FROM terr");
 
       // Test early termination.
       // - Just return for one of the thread.
@@ -83,15 +83,15 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
     std::atomic<int> complete{ 0 };
     std::vector<std::thread> threads;
     threads.emplace_back([this, seed, &complete] {
-      auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.Execute("BEGIN"));
+      auto connection = ASSERT_RESULT(Connect());
+      ASSERT_OK(connection.Execute("BEGIN"));
 
       // INSERT.
       int row_count = 0;
       for (int k = 0; k != kRowPerSeed; ++k) {
         // For each row of data, retry a number of times or until success.
         for (int rt = 0; rt < kRetryCount; rt++) {
-          auto status = conn.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
+          auto status = connection.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
                                       seed * (k + 1), seed);
           if (!status.ok()) {
             string serr = status.ToString();
@@ -112,7 +112,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = conn.Fetch("SELECT * FROM terr");
+        auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
           ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
           continue;
@@ -165,15 +165,15 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
     std::atomic<int> complete{ 0 };
     std::vector<std::thread> threads;
     threads.emplace_back([this, seed, &complete] {
-      auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.Execute("BEGIN"));
+      auto connection = ASSERT_RESULT(Connect());
+      ASSERT_OK(connection.Execute("BEGIN"));
 
       // INSERT.
       int row_count = 0;
       for (int k = 0; k != kRowPerSeed; ++k) {
         // For each row of data, retry a number of times or until success.
         for (int rt = 0; rt < kRetryCount; rt++) {
-          auto status = conn.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
+          auto status = connection.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
                                            seed * (k + 1), seed);
           if (!status.ok()) {
             string serr = status.ToString();
@@ -194,7 +194,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = conn.Fetch("SELECT * FROM terr");
+        auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
           ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
           continue;
@@ -253,13 +253,13 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
     std::atomic<int> complete{ 0 };
     std::vector<std::thread> threads;
     threads.emplace_back([this, seed, kRowCount, &complete] {
-      auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.Execute("BEGIN"));
+      auto connection = ASSERT_RESULT(Connect());
+      ASSERT_OK(connection.Execute("BEGIN"));
 
       // UPDATE using different seeds.
       for (int k = 0; k != kRowCount; ++k) {
         for (int rt = 0; rt < kRetryCount; rt++) {
-          auto status = conn.ExecuteFormat("UPDATE terr SET v = $0 WHERE k = $1", seed, k);
+          auto status = connection.ExecuteFormat("UPDATE terr SET v = $0 WHERE k = $1", seed, k);
           if (!status.ok()) {
             string serr = status.ToString();
             if (serr.find("aborted") != std::string::npos) {
@@ -275,7 +275,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = conn.Fetch("SELECT * FROM terr");
+        auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
           ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
           continue;
@@ -344,15 +344,15 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
     std::atomic<int> complete{ 0 };
     std::vector<std::thread> threads;
     threads.emplace_back([this, &complete] {
-      auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.Execute("BEGIN"));
+      auto connection = ASSERT_RESULT(Connect());
+      ASSERT_OK(connection.Execute("BEGIN"));
 
       // DELETE.
       int delete_count = 0;
       for (int k = 0; k != kRowCount; ++k) {
         // For each row of data, retry a number of times or until success.
         for (int rt = 0; rt < kRetryCount; rt++) {
-          auto status = conn.ExecuteFormat("DELETE FROM terr WHERE k = $0", k);
+          auto status = connection.ExecuteFormat("DELETE FROM terr WHERE k = $0", k);
           if (!status.ok()) {
             string serr = status.ToString();
             if (serr.find("aborted") != std::string::npos) {
@@ -372,7 +372,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = conn.Fetch("SELECT * FROM terr");
+        auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
           ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
           continue;
@@ -430,12 +430,12 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertTransactionAborted)) {
     std::atomic<int> complete{ 0 };
     std::vector<std::thread> threads;
     threads.emplace_back([this, seed, &complete] {
-      auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.Execute("BEGIN"));
+      auto connection = ASSERT_RESULT(Connect());
+      ASSERT_OK(connection.Execute("BEGIN"));
 
       // INSERT.
       for (int k = 0; k != kRowPerSeed; ++k) {
-        auto status = conn.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
+        auto status = connection.ExecuteFormat("INSERT INTO terr VALUES ($0, $1)",
                                          seed * (k + 1), seed);
         CHECK(!status.ok()) << "INSERT is expected to fail";
 

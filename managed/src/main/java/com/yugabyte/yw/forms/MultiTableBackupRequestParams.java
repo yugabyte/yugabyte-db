@@ -8,12 +8,12 @@ import java.util.List;
 import java.util.UUID;
 
 /** This class will be used by Table controller createMultiTableBackup API. */
-@ApiModel(description = "Backup table params")
+@ApiModel(description = "Multi-table backup parameters")
 public class MultiTableBackupRequestParams extends BackupTableParams {
 
   @ApiModelProperty(value = "Customer UUID")
   public UUID customerUUID;
 
-  @ApiModelProperty(value = "Table UUID List")
+  @ApiModelProperty(value = "Table UUIDs")
   public List<UUID> tableUUIDList = new ArrayList<>();
 }

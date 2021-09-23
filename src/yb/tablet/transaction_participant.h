@@ -68,6 +68,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
+  AbortedSubTransactionSet aborted;
   OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
@@ -177,6 +178,8 @@ class TransactionParticipant : public TransactionStatusManager {
   void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
+
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override;
 
   void RequestStatusAt(const StatusRequest& request) override;
 

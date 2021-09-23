@@ -24,13 +24,15 @@ function mapStateToProps(state, ownProps) {
     restoreToKeyspace: '',
     storageConfigUUID: '',
     storageLocation: '',
+    restoreTimeStamp: '',
     parallelism: 8,
     kmsConfigUUID: ''
   };
   const {
     customer: { configs },
     universe: { currentUniverse, universeList },
-    cloud
+    cloud,
+    featureFlags,
   } = state;
   const storageConfigs = configs.data.filter((config) => config.type === 'STORAGE');
 
@@ -80,7 +82,8 @@ function mapStateToProps(state, ownProps) {
     currentUniverse: currentUniverse,
     universeList: universeList,
     initialValues: initialFormValues,
-    cloud: cloud
+    cloud: cloud,
+    featureFlags: featureFlags,
   };
 }
 

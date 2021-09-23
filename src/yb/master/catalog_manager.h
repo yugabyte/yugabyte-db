@@ -725,6 +725,8 @@ class CatalogManager :
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
+  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info);
+
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
   }
@@ -758,13 +760,15 @@ class CatalogManager :
   CHECKED_STATUS SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
 
-  CHECKED_STATUS DeleteTablet(
-      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
+  // Deletes a tablet that is no longer serving user requests. This would require that the tablet
+  // has been split and both of its children are now in RUNNING state and serving user requests
+  // instead.
+  CHECKED_STATUS DeleteNotServingTablet(
+      const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   CHECKED_STATUS DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
-
-  CHECKED_STATUS DeleteTablets(const std::vector<TabletId>& tablet_ids);
 
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
@@ -773,6 +777,8 @@ class CatalogManager :
   CHECKED_STATUS TEST_SplitTablet(
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key);
+
+  CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id);
 
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
@@ -787,7 +793,8 @@ class CatalogManager :
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
-      CollectFlags flags);
+      CollectFlags flags,
+      std::unordered_set<NamespaceId>* namespaces = nullptr);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -798,7 +805,9 @@ class CatalogManager :
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table);
 
-  void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
+  void ProcessTabletStorageMetadata(
+      const std::string& ts_uuid,
+      const TabletDriveStorageMetadataPB& storage_metadata);
 
   void CheckTableDeleted(const TableInfoPtr& table);
 
@@ -1218,6 +1227,9 @@ class CatalogManager :
   // Report metrics.
   void ReportMetrics();
 
+  // Reset metrics.
+  void ResetMetrics();
+
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
 
@@ -1297,6 +1309,10 @@ class CatalogManager :
       SysRowEntry::Type type) {
     return SnapshotSchedulesToObjectIdsMap();
   }
+
+  Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
+                           DeleteNamespaceResponsePB* resp,
+                           rpc::RpcContext* rpc);
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it

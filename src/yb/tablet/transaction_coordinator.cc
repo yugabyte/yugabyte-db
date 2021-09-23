@@ -29,6 +29,7 @@
 #include "yb/client/transaction_cleanup.h"
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
@@ -53,6 +54,7 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
@@ -79,6 +81,11 @@ DEFINE_int64(avoid_abort_after_sealing_ms, 20,
 
 DEFINE_test_flag(uint64, inject_txn_get_status_delay_ms, 0,
                  "Inject specified delay to transaction get status requests.");
+DEFINE_test_flag(int64, inject_random_delay_on_txn_status_response_ms, 0,
+                 "Inject a random amount of delay to the thread processing a "
+                 "GetTransactionStatusRequest after it has populated it's response. This could "
+                 "help simulate e.g. out-of-order responses where PENDING is received by client "
+                 "after a COMMITTED response.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -100,6 +107,7 @@ namespace {
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
+  const AbortedSubTransactionSetPB& aborted;
   HybridTime commit_time;
   bool sealed;
 
@@ -319,6 +327,8 @@ class TransactionState {
     }
   }
 
+  const AbortedSubTransactionSetPB& GetAbortedSubTransactionSetPB() const { return aborted_; }
+
   Result<TransactionStatusResult> GetStatus(
       std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
     switch (status_) {
@@ -334,7 +344,7 @@ class TransactionState {
       case TransactionStatus::ABORTED:
         return TransactionStatusResult{TransactionStatus::ABORTED, HybridTime::kMax};
       case TransactionStatus::PENDING: {
-        HybridTime status_ht = context_.coordinator_context().clock().Now();
+        HybridTime status_ht;
         if (replicating_) {
           auto replicating_status = replicating_->request()->status();
           if (replicating_status == TransactionStatus::COMMITTED ||
@@ -342,8 +352,15 @@ class TransactionState {
             auto replicating_ht = replicating_->hybrid_time_even_if_unset();
             if (replicating_ht.is_valid()) {
               status_ht = replicating_ht;
+            } else {
+              // Hybrid time now yet assigned to replicating, so assign more conservative time,
+              // that is guaranteed to be less then replicating time. See GH #9981.
+              status_ht = replicating_submit_time_;
             }
           }
+        }
+        if (!status_ht) {
+          status_ht = context_.coordinator_context().clock().Now();
         }
         status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
         return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
@@ -435,6 +452,7 @@ class TransactionState {
             context_.NotifyApplying({
                 .tablet = tablet.first,
                 .transaction = id_,
+                .aborted = aborted_,
                 .commit_time = commit_time_,
                 .sealed = status_ == TransactionStatus::SEALED });
           }
@@ -590,8 +608,7 @@ class TransactionState {
     }
 
     VLOG_WITH_PREFIX(4) << Format("DoHandle, replicating = $0", replicating_);
-    replicating_ = request.get();
-    auto submitted = context_.SubmitUpdateTransaction(std::move(request));
+    auto submitted = SubmitRequest(std::move(request));
     // Should always succeed, since we execute this code only on the leader.
     CHECK(submitted) << "Status: " << TransactionStatus_Name(txn_status);
   }
@@ -624,14 +641,22 @@ class TransactionState {
     if (replicating_) {
       request_queue_.push_back(std::move(request));
     } else {
-      replicating_ = request.get();
-      VLOG_WITH_PREFIX(4) << Format("SubmitUpdateStatus, replicating = $0", replicating_);
-      if (!context_.SubmitUpdateTransaction(std::move(request))) {
-        // Was not able to submit update transaction, for instance we are not leader.
-        // So we are not replicating.
-        replicating_ = nullptr;
-      }
+      SubmitRequest(std::move(request));
     }
+  }
+
+  bool SubmitRequest(std::unique_ptr<tablet::UpdateTxnOperation> request) {
+    replicating_ = request.get();
+    replicating_submit_time_ = context_.coordinator_context().clock().Now();
+    VLOG_WITH_PREFIX(4) << Format("SubmitUpdateStatus, replicating = $0", replicating_);
+    if (!context_.SubmitUpdateTransaction(std::move(request))) {
+      // Was not able to submit update transaction, for instance we are not leader.
+      // So we are not replicating.
+      replicating_ = nullptr;
+      return false;
+    }
+
+    return true;
   }
 
   void ProcessQueue() {
@@ -670,6 +695,8 @@ class TransactionState {
     commit_time_ = data.hybrid_time;
     // TODO(dtxn) Not yet implemented
     next_abort_after_sealing_ = CoarseMonoClock::now() + FLAGS_avoid_abort_after_sealing_ms * 1ms;
+    // TODO(savepoints) Savepoints with sealed transactions is not yet tested
+    aborted_ = data.state.aborted();
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
     status_ = TransactionStatus::SEALED;
 
@@ -706,6 +733,8 @@ class TransactionState {
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
+    aborted_ = data.state.aborted();
+
     involved_tablets_.reserve(data.state.tablets().size());
     for (const auto& tablet : data.state.tablets()) {
       InvolvedTabletState state = {
@@ -777,6 +806,7 @@ class TransactionState {
         context_.NotifyApplying({
             .tablet = tablet.first,
             .transaction = id_,
+            .aborted = aborted_,
             .commit_time = commit_time_,
             .sealed = status_ == TransactionStatus::SEALED});
       }
@@ -838,9 +868,15 @@ class TransactionState {
   MonoTime resend_applying_time_;
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
 
+  // Metadata tracking aborted subtransaction IDs in this transaction.
+  AbortedSubTransactionSetPB aborted_;
+
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
   tablet::UpdateTxnOperation* replicating_ = nullptr;
+  // Hybrid time before submitting replicating operation.
+  // It is guaranteed to be less then actual operation hybrid time.
+  HybridTime replicating_submit_time_;
   std::deque<std::unique_ptr<tablet::UpdateTxnOperation>> request_queue_;
 
   std::vector<TransactionAbortCallback> abort_waiters_;
@@ -942,11 +978,22 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
+
+        auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
+        if (txn_status_with_ht.status == TransactionStatus::COMMITTED &&
+            it != managed_transactions_.end()) {
+          *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
+        }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
     }
 
     ExecutePostponedLeaderActions(&postponed_leader_actions);
+    if (GetAtomicFlag(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms)) {
+      if (response->status().size() > 0 && response->status(0) == TransactionStatus::PENDING) {
+        AtomicFlagRandomSleepMs(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms);
+      }
+    }
     return Status::OK();
   }
 
@@ -1263,6 +1310,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     state.add_tablets(context_.tablet_id());
     state.set_commit_hybrid_time(action.commit_time.ToUint64());
     state.set_sealed(action.sealed);
+    *state.mutable_aborted() = action.aborted;
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {

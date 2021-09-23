@@ -32,11 +32,11 @@ You have a choice of obtaining the Smart Driver from Maven or creating it yourse
 
 To get the driver from Maven, add the following lines to your Maven project:
 
-```properties
+```xml
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.2.7-5-beta.1</version>
+  <version>42.2.7-5-beta.5</version>
 </dependency>
 ```
 
@@ -64,25 +64,21 @@ To build the driver locally, follow this procedure:
 
 3. Add the following lines to your Maven project:
 
-   ```properties
+   ```xml
    <dependency>
        <groupId>com.yugabyte</groupId>
        <artifactId>jdbc-yugabytedb</artifactId>
-       <version>42.2.7-yb-5-beta.1</version>
+       <version>42.2.7-yb-5-beta.5</version>
    </dependency> 
    ```
 
 ## Using the Smart Driver
 
-Cluster-aware load balancing is performed using the following connection property:
+**Cluster-aware** load balancing is performed using the `load-balance` connection property, which is disabled by default. You can enable it by setting its value to `true`.
 
-- `load-balance`, which is disabled by default. You can enable it by setting its value to `true`.
+**Topology-aware** load balancing additionally requires the `topology-keys` connection property, which accepts a comma-separated list of geolocation values. You can specify a geolocation as region:zone
 
-Topology-aware load balancing requires the following connection property in addition to `load-balance`:
-
-- `topology-keys`, which accepts a comma separated geo-location values. You can specify the geo-location as cloud:region:zone.
-
-To use the Smart Driver, specify the following:
+To use the Smart Driver, do the following:
 
 - Pass new connection properties for load balancing in the connection URL or properties bag.
 
@@ -96,7 +92,7 @@ To use the Smart Driver, specify the following:
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
   ```java
-  String yburl = "jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1:region1:zone1,cloud1:region1.zone2";
+  String yburl = "jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=region1:zone1,region1.zone2";
   DriverManager.getConnection(yburl);
   ```
 
@@ -108,7 +104,7 @@ To use the Smart Driver, specify the following:
   ds.setUrl(jdbcUrl);
   ds.setLoadBalance("true");
   // Set topology keys to enable topology-aware distribution
-  ds.setTopologyKeys("cloud1.region1.zone1,cloud1.region2.zone2");
+  ds.setTopologyKeys("region1.zone1,region2.zone2");
   // Provide more end points to prevent first connection failure 
   // if an initial contact point is not available 
   ds.setAdditionalEndpoints("127.0.0.2:5433,127.0.0.3:5433");
@@ -132,7 +128,7 @@ To use the Smart Driver, specify the following:
   String additionalEndpoints = "127.0.0.2:5433,127.0.0.3:5433,127.0.0.4:5433,127.0.0.5:5433";
   poolProperties.setProperty("dataSource.additionalEndpoints", additionalEndpoints);
   // Load balance between specific geo-locations using topology keys
-  String geoLocations = "cloud1.region1.zone1,cloud1.region2.zone2";
+  String geoLocations = "region1.zone1,region2.zone2";
   poolProperties.setProperty("dataSource.topologyKeys", geoLocations);
   
   poolProperties.setProperty("poolName", name);
@@ -156,28 +152,31 @@ To be able to use the samples, you need to complete the following steps:
 
 - Run the `run.sh` script, as per the following guideline:
 
-  ```
-  ./run.sh [-v] [-i] -D -</path_to_yugabyte_installation/>
-  ```
-
-  In the precediding command, replace:
-
-  - *[-v] [-i]* &nbsp; with `-v` if you want to run the script in `VERBOSE` mode.
-
-  - *[-v] [-i]* &nbsp; with `-i` if you want to run the script in `INTERACTIVE` mode.
-
-  - *[-v] [-i]* &nbsp; with `-v` `-i` if you want to run the script in both `VERBOSE` and `INTERACTIVE` mode at the same time.
-
-  - *</path_to_yugabyte_installation/>* &nbsp; with the path to the directory where you installed YugabyteDB. 
-
-  <br>For more details, you can consult the help for the script.<br>
-
-  <br> The following is an example of a shell command that runs the script:
-
   ```sh
-  ./run.sh -v -i -D ~/yugabyte-2.7.2.0/
+  ./run.sh [-v] [-i] -D -<path_to_yugabyte_installation>
   ```
 
-  <br>The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
+  In the preceding command, replace:
 
-  <br>In the beginning, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Selecting one of these options starts running the corresponding script with its Java application in the background.
+  - *[-v] [-i]* with `-v` if you want to run the script in `VERBOSE` mode.
+
+  - *[-v] [-i]* with `-i` if you want to run the script in `INTERACTIVE` mode.
+
+  - *[-v] [-i]* with `-v -i` if you want to run the script in both `VERBOSE` and `INTERACTIVE` mode at the same time.
+
+  - *<path_to_yugabyte_installation>* with the path to the directory where you installed YugabyteDB. 
+
+  \
+  For more details, you can consult the help for the script.
+
+  \
+
+The following is an example of a shell command that runs the script:
+
+```sh
+./run.sh -v -i -D ~/yugabyte-2.7.2.0/
+```
+
+The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
+
+In the beginning, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Selecting one of these options starts running the corresponding script with its Java application in the background.

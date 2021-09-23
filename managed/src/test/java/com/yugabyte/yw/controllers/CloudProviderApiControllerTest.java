@@ -47,7 +47,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -255,10 +255,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     verify(mockCloudQueryHelper, times(provider.regions.isEmpty() ? 1 : 0)).getRegionCodes(any());
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
-    YWResults.YWTask ywTask =
-        Json.fromJson(Json.parse(contentAsString(result)), YWResults.YWTask.class);
-    assertEquals(ywTask.taskUUID, actualTaskUUID);
-    Provider createdProvider = Provider.get(customer.uuid, ywTask.resourceUUID);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertEquals(ybpTask.taskUUID, actualTaskUUID);
+    Provider createdProvider = Provider.get(customer.uuid, ybpTask.resourceUUID);
     assertEquals(provider.code, createdProvider.code);
     assertEquals(provider.name, createdProvider.name);
     assertAuditEntry(1, customer.uuid);
@@ -319,7 +318,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             () ->
                 createProviderTest(
                     buildProviderReq("aws", null), REGION_CODES_FROM_CLOUD_API, UUID.randomUUID()));
-    assertBadRequest(result, "\"name\":[\"This field is required\"]}");
+    assertBadRequest(result, "\"name\":[\"error.required\"]}");
     assertAuditEntry(0, customer.uuid);
   }
 

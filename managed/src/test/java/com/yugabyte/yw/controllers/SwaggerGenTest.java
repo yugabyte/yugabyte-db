@@ -92,9 +92,16 @@ public class SwaggerGenTest extends FakeDBApplication {
 
   private String sort(String jsonString) throws JsonProcessingException {
     ObjectNode specJsonNode = (ObjectNode) Json.parse(jsonString);
+    deleteApiUrl(specJsonNode);
     sortTagsList(specJsonNode);
     final Object obj = SORTED_MAPPER.treeToValue(specJsonNode, Object.class);
     return SORTED_MAPPER.writeValueAsString(obj);
+  }
+
+  // Do not hardcode API url
+  private void deleteApiUrl(ObjectNode specJsonNode) {
+    specJsonNode.remove("host");
+    specJsonNode.remove("basePath");
   }
 
   // This way swagger UI will show tags in sorted order.

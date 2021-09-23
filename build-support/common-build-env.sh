@@ -996,10 +996,22 @@ find_compiler_by_type() {
         local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
         local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
         for clang_prefix_candidate in /usr/local/bin /usr/bin; do
-          if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
-                -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
-            cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
-            cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
+          if [[ -e $clang_prefix_candidate/$clang_cc_compiler_basename &&
+                -e $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
+            cc_executable="$clang_prefix_candidate/$clang_cc_compiler_basename"
+            cxx_executable="$clang_prefix_candidate/$clang_cxx_compiler_basename"
+            if [[ -L $cc_executable ]]; then
+              cc_executable=$( readlink "$cc_executable" )
+              if [[ ! $cc_executable =~ ^/ ]]; then
+                cc_executable="$clang_prefix_candidate/$cc_executable"
+              fi
+            fi
+            if [[ -L $cxx_executable ]]; then
+              cxx_executable=$( readlink "$cxx_executable" )
+              if [[ ! $cxx_executable =~ ^/ ]]; then
+                cxx_executable="$clang_prefix_candidate/$cxx_executable"
+              fi
+            fi
             break
           fi
         done

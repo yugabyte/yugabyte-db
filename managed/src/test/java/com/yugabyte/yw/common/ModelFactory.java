@@ -2,29 +2,29 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.models.Users.Role;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.alerts.AlertLabelsBuilder;
-import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
+import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
+import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertDefinitionGroupTarget;
-import com.yugabyte.yw.models.AlertDefinitionGroupThreshold;
+import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertRoute;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
@@ -32,10 +32,15 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +83,7 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email, Role role) {
-    return Users.create(email, "password", role, customer.uuid);
+    return Users.create(email, "password", role, customer.uuid, false);
   }
 
   /*
@@ -195,27 +200,33 @@ public class ModelFactory {
     return u;
   }
 
-  public static CustomerConfig createS3StorageConfig(Customer customer) {
+  public static CustomerConfig createS3StorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"S3\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"S3\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
                 + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
-  public static CustomerConfig createNfsStorageConfig(Customer customer) {
+  public static CustomerConfig createNfsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"NFS\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"NFS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
-  public static CustomerConfig createGcsStorageConfig(Customer customer) {
+  public static CustomerConfig createGcsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(
-            "{\"configName\": \"TEST\", \"name\": \"GCS\","
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"GCS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"gs://foo\","
                 + " \"GCS_CREDENTIALS_JSON\": \"G-CREDS\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
@@ -268,50 +279,62 @@ public class ModelFactory {
     return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
-  public static AlertDefinitionGroup createAlertDefinitionGroup(
-      Customer customer, Universe universe, Consumer<AlertDefinitionGroup> modifier) {
-    AlertDefinitionGroup group =
-        new AlertDefinitionGroup()
-            .setName("alertDefinitionGroup")
-            .setDescription("alertDefinitionGroup description")
+  public static AlertConfiguration createAlertConfiguration(
+      Customer customer, Universe universe, Consumer<AlertConfiguration> modifier) {
+    AlertConfiguration configuration =
+        new AlertConfiguration()
+            .setName("alertConfiguration")
+            .setDescription("alertConfiguration description")
             .setCustomerUUID(customer.getUuid())
-            .setTargetType(AlertDefinitionGroup.TargetType.UNIVERSE)
-            .setTarget(
-                new AlertDefinitionGroupTarget()
-                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
-            .setTemplate(AlertDefinitionTemplate.MEMORY_CONSUMPTION)
+            .setTargetType(AlertConfiguration.TargetType.UNIVERSE)
             .setThresholds(
                 ImmutableMap.of(
-                    AlertDefinitionGroup.Severity.SEVERE,
-                    new AlertDefinitionGroupThreshold()
-                        .setCondition(AlertDefinitionGroupThreshold.Condition.GREATER_THAN)
-                        .setThreshold(1)))
+                    AlertConfiguration.Severity.SEVERE,
+                    new AlertConfigurationThreshold()
+                        .setCondition(Condition.GREATER_THAN)
+                        .setThreshold(1D)))
             .setThresholdUnit(Unit.PERCENT)
+            .setDefaultDestination(true)
             .generateUUID();
-    modifier.accept(group);
-    group.save();
-    return group;
+    if (universe != null) {
+      configuration
+          .setTarget(
+              new AlertConfigurationTarget().setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+          .setTemplate(AlertTemplate.MEMORY_CONSUMPTION);
+    } else {
+      configuration
+          .setTarget(new AlertConfigurationTarget().setAll(true))
+          .setTemplate(AlertTemplate.BACKUP_FAILURE);
+    }
+    modifier.accept(configuration);
+    configuration.save();
+    return configuration;
   }
 
-  public static AlertDefinitionGroup createAlertDefinitionGroup(
-      Customer customer, Universe universe) {
-    return createAlertDefinitionGroup(customer, universe, c -> {});
+  public static AlertConfiguration createAlertConfiguration(Customer customer, Universe universe) {
+    return createAlertConfiguration(customer, universe, c -> {});
   }
 
   public static AlertDefinition createAlertDefinition(Customer customer, Universe universe) {
-    AlertDefinitionGroup group = createAlertDefinitionGroup(customer, universe);
-    return createAlertDefinition(customer, universe, group);
+    AlertConfiguration configuration = createAlertConfiguration(customer, universe);
+    return createAlertDefinition(customer, universe, configuration);
   }
 
   public static AlertDefinition createAlertDefinition(
-      Customer customer, Universe universe, AlertDefinitionGroup group) {
+      Customer customer, Universe universe, AlertConfiguration configuration) {
     AlertDefinition alertDefinition =
         new AlertDefinition()
-            .setGroupUUID(group.getUuid())
+            .setConfigurationUUID(configuration.getUuid())
             .setCustomerUUID(customer.getUuid())
             .setQuery("query {{ query_condition }} {{ query_threshold }}")
-            .setLabels(AlertLabelsBuilder.create().appendTarget(universe).get())
             .generateUUID();
+    if (universe != null) {
+      alertDefinition.setLabels(
+          MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
+    } else {
+      alertDefinition.setLabels(
+          MetricLabelsBuilder.create().appendSource(customer).getDefinitionLabels());
+    }
     alertDefinition.save();
     return alertDefinition;
   }
@@ -344,32 +367,26 @@ public class ModelFactory {
         new Alert()
             .setCustomerUUID(customer.getUuid())
             .setName("Alert 1")
-            .setTargetName("Target 1")
-            .setSeverity(AlertDefinitionGroup.Severity.SEVERE)
+            .setSourceName("Source 1")
+            .setSeverity(AlertConfiguration.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .generateUUID();
-    if (definition != null) {
-      AlertDefinitionGroup group =
-          AlertDefinitionGroup.db().find(AlertDefinitionGroup.class, definition.getGroupUUID());
-      alert.setGroupUuid(definition.getGroupUUID());
-      alert.setGroupType(group.getTargetType());
-      alert.setDefinitionUuid(definition.getUuid());
-      List<AlertLabel> labels =
-          definition
-              .getEffectiveLabels(group, AlertDefinitionGroup.Severity.SEVERE)
-              .stream()
-              .map(l -> new AlertLabel(l.getName(), l.getValue()))
-              .collect(Collectors.toList());
-      alert.setLabels(labels);
-    } else {
-      AlertLabelsBuilder labelsBuilder = AlertLabelsBuilder.create();
-      if (universe != null) {
-        labelsBuilder.appendTarget(universe);
-      } else {
-        labelsBuilder.appendTarget(customer);
-      }
-      alert.setLabels(labelsBuilder.getAlertLabels());
+    if (definition == null) {
+      AlertConfiguration configuration = createAlertConfiguration(customer, universe);
+      definition = createAlertDefinition(customer, universe, configuration);
     }
+    AlertConfiguration configuration =
+        AlertConfiguration.db().find(AlertConfiguration.class, definition.getConfigurationUUID());
+    alert.setConfigurationUuid(definition.getConfigurationUUID());
+    alert.setConfigurationType(configuration.getTargetType());
+    alert.setDefinitionUuid(definition.getUuid());
+    List<AlertLabel> labels =
+        definition
+            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
+            .stream()
+            .map(l -> new AlertLabel(l.getName(), l.getValue()))
+            .collect(Collectors.toList());
+    alert.setLabels(labels);
     if (modifier != null) {
       modifier.accept(alert);
     }
@@ -377,23 +394,35 @@ public class ModelFactory {
     return alert;
   }
 
-  public static AlertReceiver createEmailReceiver(Customer customer, String name) {
-    AlertReceiverEmailParams params = new AlertReceiverEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
-    return AlertReceiver.create(customer.uuid, name, params);
-  }
-
-  public static AlertRoute createAlertRoute(
-      UUID customerUUID, String name, List<AlertReceiver> receivers) {
-    AlertRoute route =
-        new AlertRoute()
+  public static AlertChannel createAlertChannel(
+      UUID customerUUID, String name, AlertChannelParams params) {
+    AlertChannel channel =
+        new AlertChannel()
             .generateUUID()
             .setCustomerUUID(customerUUID)
             .setName(name)
-            .setReceiversList(receivers);
-    route.save();
-    return route;
+            .setParams(params);
+    channel.save();
+    return channel;
+  }
+
+  public static AlertChannel createEmailChannel(UUID customerUUID, String name) {
+    AlertChannelEmailParams params = new AlertChannelEmailParams();
+    params.recipients = Collections.singletonList("test@test.com");
+    params.smtpData = EmailFixtures.createSmtpData();
+    return createAlertChannel(customerUUID, name, params);
+  }
+
+  public static AlertDestination createAlertDestination(
+      UUID customerUUID, String name, List<AlertChannel> channels) {
+    AlertDestination destination =
+        new AlertDestination()
+            .generateUUID()
+            .setCustomerUUID(customerUUID)
+            .setName(name)
+            .setChannelsList(channels);
+    destination.save();
+    return destination;
   }
 
   /*
@@ -404,5 +433,15 @@ public class ModelFactory {
     EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
     return keyService.createAuthConfig(customerUUID, "Test KMS Configuration", authConfig);
+  }
+
+  /*
+   * CertificateInfo creation helpers.
+   */
+  public static CertificateInfo createCertificateInfo(
+      UUID customerUUID, String certificate, CertificateInfo.Type certType)
+      throws IOException, NoSuchAlgorithmException {
+    return CertificateInfo.create(
+        UUID.randomUUID(), customerUUID, "test", new Date(), new Date(), "", certificate, certType);
   }
 }

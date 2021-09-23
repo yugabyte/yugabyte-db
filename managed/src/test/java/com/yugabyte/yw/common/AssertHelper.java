@@ -15,6 +15,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
@@ -23,8 +24,8 @@ import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.alerts.MetricService;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -46,7 +47,9 @@ public class AssertHelper {
 
   public static void assertInternalServerError(Result result, String errorStr) {
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
-    assertErrorResponse(result, errorStr);
+    if (null != errorStr) {
+      assertErrorResponse(result, errorStr);
+    }
   }
 
   public static void assertUnauthorized(Result result, String errorStr) {
@@ -61,6 +64,11 @@ public class AssertHelper {
 
   public static void assertNotFound(Result result, String errorStr) {
     assertEquals(NOT_FOUND, result.status());
+    assertErrorResponse(result, errorStr);
+  }
+
+  public static void assertConflict(Result result, String errorStr) {
+    assertEquals(CONFLICT, result.status());
     assertErrorResponse(result, errorStr);
   }
 
@@ -126,27 +134,25 @@ public class AssertHelper {
         .forEachRemaining(field -> assertEquals(expectedJson.get(field), actualJson.get(field)));
   }
 
-  public static void assertAuditEntry(int expectedNumEntries, UUID uuid) {
-    int actual = Audit.getAll(uuid).size();
+  public static void assertAuditEntry(int expectedNumEntries, UUID customerUUID) {
+    int actual = Audit.getAll(customerUUID).size();
     assertEquals(expectedNumEntries, actual);
   }
 
   public static void assertYWSuccess(Result result, String expectedMessage) {
     assertOk(result);
-    YWResults.YWSuccess ywSuccess =
-        Json.fromJson(Json.parse(contentAsString(result)), YWResults.YWSuccess.class);
-    assertEquals(expectedMessage, ywSuccess.message);
+    YBPSuccess ybpSuccess = Json.fromJson(Json.parse(contentAsString(result)), YBPSuccess.class);
+    assertEquals(expectedMessage, ybpSuccess.message);
   }
 
   private static void assertYWSuccessNoMessage(Result result) {
     assertOk(result);
-    YWResults.YWSuccess ywSuccess =
-        Json.fromJson(Json.parse(contentAsString(result)), YWResults.YWSuccess.class);
-    assertNull(ywSuccess.message);
+    YBPSuccess ybpSuccess = Json.fromJson(Json.parse(contentAsString(result)), YBPSuccess.class);
+    assertNull(ybpSuccess.message);
   }
 
   public static Result assertYWSE(ThrowingRunnable runnable) {
-    return assertThrows(YWServiceException.class, runnable).getResult();
+    return assertThrows(PlatformServiceException.class, runnable).getResult();
   }
 
   public static Metric assertMetricValue(
