@@ -386,10 +386,7 @@ Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
   if (secondary_index_query_) {
     return secondary_index_query_->GetColumnInfo(attr_num);
   }
-  YBCPgColumnInfo column_info = {false, false};
-  RETURN_NOT_OK(bind_->GetColumnInfo(
-      attr_num, &column_info.is_primary, &column_info.is_hash));
-  return column_info;
+  return bind_->GetColumnInfo(attr_num);
 }
 
 }  // namespace pggate
