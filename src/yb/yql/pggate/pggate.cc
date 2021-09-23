@@ -719,11 +719,9 @@ Status PgApiImpl::GetTableDesc(const PgObjectId& table_id,
   return Status::OK();
 }
 
-Status PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
-                                int16_t attr_number,
-                                bool *is_primary,
-                                bool *is_hash) {
-  return table_desc->GetColumnInfo(attr_number, is_primary, is_hash);
+Result<YBCPgColumnInfo> PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
+                                                 int16_t attr_number) {
+  return table_desc->GetColumnInfo(attr_number);
 }
 
 Status PgApiImpl::DmlModifiesRow(PgStatement *handle, bool *modifies_row) {
