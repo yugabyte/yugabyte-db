@@ -10,7 +10,7 @@
 
 extends: existence
 message: 'Merge conflict marker "%s" found.'
-link: https://docs.gitlab.com/ee/development/code_review.html#merging-a-merge-request
+#link: https://docs.gitlab.com/ee/development/code_review.html#merging-a-merge-request
 level: error
 scope: raw
 raw:
