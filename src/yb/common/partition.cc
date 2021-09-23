@@ -817,7 +817,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
                                                   const Schema& schema) const {
   CHECK(!schema.num_hash_key_columns());
   std::string s;
-  s.append("range: [(");
+  s.append("range: [");
   if (partition.partition_key_start().empty()) {
     s.append("<start>");
   } else {
@@ -829,7 +829,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
   } else {
     s.append(docdb::DocKey::DebugSliceToString(partition.partition_key_end()));
   }
-  s.append("))");
+  s.append(")");
   return s;
 }
 
