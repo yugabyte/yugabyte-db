@@ -50,18 +50,22 @@ public class PlatformExecutorFactory {
     return config.getDuration(getPath(poolName, ".thread_ttl"));
   }
 
+  private int ybQueueCapacity(String poolName) {
+    return config.getInt(getPath(poolName, ".queue_capacity"));
+  }
+
   private String getPath(String poolName, String confKey) {
     return "yb." + poolName + confKey;
   }
 
   public ExecutorService createExecutor(String configPoolName, ThreadFactory namedThreadFactory) {
     ThreadPoolExecutor executor =
-        new ThreadPoolExecutor(
+        new PlatformThreadPoolExecutor(
             ybCorePoolSize(configPoolName),
             ybMaxPoolSize(configPoolName),
             keepAliveDuration(configPoolName).getSeconds(),
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(),
+            new LinkedBlockingQueue<>(ybQueueCapacity(configPoolName)),
             namedThreadFactory);
 
     lifecycle.addStopHook(
