@@ -1,6 +1,9 @@
 name: yugabyted-test
 
 on:
+  schedule:
+    - cron: "0 1 */2 * *"
+    
   push:
     branches:
       - master
@@ -21,7 +24,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ ubuntu-18.04 ]
+        os: [  macos-latest, ubuntu-18.04 ]
         python-version: [ 2.7, 3.8 ]
 
     steps:
