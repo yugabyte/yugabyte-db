@@ -275,7 +275,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           QLAddInt32HashValue(req, 0);
           table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
           if (options.ttl >= 0) {
-            req->set_ttl(options.ttl);
+            req->set_ttl(options.ttl * MonoTime::kMillisecondsPerSecond);
           }
           ops.push_back(update);
           CHECK_OK(session->Apply(update));
@@ -299,7 +299,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       QLAddInt32HashValue(req, key);
       table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
       table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
-      if (options.ttl > 0) {
+      if (options.ttl >= 0) {
         req->set_ttl(options.ttl);
       }
       ops.push_back(insert);

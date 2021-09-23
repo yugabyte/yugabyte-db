@@ -120,6 +120,9 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 
+  bool delete_after_compaction = false;  // True if file has been marked for
+                                         // direct deletion.
+
   FileMetaData();
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects

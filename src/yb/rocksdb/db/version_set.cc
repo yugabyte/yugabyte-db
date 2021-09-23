@@ -3556,15 +3556,6 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
   if (c->ShouldFormSubcompactions()) {
     read_options.total_order_seek = true;
   }
-  std::unique_ptr<CompactionFileFilter> file_filter;
-  auto file_filter_factory = cfd->ioptions()->compaction_file_filter_factory;
-  // File filters currently only considered for exclusively level 0 compactions.
-  if (file_filter_factory && c->num_input_levels() == 1 && c->level(0) == 0) {
-    // TODO jmeehan - This should probably be moved earlier in the compaction process,
-    // so that all subcompactions share the same filter.  Maybe attached to the
-    // compaction itself?  Added to the mutable_cf_options?
-    file_filter = file_filter_factory->CreateCompactionFileFilter(*(c->inputs(0)));
-  }
 
   // Level-0 files have to be merged together.  For other levels,
   // we will make a concatenating iterator per level.
@@ -3580,7 +3571,7 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
         const LevelFilesBrief* flevel = c->input_levels(which);
         for (size_t i = 0; i < flevel->num_files; i++) {
           FileMetaData* fmd = c->input(which, i);
-          if (file_filter && file_filter->Filter(fmd) == FilterDecision::kDiscard) {
+          if (c->input(which, i)->delete_after_compaction) {
             RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_FILTERED);
             continue;
           }
