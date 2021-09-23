@@ -50,13 +50,13 @@ showAsideToc: true
 
 - [Minikube](https://github.com/kubernetes/minikube) is installed on your localhost machine.
 
-    The Kubernetes version used by Minikube should be v1.13.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+    The Kubernetes version used by Minikube should be v1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/) is installed.
 
     To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
 
-- [Helm 3+](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
+- [Helm 3.4 or later](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
 
     To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
@@ -91,7 +91,7 @@ showAsideToc: true
     Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
     ```
 
-- Confirm that your Helm 3 is configured correctly by running the following command.
+- Confirm that your Helm is configured correctly by running the following command.
 
     ```sh
     $ helm version

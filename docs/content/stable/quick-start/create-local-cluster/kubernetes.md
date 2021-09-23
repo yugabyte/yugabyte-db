@@ -50,7 +50,7 @@ showAsideToc: true
 
 ## 1. Create a local cluster
 
-Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm 3, you have to first create a namespace.
+Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
 
 ```sh
 $ kubectl create namespace yb-demo

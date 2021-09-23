@@ -60,8 +60,8 @@ showAsideToc: true
 
 The Yugabyte Platform Helm chart has been tested using the following software versions:
 
-- Kubernetes 1.10 or later.
-- Helm 3.0 or later.
+- Kubernetes 1.18 or later.
+- Helm 3.4 or later.
 - Ability to pull Yugabyte Platform Docker image from quay.io repository
 
 
