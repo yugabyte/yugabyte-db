@@ -12,6 +12,7 @@
 //
 
 #include <sys/types.h>
+#include "yb/client/table_alterer.h"
 #include "yb/client/transaction_pool.h"
 
 #include "yb/docdb/compaction_file_filter.h"
@@ -209,6 +210,15 @@ class CompactionTest : public YBTest {
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
     return Status::OK();
+  }
+
+  CHECKED_STATUS ChangeTableTTL(const client::YBTableName& table_name, int ttl_sec) {
+    RETURN_NOT_OK(client_->TableExists(table_name));
+    auto alterer = client_->NewTableAlterer(table_name);
+    TableProperties table_properties;
+    table_properties.SetDefaultTimeToLive(ttl_sec * MonoTime::kMillisecondsPerSecond);
+    alterer->SetTableProperties(table_properties);
+    return alterer->Alter();
   }
 
   void TestCompactionAfterTruncate();
@@ -581,6 +591,32 @@ TEST_F(CompactionTestWithFileExpiration, FileThatNeverExpires) {
   EXPECT_GT(size_after_manual_compaction, 0);
   EXPECT_GT(files_after_compaction, 0);
   ASSERT_EQ(filtered_sst_files, CountFilteredSSTFiles());
+}
+
+TEST_F(CompactionTestWithFileExpiration, ShouldNotExpireDueToHistoryRetention) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1000000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  rocksdb_listener_->Reset();
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+  auto size_before_compaction = GetTotalSizeOfDbs();
+  auto files_before_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size before compaction: " << size_before_compaction <<
+      ", num files: " << files_before_compaction;
+
+  LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
+  SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
+
+  ExecuteManualCompaction();
+  // Assert that there is still data after compaction, and no SST files have been filtered.
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_GT(size_after_manual_compaction, 0);
+  EXPECT_GT(files_after_compaction, 0);
+  ASSERT_EQ(CountFilteredSSTFiles(), 0);
 }
 
 } // namespace tserver

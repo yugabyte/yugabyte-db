@@ -683,7 +683,7 @@ Status Tablet::OpenKeyValueTablet() {
   });
   if (FLAGS_tablet_enable_ttl_file_filter) {
     rocksdb_options.compaction_file_filter_factory =
-        std::make_shared<docdb::DocDBCompactionFileFilterFactory>(schema(), clock());
+        std::make_shared<docdb::DocDBCompactionFileFilterFactory>(retention_policy_, clock());
   }
 
   rocksdb_options.disable_auto_compactions = true;
