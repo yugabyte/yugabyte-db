@@ -33,6 +33,11 @@ struct SnapshotScheduleOperation {
   TxnSnapshotId snapshot_id;
   SnapshotScheduleFilterPB filter;
   HybridTime previous_snapshot_hybrid_time;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        type, schedule_id, snapshot_id, filter, previous_snapshot_hybrid_time);
+  }
 };
 
 using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
@@ -74,6 +79,8 @@ class SnapshotScheduleState {
   std::string ToString() const;
 
  private:
+  std::string LogPrefix() const;
+
   SnapshotScheduleOperation MakeCreateSnapshotOperation(HybridTime last_snapshot_time);
 
   SnapshotCoordinatorContext& context_;

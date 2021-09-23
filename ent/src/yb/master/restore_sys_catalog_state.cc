@@ -167,14 +167,14 @@ Status RestoreSysCatalogState::Process() {
   VLOG_WITH_FUNC(4) << "Restoring namespaces: " << AsString(restoring_objects_.namespaces);
   faststring buffer;
   RETURN_NOT_OK_PREPEND(DetermineEntries(
-      &restoring_objects_,
+      &restoring_objects_, nullptr,
       [this, &buffer](const auto& id, auto* pb) {
         return AddRestoringEntry(id, pb, &buffer);
   }), "Determine restoring entries failed");
 
   VLOG_WITH_FUNC(2) << "Check existing objects";
   RETURN_NOT_OK_PREPEND(DetermineEntries(
-      &existing_objects_,
+      &existing_objects_, &retained_existing_tables_,
       [this](const auto& id, auto* pb) {
         return CheckExistingEntry(id, *pb);
   }), "Determine obsolete entries failed");
@@ -193,13 +193,15 @@ Status RestoreSysCatalogState::Process() {
 
 template <class ProcessEntry>
 Status RestoreSysCatalogState::DetermineEntries(
-    Objects* objects, const ProcessEntry& process_entry) {
+    Objects* objects, RetainedExistingTables* retained_existing_tables,
+    const ProcessEntry& process_entry) {
   std::unordered_set<NamespaceId> namespaces;
   std::unordered_set<TableId> tables;
 
+  const auto& filter = restoration_.schedules[0].second;
+
   for (auto& id_and_metadata : objects->namespaces) {
-    if (!VERIFY_RESULT(MatchNamespace(
-            restoration_.filter, id_and_metadata.first, id_and_metadata.second))) {
+    if (!VERIFY_RESULT(MatchNamespace(filter, id_and_metadata.first, id_and_metadata.second))) {
       continue;
     }
     if (!namespaces.insert(id_and_metadata.first).second) {
@@ -212,25 +214,26 @@ Status RestoreSysCatalogState::DetermineEntries(
     VLOG_WITH_FUNC(3) << "Checking: " << id_and_metadata.first << ", "
                       << id_and_metadata.second.ShortDebugString();
 
-    bool match;
     if (TableDeleted(id_and_metadata.second)) {
       continue;
     }
-    if (id_and_metadata.second.has_index_info()) {
-      auto it = objects->tables.find(id_and_metadata.second.index_info().indexed_table_id());
-      if (it == objects->tables.end()) {
-        return STATUS_FORMAT(
-            NotFound, "Indexed table $0 not found for index $1 ($2)",
-            id_and_metadata.second.index_info().indexed_table_id(), id_and_metadata.first,
-            id_and_metadata.second.name());
-      }
-      match = VERIFY_RESULT(MatchTable(restoration_.filter, it->first, it->second));
-    } else {
-      match = VERIFY_RESULT(MatchTable(
-          restoration_.filter, id_and_metadata.first, id_and_metadata.second));
-    }
+    auto& root_table_id_and_metadata = VERIFY_RESULT(objects->FindRootTable(id_and_metadata)).get();
+    auto match = VERIFY_RESULT(MatchTable(
+        filter, root_table_id_and_metadata.first, root_table_id_and_metadata.second));
     if (!match) {
       continue;
+    }
+    if (retained_existing_tables) {
+      auto& retaining_schedules = retained_existing_tables->emplace(
+          id_and_metadata.first, std::vector<SnapshotScheduleId>()).first->second;
+      retaining_schedules.push_back(restoration_.schedules[0].first);
+      for (size_t i = 1; i != restoration_.schedules.size(); ++i) {
+        if (VERIFY_RESULT(MatchTable(
+            restoration_.schedules[i].second, root_table_id_and_metadata.first,
+            root_table_id_and_metadata.second))) {
+          retaining_schedules.push_back(restoration_.schedules[i].first);
+        }
+      }
     }
     // Process pg_catalog tables that need to be restored.
     if (namespaces.insert(id_and_metadata.second.namespace_id()).second) {
@@ -257,6 +260,34 @@ Status RestoreSysCatalogState::DetermineEntries(
             << id_and_metadata.second.ShortDebugString();
   }
   return Status::OK();
+}
+
+Result<const std::pair<const TableId, SysTablesEntryPB>&>
+    RestoreSysCatalogState::Objects::FindRootTable(
+    const std::pair<const TableId, SysTablesEntryPB>& id_and_metadata) {
+  if (!id_and_metadata.second.has_index_info()) {
+    return id_and_metadata;
+  }
+
+  auto it = tables.find(id_and_metadata.second.index_info().indexed_table_id());
+  if (it == tables.end()) {
+    return STATUS_FORMAT(
+        NotFound, "Indexed table $0 not found for index $1 ($2)",
+        id_and_metadata.second.index_info().indexed_table_id(), id_and_metadata.first,
+        id_and_metadata.second.name());
+  }
+  const auto& ref = *it;
+  return ref;
+}
+
+Result<const std::pair<const TableId, SysTablesEntryPB>&>
+    RestoreSysCatalogState::Objects::FindRootTable(
+    const TableId& table_id) {
+  auto it = tables.find(table_id);
+  if (it == tables.end()) {
+    return STATUS_FORMAT(NotFound, "Table $0 not found for index", table_id);
+  }
+  return FindRootTable(*it);
 }
 
 std::string RestoreSysCatalogState::Objects::SizesToString() const {
@@ -368,8 +399,18 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
 Status RestoreSysCatalogState::PrepareTabletCleanup(
     const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
     docdb::DocWriteBatch* write_batch) {
+  VLOG_WITH_FUNC(4) << id;
+
   QLWriteRequestPB write_request;
-  pb.set_state(SysTabletsEntryPB::DELETED);
+
+  auto it = retained_existing_tables_.find(pb.table_id());
+  if (it != retained_existing_tables_.end()) {
+    pb.set_hide_hybrid_time(restoration_.write_time.ToUint64());
+    auto& out_schedules = *pb.mutable_retained_by_snapshot_schedules();
+    for (const auto& schedule_id : it->second) {
+      out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
+    }
+  }
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntry::TABLET, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
@@ -379,8 +420,10 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
 Status RestoreSysCatalogState::PrepareTableCleanup(
     const TableId& id, SysTablesEntryPB pb, const Schema& schema,
     docdb::DocWriteBatch* write_batch) {
+  VLOG_WITH_FUNC(4) << id;
+
   QLWriteRequestPB write_request;
-  pb.set_state(SysTablesEntryPB::DELETING);
+  pb.set_hide_state(SysTablesEntryPB::HIDING);
   pb.set_version(pb.version() + 1);
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntry::TABLE, id, pb.SerializeAsString(),
@@ -390,7 +433,7 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
 
 Result<bool> RestoreSysCatalogState::TEST_MatchTable(
     const TableId& id, const SysTablesEntryPB& table) {
-  return MatchTable(restoration_.filter, id, table);
+  return MatchTable(restoration_.schedules[0].second, id, table);
 }
 
 void RestoreSysCatalogState::WriteToRocksDB(

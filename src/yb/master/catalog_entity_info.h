@@ -52,7 +52,8 @@
 namespace yb {
 namespace master {
 
-YB_STRONGLY_TYPED_BOOL(IncludeSplitTablets);
+YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+YB_STRONGLY_TYPED_BOOL(InactiveOnly);
 
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
@@ -428,17 +429,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   }
 
   // Add a tablet to this table.
-  void AddTablet(TabletInfo *tablet);
+  void AddTablet(const TabletInfoPtr& tablet);
 
   // Add multiple tablets to this table.
-  void AddTablets(const std::vector<TabletInfo*>& tablets);
+  void AddTablets(const TabletInfos& tablets);
 
-  // Remove tablet that has been split.
-  void RemoveSplitTablet(const TabletId& tablet_id);
-
-  // Return true if tablet with 'partition_key_start' has been
-  // removed from 'tablet_map_' below.
-  bool RemoveTablet(const std::string& partition_key_start);
+  // Return true if tablet has been removed from 'partitions_' below.
+  bool RemoveTablet(const TabletId& tablet_id, InactiveOnly inactive_only = InactiveOnly::kFalse);
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
@@ -447,16 +444,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
 
-  std::size_t NumTablets() const;
+  std::size_t NumPartitions() const;
 
   // Get all tablets of the table.
   // If include_split_tablets is true, also returns not yet deleted split parent tablets for
   // which we've already registered child split tablets.
-  void GetAllTablets(
-      TabletInfos* ret,
-      IncludeSplitTablets include_split_tablets = IncludeSplitTablets::kFalse) const;
-
-  bool HasTablets() const;
+  TabletInfos GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get the tablet of the table.  The table must be colocated.
   TabletInfoPtr GetColocatedTablet() const;
@@ -528,7 +521,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  void AddTabletUnlocked(TabletInfo* tablet) REQUIRES_SHARED(lock_);
+  void AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES_SHARED(lock_);
   void AbortTasksAndCloseIfRequested(bool close);
 
   std::string LogPrefix() const {
@@ -541,9 +534,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
-  typedef std::map<PartitionKey, TabletInfo*> TabletInfoMap;
-  TabletInfoMap tablet_map_ GUARDED_BY(lock_);
-  std::unordered_map<TabletId, TabletInfo*> split_tablets_ GUARDED_BY(lock_);
+  std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
+  std::unordered_map<TabletId, TabletInfo*> tablets_ GUARDED_BY(lock_);
 
   // Protects tablet_map_ and pending_tasks_.
   mutable rw_spinlock lock_;

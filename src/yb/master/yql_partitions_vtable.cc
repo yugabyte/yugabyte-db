@@ -108,8 +108,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
     auto namespace_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Get tablets for table.
-    std::vector<scoped_refptr<TabletInfo>> tablet_infos;
-    table->GetAllTablets(&tablet_infos);
+    auto tablet_infos = table->GetTablets();
     for (const auto& info : tablet_infos) {
       tablets.emplace_back();
       auto& data = tablets.back();

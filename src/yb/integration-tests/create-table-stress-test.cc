@@ -555,8 +555,7 @@ DontVerifyClusterBeforeNextTearDown();
       master::GetTablesMode::kAll);
   for (const scoped_refptr<master::TableInfo>& table_info : tables) {
     LOG(INFO) << "Table: " << table_info->ToString();
-    std::vector<scoped_refptr<master::TabletInfo> > tablets;
-    table_info->GetAllTablets(&tablets);
+    auto tablets = table_info->GetTablets();
     for (const scoped_refptr<master::TabletInfo>& tablet_info : tablets) {
       auto l_tablet = tablet_info->LockForRead();
       const master::SysTabletsEntryPB& metadata = l_tablet->pb;
