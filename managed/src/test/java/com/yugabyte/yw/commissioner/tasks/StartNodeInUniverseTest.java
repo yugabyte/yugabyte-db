@@ -6,7 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
@@ -56,6 +56,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
