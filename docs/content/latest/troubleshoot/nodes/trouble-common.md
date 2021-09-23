@@ -36,7 +36,7 @@ To determine why this error is happening, you can check the disk bandwidth, netw
 
 The limits are controlled by the following YB-TServer configuration flags: `--sst_files_hard_limit=48` and `--sst_files_soft_limit=24`.
 
-## Catalog Version Mismatch: A DDL occurred while processing this query. Try Again.
+## Catalog Version Mismatch: A DDL occurred while processing this query. Try Again
 
 When executing queries in the YSQL layer, the query may fail with the following error:
 
@@ -48,23 +48,25 @@ A DML query in YSQL may touch multiple servers, and each server has a Catalog Ve
 
 In these cases, the database aborts the query and returns a `40001` PostgreSQL error code. Errors with this code can be safely retried from the client side. 
 
-## ysqlsh: FATAL:  password authentication failed for user "yugabyte" after fresh installation
+## ysqlsh: FATAL: password authentication failed for user "yugabyte" after fresh installation
 
-Sometimes users get the following error when trying to connect to YSQL using `ysqlsh` cli after creating a fresh cluster:
+Sometimes users get the following error when trying to connect to YSQL using the `ysqlsh` CLI after creating a fresh cluster:
 
-```shell
+```output
 ysqlsh: FATAL:  password authentication failed for user "yugabyte"
 ```
 
-By default, PostgreSQL listens on port `5432`. To not conflict with it, we've set the YSQL port to `5433`. But users have the ability to 
-create multiple PostgreSQL clusters locally. Each one takes the next port available, starting from `5433`, conflicting with YSQL port. 
-If you've created 2 PostgreSQL clusters before creating the YugabyteDB cluster, then the `ysqlsh` shell is trying to connect to PostgreSQL running on port `5433`
-and failing to authenticate. To verify in this case, you can look which process is listening on port `5433`:
+By default, PostgreSQL listens on port `5432`. To not conflict with it, we've set the YSQL port to `5433`. But users have the ability to create multiple PostgreSQL clusters locally. Each one takes the next port available, starting from `5433`, conflicting with the YSQL port. 
 
-```shell
+If you've created 2 PostgreSQL clusters before creating the YugabyteDB cluster, the `ysqlsh` shell is trying to connect to PostgreSQL running on port `5433` and failing to authenticate. To verify in this case, you can look which process is listening on port `5433`:
+
+```sh
 sudo lsof -i :5433
+```
+
+```output
 COMMAND   PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
 postgres 1263 postgres    7u  IPv4  35344      0t0  TCP localhost:postgresql (LISTEN)
 ```
 
-You have to shut down this PostgreSQL cluster, or kill the process, and then restart YugabyteDB.
+Shut down this PostgreSQL cluster, or kill the process, then restart YugabyteDB.
