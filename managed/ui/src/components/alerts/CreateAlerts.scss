@@ -13,12 +13,14 @@
 
   .percent-text {
     padding: 5px 10px;
-    font-size: 20px;
+    font-size: 13px;
     margin: 0;
   }
   .flex-container {
     display: flex;
     justify-content: flex-start;
+    align-items: center;
+    height:40px;
   }
   .actionBtnsMargin {
     margin-bottom: 71px;
@@ -55,6 +57,7 @@
 
   .on-prem-row-delete-btn {
     float: left;
+    font-size: 18px;
   }
 
   h5 {
@@ -110,6 +113,12 @@
       max-width: 60px;
       display: flex;
     }
+  }
+  .durationInput input {
+    width: 256px;
+  }
+  .marginBottom {
+    margin-bottom: 8px !important;
   }
 }
 .row {
