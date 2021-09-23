@@ -164,11 +164,6 @@ class YBClientBuilder {
   // Add RPC addresses of multiple masters.
   YBClientBuilder& master_server_addrs(const std::vector<std::string>& addrs);
 
-  // Add a REST endpoint from which the address of the masters can be queried initially, and
-  // refreshed in case of retries. Note that the endpoint mechanism overrides
-  // both 'add_master_server_addr_file' and 'add_master_server_addr'.
-  YBClientBuilder& add_master_server_endpoint(const std::string& endpoint);
-
   // Add an RPC address of a master. At least one master is required.
   YBClientBuilder& add_master_server_addr(const std::string& addr);
 

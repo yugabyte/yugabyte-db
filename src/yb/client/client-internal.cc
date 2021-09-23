@@ -2318,25 +2318,7 @@ Result<std::string> ReadMasterAddressesFromFlagFile(
 Status YBClient::Data::ReinitializeMasterAddresses() {
   Status result;
   std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
-  if (!master_server_endpoint_.empty()) {
-    faststring buf;
-    result = EasyCurl().FetchURL(master_server_endpoint_, &buf);
-    if (result.ok()) {
-      // The JSON serialization adds a " character to the beginning and end of the response, remove
-      // those if they are present.
-      std::string master_addrs = buf.ToString();
-      if (master_addrs.at(0) == '"') {
-        master_addrs = master_addrs.erase(0, 1);
-      }
-      if (master_addrs.at(master_addrs.size() - 1) == '"') {
-        master_addrs = master_addrs.erase(master_addrs.size() - 1, 1);
-      }
-      master_server_addrs_.clear();
-      master_server_addrs_.push_back(master_addrs);
-      LOG(INFO) << "Got master addresses = " << master_addrs
-                << " from REST endpoint: " << master_server_endpoint_;
-    }
-  } else if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
+  if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
     auto master_addrs = ReadMasterAddressesFromFlagFile(
         FLAGS_flagfile, master_address_flag_name_);
